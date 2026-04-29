@@ -208,5 +208,15 @@ export const migrations = [
 
       create index if not exists idx_evaluation_feedback_job_id on evaluation_feedback(job_id);
     `
+  },
+  {
+    id: "0006_generated_document_outputs",
+    sql: `
+      alter table generated_documents add column html_url text not null default '';
+      alter table generated_documents add column keyword_coverage integer not null default 0;
+      alter table generated_documents add column tailoring_plan_json text not null default '[]';
+
+      create index if not exists idx_generated_documents_job_id on generated_documents(job_id);
+    `
   }
 ];

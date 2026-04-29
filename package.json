@@ -16,7 +16,8 @@
     "profile:extract": "tsx scripts/profile-extract.ts",
     "profile:check": "tsx scripts/profile-check.ts",
     "scanner:check": "tsx scripts/scanner-check.ts",
-    "evaluation:check": "tsx scripts/evaluation-check.ts"
+    "evaluation:check": "tsx scripts/evaluation-check.ts",
+    "document:check": "tsx scripts/document-check.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
@@ -24,6 +25,7 @@
     "js-yaml": "^4.1.1",
     "next": "^15.3.5",
     "pdf-parse": "^2.4.5",
+    "playwright-core": "^1.59.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

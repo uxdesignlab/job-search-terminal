@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { EvaluateJobForm } from "@/components/evaluate-job-form";
+import { GenerateResumeForm } from "@/components/generate-resume-form";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select, Shell, Textarea } from "@/components/ui";
-import { getEvaluationByJobId, getJobById, saveEvaluationCorrection } from "@/lib/db/queries";
+import { getEvaluationByJobId, getGeneratedDocumentById, getJobById, saveEvaluationCorrection } from "@/lib/db/queries";
+import { generateTailoredResume } from "@/lib/documents/resume-generator";
 import { evaluateJob } from "@/lib/evaluation/job-evaluator";
 import { splitListValue } from "@/lib/profile/intelligence";
 
@@ -21,6 +23,7 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
   }
 
   const evaluation = getEvaluationByJobId(id);
+  const generatedDocument = getGeneratedDocumentById(`document-${id}`);
 
   async function evaluateJobAction() {
     "use server";
@@ -51,6 +54,15 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
     revalidatePath("/dashboard");
   }
 
+  async function generateResumeAction() {
+    "use server";
+
+    await generateTailoredResume(id);
+    revalidatePath(`/jobs/${id}`);
+    revalidatePath("/resumes");
+    revalidatePath("/dashboard");
+  }
+
   return (
     <Shell activeItem="Jobs">
       <div className="grid gap-6">
@@ -58,7 +70,7 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
           actions={
             <>
               <EvaluateJobForm action={evaluateJobAction} />
-              <Button disabled>Generate tailored resume</Button>
+              <GenerateResumeForm action={generateResumeAction} />
               <Button disabled variant="secondary">Prepare answers</Button>
               <Button variant="quiet">Save for later</Button>
             </>
@@ -143,6 +155,29 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
 
         {evaluation ? (
           <>
+            {generatedDocument ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Tailored resume ready</CardTitle>
+                  <CardDescription>{generatedDocument.tailoringSummary}</CardDescription>
+                </CardHeader>
+                <div className="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-center">
+                  <div>
+                    <p className="text-sm font-medium text-ink">{generatedDocument.title}</p>
+                    <p className="text-xs leading-5 text-muted">
+                      {generatedDocument.baseResume} · {generatedDocument.keywordCoverage}% keyword coverage · {generatedDocument.generatedDate}
+                    </p>
+                  </div>
+                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent" href={`/generated-documents/${generatedDocument.id}/preview`}>
+                    Preview HTML
+                  </a>
+                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${generatedDocument.id}/pdf`}>
+                    Open PDF
+                  </a>
+                </div>
+              </Card>
+            ) : null}
+
             <section className="grid gap-4 lg:grid-cols-2">
               <EvaluationSection title="A. Role summary" items={evaluation.sections.roleSummary} />
               <EvaluationSection title="B. Match with resume" items={evaluation.sections.matchWithResume} />
