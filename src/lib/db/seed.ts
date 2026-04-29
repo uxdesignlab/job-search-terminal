@@ -28,11 +28,15 @@ export function seedDatabase(database: Database.Database) {
     insert or replace into user_profile (
       id, name, location, portfolio, current_search_goal, urgency, direction,
       constraints_json, target_roles_json, strongest_skills_json,
-      skills_to_use_more_json, skills_to_use_less_json
+      skills_to_use_more_json, skills_to_use_less_json,
+      desired_industries_json, compensation_needs, work_preferences_json,
+      deal_breakers_json, career_intent, career_change_interest, confidence_level
     ) values (
       @id, @name, @location, @portfolio, @currentSearchGoal, @urgency, @direction,
       @constraintsJson, @targetRolesJson, @strongestSkillsJson,
-      @skillsToUseMoreJson, @skillsToUseLessJson
+      @skillsToUseMoreJson, @skillsToUseLessJson,
+      @desiredIndustriesJson, @compensationNeeds, @workPreferencesJson,
+      @dealBreakersJson, @careerIntent, @careerChangeInterest, @confidenceLevel
     )
   `);
 
@@ -120,7 +124,10 @@ export function seedDatabase(database: Database.Database) {
       targetRolesJson: toJson(seedUserProfile.targetRoles),
       strongestSkillsJson: toJson(seedUserProfile.strongestSkills),
       skillsToUseMoreJson: toJson(seedUserProfile.skillsToUseMore),
-      skillsToUseLessJson: toJson(seedUserProfile.skillsToUseLess)
+      skillsToUseLessJson: toJson(seedUserProfile.skillsToUseLess),
+      desiredIndustriesJson: toJson(seedUserProfile.desiredIndustries),
+      workPreferencesJson: toJson(seedUserProfile.workPreferences),
+      dealBreakersJson: toJson(seedUserProfile.dealBreakers)
     });
 
     for (const skill of seedSkills) {

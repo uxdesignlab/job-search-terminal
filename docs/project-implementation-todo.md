@@ -103,21 +103,26 @@ Review status:
 
 Goal: make JS understand Pavel before ranking jobs.
 
-- [ ] Extract text from the five source resume PDFs.
-- [ ] Create structured resume-lane records.
-- [ ] Build editable profile setup flow.
-- [ ] Capture target roles, industries, location, remote preferences, compensation, urgency, deal breakers, and career intent.
-- [ ] Generate initial skill inventory from resume sources.
-- [ ] Generate direct, adjacent, stretch, and avoid role directions.
-- [ ] Let the user edit generated profile and role-direction outputs.
-- [ ] Store profile changes and activity log entries.
-- [ ] Add guardrails against unsupported or hallucinated resume claims.
+- [x] Extract text from the five source resume PDFs.
+- [x] Create structured resume-lane records.
+- [x] Build editable profile setup flow.
+- [x] Capture target roles, industries, location, remote preferences, compensation, urgency, deal breakers, and career intent.
+- [x] Generate initial skill inventory from resume sources.
+- [x] Generate direct, adjacent, stretch, and avoid role directions.
+- [x] Let the user edit generated profile and role-direction outputs.
+- [x] Store profile changes and activity log entries.
+- [x] Add guardrails against unsupported or hallucinated resume claims.
 
 Exit criteria:
 
-- [ ] User can complete or revise the career profile from the dashboard.
-- [ ] System recommends role directions tied to resume evidence.
-- [ ] User edits persist.
+- [x] User can complete or revise the career profile from the dashboard.
+- [x] System recommends role directions tied to resume evidence.
+- [x] User edits persist.
+
+Review status:
+
+- [x] User review/testing complete.
+- [x] User approved commit for Phase 4.
 
 ## Phase 5 — CareerOps Scanner Integration
 

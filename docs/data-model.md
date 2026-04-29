@@ -43,6 +43,8 @@ npm run db:migrate
 npm run db:seed
 npm run db:reset
 npm run db:check
+npm run profile:extract
+npm run profile:check
 ```
 
 The local database file is `data/js.sqlite`. It is intentionally ignored by git.
@@ -53,6 +55,9 @@ The local database file is `data/js.sqlite`. It is intentionally ignored by git.
 - `getDatabase()` runs migrations and seeds only if the database is empty.
 - `db:reset` deletes local SQLite files, reruns migrations, and reseeds demo data.
 - `db:check` verifies the persisted seed records and query layer.
+- `profile:extract` extracts local resume PDF text into `resumes` and refreshes
+  evidence-backed skill signals.
+- `profile:check` verifies the extracted profile intelligence.
 - Phase 3 keeps mock source modules as seed inputs only; dashboard pages no
   longer read mock modules directly.
 

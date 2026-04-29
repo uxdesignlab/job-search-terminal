@@ -17,6 +17,7 @@ or job-evaluation functionality yet.
 - [Accessibility checklist](docs/accessibility-checklist.md)
 - [Development workflow](docs/development-workflow.md)
 - [Local data model](docs/data-model.md)
+- [Profile intelligence](docs/profile-intelligence.md)
 - [Project implementation todo](docs/project-implementation-todo.md)
 - [Phase 1 todo](docs/phase-1-todo.md)
 - [Lessons](docs/lessons.md)

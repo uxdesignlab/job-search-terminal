@@ -7,11 +7,18 @@ import { resumeLanes } from "@/data/mock/resume-lanes";
 
 export const seedUserProfile = {
   id: "pavel",
-  ...mockProfile
+  ...mockProfile,
+  desiredIndustries: ["AI products", "Enterprise SaaS", "Civic technology", "Healthcare platforms"],
+  compensationNeeds: "Senior leadership range, to be validated per role",
+  workPreferences: ["Remote first", "Selective hybrid", "Strategic product scope"],
+  dealBreakers: ["Brand-only production", "Junior IC scope", "Onsite-only roles"],
+  careerIntent: "Prioritize senior product design leadership with strong strategy, systems, and AI workflow relevance.",
+  careerChangeInterest: "Open to adjacent AI product strategy, accessibility governance, and UX education roles when scope is strong.",
+  confidenceLevel: "High for direct lanes; selective for adjacent teaching and AI strategy lanes."
 };
 
 export const seedSkills = mockProfile.strongestSkills.map((skill, index) => ({
-  id: `skill-${index + 1}`,
+  id: skill.toLowerCase().replaceAll(" ", "-"),
   userProfileId: seedUserProfile.id,
   skillName: skill,
   skillCategory: index < 3 ? "Core leadership" : "Specialized capability",

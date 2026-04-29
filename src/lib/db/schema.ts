@@ -148,5 +148,22 @@ export const migrations = [
       alter table applications add column role text not null default '';
       alter table applications add column fit_score integer not null default 0;
     `
+  },
+  {
+    id: "0003_profile_resume_intelligence",
+    sql: `
+      alter table user_profile add column desired_industries_json text not null default '[]';
+      alter table user_profile add column compensation_needs text not null default '';
+      alter table user_profile add column work_preferences_json text not null default '[]';
+      alter table user_profile add column deal_breakers_json text not null default '[]';
+      alter table user_profile add column career_intent text not null default '';
+      alter table user_profile add column career_change_interest text not null default '';
+      alter table user_profile add column confidence_level text not null default '';
+
+      alter table resumes add column extracted_text text not null default '';
+      alter table resumes add column extracted_at text;
+      alter table resumes add column word_count integer not null default 0;
+      alter table resumes add column evidence_json text not null default '[]';
+    `
   }
 ];
