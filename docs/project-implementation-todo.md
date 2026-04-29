@@ -3,6 +3,16 @@
 This document tracks the phased implementation of JS from scaffold to working
 local MVP. Keep task status current as work lands.
 
+Project rule: reuse CareerOps code and functionality as much as possible. For
+each engine feature, first inspect CareerOps, then copy, vendor, or port the
+working code when practical. Do not reinvent equivalent scanner, PDF, tracker,
+evaluation, application, or dashboard-metric logic without documenting why reuse
+is not appropriate.
+
+Delivery rule: work one phase at a time. Do not mix implementation tasks across
+phases. After each phase, verify, pause, let the user inspect/test, and commit
+only after explicit user approval.
+
 ## Phase 1 — Repo Foundation And CareerOps Map
 
 Goal: create the Codex-first project foundation without implementing product
@@ -52,6 +62,8 @@ Exit criteria:
 
 Goal: replace mock data with persistent local storage.
 
+- [ ] Inspect CareerOps data contract, tracker files, status model, and dashboard parsers before designing tables.
+- [ ] Document which CareerOps data fields map directly into SQLite.
 - [ ] Choose and install SQLite migration/data-access tooling.
 - [ ] Create migration system.
 - [ ] Add `user_profile` table.
@@ -97,8 +109,10 @@ Exit criteria:
 
 Goal: discover jobs through dashboard action, using CareerOps scanner patterns.
 
-- [ ] Adapt Greenhouse, Ashby, and Lever detection from CareerOps.
-- [ ] Adapt title filters and source config from `config/portals.example.yml`.
+- [ ] Copy or port CareerOps scanner code where practical instead of rewriting it.
+- [ ] Preserve Greenhouse, Ashby, and Lever detection/parsing behavior from CareerOps.
+- [ ] Preserve title filters and source config patterns from CareerOps.
+- [ ] Document any scanner logic that must be changed for JS storage/API boundaries.
 - [ ] Write scan results to SQLite instead of Markdown.
 - [ ] Add URL and company/role deduplication.
 - [ ] Add freshness metadata and first-seen dates.
@@ -117,7 +131,8 @@ Exit criteria:
 
 Goal: evaluate fit with evidence, recommendations, and role strategy.
 
-- [ ] Adapt CareerOps evaluation mode into a dashboard-triggered service.
+- [ ] Port CareerOps evaluation mode structure into a dashboard-triggered service.
+- [ ] Preserve reusable scoring/report sections unless they conflict with JS role lanes.
 - [ ] Replace AI/engineering archetypes with UX/product/design leadership archetypes.
 - [ ] Score fit using profile, resume lanes, constraints, and job requirements.
 - [ ] Store evaluation summary, strengths, gaps, red flags, evidence mapping, and recommended action.
@@ -135,8 +150,9 @@ Exit criteria:
 
 Goal: generate truthful tailored resumes from the dashboard.
 
-- [ ] Adapt CareerOps ATS HTML template approach.
-- [ ] Adapt Playwright PDF generation with ATS text normalization.
+- [ ] Copy or port CareerOps ATS HTML template approach where practical.
+- [ ] Copy or port CareerOps Playwright PDF generation and ATS text normalization where practical.
+- [ ] Document any template or renderer changes required for JS resume lanes.
 - [ ] Select or recommend the best resume base for a job.
 - [ ] Generate tailoring plan before PDF creation.
 - [ ] Tailor summary and proof-point ordering without inventing claims.
@@ -155,6 +171,7 @@ Exit criteria:
 
 Goal: support manual applications without auto-submitting anything.
 
+- [ ] Port reusable CareerOps application-assistant and tracker logic before writing new equivalents.
 - [ ] Generate answers for common application questions.
 - [ ] Let user paste custom application questions.
 - [ ] Save answer drafts to the job record.
@@ -208,6 +225,10 @@ Exit criteria:
 ## Standing Rules
 
 - [ ] Keep detailed docs in `docs/`.
+- [ ] Reuse CareerOps code/functionality first; document any decision to rebuild.
+- [ ] Work one phase at a time; do not start future-phase tasks early.
+- [ ] Pause after each phase for user review and testing.
+- [ ] Commit phase work only after explicit user approval.
 - [ ] Update this todo when a phase starts or finishes.
 - [ ] Update `docs/lessons.md` after corrections that should change future behavior.
 - [ ] Keep implementation behind dashboard actions.

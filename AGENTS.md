@@ -10,6 +10,10 @@ feel like a minimal professional SaaS dashboard.
 - `AGENTS.md` is the authoritative agent contract for this repo.
 - Detailed project documentation belongs in `docs/`.
 - Keep `README.md` short and link to docs instead of duplicating detail.
+- Work one implementation phase at a time. Do not start tasks from later phases
+  until the current phase has been reviewed, tested, and explicitly approved.
+- After each phase: stop, report what changed, share verification results, and
+  wait for the user to test. Commit only when the user explicitly directs it.
 - Phase 1 is scaffolding and mapping only. Do not implement scanner, PDF,
   SQLite, evaluation, or application-tracking functionality in this phase.
 
@@ -27,11 +31,18 @@ Before building a scanner, PDF generator, tracker, evaluation mode, application
 assistant, or dashboard metric from scratch, check the CareerOps reuse map in
 `docs/careerops-reuse-map.md`.
 
+Default to reusing CareerOps code and functionality as much as possible. If a
+CareerOps component already performs the needed engine behavior, copy, vendor,
+or port that code into JS and wrap it with the dashboard/backend interface. Do
+not reinvent equivalent logic unless the reuse map documents a concrete reason.
+
 Use this policy:
 
-- Reuse proven CareerOps engine behavior where it fits.
+- Reuse proven CareerOps engine behavior and implementation code where it fits.
+- Copy or port CareerOps code when that is the fastest reliable path.
 - Adapt file/CLI-first workflows into dashboard-triggered services.
 - Replace user-facing terminal or slash-command flows with dashboard actions.
+- Document any replacement decision before implementing new equivalent logic.
 - Defer optional external adapters until the dashboard workflow needs them.
 
 ## Resume Lanes

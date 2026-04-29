@@ -4,6 +4,12 @@ JS uses CareerOps as an implementation foundation, not as the user experience.
 The dashboard owns the workflow. CareerOps patterns and engine components are
 adapted behind dashboard actions.
 
+The project rule is reuse first. If CareerOps already has working code for a
+needed engine behavior, JS should copy, vendor, or port that code and adapt its
+interfaces instead of rebuilding the behavior from scratch. Replacing CareerOps
+logic requires a documented reason in this map or in the implementation notes
+for that phase.
+
 ## Source References
 
 - Repository: https://github.com/santifer/career-ops
@@ -14,7 +20,8 @@ adapted behind dashboard actions.
 ## Reuse Later
 
 These pieces should be reused with minimal behavioral change once feature work
-starts:
+starts. The expected implementation path is to import, copy, vendor, or port the
+CareerOps code, then wrap it for JS dashboard/API use:
 
 | CareerOps component | JS use |
 |---|---|
@@ -55,6 +62,11 @@ These CareerOps assumptions conflict with JS:
 - Terminal dashboard as the main interface.
 - User-facing script names and file paths.
 
+Replacement applies to the product surface and architecture assumptions, not to
+engine behavior that can be reused. For example, JS should replace the
+slash-command interface, but still reuse the scanner/PDF/tracker logic behind a
+dashboard action where practical.
+
 ## Defer
 
 These are useful after the dashboard foundation works:
@@ -83,4 +95,5 @@ Current source assets:
 
 Do not copy or adapt CareerOps code during Phase 1. The output of this phase is
 the scaffold, docs, and implementation map. Feature work begins after this map
-is reviewed.
+is reviewed. After Phase 1, implementation phases should prefer direct
+CareerOps code reuse before writing equivalent JS-native logic.

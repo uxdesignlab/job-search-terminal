@@ -3,9 +3,16 @@
 ## Working Rules
 
 - Plan non-trivial work before implementing.
+- Work one implementation phase at a time.
+- Do not pull tasks from future phases into the current phase.
+- After each phase, pause for review and user testing before starting the next
+  phase.
+- Commit phase work only after the user explicitly says to commit.
 - Keep detailed docs in `docs/`.
 - Keep root `README.md` short.
 - Keep `AGENTS.md` at the root for Codex compatibility.
+- Reuse CareerOps code and functionality first. Copy, vendor, or port working
+  CareerOps engine code when practical instead of rebuilding equivalent logic.
 - Preserve user resume assets and generated output.
 - Document every meaningful implementation decision.
 
@@ -19,6 +26,14 @@ Phase 1 is scaffold and mapping only. Do not implement:
 - OpenAI calls.
 - Application tracker logic.
 - Real dashboard workflows.
+
+For every later phase, use the same phase boundary:
+
+1. Implement only that phase.
+2. Run the agreed verification checks.
+3. Report the result and stop.
+4. Let the user inspect/test.
+5. Commit only after explicit user approval.
 
 ## Verification
 
