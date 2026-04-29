@@ -1,23 +1,63 @@
 import Link from "next/link";
-import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
-import { getActivity, getDashboardMetrics, getJobs } from "@/lib/db/queries";
+import { revalidatePath } from "next/cache";
+import { ScanJobsForm } from "@/components/scan-jobs-form";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
+import { getActivity, getDashboardMetrics, getJobs, getLatestScanRun } from "@/lib/db/queries";
+import { runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 
 export const dynamic = "force-dynamic";
 
 export default function DashboardPage() {
+  async function scanForJobsAction() {
+    "use server";
+
+    await runCareerOpsScanner();
+    revalidatePath("/dashboard");
+    revalidatePath("/jobs");
+  }
+
   const priorityJobs = getJobs().filter((job) => job.recommendation === "Priority apply");
   const metrics = getDashboardMetrics();
   const activity = getActivity();
+  const latestScan = getLatestScanRun();
 
   return (
     <Shell activeItem="Dashboard">
       <div className="grid gap-6">
         <PageHeader
-          actions={<Button>Scan for new jobs</Button>}
+          actions={<ScanJobsForm action={scanForJobsAction} />}
           description="Review search status, priority matches, recent activity, and the next best action."
           eyebrow="Search overview"
           title="Dashboard"
         />
+
+        {latestScan ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Latest scan</CardTitle>
+              <CardDescription>
+                {latestScan.newJobsCount} new jobs from {latestScan.companiesScanned} companies. {latestScan.duplicateCount} duplicates skipped.
+              </CardDescription>
+            </CardHeader>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={latestScan.status === "completed" ? "success" : "warning"}>
+                {latestScan.status === "completed" ? "Completed" : "Completed with errors"}
+              </Badge>
+              <Badge>{latestScan.totalJobsFound} found</Badge>
+              <Badge>{latestScan.filteredCount} filtered</Badge>
+              <Badge>{latestScan.skippedCompanies} skipped sources</Badge>
+            </div>
+            {latestScan.errors.length > 0 ? (
+              <ul className="mt-4 grid gap-2" aria-label="Latest scan errors">
+                {latestScan.errors.slice(0, 3).map((error) => (
+                  <li className="rounded-control border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-ink" key={`${error.company}-${error.error}`}>
+                    <span className="font-medium">{error.company}:</span> {error.error}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Card>
+        ) : null}
 
         <section aria-label="Job search metrics" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {metrics.map((metric) => (

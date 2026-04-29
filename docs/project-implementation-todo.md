@@ -128,23 +128,28 @@ Review status:
 
 Goal: discover jobs through dashboard action, using CareerOps scanner patterns.
 
-- [ ] Copy or port CareerOps scanner code where practical instead of rewriting it.
-- [ ] Preserve Greenhouse, Ashby, and Lever detection/parsing behavior from CareerOps.
-- [ ] Preserve title filters and source config patterns from CareerOps.
-- [ ] Document any scanner logic that must be changed for JS storage/API boundaries.
-- [ ] Write scan results to SQLite instead of Markdown.
-- [ ] Add URL and company/role deduplication.
-- [ ] Add freshness metadata and first-seen dates.
-- [ ] Add dashboard action: Scan for new jobs.
-- [ ] Add scan progress and error states.
-- [ ] Add scan history to activity log.
-- [ ] Keep Markdown export optional and non-primary.
+- [x] Copy or port CareerOps scanner code where practical instead of rewriting it.
+- [x] Preserve Greenhouse, Ashby, and Lever detection/parsing behavior from CareerOps.
+- [x] Preserve title filters and source config patterns from CareerOps.
+- [x] Document any scanner logic that must be changed for JS storage/API boundaries.
+- [x] Write scan results to SQLite instead of Markdown.
+- [x] Add URL and company/role deduplication.
+- [x] Add freshness metadata and first-seen dates.
+- [x] Add dashboard action: Scan for new jobs.
+- [x] Add scan progress and error states.
+- [x] Add scan history to activity log.
+- [x] Keep Markdown export optional and non-primary.
 
 Exit criteria:
 
-- [ ] User can click Scan for new jobs.
-- [ ] New jobs are persisted and visible in Jobs/Dashboard.
-- [ ] Duplicate jobs are skipped predictably.
+- [x] User can click Scan for new jobs.
+- [x] New jobs are persisted and visible in Jobs/Dashboard.
+- [x] Duplicate jobs are skipped predictably.
+
+Review status:
+
+- [x] User review/testing complete.
+- [x] User approved commit for Phase 5.
 
 ## Phase 6 — Job Evaluation Agent
 

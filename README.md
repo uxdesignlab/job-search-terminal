@@ -5,9 +5,8 @@ over reusable CareerOps patterns.
 
 ## Current Phase
 
-Phase 1 creates the repo scaffold, Codex instructions, documentation set, and
-minimal design-system foundation. It does not implement scanner, PDF, database,
-or job-evaluation functionality yet.
+JS is implemented one reviewed phase at a time. See the project implementation
+todo for current phase status and QA gates.
 
 ## Docs
 
@@ -18,6 +17,7 @@ or job-evaluation functionality yet.
 - [Development workflow](docs/development-workflow.md)
 - [Local data model](docs/data-model.md)
 - [Profile intelligence](docs/profile-intelligence.md)
+- [Scanner integration](docs/scanner-integration.md)
 - [Project implementation todo](docs/project-implementation-todo.md)
 - [Phase 1 todo](docs/phase-1-todo.md)
 - [Lessons](docs/lessons.md)
