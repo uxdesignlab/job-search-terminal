@@ -182,6 +182,25 @@ export type GeneratedDocumentRecord = {
   generatedDate: string;
   status: string;
   tailoringSummary: string;
+  htmlUrl: string;
+  keywordCoverage: number;
+  tailoringPlan: string[];
+};
+
+export type GeneratedDocumentInput = {
+  id: string;
+  jobId: string;
+  documentType: string;
+  title: string;
+  content: string;
+  pdfUrl: string;
+  htmlUrl: string;
+  baseResume: string;
+  generatedDate: string;
+  status: string;
+  tailoringSummary: string;
+  keywordCoverage: number;
+  tailoringPlan: string[];
 };
 
 export type ApplicationRecord = {

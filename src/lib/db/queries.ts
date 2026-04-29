@@ -7,6 +7,7 @@ import type {
   EvaluationFeedbackRecord,
   EvaluationRecord,
   FunnelStage,
+  GeneratedDocumentInput,
   GeneratedDocumentRecord,
   JobEvaluationResultInput,
   JobRecord,
@@ -106,6 +107,24 @@ type EvaluationRow = {
   keywords_json: string;
   user_correction_json: string;
   created_at: string;
+};
+
+type GeneratedDocumentRow = {
+  id: string;
+  jobId: string;
+  company: string;
+  role: string;
+  documentType: string;
+  title: string;
+  content: string;
+  pdfUrl: string;
+  htmlUrl: string;
+  baseResume: string;
+  generatedDate: string;
+  status: string;
+  tailoringSummary: string;
+  keywordCoverage: number;
+  tailoringPlanJson: string;
 };
 
 export function getUserProfile(): UserProfileRecord {
@@ -284,7 +303,7 @@ export function getApplications(): ApplicationRecord[] {
 }
 
 export function getGeneratedDocuments(): GeneratedDocumentRecord[] {
-  return getDatabase()
+  const rows = getDatabase()
     .prepare(
       `select
         generated_documents.id,
@@ -295,15 +314,48 @@ export function getGeneratedDocuments(): GeneratedDocumentRecord[] {
         generated_documents.title,
         generated_documents.content,
         generated_documents.pdf_url as pdfUrl,
+        generated_documents.html_url as htmlUrl,
         generated_documents.base_resume as baseResume,
         generated_documents.generated_date as generatedDate,
         generated_documents.status,
-        generated_documents.tailoring_summary as tailoringSummary
+        generated_documents.tailoring_summary as tailoringSummary,
+        generated_documents.keyword_coverage as keywordCoverage,
+        generated_documents.tailoring_plan_json as tailoringPlanJson
       from generated_documents
       left join jobs on jobs.id = generated_documents.job_id
       order by generated_documents.created_at desc`
     )
-    .all() as GeneratedDocumentRecord[];
+    .all() as GeneratedDocumentRow[];
+
+  return rows.map(mapGeneratedDocument);
+}
+
+export function getGeneratedDocumentById(id: string): GeneratedDocumentRecord | undefined {
+  const row = getDatabase()
+    .prepare(
+      `select
+        generated_documents.id,
+        generated_documents.job_id as jobId,
+        coalesce(jobs.company, 'External opportunity') as company,
+        coalesce(jobs.title, generated_documents.title) as role,
+        generated_documents.document_type as documentType,
+        generated_documents.title,
+        generated_documents.content,
+        generated_documents.pdf_url as pdfUrl,
+        generated_documents.html_url as htmlUrl,
+        generated_documents.base_resume as baseResume,
+        generated_documents.generated_date as generatedDate,
+        generated_documents.status,
+        generated_documents.tailoring_summary as tailoringSummary,
+        generated_documents.keyword_coverage as keywordCoverage,
+        generated_documents.tailoring_plan_json as tailoringPlanJson
+      from generated_documents
+      left join jobs on jobs.id = generated_documents.job_id
+      where generated_documents.id = ?`
+    )
+    .get(id) as GeneratedDocumentRow | undefined;
+
+  return row ? mapGeneratedDocument(row) : undefined;
 }
 
 export function getActivity(): ActivityRecord[] {
@@ -615,6 +667,58 @@ export function saveEvaluationCorrection(input: EvaluationCorrectionInput) {
   logActivity("evaluation_feedback", input.jobId, "Evaluation corrected from dashboard", correction);
 }
 
+export function saveGeneratedDocument(input: GeneratedDocumentInput) {
+  getDatabase()
+    .prepare(
+      `insert or replace into generated_documents (
+        id,
+        job_id,
+        document_type,
+        title,
+        content,
+        pdf_url,
+        html_url,
+        base_resume,
+        generated_date,
+        status,
+        tailoring_summary,
+        keyword_coverage,
+        tailoring_plan_json
+      ) values (
+        @id,
+        @jobId,
+        @documentType,
+        @title,
+        @content,
+        @pdfUrl,
+        @htmlUrl,
+        @baseResume,
+        @generatedDate,
+        @status,
+        @tailoringSummary,
+        @keywordCoverage,
+        @tailoringPlanJson
+      )`
+    )
+    .run({
+      ...input,
+      tailoringPlanJson: JSON.stringify(input.tailoringPlan)
+    });
+
+  getDatabase()
+    .prepare("update jobs set status = 'Resume generated', recommended_resume = @baseResume, updated_at = current_timestamp where id = @jobId")
+    .run({
+      jobId: input.jobId,
+      baseResume: input.baseResume
+    });
+
+  logActivity("generated_document", input.id, `Tailored resume generated for ${input.title}`, {
+    jobId: input.jobId,
+    baseResume: input.baseResume,
+    keywordCoverage: input.keywordCoverage
+  });
+}
+
 export function getJobDedupKeys() {
   const rows = getDatabase()
     .prepare("select url, company, title from jobs")
@@ -855,6 +959,26 @@ function mapEvaluation(row: EvaluationRow): EvaluationRecord {
     keywords: parseJson<string[]>(row.keywords_json || "[]"),
     userCorrection: parseJson<Record<string, JsonValue>>(row.user_correction_json || "{}"),
     createdAt: row.created_at
+  };
+}
+
+function mapGeneratedDocument(row: GeneratedDocumentRow): GeneratedDocumentRecord {
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    company: row.company,
+    role: row.role,
+    documentType: row.documentType,
+    title: row.title,
+    content: row.content,
+    pdfUrl: row.pdfUrl,
+    htmlUrl: row.htmlUrl,
+    baseResume: row.baseResume,
+    generatedDate: row.generatedDate,
+    status: row.status,
+    tailoringSummary: row.tailoringSummary,
+    keywordCoverage: row.keywordCoverage,
+    tailoringPlan: parseJson<string[]>(row.tailoringPlanJson || "[]")
   };
 }
 

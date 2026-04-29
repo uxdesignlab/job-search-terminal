@@ -179,22 +179,27 @@ Review status:
 
 Goal: generate truthful tailored resumes from the dashboard.
 
-- [ ] Copy or port CareerOps ATS HTML template approach where practical.
-- [ ] Copy or port CareerOps Playwright PDF generation and ATS text normalization where practical.
-- [ ] Document any template or renderer changes required for JS resume lanes.
-- [ ] Select or recommend the best resume base for a job.
-- [ ] Generate tailoring plan before PDF creation.
-- [ ] Tailor summary and proof-point ordering without inventing claims.
-- [ ] Generate HTML preview.
-- [ ] Generate ATS-friendly PDF.
-- [ ] Store generated document metadata and output path.
-- [ ] Show preview/download from Job Detail and Resumes.
+- [x] Copy or port CareerOps ATS HTML template approach where practical.
+- [x] Copy or port CareerOps Playwright PDF generation and ATS text normalization where practical.
+- [x] Document any template or renderer changes required for JS resume lanes.
+- [x] Select or recommend the best resume base for a job.
+- [x] Generate tailoring plan before PDF creation.
+- [x] Tailor summary and proof-point ordering without inventing claims.
+- [x] Generate HTML preview.
+- [x] Generate ATS-friendly PDF.
+- [x] Store generated document metadata and output path.
+- [x] Show preview/download from Job Detail and Resumes.
 
 Exit criteria:
 
-- [ ] User can generate a tailored resume from a job.
-- [ ] Generated PDF is linked to the job.
-- [ ] Tailoring summary explains what changed and why.
+- [x] User can generate a tailored resume from a job.
+- [x] Generated PDF is linked to the job.
+- [x] Tailoring summary explains what changed and why.
+
+Review status:
+
+- [x] User review/testing complete.
+- [x] User approved commit for Phase 7.
 
 ## Phase 8 — Application Assistant And Tracker
 

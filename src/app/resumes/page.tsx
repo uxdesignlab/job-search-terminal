@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Table, Td, Th } from "@/components/ui";
 import { getGeneratedDocuments, getResumes } from "@/lib/db/queries";
 
@@ -39,7 +40,9 @@ export default function ResumesPage() {
                 <Th scope="col">Target</Th>
                 <Th scope="col">Base resume</Th>
                 <Th scope="col">Generated</Th>
+                <Th scope="col">Coverage</Th>
                 <Th scope="col">Status</Th>
+                <Th scope="col">Output</Th>
               </tr>
             </thead>
             <tbody>
@@ -51,8 +54,25 @@ export default function ResumesPage() {
                   </Td>
                   <Td>{document.baseResume}</Td>
                   <Td>{document.generatedDate}</Td>
+                  <Td>{document.keywordCoverage}%</Td>
                   <Td>
                     <Badge>{document.status}</Badge>
+                  </Td>
+                  <Td>
+                    <div className="flex flex-wrap gap-2">
+                      {document.content ? (
+                        <Link className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/preview`}>
+                          Preview
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-muted">Preview pending</span>
+                      )}
+                      {document.pdfUrl ? (
+                        <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/pdf`}>
+                          PDF
+                        </a>
+                      ) : null}
+                    </div>
                   </Td>
                 </tr>
               ))}

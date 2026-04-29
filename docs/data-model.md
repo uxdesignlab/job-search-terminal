@@ -22,7 +22,8 @@ The first migration creates the required MVP tables:
 - `resumes`: source resume lanes from the existing PDFs.
 - `jobs`: discovered-job records plus Phase 2 fit/recommendation fields.
 - `evaluations`: job evaluation outputs tied to `jobs`.
-- `generated_documents`: generated resume/application document metadata.
+- `generated_documents`: generated resume/application document metadata, HTML
+  preview path, PDF output path, keyword coverage, and tailoring plan.
 - `applications`: application tracker status, follow-up, contact, response, company, role, and score.
 - `activity_log`: product memory and status/activity history.
 - `scan_runs`: scanner history, counts, status, and per-company errors.
@@ -49,6 +50,7 @@ npm run profile:extract
 npm run profile:check
 npm run scanner:check
 npm run evaluation:check
+npm run document:check
 ```
 
 The local database file is `data/js.sqlite`. It is intentionally ignored by git.
@@ -66,6 +68,8 @@ The local database file is `data/js.sqlite`. It is intentionally ignored by git.
   payloads.
 - `evaluation:check` verifies dashboard evaluation storage, A-G sections, and
   user correction feedback.
+- `document:check` verifies HTML/PDF resume generation and generated-document
+  metadata.
 - Phase 3 keeps mock source modules as seed inputs only; dashboard pages no
   longer read mock modules directly.
 
