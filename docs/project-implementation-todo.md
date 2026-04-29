@@ -71,28 +71,33 @@ Review status:
 
 Goal: replace mock data with persistent local storage.
 
-- [ ] Inspect CareerOps data contract, tracker files, status model, and dashboard parsers before designing tables.
-- [ ] Document which CareerOps data fields map directly into SQLite.
-- [ ] Choose and install SQLite migration/data-access tooling.
-- [ ] Create migration system.
-- [ ] Add `user_profile` table.
-- [ ] Add `skill_inventory` table.
-- [ ] Add `role_directions` table.
-- [ ] Add `resumes` table.
-- [ ] Add `jobs` table.
-- [ ] Add `evaluations` table.
-- [ ] Add `generated_documents` table.
-- [ ] Add `applications` table.
-- [ ] Add `activity_log` table.
-- [ ] Seed local demo data from the current mock data.
-- [ ] Replace dashboard mock reads with data-access reads.
-- [ ] Document schema decisions in `docs/`.
+- [x] Inspect CareerOps data contract, tracker files, status model, and dashboard parsers before designing tables.
+- [x] Document which CareerOps data fields map directly into SQLite.
+- [x] Choose and install SQLite migration/data-access tooling.
+- [x] Create migration system.
+- [x] Add `user_profile` table.
+- [x] Add `skill_inventory` table.
+- [x] Add `role_directions` table.
+- [x] Add `resumes` table.
+- [x] Add `jobs` table.
+- [x] Add `evaluations` table.
+- [x] Add `generated_documents` table.
+- [x] Add `applications` table.
+- [x] Add `activity_log` table.
+- [x] Seed local demo data from the current mock data.
+- [x] Replace dashboard mock reads with data-access reads.
+- [x] Document schema decisions in `docs/`.
 
 Exit criteria:
 
-- [ ] Dashboard data persists after restart.
-- [ ] Seed data can be reset safely.
-- [ ] Data layer has focused tests.
+- [x] Dashboard data persists after restart.
+- [x] Seed data can be reset safely.
+- [x] Data layer has focused tests.
+
+Review status:
+
+- [x] User review/testing complete.
+- [x] User approved commit for Phase 3.
 
 ## Phase 4 — User Profile And Resume Intelligence
 

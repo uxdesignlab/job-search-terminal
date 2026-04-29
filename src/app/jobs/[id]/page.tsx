@@ -1,14 +1,12 @@
 import { notFound } from "next/navigation";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell } from "@/components/ui";
-import { getJobById, mockJobs } from "@/data/mock/jobs";
+import { getJobById } from "@/lib/db/queries";
+
+export const dynamic = "force-dynamic";
 
 type JobDetailPageProps = {
   params: Promise<{ id: string }>;
 };
-
-export function generateStaticParams() {
-  return mockJobs.map((job) => ({ id: job.id }));
-}
 
 export default async function JobDetailPage({ params }: JobDetailPageProps) {
   const { id } = await params;
@@ -43,7 +41,7 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>{job.freshness}</CardTitle>
+              <CardTitle>{job.freshnessLabel}</CardTitle>
               <CardDescription>Freshness</CardDescription>
             </CardHeader>
           </Card>

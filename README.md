@@ -16,6 +16,7 @@ or job-evaluation functionality yet.
 - [Design system](docs/design-system.md)
 - [Accessibility checklist](docs/accessibility-checklist.md)
 - [Development workflow](docs/development-workflow.md)
+- [Local data model](docs/data-model.md)
 - [Project implementation todo](docs/project-implementation-todo.md)
 - [Phase 1 todo](docs/phase-1-todo.md)
 - [Lessons](docs/lessons.md)
