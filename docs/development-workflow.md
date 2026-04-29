@@ -7,6 +7,8 @@
 - Do not pull tasks from future phases into the current phase.
 - After each phase, pause for review and user testing before starting the next
   phase.
+- After each completed build or phase, provide a concise QA checklist covering
+  the screens, flows, content, and phase-specific changes the user should test.
 - Commit phase work only after the user explicitly says to commit.
 - Keep detailed docs in `docs/`.
 - Keep root `README.md` short.
@@ -31,8 +33,8 @@ For every later phase, use the same phase boundary:
 
 1. Implement only that phase.
 2. Run the agreed verification checks.
-3. Report the result and stop.
-4. Let the user inspect/test.
+3. Report the result and provide a phase-specific QA checklist.
+4. Stop and let the user inspect/test.
 5. Commit only after explicit user approval.
 
 ## Verification

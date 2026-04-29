@@ -14,3 +14,5 @@ Project corrections and durable workflow lessons go here.
   documented reason.
 - Work one phase at a time. After each phase, verify, pause for user testing,
   and commit only after explicit user approval.
+- After every completed build or phase, provide a concise QA checklist naming
+  what the user should inspect before approving the work.

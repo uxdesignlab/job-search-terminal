@@ -1,12 +1,22 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 type ShellProps = {
   children: ReactNode;
+  activeItem?: string;
 };
 
-const navItems = ["Profile", "Strategy", "Jobs", "Applications", "Resumes", "Settings"];
+const navItems = [
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Profile", href: "/profile" },
+  { label: "Strategy", href: "/strategy" },
+  { label: "Jobs", href: "/jobs" },
+  { label: "Applications", href: "/applications" },
+  { label: "Resumes", href: "/resumes" },
+  { label: "Settings", href: "/settings" }
+];
 
-export function Shell({ children }: ShellProps) {
+export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-panel">
@@ -18,13 +28,18 @@ export function Shell({ children }: ShellProps) {
           <nav aria-label="Primary navigation">
             <ul className="flex flex-wrap gap-1">
               {navItems.map((item) => (
-                <li key={item}>
-                  <a
-                    className="inline-flex min-h-10 items-center rounded-control px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
-                    href="#"
+                <li key={item.href}>
+                  <Link
+                    aria-current={activeItem === item.label ? "page" : undefined}
+                    className={
+                      activeItem === item.label
+                        ? "inline-flex min-h-10 items-center rounded-control bg-surface px-3 text-sm font-semibold text-ink"
+                        : "inline-flex min-h-10 items-center rounded-control px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
+                    }
+                    href={item.href}
                   >
-                    {item}
-                  </a>
+                    {item.label}
+                  </Link>
                 </li>
               ))}
             </ul>
