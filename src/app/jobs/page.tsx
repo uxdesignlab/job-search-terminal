@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select, Shell, Table, Td, Th } from "@/components/ui";
-import { mockJobs } from "@/data/mock/jobs";
+import { getJobs } from "@/lib/db/queries";
+
+export const dynamic = "force-dynamic";
 
 function toneForRecommendation(recommendation: string) {
   if (recommendation === "Priority apply" || recommendation === "Strong apply") return "success" as const;
@@ -9,6 +11,8 @@ function toneForRecommendation(recommendation: string) {
 }
 
 export default function JobsPage() {
+  const jobs = getJobs();
+
   return (
     <Shell activeItem="Jobs">
       <div className="grid gap-6">
@@ -52,7 +56,7 @@ export default function JobsPage() {
         </Card>
 
         <div className="grid gap-4 lg:hidden">
-          {mockJobs.map((job) => (
+          {jobs.map((job) => (
             <Card key={job.id}>
               <CardHeader>
                 <CardTitle>
@@ -64,7 +68,7 @@ export default function JobsPage() {
               </CardHeader>
               <div className="flex flex-wrap gap-2">
                 <Badge>{job.fitScore}% fit</Badge>
-                <Badge>{job.freshness}</Badge>
+                <Badge>{job.freshnessLabel}</Badge>
                 <Badge tone={toneForRecommendation(job.recommendation)}>{job.recommendation}</Badge>
               </div>
             </Card>
@@ -84,7 +88,7 @@ export default function JobsPage() {
               </tr>
             </thead>
             <tbody>
-              {mockJobs.map((job) => (
+              {jobs.map((job) => (
                 <tr key={job.id}>
                   <Td>
                     <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
@@ -95,7 +99,7 @@ export default function JobsPage() {
                   <Td>{job.location}</Td>
                   <Td>{job.fitScore}%</Td>
                   <Td>
-                    <Badge>{job.freshness}</Badge>
+                    <Badge>{job.freshnessLabel}</Badge>
                   </Td>
                   <Td>{job.status}</Td>
                   <Td>

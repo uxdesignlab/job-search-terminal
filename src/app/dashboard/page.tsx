@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
-import { mockActivity, mockMetrics } from "@/data/mock/dashboard";
-import { mockJobs } from "@/data/mock/jobs";
+import { getActivity, getDashboardMetrics, getJobs } from "@/lib/db/queries";
+
+export const dynamic = "force-dynamic";
 
 export default function DashboardPage() {
-  const priorityJobs = mockJobs.filter((job) => job.recommendation === "Priority apply");
+  const priorityJobs = getJobs().filter((job) => job.recommendation === "Priority apply");
+  const metrics = getDashboardMetrics();
+  const activity = getActivity();
 
   return (
     <Shell activeItem="Dashboard">
@@ -17,7 +20,7 @@ export default function DashboardPage() {
         />
 
         <section aria-label="Job search metrics" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {mockMetrics.map((metric) => (
+          {metrics.map((metric) => (
             <StatCard key={metric.label} {...metric} />
           ))}
         </section>
@@ -61,9 +64,9 @@ export default function DashboardPage() {
               <CardDescription>Placeholder activity log for the dashboard shell.</CardDescription>
             </CardHeader>
             <ol className="grid gap-3">
-              {mockActivity.map((activity) => (
-                <li className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink" key={activity}>
-                  {activity}
+              {activity.map((entry) => (
+                <li className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink" key={entry.id}>
+                  {entry.action}
                 </li>
               ))}
             </ol>

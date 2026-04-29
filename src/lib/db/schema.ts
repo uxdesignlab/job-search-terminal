@@ -1,0 +1,152 @@
+export const migrations = [
+  {
+    id: "0001_initial_schema",
+    sql: `
+      create table if not exists user_profile (
+        id text primary key,
+        name text not null,
+        location text not null,
+        portfolio text not null,
+        current_search_goal text not null,
+        urgency text not null,
+        direction text not null,
+        constraints_json text not null,
+        target_roles_json text not null,
+        strongest_skills_json text not null,
+        skills_to_use_more_json text not null,
+        skills_to_use_less_json text not null,
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create table if not exists skill_inventory (
+        id text primary key,
+        user_profile_id text not null references user_profile(id),
+        skill_name text not null,
+        skill_category text not null,
+        evidence_source text not null,
+        strength_level text not null,
+        market_relevance text not null,
+        user_interest_level text not null,
+        use_preference text not null
+      );
+
+      create table if not exists role_directions (
+        id text primary key,
+        user_profile_id text not null references user_profile(id),
+        role_family text not null,
+        fit_level text not null,
+        score integer not null,
+        rationale text not null,
+        gaps_json text not null,
+        recommendation_type text not null
+      );
+
+      create table if not exists resumes (
+        id text primary key,
+        name text not null,
+        source_file text not null,
+        status text not null,
+        active_status integer not null default 1,
+        created_at text not null default current_timestamp
+      );
+
+      create table if not exists jobs (
+        id text primary key,
+        company text not null,
+        title text not null,
+        url text not null,
+        source text not null,
+        location text not null,
+        remote_type text not null,
+        date_posted text,
+        first_seen_date text not null,
+        freshness_label text not null,
+        raw_description text not null,
+        parsed_description text not null,
+        status text not null,
+        fit_score integer not null,
+        role_archetype text not null,
+        recommendation text not null,
+        summary text not null,
+        why_it_matches text not null,
+        main_concern text not null,
+        recommended_resume text not null,
+        salary_notes text not null,
+        requirement_match_json text not null,
+        resume_evidence_json text not null,
+        gaps_json text not null,
+        red_flags_json text not null,
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create table if not exists evaluations (
+        id text primary key,
+        job_id text not null references jobs(id),
+        fit_score integer not null,
+        score_label text not null,
+        role_archetype text not null,
+        summary text not null,
+        strengths_json text not null,
+        gaps_json text not null,
+        red_flags_json text not null,
+        recommendation text not null,
+        resume_base_recommendation text not null,
+        requirement_match_json text not null,
+        resume_evidence_json text not null,
+        created_at text not null default current_timestamp
+      );
+
+      create table if not exists generated_documents (
+        id text primary key,
+        job_id text not null,
+        document_type text not null,
+        title text not null,
+        content text not null,
+        pdf_url text not null,
+        base_resume text not null,
+        generated_date text not null,
+        status text not null,
+        tailoring_summary text not null,
+        created_at text not null default current_timestamp
+      );
+
+      create table if not exists applications (
+        id text primary key,
+        job_id text not null,
+        status text not null,
+        applied_date text,
+        follow_up_date text not null,
+        notes text not null,
+        contact text not null,
+        response_status text not null,
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create table if not exists activity_log (
+        id text primary key,
+        entity_type text not null,
+        entity_id text not null,
+        action text not null,
+        timestamp text not null,
+        details_json text not null
+      );
+
+      create index if not exists idx_jobs_status on jobs(status);
+      create index if not exists idx_jobs_fit_score on jobs(fit_score);
+      create index if not exists idx_evaluations_job_id on evaluations(job_id);
+      create index if not exists idx_applications_job_id on applications(job_id);
+      create index if not exists idx_activity_entity on activity_log(entity_type, entity_id);
+    `
+  },
+  {
+    id: "0002_application_tracker_fields",
+    sql: `
+      alter table applications add column company text not null default '';
+      alter table applications add column role text not null default '';
+      alter table applications add column fit_score integer not null default 0;
+    `
+  }
+];

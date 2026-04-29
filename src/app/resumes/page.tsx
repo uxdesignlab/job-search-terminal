@@ -1,8 +1,12 @@
 import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Table, Td, Th } from "@/components/ui";
-import { mockGeneratedDocuments } from "@/data/mock/generated-documents";
-import { resumeLanes } from "@/data/mock/resume-lanes";
+import { getGeneratedDocuments, getResumes } from "@/lib/db/queries";
+
+export const dynamic = "force-dynamic";
 
 export default function ResumesPage() {
+  const resumes = getResumes();
+  const generatedDocuments = getGeneratedDocuments();
+
   return (
     <Shell activeItem="Resumes">
       <div className="grid gap-6">
@@ -13,10 +17,10 @@ export default function ResumesPage() {
         />
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {resumeLanes.map((lane) => (
-            <Card key={lane.id}>
+          {resumes.map((resume) => (
+            <Card key={resume.id}>
               <CardHeader>
-                <CardTitle>{lane.label}</CardTitle>
+                <CardTitle>{resume.name}</CardTitle>
                 <CardDescription>Base resume lane ready for future tailoring.</CardDescription>
               </CardHeader>
               <Badge tone="success">Source ready</Badge>
@@ -39,8 +43,8 @@ export default function ResumesPage() {
               </tr>
             </thead>
             <tbody>
-              {mockGeneratedDocuments.map((document) => (
-                <tr key={`${document.company}-${document.role}`}>
+              {generatedDocuments.map((document) => (
+                <tr key={document.id}>
                   <Td>
                     {document.company}
                     <p className="text-xs text-muted">{document.role}</p>

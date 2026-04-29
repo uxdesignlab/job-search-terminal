@@ -1,7 +1,12 @@
 import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Table, Td, Th } from "@/components/ui";
-import { mockProfile, mockRoleDirections } from "@/data/mock/profile";
+import { getRoleDirections, getUserProfile } from "@/lib/db/queries";
+
+export const dynamic = "force-dynamic";
 
 export default function StrategyPage() {
+  const profile = getUserProfile();
+  const roleDirections = getRoleDirections();
+
   return (
     <Shell activeItem="Strategy">
       <div className="grid gap-6">
@@ -14,7 +19,7 @@ export default function StrategyPage() {
         <Card>
           <CardHeader>
             <CardTitle>Current search focus</CardTitle>
-            <CardDescription>{mockProfile.direction}</CardDescription>
+            <CardDescription>{profile.direction}</CardDescription>
           </CardHeader>
         </Card>
 
@@ -29,11 +34,11 @@ export default function StrategyPage() {
             </tr>
           </thead>
           <tbody>
-            {mockRoleDirections.map((direction) => (
-              <tr key={direction.family}>
-                <Td className="font-medium">{direction.family}</Td>
+            {roleDirections.map((direction) => (
+              <tr key={direction.id}>
+                <Td className="font-medium">{direction.roleFamily}</Td>
                 <Td>
-                  <Badge tone={direction.fit === "Direct" ? "success" : "neutral"}>{direction.fit}</Badge>
+                  <Badge tone={direction.fitLevel === "Direct" ? "success" : "neutral"}>{direction.fitLevel}</Badge>
                 </Td>
                 <Td>{direction.score}%</Td>
                 <Td>{direction.rationale}</Td>
