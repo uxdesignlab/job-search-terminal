@@ -1,0 +1,20 @@
+title_filter:
+  positive:
+    - "Product Design"
+    - "Principal Designer"
+    - "Head of Design"
+    - "Design Director"
+    - "Design Operations"
+    - "DesignOps"
+    - "Accessibility"
+    - "Design Systems"
+    - "UX"
+    - "AI Product"
+  negative:
+    - "Junior"
+    - "Intern"
+    - "Graphic Designer"
+    - "Visual Designer"
+
+tracked_companies: []
+search_queries: []
