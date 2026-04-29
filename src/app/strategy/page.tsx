@@ -1,11 +1,28 @@
-import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Table, Td, Th } from "@/components/ui";
-import { getRoleDirections, getUserProfile } from "@/lib/db/queries";
+import { revalidatePath } from "next/cache";
+import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Table, Td, Textarea, Th } from "@/components/ui";
+import { getRoleDirections, getUserProfile, updateRoleDirection } from "@/lib/db/queries";
+import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
 
 export default function StrategyPage() {
   const profile = getUserProfile();
   const roleDirections = getRoleDirections();
+
+  async function updateRoleDirectionAction(formData: FormData) {
+    "use server";
+
+    updateRoleDirection({
+      id: String(formData.get("id") ?? ""),
+      fitLevel: String(formData.get("fitLevel") ?? ""),
+      score: Number(formData.get("score") ?? 0),
+      rationale: String(formData.get("rationale") ?? ""),
+      gaps: splitListValue(formData.get("gaps"))
+    });
+
+    revalidatePath("/strategy");
+    revalidatePath("/dashboard");
+  }
 
   return (
     <Shell activeItem="Strategy">
@@ -47,6 +64,31 @@ export default function StrategyPage() {
             ))}
           </tbody>
         </Table>
+
+        <section className="grid gap-4">
+          {roleDirections.map((direction) => (
+            <Card key={`${direction.id}-edit`}>
+              <CardHeader>
+                <CardTitle>Edit {direction.roleFamily}</CardTitle>
+                <CardDescription>Refine generated direction output after reviewing the evidence.</CardDescription>
+              </CardHeader>
+              <form action={updateRoleDirectionAction} className="grid gap-4">
+                <input name="id" type="hidden" value={direction.id} />
+                <div className="grid gap-4 md:grid-cols-[1fr_8rem]">
+                  <Textarea defaultValue={direction.fitLevel} id={`${direction.id}-fit-level`} label="Fit level" name="fitLevel" />
+                  <Textarea defaultValue={String(direction.score)} id={`${direction.id}-score`} label="Score" name="score" />
+                </div>
+                <Textarea defaultValue={direction.rationale} id={`${direction.id}-rationale`} label="Rationale" name="rationale" />
+                <Textarea defaultValue={direction.gaps.join("\n")} id={`${direction.id}-gaps`} label="Gaps" name="gaps" />
+                <div>
+                  <Button type="submit" variant="secondary">
+                    Save direction
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          ))}
+        </section>
       </div>
     </Shell>
   );

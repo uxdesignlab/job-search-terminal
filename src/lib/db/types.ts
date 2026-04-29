@@ -8,6 +8,13 @@ export type UserProfileRecord = {
   currentSearchGoal: string;
   urgency: string;
   direction: string;
+  desiredIndustries: string[];
+  compensationNeeds: string;
+  workPreferences: string[];
+  dealBreakers: string[];
+  careerIntent: string;
+  careerChangeInterest: string;
+  confidenceLevel: string;
   constraints: string[];
   targetRoles: string[];
   strongestSkills: string[];
@@ -70,6 +77,10 @@ export type ResumeRecord = {
   sourceFile: string;
   status: string;
   activeStatus: boolean;
+  extractedText: string;
+  extractedAt: string | null;
+  wordCount: number;
+  evidence: string[];
 };
 
 export type GeneratedDocumentRecord = {
@@ -120,4 +131,29 @@ export type DashboardMetric = {
 export type FunnelStage = {
   label: string;
   value: number;
+};
+
+export type ProfileUpdateInput = {
+  currentSearchGoal: string;
+  urgency: string;
+  direction: string;
+  targetRoles: string[];
+  desiredIndustries: string[];
+  compensationNeeds: string;
+  workPreferences: string[];
+  constraints: string[];
+  dealBreakers: string[];
+  careerIntent: string;
+  careerChangeInterest: string;
+  confidenceLevel: string;
+  skillsToUseMore: string[];
+  skillsToUseLess: string[];
+};
+
+export type RoleDirectionUpdateInput = {
+  id: string;
+  fitLevel: string;
+  score: number;
+  rationale: string;
+  gaps: string[];
 };

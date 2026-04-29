@@ -6,8 +6,10 @@ import type {
   FunnelStage,
   GeneratedDocumentRecord,
   JobRecord,
+  ProfileUpdateInput,
   ResumeRecord,
   RoleDirectionRecord,
+  RoleDirectionUpdateInput,
   SkillRecord,
   UserProfileRecord
 } from "./types";
@@ -22,6 +24,13 @@ type ProfileRow = {
   current_search_goal: string;
   urgency: string;
   direction: string;
+  desired_industries_json: string;
+  compensation_needs: string;
+  work_preferences_json: string;
+  deal_breakers_json: string;
+  career_intent: string;
+  career_change_interest: string;
+  confidence_level: string;
   constraints_json: string;
   target_roles_json: string;
   strongest_skills_json: string;
@@ -68,6 +77,13 @@ export function getUserProfile(): UserProfileRecord {
     currentSearchGoal: row.current_search_goal,
     urgency: row.urgency,
     direction: row.direction,
+    desiredIndustries: parseJson<string[]>(row.desired_industries_json),
+    compensationNeeds: row.compensation_needs,
+    workPreferences: parseJson<string[]>(row.work_preferences_json),
+    dealBreakers: parseJson<string[]>(row.deal_breakers_json),
+    careerIntent: row.career_intent,
+    careerChangeInterest: row.career_change_interest,
+    confidenceLevel: row.confidence_level,
     constraints: parseJson<string[]>(row.constraints_json),
     targetRoles: parseJson<string[]>(row.target_roles_json),
     strongestSkills: parseJson<string[]>(row.strongest_skills_json),
@@ -147,14 +163,22 @@ export function getResumes(): ResumeRecord[] {
         name,
         source_file as sourceFile,
         status,
-        active_status as activeStatus
+        active_status as activeStatus,
+        extracted_text as extractedText,
+        extracted_at as extractedAt,
+        word_count as wordCount,
+        evidence_json as evidenceJson
       from resumes
       order by name`
     )
     .all()
     .map((row) => {
-      const resume = row as Omit<ResumeRecord, "activeStatus"> & { activeStatus: number };
-      return { ...resume, activeStatus: Boolean(resume.activeStatus) };
+      const resume = row as Omit<ResumeRecord, "activeStatus" | "evidence"> & { activeStatus: number; evidenceJson: string };
+      return {
+        ...resume,
+        activeStatus: Boolean(resume.activeStatus),
+        evidence: parseJson<string[]>(resume.evidenceJson)
+      };
     });
 }
 
@@ -286,6 +310,75 @@ export function getFunnelStages(): FunnelStage[] {
     { label: "Offer", value: counts.get("Offer") ?? 0 },
     { label: "Rejected", value: counts.get("Rejected") ?? 0 }
   ];
+}
+
+export function updateUserProfile(input: ProfileUpdateInput) {
+  getDatabase()
+    .prepare(
+      `update user_profile set
+        current_search_goal = @currentSearchGoal,
+        urgency = @urgency,
+        direction = @direction,
+        target_roles_json = @targetRolesJson,
+        desired_industries_json = @desiredIndustriesJson,
+        compensation_needs = @compensationNeeds,
+        work_preferences_json = @workPreferencesJson,
+        constraints_json = @constraintsJson,
+        deal_breakers_json = @dealBreakersJson,
+        career_intent = @careerIntent,
+        career_change_interest = @careerChangeInterest,
+        confidence_level = @confidenceLevel,
+        skills_to_use_more_json = @skillsToUseMoreJson,
+        skills_to_use_less_json = @skillsToUseLessJson,
+        updated_at = current_timestamp
+      where id = 'pavel'`
+    )
+    .run({
+      ...input,
+      targetRolesJson: JSON.stringify(input.targetRoles),
+      desiredIndustriesJson: JSON.stringify(input.desiredIndustries),
+      workPreferencesJson: JSON.stringify(input.workPreferences),
+      constraintsJson: JSON.stringify(input.constraints),
+      dealBreakersJson: JSON.stringify(input.dealBreakers),
+      skillsToUseMoreJson: JSON.stringify(input.skillsToUseMore),
+      skillsToUseLessJson: JSON.stringify(input.skillsToUseLess)
+    });
+
+  logActivity("profile", "pavel", "Profile updated from dashboard", { fields: Object.keys(input) });
+}
+
+export function updateRoleDirection(input: RoleDirectionUpdateInput) {
+  getDatabase()
+    .prepare(
+      `update role_directions set
+        fit_level = @fitLevel,
+        score = @score,
+        rationale = @rationale,
+        gaps_json = @gapsJson
+      where id = @id`
+    )
+    .run({ ...input, gapsJson: JSON.stringify(input.gaps) });
+
+  logActivity("role_direction", input.id, "Role direction updated from dashboard", {
+    fitLevel: input.fitLevel,
+    score: input.score
+  });
+}
+
+export function logActivity(entityType: string, entityId: string, action: string, details: Record<string, unknown>) {
+  getDatabase()
+    .prepare(
+      `insert into activity_log (id, entity_type, entity_id, action, timestamp, details_json)
+       values (@id, @entityType, @entityId, @action, @timestamp, @detailsJson)`
+    )
+    .run({
+      id: `${entityType}-${entityId}-${Date.now()}`,
+      entityType,
+      entityId,
+      action,
+      timestamp: new Date().toISOString(),
+      detailsJson: JSON.stringify(details)
+    });
 }
 
 function mapJob(row: JobRow): JobRecord {

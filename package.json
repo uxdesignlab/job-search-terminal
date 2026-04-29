@@ -12,12 +12,15 @@
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx scripts/db-seed.ts",
     "db:reset": "tsx scripts/db-reset.ts",
-    "db:check": "tsx scripts/db-check.ts"
+    "db:check": "tsx scripts/db-check.ts",
+    "profile:extract": "tsx scripts/profile-extract.ts",
+    "profile:check": "tsx scripts/profile-check.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
     "next": "^15.3.5",
+    "pdf-parse": "^2.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

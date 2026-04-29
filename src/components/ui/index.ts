@@ -7,3 +7,4 @@ export * from "./select";
 export * from "./shell";
 export * from "./stat-card";
 export * from "./table";
+export * from "./textarea";
