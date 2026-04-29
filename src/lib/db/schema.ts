@@ -165,5 +165,27 @@ export const migrations = [
       alter table resumes add column word_count integer not null default 0;
       alter table resumes add column evidence_json text not null default '[]';
     `
+  },
+  {
+    id: "0004_scanner_history",
+    sql: `
+      create table if not exists scan_runs (
+        id text primary key,
+        status text not null,
+        started_at text not null,
+        completed_at text,
+        companies_scanned integer not null default 0,
+        skipped_companies integer not null default 0,
+        total_jobs_found integer not null default 0,
+        filtered_count integer not null default 0,
+        duplicate_count integer not null default 0,
+        new_jobs_count integer not null default 0,
+        errors_json text not null default '[]'
+      );
+
+      create unique index if not exists idx_jobs_url_unique on jobs(url);
+      create index if not exists idx_jobs_company_title on jobs(company, title);
+      create index if not exists idx_scan_runs_started_at on scan_runs(started_at);
+    `
   }
 ];

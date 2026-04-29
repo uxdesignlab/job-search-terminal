@@ -10,6 +10,8 @@ import type {
   ResumeRecord,
   RoleDirectionRecord,
   RoleDirectionUpdateInput,
+  ScannedJobInput,
+  ScanRunRecord,
   SkillRecord,
   UserProfileRecord
 } from "./types";
@@ -64,6 +66,20 @@ type JobRow = {
   resume_evidence_json: string;
   gaps_json: string;
   red_flags_json: string;
+};
+
+type ScanRunRow = {
+  id: string;
+  status: "completed" | "completed_with_errors" | "failed";
+  started_at: string;
+  completed_at: string | null;
+  companies_scanned: number;
+  skipped_companies: number;
+  total_jobs_found: number;
+  filtered_count: number;
+  duplicate_count: number;
+  new_jobs_count: number;
+  errors_json: string;
 };
 
 export function getUserProfile(): UserProfileRecord {
@@ -153,6 +169,14 @@ export function getJobs(): JobRecord[] {
 export function getJobById(id: string): JobRecord | undefined {
   const row = getDatabase().prepare("select * from jobs where id = ?").get(id) as JobRow | undefined;
   return row ? mapJob(row) : undefined;
+}
+
+export function getLatestScanRun(): ScanRunRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from scan_runs order by started_at desc limit 1")
+    .get() as ScanRunRow | undefined;
+
+  return row ? mapScanRun(row) : undefined;
 }
 
 export function getResumes(): ResumeRecord[] {
@@ -365,6 +389,152 @@ export function updateRoleDirection(input: RoleDirectionUpdateInput) {
   });
 }
 
+export function getJobDedupKeys() {
+  const rows = getDatabase()
+    .prepare("select url, company, title from jobs")
+    .all() as Array<{ url: string; company: string; title: string }>;
+
+  return {
+    urls: new Set(rows.map((row) => row.url).filter(Boolean)),
+    companyRoles: new Set(rows.map((row) => `${row.company.toLowerCase()}::${row.title.toLowerCase()}`))
+  };
+}
+
+export function insertScannedJobs(jobs: ScannedJobInput[]) {
+  if (jobs.length === 0) {
+    return 0;
+  }
+
+  const database = getDatabase();
+  const insert = database.prepare(
+    `insert or ignore into jobs (
+      id,
+      company,
+      title,
+      url,
+      source,
+      location,
+      remote_type,
+      date_posted,
+      first_seen_date,
+      freshness_label,
+      raw_description,
+      parsed_description,
+      status,
+      fit_score,
+      role_archetype,
+      recommendation,
+      summary,
+      why_it_matches,
+      main_concern,
+      recommended_resume,
+      salary_notes,
+      requirement_match_json,
+      resume_evidence_json,
+      gaps_json,
+      red_flags_json
+    ) values (
+      @id,
+      @company,
+      @title,
+      @url,
+      @source,
+      @location,
+      @remoteType,
+      @datePosted,
+      @firstSeenDate,
+      @freshnessLabel,
+      @rawDescription,
+      @parsedDescription,
+      @status,
+      @fitScore,
+      @roleArchetype,
+      @recommendation,
+      @summary,
+      @whyItMatches,
+      @mainConcern,
+      @recommendedResume,
+      @salaryNotes,
+      @requirementMatchJson,
+      @resumeEvidenceJson,
+      @gapsJson,
+      @redFlagsJson
+    )`
+  );
+
+  const insertMany = database.transaction((items: ScannedJobInput[]) => {
+    let inserted = 0;
+    for (const job of items) {
+      const result = insert.run({
+        ...job,
+        remoteType: inferRemoteType(job.location),
+        freshnessLabel: "New today",
+        rawDescription: "",
+        parsedDescription: "",
+        status: "Found",
+        fitScore: 0,
+        roleArchetype: "Unreviewed",
+        recommendation: "Needs review",
+        summary: "Discovered by the CareerOps scanner pattern. Evaluate this role before acting.",
+        whyItMatches: "Pending evaluation against profile, resume lanes, and constraints.",
+        mainConcern: "Not evaluated yet.",
+        recommendedResume: "To be selected",
+        salaryNotes: "Not captured by scanner.",
+        requirementMatchJson: JSON.stringify([]),
+        resumeEvidenceJson: JSON.stringify([]),
+        gapsJson: JSON.stringify([]),
+        redFlagsJson: JSON.stringify([])
+      });
+      inserted += Number(result.changes);
+    }
+    return inserted;
+  });
+
+  return insertMany(jobs);
+}
+
+export function recordScanRun(run: ScanRunRecord) {
+  getDatabase()
+    .prepare(
+      `insert into scan_runs (
+        id,
+        status,
+        started_at,
+        completed_at,
+        companies_scanned,
+        skipped_companies,
+        total_jobs_found,
+        filtered_count,
+        duplicate_count,
+        new_jobs_count,
+        errors_json
+      ) values (
+        @id,
+        @status,
+        @startedAt,
+        @completedAt,
+        @companiesScanned,
+        @skippedCompanies,
+        @totalJobsFound,
+        @filteredCount,
+        @duplicateCount,
+        @newJobsCount,
+        @errorsJson
+      )`
+    )
+    .run({
+      ...run,
+      errorsJson: JSON.stringify(run.errors)
+    });
+
+  logActivity("scan", run.id, scanActivityLabel(run), {
+    companiesScanned: run.companiesScanned,
+    newJobs: run.newJobsCount,
+    duplicates: run.duplicateCount,
+    errors: run.errors.length
+  });
+}
+
 export function logActivity(entityType: string, entityId: string, action: string, details: Record<string, unknown>) {
   getDatabase()
     .prepare(
@@ -409,4 +579,36 @@ function mapJob(row: JobRow): JobRecord {
     gaps: parseJson<string[]>(row.gaps_json),
     redFlags: parseJson<string[]>(row.red_flags_json)
   };
+}
+
+function mapScanRun(row: ScanRunRow): ScanRunRecord {
+  return {
+    id: row.id,
+    status: row.status,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    companiesScanned: row.companies_scanned,
+    skippedCompanies: row.skipped_companies,
+    totalJobsFound: row.total_jobs_found,
+    filteredCount: row.filtered_count,
+    duplicateCount: row.duplicate_count,
+    newJobsCount: row.new_jobs_count,
+    errors: parseJson<Array<{ company: string; error: string }>>(row.errors_json)
+  };
+}
+
+function inferRemoteType(location: string) {
+  return location.toLowerCase().includes("remote") ? "Remote" : "Not specified";
+}
+
+function scanActivityLabel(run: ScanRunRecord) {
+  if (run.status === "failed") {
+    return "Job scan failed";
+  }
+
+  if (run.errors.length > 0) {
+    return `Job scan completed with ${run.newJobsCount} new jobs and ${run.errors.length} errors`;
+  }
+
+  return `Job scan completed with ${run.newJobsCount} new jobs`;
 }

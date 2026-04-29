@@ -25,6 +25,7 @@ The first migration creates the required MVP tables:
 - `generated_documents`: generated resume/application document metadata.
 - `applications`: application tracker status, follow-up, contact, response, company, role, and score.
 - `activity_log`: product memory and status/activity history.
+- `scan_runs`: scanner history, counts, status, and per-company errors.
 - `schema_migrations`: local migration tracking.
 
 The second migration adds CareerOps-style tracker fields to `applications`:
@@ -45,6 +46,7 @@ npm run db:reset
 npm run db:check
 npm run profile:extract
 npm run profile:check
+npm run scanner:check
 ```
 
 The local database file is `data/js.sqlite`. It is intentionally ignored by git.
@@ -58,6 +60,8 @@ The local database file is `data/js.sqlite`. It is intentionally ignored by git.
 - `profile:extract` extracts local resume PDF text into `resumes` and refreshes
   evidence-backed skill signals.
 - `profile:check` verifies the extracted profile intelligence.
+- `scanner:check` verifies the CareerOps scanner adapter with mocked ATS API
+  payloads.
 - Phase 3 keeps mock source modules as seed inputs only; dashboard pages no
   longer read mock modules directly.
 

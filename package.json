@@ -14,11 +14,13 @@
     "db:reset": "tsx scripts/db-reset.ts",
     "db:check": "tsx scripts/db-check.ts",
     "profile:extract": "tsx scripts/profile-extract.ts",
-    "profile:check": "tsx scripts/profile-check.ts"
+    "profile:check": "tsx scripts/profile-check.ts",
+    "scanner:check": "tsx scripts/scanner-check.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
+    "js-yaml": "^4.1.1",
     "next": "^15.3.5",
     "pdf-parse": "^2.4.5",
     "react": "^19.0.0",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.15.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

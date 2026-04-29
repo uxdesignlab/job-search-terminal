@@ -71,6 +71,31 @@ export type JobRecord = {
   redFlags: string[];
 };
 
+export type ScannedJobInput = {
+  id: string;
+  company: string;
+  title: string;
+  url: string;
+  source: string;
+  location: string;
+  datePosted: string | null;
+  firstSeenDate: string;
+};
+
+export type ScanRunRecord = {
+  id: string;
+  status: "completed" | "completed_with_errors" | "failed";
+  startedAt: string;
+  completedAt: string | null;
+  companiesScanned: number;
+  skippedCompanies: number;
+  totalJobsFound: number;
+  filteredCount: number;
+  duplicateCount: number;
+  newJobsCount: number;
+  errors: Array<{ company: string; error: string }>;
+};
+
 export type ResumeRecord = {
   id: string;
   name: string;
