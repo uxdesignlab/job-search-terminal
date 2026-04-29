@@ -1,0 +1,27 @@
+candidate:
+  full_name: "Jane Doe"
+  location: "United States"
+  linkedin: ""
+  portfolio_url: "https://example.com"
+
+target_roles:
+  primary:
+    - "Principal Product Designer"
+    - "Head of Design"
+    - "Design Operations Lead"
+  adjacent:
+    - "AI Product Strategy"
+    - "Accessibility Governance"
+    - "UX Education"
+
+resume_lanes:
+  - id: principal-product-design
+    source: assets/resume-principal-product-design.pdf
+  - id: ux-design
+    source: assets/resume-ux-design.pdf
+  - id: accessibility-design-systems
+    source: assets/resume-accessibility.pdf
+  - id: design-operations
+    source: assets/resume-operations.pdf
+  - id: teaching-ux-education
+    source: assets/resume-teaching.pdf

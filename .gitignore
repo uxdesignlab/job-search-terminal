@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local runtime data
+data/*
+!data/.gitkeep
+output/*
+!output/.gitkeep
+reports/*
+!reports/.gitkeep
+
+# System files
+.DS_Store

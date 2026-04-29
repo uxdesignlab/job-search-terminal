@@ -1,0 +1,38 @@
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: rgb(var(--color-surface));
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  color: rgb(var(--color-ink));
+  background: rgb(var(--color-surface));
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--color-accent));
+  outline-offset: 2px;
+  box-shadow: var(--shadow-focus);
+}
+
+::selection {
+  color: rgb(var(--color-panel));
+  background: rgb(var(--color-accent));
+}
