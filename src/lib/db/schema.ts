@@ -187,5 +187,26 @@ export const migrations = [
       create index if not exists idx_jobs_company_title on jobs(company, title);
       create index if not exists idx_scan_runs_started_at on scan_runs(started_at);
     `
+  },
+  {
+    id: "0005_evaluation_sections",
+    sql: `
+      alter table evaluations add column sections_json text not null default '{}';
+      alter table evaluations add column legitimacy_label text not null default '';
+      alter table evaluations add column keywords_json text not null default '[]';
+      alter table evaluations add column user_correction_json text not null default '{}';
+
+      create table if not exists evaluation_feedback (
+        id text primary key,
+        job_id text not null references jobs(id),
+        role_archetype text not null,
+        corrected_score integer not null,
+        corrected_recommendation text not null,
+        correction_note text not null,
+        created_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_evaluation_feedback_job_id on evaluation_feedback(job_id);
+    `
   }
 ];

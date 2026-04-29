@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Table, Td, Textarea, Th } from "@/components/ui";
-import { getRoleDirections, getUserProfile, updateRoleDirection } from "@/lib/db/queries";
+import { getEvaluationFeedback, getRoleDirections, getUserProfile, updateRoleDirection } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export default function StrategyPage() {
   const profile = getUserProfile();
   const roleDirections = getRoleDirections();
+  const feedback = getEvaluationFeedback();
 
   async function updateRoleDirectionAction(formData: FormData) {
     "use server";
@@ -64,6 +65,22 @@ export default function StrategyPage() {
             ))}
           </tbody>
         </Table>
+
+        {feedback.length > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Evaluation feedback</CardTitle>
+              <CardDescription>Corrections from job evaluations that should inform future role strategy.</CardDescription>
+            </CardHeader>
+            <ol className="grid gap-2">
+              {feedback.map((item) => (
+                <li className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink" key={item.id}>
+                  <span className="font-medium">{item.company} · {item.title}:</span> {item.correctedScore}% {item.correctedRecommendation}. {item.correctionNote}
+                </li>
+              ))}
+            </ol>
+          </Card>
+        ) : null}
 
         <section className="grid gap-4">
           {roleDirections.map((direction) => (

@@ -18,6 +18,7 @@ todo for current phase status and QA gates.
 - [Local data model](docs/data-model.md)
 - [Profile intelligence](docs/profile-intelligence.md)
 - [Scanner integration](docs/scanner-integration.md)
+- [Job evaluation](docs/job-evaluation.md)
 - [Project implementation todo](docs/project-implementation-todo.md)
 - [Phase 1 todo](docs/phase-1-todo.md)
 - [Lessons](docs/lessons.md)
