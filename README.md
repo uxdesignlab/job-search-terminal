@@ -20,6 +20,7 @@ todo for current phase status and QA gates.
 - [Scanner integration](docs/scanner-integration.md)
 - [Job evaluation](docs/job-evaluation.md)
 - [Resume generation](docs/resume-generation.md)
+- [Application assistant and tracker](docs/application-assistant-tracker.md)
 - [Project implementation todo](docs/project-implementation-todo.md)
 - [Phase 1 todo](docs/phase-1-todo.md)
 - [Lessons](docs/lessons.md)

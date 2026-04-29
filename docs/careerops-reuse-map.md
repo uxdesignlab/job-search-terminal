@@ -43,9 +43,9 @@ These are valuable, but must be translated into JS product architecture:
 | `modes/auto-pipeline.md` | Dashboard-triggered flow: evaluate, tailor, track |
 | `modes/oferta.md` | Job evaluation prompt/service using UX/product/design archetypes |
 | `modes/pdf.md` | Resume-lane selection plus tailored PDF generation |
-| `modes/apply.md` | Application answer assistant that saves draft answers |
+| `modes/apply.md` | Application answer assistant that saves draft answers for manual copy-paste |
 | `modes/pipeline.md` | Job inbox service backed by SQLite later |
-| `modes/tracker.md` | Application status service backed by SQLite later |
+| `modes/tracker.md` | Application status service backed by SQLite |
 | `modes/scan.md` | Scan action with database writes and dashboard status |
 | `dashboard/` | Data ideas and pipeline grouping, not the terminal UI |
 | `config/profile.example.yml` | Multi-resume Pavel profile structure |
@@ -78,6 +78,20 @@ These are useful after the dashboard foundation works:
 - Go TUI dashboard compatibility.
 - Cloudflare Tunnel.
 - Fully hosted Cloudflare SaaS version.
+
+## Phase 8 Application And Tracker Reuse
+
+CareerOps `modes/apply.md` was adapted into the JS application assistant:
+
+- load the evaluated job context before generating answers
+- support pasted application questions
+- generate personalized answers for copy-paste
+- update tracker state only after manual user action
+
+CareerOps `modes/tracker.md` and `templates/states.yml` were adapted into the
+SQLite tracker. JS keeps the CareerOps applied/responded/interview/offer/rejected
+shape, adds dashboard pre-application states, and records every meaningful status
+change in `activity_log`.
 
 ## Resume Lanes
 

@@ -205,21 +205,26 @@ Review status:
 
 Goal: support manual applications without auto-submitting anything.
 
-- [ ] Port reusable CareerOps application-assistant and tracker logic before writing new equivalents.
-- [ ] Generate answers for common application questions.
-- [ ] Let user paste custom application questions.
-- [ ] Save answer drafts to the job record.
-- [ ] Add status transitions: found, reviewed, resume generated, applied, follow-up needed, recruiter responded, interviewing, offer, rejected, skipped, archived.
-- [ ] Add Mark applied, Add follow-up, Mark interview, Mark rejected, and Archive actions.
-- [ ] Add application funnel metrics.
-- [ ] Add basic follow-up due dates.
-- [ ] Record all meaningful status changes in activity log.
+- [x] Port reusable CareerOps application-assistant and tracker logic before writing new equivalents.
+- [x] Generate answers for common application questions.
+- [x] Let user paste custom application questions.
+- [x] Save answer drafts to the job record.
+- [x] Add status transitions: found, reviewed, resume generated, applied, follow-up needed, recruiter responded, interviewing, offer, rejected, skipped, archived.
+- [x] Add Mark applied, Add follow-up, Mark interview, Mark rejected, and Archive actions.
+- [x] Add application funnel metrics.
+- [x] Add basic follow-up due dates.
+- [x] Record all meaningful status changes in activity log.
 
 Exit criteria:
 
-- [ ] User can prepare answers, apply manually, and update status.
-- [ ] Dashboard reflects application progress.
-- [ ] The app never auto-submits applications or messages recruiters.
+- [x] User can prepare answers, apply manually, and update status.
+- [x] Dashboard reflects application progress.
+- [x] The app never auto-submits applications or messages recruiters.
+
+Review status:
+
+- [x] User review/testing complete.
+- [x] User approved commit for Phase 8.
 
 ## Phase 9 — Quality, Accessibility, And Product Hardening
 

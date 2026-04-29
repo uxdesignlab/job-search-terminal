@@ -101,7 +101,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Recent activity</CardTitle>
-              <CardDescription>Placeholder activity log for the dashboard shell.</CardDescription>
+              <CardDescription>Latest scanner, evaluation, resume, and application tracker events.</CardDescription>
             </CardHeader>
             <ol className="grid gap-3">
               {activity.map((entry) => (

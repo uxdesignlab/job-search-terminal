@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
 import { getApplications, getFunnelStages } from "@/lib/db/queries";
 
@@ -16,7 +17,7 @@ export default function ApplicationsPage() {
           title="Applications"
         />
 
-        <section aria-label="Application funnel" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <section aria-label="Application funnel" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {funnel.map((stage) => (
             <StatCard detail="Current" key={stage.label} label={stage.label} value={String(stage.value)} />
           ))}
@@ -41,11 +42,17 @@ export default function ApplicationsPage() {
               {applications.map((application) => (
                 <tr key={application.id}>
                   <Td>{application.company}</Td>
-                  <Td>{application.role}</Td>
                   <Td>
-                    <Badge>{application.status}</Badge>
+                    <Link className="font-medium text-accent hover:underline" href={`/jobs/${application.jobId}`}>
+                      {application.role}
+                    </Link>
                   </Td>
-                  <Td>{application.followUpDate}</Td>
+                  <Td>
+                    <Badge tone={application.status === "Rejected" ? "danger" : application.status === "Interviewing" ? "success" : "neutral"}>
+                      {application.status}
+                    </Badge>
+                  </Td>
+                  <Td>{application.followUpDate || "Not set"}</Td>
                   <Td>{application.fitScore}%</Td>
                 </tr>
               ))}

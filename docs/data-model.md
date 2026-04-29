@@ -25,6 +25,7 @@ The first migration creates the required MVP tables:
 - `generated_documents`: generated resume/application document metadata, HTML
   preview path, PDF output path, keyword coverage, and tailoring plan.
 - `applications`: application tracker status, follow-up, contact, response, company, role, and score.
+- `application_answer_drafts`: copy-paste application answers linked to a job.
 - `activity_log`: product memory and status/activity history.
 - `scan_runs`: scanner history, counts, status, and per-company errors.
 - `evaluation_feedback`: user corrections to saved evaluations.
@@ -39,6 +40,10 @@ The second migration adds CareerOps-style tracker fields to `applications`:
 These keep manually tracked applications readable even when they do not yet have
 a discovered job record.
 
+The seventh migration adds `application_answer_drafts` for Phase 8. Answer
+drafts are saved separately from the job row so multiple common and custom
+questions can be tracked without overwriting job metadata.
+
 ## Scripts
 
 ```bash
@@ -51,6 +56,7 @@ npm run profile:check
 npm run scanner:check
 npm run evaluation:check
 npm run document:check
+npm run application:check
 ```
 
 The local database file is `data/js.sqlite`. It is intentionally ignored by git.
@@ -70,6 +76,8 @@ The local database file is `data/js.sqlite`. It is intentionally ignored by git.
   user correction feedback.
 - `document:check` verifies HTML/PDF resume generation and generated-document
   metadata.
+- `application:check` verifies answer generation, custom questions, status
+  transitions, follow-up dates, funnel metrics, and activity logging.
 - Phase 3 keeps mock source modules as seed inputs only; dashboard pages no
   longer read mock modules directly.
 

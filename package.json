@@ -17,7 +17,8 @@
     "profile:check": "tsx scripts/profile-check.ts",
     "scanner:check": "tsx scripts/scanner-check.ts",
     "evaluation:check": "tsx scripts/evaluation-check.ts",
-    "document:check": "tsx scripts/document-check.ts"
+    "document:check": "tsx scripts/document-check.ts",
+    "application:check": "tsx scripts/application-check.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",

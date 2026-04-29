@@ -1,7 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { getDatabase } from "./client";
 import type {
   ActivityRecord,
+  ApplicationAnswerDraftInput,
+  ApplicationAnswerDraftRecord,
   ApplicationRecord,
+  ApplicationStatusUpdateInput,
   DashboardMetric,
   EvaluationCorrectionInput,
   EvaluationFeedbackRecord,
@@ -125,6 +129,16 @@ type GeneratedDocumentRow = {
   tailoringSummary: string;
   keywordCoverage: number;
   tailoringPlanJson: string;
+};
+
+type ApplicationAnswerDraftRow = {
+  id: string;
+  job_id: string;
+  question: string;
+  answer: string;
+  source: string;
+  sort_order: number;
+  updated_at: string;
 };
 
 export function getUserProfile(): UserProfileRecord {
@@ -302,6 +316,184 @@ export function getApplications(): ApplicationRecord[] {
     .all() as ApplicationRecord[];
 }
 
+export function getApplicationByJobId(jobId: string): ApplicationRecord | undefined {
+  const application = getDatabase()
+    .prepare(
+      `select
+        applications.id,
+        applications.job_id as jobId,
+        coalesce(nullif(applications.company, ''), jobs.company, 'External opportunity') as company,
+        coalesce(nullif(applications.role, ''), jobs.title, applications.job_id) as role,
+        applications.status,
+        applications.applied_date as appliedDate,
+        applications.follow_up_date as followUpDate,
+        applications.notes,
+        applications.contact,
+        applications.response_status as responseStatus,
+        coalesce(nullif(applications.fit_score, 0), jobs.fit_score, 0) as fitScore
+      from applications
+      left join jobs on jobs.id = applications.job_id
+      where applications.job_id = ?
+      limit 1`
+    )
+    .get(jobId) as ApplicationRecord | undefined;
+
+  if (application) {
+    return application;
+  }
+
+  const job = getJobById(jobId);
+  if (!job) {
+    return undefined;
+  }
+
+  return {
+    id: `application-${job.id}`,
+    jobId: job.id,
+    company: job.company,
+    role: job.title,
+    status: job.status,
+    appliedDate: null,
+    followUpDate: "",
+    notes: "",
+    contact: "",
+    responseStatus: job.status,
+    fitScore: job.fitScore
+  };
+}
+
+export function getApplicationAnswerDrafts(jobId: string): ApplicationAnswerDraftRecord[] {
+  const rows = getDatabase()
+    .prepare(
+      `select id, job_id, question, answer, source, sort_order, updated_at
+       from application_answer_drafts
+       where job_id = ?
+       order by sort_order asc, updated_at desc`
+    )
+    .all(jobId) as ApplicationAnswerDraftRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    jobId: row.job_id,
+    question: row.question,
+    answer: row.answer,
+    source: row.source,
+    sortOrder: row.sort_order,
+    updatedAt: row.updated_at
+  }));
+}
+
+export function saveApplicationAnswerDrafts(drafts: ApplicationAnswerDraftInput[]) {
+  if (drafts.length === 0) {
+    return;
+  }
+
+  const database = getDatabase();
+  const save = database.transaction(() => {
+    for (const draft of drafts) {
+      database
+        .prepare(
+          `insert into application_answer_drafts (
+            id, job_id, question, answer, source, sort_order, updated_at
+          ) values (
+            @id, @jobId, @question, @answer, @source, @sortOrder, current_timestamp
+          )
+          on conflict(id) do update set
+            question = excluded.question,
+            answer = excluded.answer,
+            source = excluded.source,
+            sort_order = excluded.sort_order,
+            updated_at = current_timestamp`
+        )
+        .run(draft);
+    }
+  });
+
+  save();
+  logActivity("application_answers", drafts[0].jobId, `Prepared ${drafts.length} application answer drafts`, {
+    count: drafts.length,
+    sources: [...new Set(drafts.map((draft) => draft.source))]
+  });
+}
+
+export function updateApplicationStatus(input: ApplicationStatusUpdateInput) {
+  const job = getJobById(input.jobId);
+  if (!job) {
+    throw new Error(`Job not found: ${input.jobId}`);
+  }
+
+  const database = getDatabase();
+  const application = getApplicationByJobId(input.jobId);
+  const appliedDate = input.status === "Applied" ? new Date().toISOString().slice(0, 10) : application?.appliedDate ?? null;
+  const followUpDate = input.followUpDate ?? application?.followUpDate ?? "";
+  const notes = input.notes ?? application?.notes ?? "";
+
+  const save = database.transaction(() => {
+    database
+      .prepare(
+        `insert into applications (
+          id,
+          job_id,
+          company,
+          role,
+          status,
+          applied_date,
+          follow_up_date,
+          notes,
+          contact,
+          response_status,
+          fit_score,
+          updated_at
+        ) values (
+          @id,
+          @jobId,
+          @company,
+          @role,
+          @status,
+          @appliedDate,
+          @followUpDate,
+          @notes,
+          @contact,
+          @responseStatus,
+          @fitScore,
+          current_timestamp
+        )
+        on conflict(id) do update set
+          status = excluded.status,
+          applied_date = excluded.applied_date,
+          follow_up_date = excluded.follow_up_date,
+          notes = excluded.notes,
+          response_status = excluded.response_status,
+          fit_score = excluded.fit_score,
+          updated_at = current_timestamp`
+      )
+      .run({
+        id: application?.id ?? `application-${job.id}`,
+        jobId: job.id,
+        company: job.company,
+        role: job.title,
+        status: input.status,
+        appliedDate,
+        followUpDate,
+        notes,
+        contact: application?.contact ?? "",
+        responseStatus: input.status,
+        fitScore: job.fitScore
+      });
+
+    database
+      .prepare("update jobs set status = @status, updated_at = current_timestamp where id = @jobId")
+      .run({ jobId: job.id, status: input.status });
+  });
+
+  save();
+  logActivity("application", input.jobId, `Application status updated to ${input.status}`, {
+    previousStatus: application?.status ?? job.status,
+    status: input.status,
+    followUpDate
+  });
+}
+
 export function getGeneratedDocuments(): GeneratedDocumentRecord[] {
   const rows = getDatabase()
     .prepare(
@@ -384,6 +576,7 @@ export function getDashboardMetrics(): DashboardMetric[] {
   const jobs = getJobs();
   const applications = getApplications();
   const documents = getGeneratedDocuments();
+  const today = new Date().toISOString().slice(0, 10);
 
   return [
     {
@@ -411,6 +604,14 @@ export function getDashboardMetrics(): DashboardMetric[] {
       tone: "neutral"
     },
     {
+      label: "Follow-ups due",
+      value: String(
+        applications.filter((application) => application.followUpDate && application.followUpDate <= today && application.status !== "Archived").length
+      ),
+      detail: "Manual action",
+      tone: "warning"
+    },
+    {
       label: "Interviews active",
       value: String(applications.filter((application) => application.status === "Interviewing").length),
       detail: "In progress",
@@ -436,10 +637,15 @@ export function getFunnelStages(): FunnelStage[] {
   return [
     { label: "Found", value: getJobs().length },
     { label: "Reviewed", value: getJobs().filter((job) => job.status === "Reviewed").length },
+    { label: "Resume generated", value: getJobs().filter((job) => job.status === "Resume generated").length },
     { label: "Applied", value: counts.get("Applied") ?? 0 },
+    { label: "Follow-up needed", value: counts.get("Follow-up needed") ?? 0 },
+    { label: "Recruiter responded", value: counts.get("Recruiter responded") ?? 0 },
     { label: "Interviewing", value: counts.get("Interviewing") ?? 0 },
     { label: "Offer", value: counts.get("Offer") ?? 0 },
-    { label: "Rejected", value: counts.get("Rejected") ?? 0 }
+    { label: "Rejected", value: counts.get("Rejected") ?? 0 },
+    { label: "Skipped", value: (counts.get("Skipped") ?? 0) + getJobs().filter((job) => job.status === "Skipped").length },
+    { label: "Archived", value: counts.get("Archived") ?? 0 }
   ];
 }
 
@@ -872,7 +1078,7 @@ export function logActivity(entityType: string, entityId: string, action: string
        values (@id, @entityType, @entityId, @action, @timestamp, @detailsJson)`
     )
     .run({
-      id: `${entityType}-${entityId}-${Date.now()}`,
+      id: `${entityType}-${entityId}-${Date.now()}-${randomUUID().slice(0, 8)}`,
       entityType,
       entityId,
       action,
