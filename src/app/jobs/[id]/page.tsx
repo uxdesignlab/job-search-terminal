@@ -1,9 +1,21 @@
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { ApplicationStatusForm } from "@/components/application-status-form";
 import { EvaluateJobForm } from "@/components/evaluate-job-form";
 import { GenerateResumeForm } from "@/components/generate-resume-form";
+import { PrepareApplicationAnswersForm } from "@/components/prepare-application-answers-form";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select, Shell, Textarea } from "@/components/ui";
-import { getEvaluationByJobId, getGeneratedDocumentById, getJobById, saveEvaluationCorrection } from "@/lib/db/queries";
+import { prepareApplicationAnswers } from "@/lib/applications/application-assistant";
+import { isApplicationStatus } from "@/lib/applications/status";
+import {
+  getApplicationAnswerDrafts,
+  getApplicationByJobId,
+  getEvaluationByJobId,
+  getGeneratedDocumentById,
+  getJobById,
+  saveEvaluationCorrection,
+  updateApplicationStatus
+} from "@/lib/db/queries";
 import { generateTailoredResume } from "@/lib/documents/resume-generator";
 import { evaluateJob } from "@/lib/evaluation/job-evaluator";
 import { splitListValue } from "@/lib/profile/intelligence";
@@ -24,6 +36,8 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
 
   const evaluation = getEvaluationByJobId(id);
   const generatedDocument = getGeneratedDocumentById(`document-${id}`);
+  const application = getApplicationByJobId(id);
+  const answerDrafts = getApplicationAnswerDrafts(id);
 
   async function evaluateJobAction() {
     "use server";
@@ -63,6 +77,37 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
     revalidatePath("/dashboard");
   }
 
+  async function prepareAnswersAction(formData: FormData) {
+    "use server";
+
+    prepareApplicationAnswers(id, String(formData.get("customQuestion") ?? ""));
+    revalidatePath(`/jobs/${id}`);
+    revalidatePath("/applications");
+    revalidatePath("/dashboard");
+  }
+
+  async function updateStatusAction(formData: FormData) {
+    "use server";
+
+    const status = String(formData.get("status") ?? "");
+    if (!isApplicationStatus(status)) {
+      throw new Error(`Unsupported application status: ${status}`);
+    }
+
+    const followUpDate = String(formData.get("followUpDate") ?? "").trim();
+    const notes = String(formData.get("notes") ?? "").trim();
+
+    updateApplicationStatus({
+      jobId: id,
+      status,
+      followUpDate: followUpDate || undefined,
+      notes: notes || undefined
+    });
+    revalidatePath(`/jobs/${id}`);
+    revalidatePath("/applications");
+    revalidatePath("/dashboard");
+  }
+
   return (
     <Shell activeItem="Jobs">
       <div className="grid gap-6">
@@ -71,8 +116,8 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
             <>
               <EvaluateJobForm action={evaluateJobAction} />
               <GenerateResumeForm action={generateResumeAction} />
-              <Button disabled variant="secondary">Prepare answers</Button>
-              <Button variant="quiet">Save for later</Button>
+              <PrepareApplicationAnswersForm action={prepareAnswersAction} variant="secondary" />
+              <ApplicationStatusForm action={updateStatusAction} label="Save for follow-up" status="Follow-up needed" variant="quiet" />
             </>
           }
           description={`${job.company} · ${job.location} · ${job.remoteType}`}
@@ -177,6 +222,86 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                 </div>
               </Card>
             ) : null}
+
+            <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Application tracker</CardTitle>
+                  <CardDescription>Manual status controls. The app does not submit applications or contact recruiters.</CardDescription>
+                </CardHeader>
+                <div className="grid gap-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={application?.status === "Rejected" ? "danger" : application?.status === "Interviewing" ? "success" : "neutral"}>
+                      {application?.status ?? job.status}
+                    </Badge>
+                    <Badge>{application?.followUpDate ? `Follow-up ${application.followUpDate}` : "No follow-up date"}</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2" aria-label="Application status actions">
+                    <ApplicationStatusForm action={updateStatusAction} label="Mark applied" status="Applied" />
+                    <ApplicationStatusForm action={updateStatusAction} label="Recruiter responded" status="Recruiter responded" />
+                    <ApplicationStatusForm action={updateStatusAction} label="Mark interview" status="Interviewing" />
+                    <ApplicationStatusForm action={updateStatusAction} label="Mark offer" status="Offer" />
+                    <ApplicationStatusForm action={updateStatusAction} label="Mark rejected" status="Rejected" />
+                    <ApplicationStatusForm action={updateStatusAction} label="Skip" status="Skipped" variant="quiet" />
+                    <ApplicationStatusForm action={updateStatusAction} label="Archive" status="Archived" variant="quiet" />
+                  </div>
+                  <form action={updateStatusAction} className="grid gap-3">
+                    <input name="status" type="hidden" value="Follow-up needed" />
+                    <Input
+                      defaultValue={application?.followUpDate ?? ""}
+                      hint="Use this after you apply manually or need to check back with a recruiter."
+                      label="Follow-up due date"
+                      name="followUpDate"
+                      type="date"
+                    />
+                    <Textarea
+                      defaultValue={application?.notes ?? ""}
+                      hint="Optional private note for the next manual action."
+                      label="Follow-up note"
+                      name="notes"
+                    />
+                    <div>
+                      <Button type="submit" variant="secondary">Add follow-up</Button>
+                    </div>
+                  </form>
+                </div>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Application assistant</CardTitle>
+                  <CardDescription>Draft copy-paste answers from saved evaluation and resume evidence.</CardDescription>
+                </CardHeader>
+                <div className="grid gap-4">
+                  <form action={prepareAnswersAction} className="grid gap-3">
+                    <Textarea
+                      hint="Paste one extra question from the application. Common questions are generated automatically."
+                      label="Custom application question"
+                      name="customQuestion"
+                      placeholder="Example: Describe a product decision you influenced with research."
+                    />
+                    <div>
+                      <Button type="submit">Prepare drafts</Button>
+                    </div>
+                  </form>
+                  {answerDrafts.length > 0 ? (
+                    <ol className="grid gap-3" aria-label="Prepared application answers">
+                      {answerDrafts.map((draft) => (
+                        <li className="rounded-control border border-border bg-surface px-3 py-3" key={draft.id}>
+                          <p className="text-sm font-semibold text-ink">{draft.question}</p>
+                          <p className="mt-2 text-sm leading-6 text-muted">{draft.answer}</p>
+                          <p className="mt-2 text-xs text-muted">{draft.source}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-muted">
+                      No answer drafts yet. Prepare drafts before filling out the application manually.
+                    </p>
+                  )}
+                </div>
+              </Card>
+            </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
               <EvaluationSection title="A. Role summary" items={evaluation.sections.roleSummary} />

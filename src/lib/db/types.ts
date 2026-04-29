@@ -217,6 +217,45 @@ export type ApplicationRecord = {
   fitScore: number;
 };
 
+export type ApplicationStatus =
+  | "Found"
+  | "Reviewed"
+  | "Resume generated"
+  | "Applied"
+  | "Follow-up needed"
+  | "Recruiter responded"
+  | "Interviewing"
+  | "Offer"
+  | "Rejected"
+  | "Skipped"
+  | "Archived";
+
+export type ApplicationAnswerDraftRecord = {
+  id: string;
+  jobId: string;
+  question: string;
+  answer: string;
+  source: string;
+  sortOrder: number;
+  updatedAt: string;
+};
+
+export type ApplicationAnswerDraftInput = {
+  id: string;
+  jobId: string;
+  question: string;
+  answer: string;
+  source: string;
+  sortOrder: number;
+};
+
+export type ApplicationStatusUpdateInput = {
+  jobId: string;
+  status: ApplicationStatus;
+  followUpDate?: string;
+  notes?: string;
+};
+
 export type ActivityRecord = {
   id: string;
   entityType: string;

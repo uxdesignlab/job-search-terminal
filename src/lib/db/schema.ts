@@ -218,5 +218,22 @@ export const migrations = [
 
       create index if not exists idx_generated_documents_job_id on generated_documents(job_id);
     `
+  },
+  {
+    id: "0007_application_assistant_tracker",
+    sql: `
+      create table if not exists application_answer_drafts (
+        id text primary key,
+        job_id text not null references jobs(id),
+        question text not null,
+        answer text not null,
+        source text not null,
+        sort_order integer not null default 0,
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_application_answer_drafts_job_id on application_answer_drafts(job_id);
+    `
   }
 ];
