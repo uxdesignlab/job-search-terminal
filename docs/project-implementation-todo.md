@@ -155,20 +155,25 @@ Review status:
 
 Goal: evaluate fit with evidence, recommendations, and role strategy.
 
-- [ ] Port CareerOps evaluation mode structure into a dashboard-triggered service.
-- [ ] Preserve reusable scoring/report sections unless they conflict with JS role lanes.
-- [ ] Replace AI/engineering archetypes with UX/product/design leadership archetypes.
-- [ ] Score fit using profile, resume lanes, constraints, and job requirements.
-- [ ] Store evaluation summary, strengths, gaps, red flags, evidence mapping, and recommended action.
-- [ ] Show evaluation output on Job Detail.
-- [ ] Allow the user to correct wrong recommendations.
-- [ ] Feed corrections back into profile/strategy notes.
+- [x] Port CareerOps evaluation mode structure into a dashboard-triggered service.
+- [x] Preserve reusable scoring/report sections unless they conflict with JS role lanes.
+- [x] Replace AI/engineering archetypes with UX/product/design leadership archetypes.
+- [x] Score fit using profile, resume lanes, constraints, and job requirements.
+- [x] Store evaluation summary, strengths, gaps, red flags, evidence mapping, and recommended action.
+- [x] Show evaluation output on Job Detail.
+- [x] Allow the user to correct wrong recommendations.
+- [x] Feed corrections back into profile/strategy notes.
 
 Exit criteria:
 
-- [ ] User can evaluate a job from the dashboard.
-- [ ] Evaluation explains why the score and recommendation were given.
-- [ ] Evaluation output is saved and visible after restart.
+- [x] User can evaluate a job from the dashboard.
+- [x] Evaluation explains why the score and recommendation were given.
+- [x] Evaluation output is saved and visible after restart.
+
+Review status:
+
+- [x] User review/testing complete.
+- [x] User approved commit for Phase 6.
 
 ## Phase 7 — Resume Tailoring And PDF Generation
 

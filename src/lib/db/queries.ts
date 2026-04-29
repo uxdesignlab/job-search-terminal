@@ -3,9 +3,14 @@ import type {
   ActivityRecord,
   ApplicationRecord,
   DashboardMetric,
+  EvaluationCorrectionInput,
+  EvaluationFeedbackRecord,
+  EvaluationRecord,
   FunnelStage,
   GeneratedDocumentRecord,
+  JobEvaluationResultInput,
   JobRecord,
+  JsonValue,
   ProfileUpdateInput,
   ResumeRecord,
   RoleDirectionRecord,
@@ -80,6 +85,27 @@ type ScanRunRow = {
   duplicate_count: number;
   new_jobs_count: number;
   errors_json: string;
+};
+
+type EvaluationRow = {
+  id: string;
+  job_id: string;
+  fit_score: number;
+  score_label: string;
+  role_archetype: string;
+  summary: string;
+  strengths_json: string;
+  gaps_json: string;
+  red_flags_json: string;
+  recommendation: string;
+  resume_base_recommendation: string;
+  requirement_match_json: string;
+  resume_evidence_json: string;
+  sections_json: string;
+  legitimacy_label: string;
+  keywords_json: string;
+  user_correction_json: string;
+  created_at: string;
 };
 
 export function getUserProfile(): UserProfileRecord {
@@ -169,6 +195,35 @@ export function getJobs(): JobRecord[] {
 export function getJobById(id: string): JobRecord | undefined {
   const row = getDatabase().prepare("select * from jobs where id = ?").get(id) as JobRow | undefined;
   return row ? mapJob(row) : undefined;
+}
+
+export function getEvaluationByJobId(jobId: string): EvaluationRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from evaluations where job_id = ? order by created_at desc limit 1")
+    .get(jobId) as EvaluationRow | undefined;
+
+  return row ? mapEvaluation(row) : undefined;
+}
+
+export function getEvaluationFeedback(limit = 5): EvaluationFeedbackRecord[] {
+  return getDatabase()
+    .prepare(
+      `select
+        evaluation_feedback.id,
+        evaluation_feedback.job_id as jobId,
+        coalesce(jobs.company, 'Unknown company') as company,
+        coalesce(jobs.title, evaluation_feedback.job_id) as title,
+        evaluation_feedback.role_archetype as roleArchetype,
+        evaluation_feedback.corrected_score as correctedScore,
+        evaluation_feedback.corrected_recommendation as correctedRecommendation,
+        evaluation_feedback.correction_note as correctionNote,
+        evaluation_feedback.created_at as createdAt
+      from evaluation_feedback
+      left join jobs on jobs.id = evaluation_feedback.job_id
+      order by evaluation_feedback.created_at desc
+      limit ?`
+    )
+    .all(limit) as EvaluationFeedbackRecord[];
 }
 
 export function getLatestScanRun(): ScanRunRecord | undefined {
@@ -389,6 +444,177 @@ export function updateRoleDirection(input: RoleDirectionUpdateInput) {
   });
 }
 
+export function saveJobEvaluation(input: JobEvaluationResultInput) {
+  const database = getDatabase();
+  const save = database.transaction(() => {
+    database
+      .prepare(
+        `insert or replace into evaluations (
+          id,
+          job_id,
+          fit_score,
+          score_label,
+          role_archetype,
+          summary,
+          strengths_json,
+          gaps_json,
+          red_flags_json,
+          recommendation,
+          resume_base_recommendation,
+          requirement_match_json,
+          resume_evidence_json,
+          sections_json,
+          legitimacy_label,
+          keywords_json,
+          user_correction_json
+        ) values (
+          @id,
+          @jobId,
+          @fitScore,
+          @scoreLabel,
+          @roleArchetype,
+          @summary,
+          @strengthsJson,
+          @gapsJson,
+          @redFlagsJson,
+          @recommendation,
+          @resumeBaseRecommendation,
+          @requirementMatchJson,
+          @resumeEvidenceJson,
+          @sectionsJson,
+          @legitimacyLabel,
+          @keywordsJson,
+          @userCorrectionJson
+        )`
+      )
+      .run({
+        ...input,
+        strengthsJson: JSON.stringify(input.strengths),
+        gapsJson: JSON.stringify(input.gaps),
+        redFlagsJson: JSON.stringify(input.redFlags),
+        requirementMatchJson: JSON.stringify(input.requirementMatch),
+        resumeEvidenceJson: JSON.stringify(input.resumeEvidence),
+        sectionsJson: JSON.stringify(input.sections),
+        keywordsJson: JSON.stringify(input.keywords),
+        userCorrectionJson: JSON.stringify(input.userCorrection)
+      });
+
+    database
+      .prepare(
+        `update jobs set
+          fit_score = @fitScore,
+          role_archetype = @roleArchetype,
+          recommendation = @recommendation,
+          summary = @summary,
+          why_it_matches = @whyItMatches,
+          main_concern = @mainConcern,
+          recommended_resume = @resumeBaseRecommendation,
+          salary_notes = @salaryNotes,
+          requirement_match_json = @requirementMatchJson,
+          resume_evidence_json = @resumeEvidenceJson,
+          gaps_json = @gapsJson,
+          red_flags_json = @redFlagsJson,
+          status = 'Reviewed',
+          updated_at = current_timestamp
+        where id = @jobId`
+      )
+      .run({
+        ...input,
+        requirementMatchJson: JSON.stringify(input.requirementMatch),
+        resumeEvidenceJson: JSON.stringify(input.resumeEvidence),
+        gapsJson: JSON.stringify(input.gaps),
+        redFlagsJson: JSON.stringify(input.redFlags)
+      });
+  });
+
+  save();
+  logActivity("job", input.jobId, `Job evaluated: ${input.fitScore}% ${input.recommendation}`, {
+    roleArchetype: input.roleArchetype,
+    legitimacy: input.legitimacyLabel
+  });
+}
+
+export function saveEvaluationCorrection(input: EvaluationCorrectionInput) {
+  const database = getDatabase();
+  const correction = {
+    correctedScore: input.fitScore,
+    correctedRecommendation: input.recommendation,
+    correctionNote: input.correctionNote,
+    correctedAt: new Date().toISOString()
+  };
+
+  const save = database.transaction(() => {
+    database
+      .prepare(
+        `update evaluations set
+          fit_score = @fitScore,
+          score_label = @scoreLabel,
+          role_archetype = @roleArchetype,
+          summary = @summary,
+          strengths_json = @strengthsJson,
+          gaps_json = @gapsJson,
+          red_flags_json = @redFlagsJson,
+          recommendation = @recommendation,
+          user_correction_json = @userCorrectionJson
+        where job_id = @jobId`
+      )
+      .run({
+        ...input,
+        scoreLabel: scoreLabelFor(input.fitScore),
+        strengthsJson: JSON.stringify(input.strengths),
+        gapsJson: JSON.stringify(input.gaps),
+        redFlagsJson: JSON.stringify(input.redFlags),
+        userCorrectionJson: JSON.stringify(correction)
+      });
+
+    database
+      .prepare(
+        `update jobs set
+          fit_score = @fitScore,
+          role_archetype = @roleArchetype,
+          recommendation = @recommendation,
+          summary = @summary,
+          requirement_match_json = @strengthsJson,
+          gaps_json = @gapsJson,
+          red_flags_json = @redFlagsJson,
+          updated_at = current_timestamp
+        where id = @jobId`
+      )
+      .run({
+        ...input,
+        strengthsJson: JSON.stringify(input.strengths),
+        gapsJson: JSON.stringify(input.gaps),
+        redFlagsJson: JSON.stringify(input.redFlags)
+      });
+
+    database
+      .prepare(
+        `insert into evaluation_feedback (
+          id,
+          job_id,
+          role_archetype,
+          corrected_score,
+          corrected_recommendation,
+          correction_note
+        ) values (
+          @id,
+          @jobId,
+          @roleArchetype,
+          @fitScore,
+          @recommendation,
+          @correctionNote
+        )`
+      )
+      .run({
+        id: `feedback-${input.jobId}-${Date.now()}`,
+        ...input
+      });
+  });
+
+  save();
+  logActivity("evaluation_feedback", input.jobId, "Evaluation corrected from dashboard", correction);
+}
+
 export function getJobDedupKeys() {
   const rows = getDatabase()
     .prepare("select url, company, title from jobs")
@@ -595,6 +821,48 @@ function mapScanRun(row: ScanRunRow): ScanRunRecord {
     newJobsCount: row.new_jobs_count,
     errors: parseJson<Array<{ company: string; error: string }>>(row.errors_json)
   };
+}
+
+function mapEvaluation(row: EvaluationRow): EvaluationRecord {
+  const sections = {
+    ...parseJson<Partial<EvaluationRecord["sections"]>>(row.sections_json || "{}")
+  };
+
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    fitScore: row.fit_score,
+    scoreLabel: row.score_label,
+    roleArchetype: row.role_archetype,
+    summary: row.summary,
+    strengths: parseJson<string[]>(row.strengths_json),
+    gaps: parseJson<string[]>(row.gaps_json),
+    redFlags: parseJson<string[]>(row.red_flags_json),
+    recommendation: row.recommendation,
+    resumeBaseRecommendation: row.resume_base_recommendation,
+    requirementMatch: parseJson<string[]>(row.requirement_match_json),
+    resumeEvidence: parseJson<string[]>(row.resume_evidence_json),
+    sections: {
+      roleSummary: sections.roleSummary ?? [],
+      matchWithResume: sections.matchWithResume ?? [],
+      levelStrategy: sections.levelStrategy ?? [],
+      compensationDemand: sections.compensationDemand ?? [],
+      tailoringPlan: sections.tailoringPlan ?? [],
+      interviewPlan: sections.interviewPlan ?? [],
+      postingLegitimacy: sections.postingLegitimacy ?? []
+    },
+    legitimacyLabel: row.legitimacy_label,
+    keywords: parseJson<string[]>(row.keywords_json || "[]"),
+    userCorrection: parseJson<Record<string, JsonValue>>(row.user_correction_json || "{}"),
+    createdAt: row.created_at
+  };
+}
+
+function scoreLabelFor(score: number) {
+  if (score >= 85) return "Strong fit";
+  if (score >= 70) return "Review";
+  if (score >= 55) return "Selective";
+  return "Weak fit";
 }
 
 function inferRemoteType(location: string) {

@@ -82,6 +82,67 @@ export type ScannedJobInput = {
   firstSeenDate: string;
 };
 
+export type EvaluationSections = {
+  roleSummary: string[];
+  matchWithResume: string[];
+  levelStrategy: string[];
+  compensationDemand: string[];
+  tailoringPlan: string[];
+  interviewPlan: string[];
+  postingLegitimacy: string[];
+};
+
+export type EvaluationRecord = {
+  id: string;
+  jobId: string;
+  fitScore: number;
+  scoreLabel: string;
+  roleArchetype: string;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  redFlags: string[];
+  recommendation: string;
+  resumeBaseRecommendation: string;
+  requirementMatch: string[];
+  resumeEvidence: string[];
+  sections: EvaluationSections;
+  legitimacyLabel: string;
+  keywords: string[];
+  userCorrection: Record<string, JsonValue>;
+  createdAt: string;
+};
+
+export type JobEvaluationResultInput = Omit<EvaluationRecord, "createdAt"> & {
+  whyItMatches: string;
+  mainConcern: string;
+  salaryNotes: string;
+};
+
+export type EvaluationCorrectionInput = {
+  jobId: string;
+  roleArchetype: string;
+  fitScore: number;
+  recommendation: string;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  redFlags: string[];
+  correctionNote: string;
+};
+
+export type EvaluationFeedbackRecord = {
+  id: string;
+  jobId: string;
+  company: string;
+  title: string;
+  roleArchetype: string;
+  correctedScore: number;
+  correctedRecommendation: string;
+  correctionNote: string;
+  createdAt: string;
+};
+
 export type ScanRunRecord = {
   id: string;
   status: "completed" | "completed_with_errors" | "failed";
