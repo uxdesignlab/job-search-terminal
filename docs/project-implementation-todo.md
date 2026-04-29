@@ -13,6 +13,10 @@ Delivery rule: work one phase at a time. Do not mix implementation tasks across
 phases. After each phase, verify, pause, let the user inspect/test, and commit
 only after explicit user approval.
 
+QA handoff rule: after every completed build or phase, provide a concise
+phase-specific QA checklist that tells the user what screens, flows, content,
+and regressions to inspect before approval.
+
 ## Phase 1 — Repo Foundation And CareerOps Map
 
 Goal: create the Codex-first project foundation without implementing product
@@ -40,23 +44,28 @@ Exit criteria:
 
 Goal: build the usable dashboard surface before wiring real engines.
 
-- [ ] Create app navigation for Profile, Strategy, Dashboard, Jobs, Applications, Resumes, and Settings.
-- [ ] Build Profile screen with mock profile data.
-- [ ] Build Strategy screen with role-fit and adjacent-role mock data.
-- [ ] Build Dashboard overview with job-search metrics.
-- [ ] Build Jobs list with filters, sorting controls, and accessible table/card views.
-- [ ] Build Job Detail screen with evaluation, resume, and action sections using mock data.
-- [ ] Build Applications screen with funnel/status mock data.
-- [ ] Build Resumes screen showing source lanes and generated-document placeholders.
-- [ ] Build Settings screen for job sources and local app preferences.
-- [ ] Add responsive layout checks for desktop and mobile widths.
-- [ ] Confirm all screens use design-system primitives and WCAG 2.2 AA defaults.
+- [x] Create app navigation for Profile, Strategy, Dashboard, Jobs, Applications, Resumes, and Settings.
+- [x] Build Profile screen with mock profile data.
+- [x] Build Strategy screen with role-fit and adjacent-role mock data.
+- [x] Build Dashboard overview with job-search metrics.
+- [x] Build Jobs list with filters, sorting controls, and accessible table/card views.
+- [x] Build Job Detail screen with evaluation, resume, and action sections using mock data.
+- [x] Build Applications screen with funnel/status mock data.
+- [x] Build Resumes screen showing source lanes and generated-document placeholders.
+- [x] Build Settings screen for job sources and local app preferences.
+- [x] Add responsive layout checks for desktop and mobile widths.
+- [x] Confirm all screens use design-system primitives and WCAG 2.2 AA defaults.
 
 Exit criteria:
 
-- [ ] User can open `http://localhost:3000` and navigate the whole shell.
-- [ ] Mock jobs display fit score, status, freshness, and recommended action.
-- [ ] No command-line workflow appears in the product UI.
+- [x] User can open `http://localhost:3000` and navigate the whole shell.
+- [x] Mock jobs display fit score, status, freshness, and recommended action.
+- [x] No command-line workflow appears in the product UI.
+
+Review status:
+
+- [x] User review/testing complete.
+- [x] User approved commit for Phase 2.
 
 ## Phase 3 — Local Data Model
 
@@ -228,6 +237,7 @@ Exit criteria:
 - [ ] Reuse CareerOps code/functionality first; document any decision to rebuild.
 - [ ] Work one phase at a time; do not start future-phase tasks early.
 - [ ] Pause after each phase for user review and testing.
+- [ ] Provide a phase-specific QA checklist after every completed build or phase.
 - [ ] Commit phase work only after explicit user approval.
 - [ ] Update this todo when a phase starts or finishes.
 - [ ] Update `docs/lessons.md` after corrections that should change future behavior.

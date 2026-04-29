@@ -14,6 +14,9 @@ feel like a minimal professional SaaS dashboard.
   until the current phase has been reviewed, tested, and explicitly approved.
 - After each phase: stop, report what changed, share verification results, and
   wait for the user to test. Commit only when the user explicitly directs it.
+- After completing a build or phase, provide a concise QA checklist with the
+  exact screens, flows, content, and regressions the user should inspect before
+  approving the phase.
 - Phase 1 is scaffolding and mapping only. Do not implement scanner, PDF,
   SQLite, evaluation, or application-tracking functionality in this phase.
 
