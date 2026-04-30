@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Select, Shell, Table, Td, Th } from "@/components/ui";
 import { formatPostedDate } from "@/lib/dates";
 import { getJobs } from "@/lib/db/queries";
+import { AddJobModal } from "@/components/AddJobModal";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default function JobsPage() {
           description="Discovered jobs with fit scoring, posted dates, status, and recommended action."
           eyebrow="Position dashboard"
           title="Jobs"
+          actions={<AddJobModal />}
         />
 
         <Card>

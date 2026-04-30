@@ -1031,6 +1031,97 @@ export function insertScannedJobs(jobs: ScannedJobInput[]) {
   return insertMany(jobs);
 }
 
+export function insertManualJob(job: {
+  id: string;
+  company: string;
+  title: string;
+  url: string;
+  rawDescription: string;
+  datePosted: string | null;
+  firstSeenDate: string;
+}) {
+  const database = getDatabase();
+  const insert = database.prepare(
+    `insert or ignore into jobs (
+      id,
+      company,
+      title,
+      url,
+      source,
+      location,
+      remote_type,
+      date_posted,
+      first_seen_date,
+      freshness_label,
+      raw_description,
+      parsed_description,
+      status,
+      fit_score,
+      role_archetype,
+      recommendation,
+      summary,
+      why_it_matches,
+      main_concern,
+      recommended_resume,
+      salary_notes,
+      requirement_match_json,
+      resume_evidence_json,
+      gaps_json,
+      red_flags_json
+    ) values (
+      @id,
+      @company,
+      @title,
+      @url,
+      @source,
+      @location,
+      @remoteType,
+      @datePosted,
+      @firstSeenDate,
+      @freshnessLabel,
+      @rawDescription,
+      @parsedDescription,
+      @status,
+      @fitScore,
+      @roleArchetype,
+      @recommendation,
+      @summary,
+      @whyItMatches,
+      @mainConcern,
+      @recommendedResume,
+      @salaryNotes,
+      @requirementMatchJson,
+      @resumeEvidenceJson,
+      @gapsJson,
+      @redFlagsJson
+    )`
+  );
+
+  const result = insert.run({
+    ...job,
+    source: "manual",
+    location: "Not specified",
+    remoteType: "Not specified",
+    freshnessLabel: "New today",
+    parsedDescription: "",
+    status: "Found",
+    fitScore: 0,
+    roleArchetype: "Unreviewed",
+    recommendation: "Needs review",
+    summary: "Manually added. Evaluate this role before acting.",
+    whyItMatches: "Pending evaluation against profile, resume lanes, and constraints.",
+    mainConcern: "Not evaluated yet.",
+    recommendedResume: "To be selected",
+    salaryNotes: "Not captured.",
+    requirementMatchJson: JSON.stringify([]),
+    resumeEvidenceJson: JSON.stringify([]),
+    gapsJson: JSON.stringify([]),
+    redFlagsJson: JSON.stringify([])
+  });
+
+  return Number(result.changes);
+}
+
 export function recordScanRun(run: ScanRunRecord) {
   getDatabase()
     .prepare(
