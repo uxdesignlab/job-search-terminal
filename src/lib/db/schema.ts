@@ -241,7 +241,7 @@ export const migrations = [
     sql: `
       create table if not exists ai_settings (
         id text primary key default 'singleton',
-        active_provider text not null default 'anthropic',
+        active_provider text not null default 'openai',
         anthropic_api_key text not null default '',
         gemini_api_key text not null default '',
         openai_api_key text not null default '',
@@ -335,6 +335,12 @@ export const migrations = [
       alter table evaluations add column model_used text not null default '';
       alter table evaluations add column tokens_used integer not null default 0;
       alter table evaluations add column generation_ms integer not null default 0;
+    `
+  },
+  {
+    id: "0015_default_provider_openai",
+    sql: `
+      update ai_settings set active_provider = 'openai' where id = 'singleton' and active_provider = 'anthropic';
     `
   },
   {

@@ -5,7 +5,7 @@ import { GeminiProvider } from "./gemini";
 import { OpenAIProvider } from "./openai";
 import type { AIProvider, AIProviderConfig } from "./provider";
 
-export const FALLBACK_ORDER: AIProviderName[] = ["anthropic", "gemini", "openai"];
+export const FALLBACK_ORDER: AIProviderName[] = ["openai", "anthropic", "gemini"];
 
 export function createProvider(name: AIProviderName, config: AIProviderConfig): AIProvider {
   switch (name) {
