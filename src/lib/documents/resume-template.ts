@@ -1,14 +1,21 @@
 export type ResumeTemplateInput = {
   name: string;
-  location: string;
-  portfolio: string;
+  headline: string;
+  contactItems: string[];
   title: string;
   summary: string;
-  competencies: string[];
-  proofPoints: string[];
-  projects: string[];
-  education: string[];
+  impactHeading: string;
+  impactItems: string[];
+  experienceHeading: string;
+  experience: Array<{
+    title: string;
+    organization: string;
+    dateRange: string;
+    bullets: string[];
+  }>;
   skills: string[];
+  recognition: string[];
+  education: string[];
 };
 
 export function renderResumeHtml(input: ResumeTemplateInput) {
@@ -21,10 +28,8 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
     <style>
       :root {
         color-scheme: light;
-        --ink: #111827;
-        --muted: #4b5563;
-        --rule: #d1d5db;
-        --accent: #164e63;
+        --ink: #2f3a40;
+        --muted: #34424a;
       }
 
       * {
@@ -36,8 +41,13 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
         background: #ffffff;
         color: var(--ink);
         font-family: Arial, Helvetica, sans-serif;
-        font-size: 11px;
-        line-height: 1.45;
+        font-size: 11.5px;
+        line-height: 1.38;
+      }
+
+      .page {
+        max-width: 760px;
+        margin: 48px auto 56px;
       }
 
       h1, h2, h3, p, ul {
@@ -45,111 +55,144 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
       }
 
       h1 {
-        font-size: 24px;
+        font-size: 27px;
+        font-weight: 400;
         line-height: 1.1;
         letter-spacing: 0;
+        text-align: center;
       }
 
       h2 {
-        border-top: 1px solid var(--rule);
-        color: var(--accent);
-        font-size: 12px;
-        letter-spacing: 0.05em;
-        margin-top: 16px;
-        padding-top: 9px;
-        text-transform: uppercase;
+        font-size: 20px;
+        font-weight: 400;
+        line-height: 1.2;
+        margin-top: 20px;
       }
 
       h3 {
-        font-size: 12px;
-        margin-top: 10px;
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 1.25;
+        margin-top: 13px;
       }
 
+      .headline,
       .contact {
         color: var(--muted);
-        margin-top: 6px;
+        margin-top: 5px;
+        text-align: center;
       }
 
-      .summary {
-        margin-top: 12px;
+      .summary p {
+        margin-top: 5px;
       }
 
-      .grid {
+      .job-meta {
         display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 8px;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 3px;
       }
 
-      .chip {
-        border: 1px solid var(--rule);
-        border-radius: 4px;
-        padding: 3px 6px;
+      .organization {
+        font-style: normal;
+      }
+
+      .date {
+        white-space: nowrap;
       }
 
       ul {
-        padding-left: 16px;
-        margin-top: 7px;
+        margin-top: 6px;
+        padding-left: 24px;
       }
 
       li + li {
-        margin-top: 4px;
+        margin-top: 3px;
       }
 
       a {
-        color: var(--accent);
+        color: #0057b8;
         text-decoration: none;
+      }
+
+      @page {
+        margin: 0.45in 0.55in;
       }
     </style>
   </head>
   <body>
-    <header>
-      <h1>${escapeHtml(input.name)}</h1>
-      <p class="contact">${escapeHtml(input.location)} | <a href="${escapeAttribute(input.portfolio)}">${escapeHtml(input.portfolio)}</a></p>
-    </header>
+    <main class="page">
+      <header>
+        <h1>${escapeHtml(input.name)}</h1>
+        <p class="headline">${escapeHtml(input.headline)}</p>
+        <p class="contact">${renderContact(input.contactItems)}</p>
+      </header>
 
-    <section class="summary">
-      <h2>Professional Summary</h2>
-      <p>${escapeHtml(input.summary)}</p>
-    </section>
+      <section class="summary">
+        <h2>Summary</h2>
+        <p>${escapeHtml(input.summary)}</p>
+      </section>
 
-    <section>
-      <h2>Core Competencies</h2>
-      <div class="grid">
-        ${input.competencies.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("")}
-      </div>
-    </section>
+      <section>
+        <h2>${escapeHtml(input.impactHeading)}</h2>
+        <ul>
+          ${input.impactItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      </section>
 
-    <section>
-      <h2>Work Experience</h2>
-      <h3>Evidence-backed leadership highlights</h3>
-      <ul>
-        ${input.proofPoints.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-      </ul>
-    </section>
+      <section>
+        <h2>${escapeHtml(input.experienceHeading)}</h2>
+        ${input.experience
+          .map(
+            (item) => `
+          <article>
+            <h3>${escapeHtml(item.title)}</h3>
+            <div class="job-meta">
+              <p class="organization">${escapeHtml(item.organization)}</p>
+              <p class="date">${escapeHtml(item.dateRange)}</p>
+            </div>
+            <ul>
+              ${item.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}
+            </ul>
+          </article>`
+          )
+          .join("")}
+      </section>
 
-    <section>
-      <h2>Projects</h2>
-      <ul>
-        ${input.projects.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-      </ul>
-    </section>
-
-    <section>
-      <h2>Education & Certifications</h2>
-      <ul>
-        ${input.education.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-      </ul>
-    </section>
-
-    <section>
-      <h2>Skills</h2>
-      <ul>
-        ${input.skills.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-      </ul>
-    </section>
+      ${renderOptionalSection("Skills", input.skills)}
+      ${renderOptionalSection("Recognition", input.recognition)}
+      ${renderOptionalSection("Education", input.education)}
+    </main>
   </body>
 </html>`;
+}
+
+function renderOptionalSection(title: string, items: string[]) {
+  if (items.length === 0) {
+    return "";
+  }
+
+  return `
+      <section>
+        <h2>${escapeHtml(title)}</h2>
+        <ul>
+          ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+      </section>`;
+}
+
+function renderContact(items: string[]) {
+  return items
+    .map((item) => {
+      if (item.includes("@") || item.startsWith("linkedin.") || item.startsWith("pavel.")) {
+        const href = item.includes("@") ? `mailto:${item}` : `https://${item}`;
+        return `<a href="${escapeAttribute(href)}">${escapeHtml(item)}</a>`;
+      }
+
+      return escapeHtml(item);
+    })
+    .join(" • ");
 }
 
 function escapeHtml(value: string) {

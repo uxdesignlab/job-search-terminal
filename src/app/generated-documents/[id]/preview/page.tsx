@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell } from "@/components/ui";
-import { getGeneratedDocumentById } from "@/lib/db/queries";
+import { getGeneratedDocumentById, getJobById } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +16,28 @@ export default async function GeneratedDocumentPreview({ params }: GeneratedDocu
     notFound();
   }
 
+  const job = getJobById(document.jobId);
+
   return (
     <Shell activeItem="Resumes">
       <div className="grid gap-6">
         <PageHeader
           actions={
-            <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${document.id}/pdf`}>
-              Open PDF
-            </a>
+            <>
+              {job ? (
+                <a
+                  className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent"
+                  href={job.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Job posting
+                </a>
+              ) : null}
+              <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${document.id}/pdf`}>
+                Open PDF
+              </a>
+            </>
           }
           description={`${document.company} · ${document.role}`}
           eyebrow="Generated resume"

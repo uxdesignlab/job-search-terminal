@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Select, Shell, Table, Td, Th } from "@/components/ui";
+import { formatPostedDate } from "@/lib/dates";
 import { getJobs } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export default function JobsPage() {
     <Shell activeItem="Jobs">
       <div className="grid gap-6">
         <PageHeader
-          description="Discovered jobs with filters, fit scoring, freshness labels, status, and recommended action."
+          description="Discovered jobs with fit scoring, posted dates, status, and recommended action."
           eyebrow="Position dashboard"
           title="Jobs"
         />
@@ -25,7 +26,7 @@ export default function JobsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Filters</CardTitle>
-            <CardDescription>Filter the position dashboard by status, fit, freshness, and priority.</CardDescription>
+            <CardDescription>Filter the position dashboard by status, fit, posted date, and priority.</CardDescription>
           </CardHeader>
           <div className="grid gap-4 md:grid-cols-4">
             <Select label="Status" name="status">
@@ -41,11 +42,10 @@ export default function JobsPage() {
               <option>60% and above</option>
               <option>Below 60%</option>
             </Select>
-            <Select label="Freshness" name="freshness">
-              <option>All freshness</option>
-              <option>New today</option>
-              <option>New this week</option>
-              <option>Recently found</option>
+            <Select label="Posted date" name="posted-date">
+              <option>All posted dates</option>
+              <option>Known posted date</option>
+              <option>Posted date unavailable</option>
             </Select>
             <Select label="Sort" name="sort">
               <option>Highest match</option>
@@ -75,7 +75,7 @@ export default function JobsPage() {
               </CardHeader>
               <div className="flex flex-wrap gap-2">
                 <Badge>{job.fitScore}% fit</Badge>
-                <Badge>{job.freshnessLabel}</Badge>
+                <Badge>{formatPostedDate(job)}</Badge>
                 <Badge tone={toneForRecommendation(job.recommendation)}>{job.recommendation}</Badge>
               </div>
             </Card>
@@ -90,7 +90,7 @@ export default function JobsPage() {
                 <Th scope="col">Role</Th>
                 <Th scope="col">Location</Th>
                 <Th scope="col">Fit</Th>
-                <Th scope="col">Freshness</Th>
+                <Th scope="col">Posted</Th>
                 <Th scope="col">Status</Th>
                 <Th scope="col">Action</Th>
               </tr>
@@ -107,7 +107,7 @@ export default function JobsPage() {
                   <Td>{job.location}</Td>
                   <Td>{job.fitScore}%</Td>
                   <Td>
-                    <Badge>{job.freshnessLabel}</Badge>
+                    <Badge>{formatPostedDate(job)}</Badge>
                   </Td>
                   <Td>{job.status}</Td>
                   <Td>

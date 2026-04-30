@@ -8,8 +8,13 @@ async function main() {
   const document = getGeneratedDocumentById(result.id);
 
   assert.ok(document);
-  assert.ok(document.content.includes("Professional Summary"));
-  assert.ok(document.content.includes("Core Competencies"));
+  assert.ok(document.content.includes("Jane Doe"));
+  assert.ok(document.content.includes("City, State"));
+  assert.ok(document.content.includes("Summary"));
+  assert.ok(document.content.includes("Selected Impact"));
+  assert.ok(document.content.includes("Professional Experience"));
+  assert.ok(!document.content.includes("Core Competencies"));
+  assert.ok(!document.content.includes("Projects"));
   assert.ok(document.pdfUrl.endsWith(".pdf"));
   assert.ok(document.htmlUrl.endsWith(".html"));
   assert.ok(document.keywordCoverage >= 0);

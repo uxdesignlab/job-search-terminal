@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { PDFParse } from "pdf-parse";
 import { getEvaluationByJobId, getJobById, getResumes, getSkills, getUserProfile, saveGeneratedDocument } from "../db/queries";
 import type { EvaluationRecord, GeneratedDocumentInput, JobRecord, ResumeRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
 import { renderHtmlToPdf } from "./pdf-renderer";
-import { renderResumeHtml } from "./resume-template";
+import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 
 export type GeneratedResumeResult = GeneratedDocumentInput & {
   pageCount: number;
@@ -28,7 +30,8 @@ export async function generateTailoredResume(jobId: string): Promise<GeneratedRe
   const resumes = getResumes();
   const skills = getSkills();
   const baseResume = selectBaseResume(evaluation, resumes);
-  const content = buildTailoredContent(job, evaluation, profile, baseResume, skills);
+  const sourceResumeText = await loadSourceResumeText(baseResume);
+  const content = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText);
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -82,60 +85,171 @@ function selectBaseResume(evaluation: EvaluationRecord, resumes: ResumeRecord[])
   return fallback;
 }
 
+async function loadSourceResumeText(resume: ResumeRecord) {
+  const sourcePath = path.join(process.cwd(), resume.sourceFile);
+
+  try {
+    const parser = new PDFParse({ data: readFileSync(sourcePath) });
+    const result = await parser.getText();
+    await parser.destroy();
+    return normalizePdfText(result.text);
+  } catch {
+    return normalizePdfText(resume.extractedText);
+  }
+}
+
 function buildTailoredContent(
   job: JobRecord,
   evaluation: EvaluationRecord,
   profile: UserProfileRecord,
   resume: ResumeRecord,
-  skills: SkillRecord[]
+  skills: SkillRecord[],
+  sourceResumeText: string
 ) {
+  const source = parseSourceResume(sourceResumeText, profile, resume);
   const keywords = evaluation.keywords.slice(0, 8);
-  const competencies = unique([
-    ...keywords,
-    ...skills
+  const preferredSkillNames = skills
       .filter((skill) => skill.usePreference !== "use_less")
-      .map((skill) => skill.skillName)
-      .slice(0, 8)
-  ]).slice(0, 10);
-  const proofPoints = rankedProofPoints(resume, keywords);
-  const projects = unique([
-    ...evaluation.requirementMatch.slice(0, 4),
-    ...evaluation.resumeEvidence.map((item) => trimEvidence(item)).slice(0, 4)
-  ]).slice(0, 5);
+    .map((skill) => skill.skillName);
 
   return {
-    name: profile.name,
-    location: profile.location,
-    portfolio: profile.portfolio,
+    name: source.name || profile.name,
+    headline: source.headline,
+    contactItems: source.contactItems,
     title: job.title,
-    summary: `${profile.name} is positioned for ${job.title} at ${job.company} through ${competencies.slice(0, 4).join(", ")}. This version prioritizes evidence already present in the ${resume.name} resume lane and avoids unsupported claims.`,
-    competencies,
-    proofPoints,
-    projects,
-    education: ["Education, certifications, and formal credentials retained from the selected source resume lane."],
-    skills: unique([...profile.strongestSkills, ...profile.skillsToUseMore, ...keywords]).slice(0, 12)
+    summary: source.summary,
+    impactHeading: source.impactHeading,
+    impactItems: rankItems(source.impactItems, keywords).slice(0, source.impactItems.length),
+    experienceHeading: source.experienceHeading,
+    experience: source.experience.map((entry) => ({
+      ...entry,
+      bullets: rankItems(entry.bullets, keywords).slice(0, entry.bullets.length)
+    })),
+    skills: rankItems(source.skills, [...keywords, ...preferredSkillNames]).slice(0, source.skills.length),
+    recognition: source.recognition,
+    education: source.education
+  } satisfies ResumeTemplateInput;
+}
+
+function parseSourceResume(text: string, profile: UserProfileRecord, resume: ResumeRecord) {
+  const lines = text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line && !/^-- \d+ of \d+ --$/.test(line));
+  const summaryIndex = findHeading(lines, ["Summary"]);
+  const impactIndex = findHeading(lines, ["Selected Impact", "Selected Executive Impact", "Career Highlights", "Core Strengths"], summaryIndex + 1);
+  const experienceIndex = findHeading(lines, ["Professional Experience", "Teaching Experience"], impactIndex + 1);
+  const skillsIndex = findHeading(lines, ["Skills", "Core Skills"], experienceIndex + 1);
+  const recognitionIndex = findHeading(lines, ["Recognition"], experienceIndex + 1);
+  const educationIndex = findHeading(lines, ["Education"], experienceIndex + 1);
+  const firstTailIndex = minPositive([skillsIndex, recognitionIndex, educationIndex], lines.length);
+  const header = parseHeader(lines.slice(0, Math.max(summaryIndex, 0)), profile, resume);
+
+  return {
+    ...header,
+    summary: joinLines(lines.slice(summaryIndex + 1, impactIndex)),
+    impactHeading: lines[impactIndex] || "Selected Impact",
+    impactItems: parseBulletLines(lines.slice(impactIndex + 1, experienceIndex)),
+    experienceHeading: lines[experienceIndex] || "Professional Experience",
+    experience: parseExperience(lines.slice(experienceIndex + 1, firstTailIndex)),
+    skills: parseSectionList(lines, skillsIndex, minPositive([recognitionIndex, educationIndex], lines.length)),
+    recognition: parseSectionList(lines, recognitionIndex, educationIndex > recognitionIndex ? educationIndex : lines.length),
+    education: parseSectionList(lines, educationIndex, lines.length)
   };
 }
 
-function rankedProofPoints(resume: ResumeRecord, keywords: string[]) {
-  const candidates = [...resume.evidence, ...splitResumeText(resume.extractedText)];
-  const ranked = candidates
-    .map((item) => ({
-      item: trimEvidence(item),
-      score: keywords.reduce((count, keyword) => count + (item.toLowerCase().includes(keyword.toLowerCase()) ? 1 : 0), 0)
-    }))
-    .filter((item) => item.item.length > 30)
-    .sort((a, b) => b.score - a.score)
-    .map((item) => item.item);
+function parseHeader(lines: string[], profile: UserProfileRecord, resume: ResumeRecord) {
+  const name = lines[0] || profile.name;
+  const contactIndex = lines.findIndex((line) => line.includes("@") || line.includes("+1-"));
+  const headline = contactIndex > 1 ? lines.slice(1, contactIndex).join(" ") : resume.name;
+  const contactLine = contactIndex >= 0 ? lines[contactIndex] : `${profile.location} • ${profile.portfolio}`;
 
-  return unique(ranked).slice(0, 8);
+  return {
+    name,
+    headline,
+    contactItems: contactLine.split("•").map((item) => item.trim()).filter(Boolean)
+  };
 }
 
-function splitResumeText(text: string) {
-  return text
-    .split(/(?:\n|●|\u2022|\. )+/)
-    .map((item) => item.replace(/\s+/g, " ").trim())
-    .filter((item) => item.length > 35 && item.length < 260);
+function parseExperience(lines: string[]) {
+  const entries: ResumeTemplateInput["experience"] = [];
+  let current: ResumeTemplateInput["experience"][number] | undefined;
+  let pendingTitle = "";
+
+  for (const line of lines) {
+    if (line.startsWith("●")) {
+      const bullet = line.replace(/^●\s*/, "").trim();
+      if (current) {
+        current.bullets.push(bullet);
+      }
+      continue;
+    }
+
+    const datedOrganization = line.match(/^(.+?)\s+((?:\d{2}[/.]\d{4})\s+[–-]\s+(?:Present|\d{2}[/.]\d{4}))$/);
+    if (pendingTitle && datedOrganization) {
+      current = {
+        title: pendingTitle,
+        organization: datedOrganization[1].trim(),
+        dateRange: datedOrganization[2].trim(),
+        bullets: []
+      };
+      entries.push(current);
+      pendingTitle = "";
+      continue;
+    }
+
+    if (current?.bullets.length) {
+      current.bullets[current.bullets.length - 1] = `${current.bullets[current.bullets.length - 1]} ${line}`.trim();
+      continue;
+    }
+
+    pendingTitle = pendingTitle ? `${pendingTitle} ${line}` : line;
+  }
+
+  return entries;
+}
+
+function parseSectionList(lines: string[], startIndex: number, endIndex: number) {
+  if (startIndex < 0) {
+    return [];
+  }
+
+  const sectionLines = lines.slice(startIndex + 1, endIndex).filter((line) => !/^-- \d+ of \d+ --$/.test(line));
+  const bullets = parseBulletLines(sectionLines);
+  return bullets.length > 0 ? bullets : sectionLines;
+}
+
+function parseBulletLines(lines: string[]) {
+  const items: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("●")) {
+      items.push(line.replace(/^●\s*/, "").trim());
+      continue;
+    }
+
+    if (items.length > 0) {
+      items[items.length - 1] = `${items[items.length - 1]} ${line}`.trim();
+    } else if (line) {
+      items.push(line);
+    }
+  }
+
+  return items;
+}
+
+function rankItems(items: string[], keywords: string[]) {
+  return unique(
+    items
+      .map((item, index) => ({
+        item: trimEvidence(item),
+        index,
+        score: keywords.reduce((count, keyword) => count + (item.toLowerCase().includes(keyword.toLowerCase()) ? 1 : 0), 0)
+      }))
+      .filter((item) => item.item.length > 0)
+      .sort((a, b) => (b.score === a.score ? a.index - b.index : b.score - a.score))
+      .map((item) => item.item)
+  );
 }
 
 function buildTailoringPlan(evaluation: EvaluationRecord, resume: ResumeRecord, keywordCoverage: number) {
@@ -162,6 +276,29 @@ function keywordCoverageFor(content: ReturnType<typeof buildTailoredContent>, ke
 function paperFormatFor(job: JobRecord): "letter" | "a4" {
   const location = `${job.location} ${job.remoteType}`.toLowerCase();
   return location.includes("united states") || location.includes(" us") || location.includes("canada") ? "letter" : "a4";
+}
+
+function findHeading(lines: string[], headings: string[], startIndex = 0) {
+  const normalizedHeadings = headings.map((heading) => heading.toLowerCase());
+  return lines.findIndex((line, index) => index >= startIndex && normalizedHeadings.includes(line.toLowerCase()));
+}
+
+function minPositive(values: number[], fallback: number) {
+  const positive = values.filter((value) => value >= 0);
+  return positive.length > 0 ? Math.min(...positive) : fallback;
+}
+
+function joinLines(lines: string[]) {
+  return lines.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function normalizePdfText(text: string) {
+  return text
+    .replace(/\r/g, "")
+    .replace(/\n[ \t]*-- \d+ of \d+ --[ \t]*\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function trimEvidence(value: string) {
