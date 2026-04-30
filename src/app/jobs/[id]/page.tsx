@@ -7,6 +7,7 @@ import { PrepareApplicationAnswersForm } from "@/components/prepare-application-
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select, Shell, Textarea } from "@/components/ui";
 import { prepareApplicationAnswers } from "@/lib/applications/application-assistant";
 import { isApplicationStatus } from "@/lib/applications/status";
+import { formatPostedDate } from "@/lib/dates";
 import {
   getApplicationAnswerDrafts,
   getApplicationByJobId,
@@ -117,6 +118,14 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
               <EvaluateJobForm action={evaluateJobAction} />
               <GenerateResumeForm action={generateResumeAction} />
               <PrepareApplicationAnswersForm action={prepareAnswersAction} variant="secondary" />
+              <a
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent"
+                href={job.url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Job posting
+              </a>
               <ApplicationStatusForm action={updateStatusAction} label="Save for follow-up" status="Follow-up needed" variant="quiet" />
             </>
           }
@@ -134,8 +143,8 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>{job.freshnessLabel}</CardTitle>
-              <CardDescription>Freshness</CardDescription>
+              <CardTitle>{formatPostedDate(job)}</CardTitle>
+              <CardDescription>Date posted</CardDescription>
             </CardHeader>
           </Card>
           <Card>

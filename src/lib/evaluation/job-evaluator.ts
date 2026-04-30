@@ -1,5 +1,6 @@
 import { getJobById, getResumes, getRoleDirections, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
 import type { EvaluationSections, JobEvaluationResultInput, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
+import { formatPostedDate } from "../dates";
 
 type RoleSignal = {
   archetype: string;
@@ -245,7 +246,7 @@ function buildSections(input: {
     ],
     postingLegitimacy: [
       `Assessment: ${input.legitimacyLabel}`,
-      `Freshness: ${input.job.freshnessLabel}`,
+      `Posted: ${formatPostedDate(input.job)}`,
       ...input.redFlags
     ]
   };

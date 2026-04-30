@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, Table, Td, Th } from "@/components/ui";
-import { getGeneratedDocuments, getResumes } from "@/lib/db/queries";
+import { formatPostedDate } from "@/lib/dates";
+import { getGeneratedDocuments, getJobById, getResumes } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ export default function ResumesPage() {
               <thead>
                 <tr>
                   <Th scope="col">Target</Th>
+                  <Th scope="col">Posted</Th>
                   <Th scope="col">Base resume</Th>
                   <Th scope="col">Generated</Th>
                   <Th scope="col">Coverage</Th>
@@ -53,36 +55,52 @@ export default function ResumesPage() {
                 </tr>
               </thead>
               <tbody>
-                {generatedDocuments.map((document) => (
-                  <tr key={document.id}>
-                    <Td>
-                      {document.company}
-                      <p className="text-xs text-muted">{document.role}</p>
-                    </Td>
-                    <Td>{document.baseResume}</Td>
-                    <Td>{document.generatedDate}</Td>
-                    <Td>{document.keywordCoverage}%</Td>
-                    <Td>
-                      <Badge>{document.status}</Badge>
-                    </Td>
-                    <Td>
-                      <div className="flex flex-wrap gap-2">
-                        {document.content ? (
-                          <Link className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/preview`}>
-                            Preview
+                {generatedDocuments.map((document) => {
+                  const job = getJobById(document.jobId);
+
+                  return (
+                    <tr key={document.id}>
+                      <Td>
+                        {job ? (
+                          <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
+                            {document.company}
                           </Link>
                         ) : (
-                          <span className="text-xs text-muted">Preview pending</span>
+                          document.company
                         )}
-                        {document.pdfUrl ? (
-                          <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/pdf`}>
-                            PDF
-                          </a>
-                        ) : null}
-                      </div>
-                    </Td>
-                  </tr>
-                ))}
+                        <p className="text-xs text-muted">{document.role}</p>
+                      </Td>
+                      <Td>{job ? formatPostedDate(job) : "Posted date unavailable"}</Td>
+                      <Td>{document.baseResume}</Td>
+                      <Td>{document.generatedDate}</Td>
+                      <Td>{document.keywordCoverage}%</Td>
+                      <Td>
+                        <Badge>{document.status}</Badge>
+                      </Td>
+                      <Td>
+                        <div className="flex flex-wrap gap-2">
+                          {document.content ? (
+                            <Link className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/preview`}>
+                              Preview
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-muted">Preview pending</span>
+                          )}
+                          {document.pdfUrl ? (
+                            <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/pdf`}>
+                              PDF
+                            </a>
+                          ) : null}
+                          {job ? (
+                            <a className="font-medium text-accent hover:underline" href={job.url} rel="noreferrer" target="_blank">
+                              Job posting
+                            </a>
+                          ) : null}
+                        </div>
+                      </Td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           ) : (
