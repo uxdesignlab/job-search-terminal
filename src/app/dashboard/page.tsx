@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
 import { getActivity, getDashboardMetrics, getJobs, getLatestScanRun } from "@/lib/db/queries";
 import { runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 
@@ -96,6 +96,14 @@ export default function DashboardPage() {
                 ))}
               </tbody>
             </Table>
+            {priorityJobs.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  description="Run the evaluator on newly found roles to surface priority applications."
+                  title="No priority matches currently"
+                />
+              </div>
+            ) : null}
           </Card>
 
           <Card>
@@ -110,6 +118,12 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ol>
+            {activity.length === 0 ? (
+              <EmptyState
+                description="Activity appears after scans, evaluations, resume generation, and tracker updates."
+                title="No activity yet"
+              />
+            ) : null}
           </Card>
         </section>
       </div>

@@ -230,21 +230,26 @@ Review status:
 
 Goal: make the local MVP dependable and polished.
 
-- [ ] Add Playwright or equivalent browser smoke tests for primary flows.
-- [ ] Add accessibility checks for dashboard routes.
-- [ ] Add responsive screenshot review for core screens.
-- [ ] Add empty, loading, error, and success states across workflows.
-- [ ] Add data backup/export path.
-- [ ] Add import/export docs for profile, jobs, and generated outputs.
-- [ ] Add local setup troubleshooting docs.
-- [ ] Review color contrast and keyboard navigation against WCAG 2.2 AA.
-- [ ] Run dependency audit and resolve actionable issues conservatively.
+- [x] Add Playwright or equivalent browser smoke tests for primary flows.
+- [x] Add accessibility checks for dashboard routes.
+- [x] Add responsive screenshot review for core screens.
+- [x] Add empty, loading, error, and success states across workflows.
+- [x] Add data backup/export path.
+- [x] Add import/export docs for profile, jobs, and generated outputs.
+- [x] Add local setup troubleshooting docs.
+- [x] Review color contrast and keyboard navigation against WCAG 2.2 AA.
+- [x] Run dependency audit and resolve actionable issues conservatively.
 
 Exit criteria:
 
-- [ ] Core user flows are covered by automated or documented manual checks.
-- [ ] UI meets the design-system and accessibility checklist.
-- [ ] Local data can be backed up and restored.
+- [x] Core user flows are covered by automated or documented manual checks.
+- [x] UI meets the design-system and accessibility checklist.
+- [x] Local data can be backed up and restored.
+
+Review status:
+
+- [ ] User review/testing complete.
+- [ ] User approved commit for Phase 9.
 
 ## Phase 10 — Optional Access And Future Platform Work
 

@@ -21,6 +21,9 @@ todo for current phase status and QA gates.
 - [Job evaluation](docs/job-evaluation.md)
 - [Resume generation](docs/resume-generation.md)
 - [Application assistant and tracker](docs/application-assistant-tracker.md)
+- [Quality hardening](docs/quality-hardening.md)
+- [Data management](docs/data-management.md)
+- [Troubleshooting](docs/troubleshooting.md)
 - [Project implementation todo](docs/project-implementation-todo.md)
 - [Phase 1 todo](docs/phase-1-todo.md)
 - [Lessons](docs/lessons.md)
@@ -33,4 +36,7 @@ npm run dev
 npm run lint
 npm run typecheck
 npm run build
+npm run quality:check
+npm run data:backup
+npm run data:export
 ```
