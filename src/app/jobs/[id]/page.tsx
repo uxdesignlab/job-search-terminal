@@ -4,6 +4,7 @@ import { ApplicationStatusForm } from "@/components/application-status-form";
 import { EvaluateJobForm } from "@/components/evaluate-job-form";
 import { GenerateResumeForm } from "@/components/generate-resume-form";
 import { PrepareApplicationAnswersForm } from "@/components/prepare-application-answers-form";
+import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select, Shell, Textarea } from "@/components/ui";
 import { prepareApplicationAnswers } from "@/lib/applications/application-assistant";
 import { isApplicationStatus } from "@/lib/applications/status";
@@ -40,7 +41,7 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
 
-  async function evaluateJobAction() {
+  async function evaluateJobFallbackAction() {
     "use server";
 
     evaluateJob(id);
@@ -115,7 +116,8 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
         <PageHeader
           actions={
             <>
-              <EvaluateJobForm action={evaluateJobAction} />
+              <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />
+              <EvaluateJobForm action={evaluateJobFallbackAction} />
               <GenerateResumeForm action={generateResumeAction} />
               <PrepareApplicationAnswersForm action={prepareAnswersAction} variant="secondary" />
               <a
@@ -311,6 +313,12 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                 </div>
               </Card>
             </section>
+
+            {evaluation.providerUsed && (
+              <p className="text-xs text-muted">
+                Generated with {evaluation.providerUsed} / {evaluation.modelUsed} · {(evaluation.generationMs / 1000).toFixed(1)}s
+              </p>
+            )}
 
             <section className="grid gap-4 lg:grid-cols-2">
               <EvaluationSection title="A. Role summary" items={evaluation.sections.roleSummary} />

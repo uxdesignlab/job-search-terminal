@@ -1343,7 +1343,7 @@ export function getAISettings(): AISettingsRecord {
   if (!row) {
     return {
       id: "singleton",
-      activeProvider: "anthropic",
+      activeProvider: "openai",
       anthropicApiKey: "",
       geminiApiKey: "",
       openaiApiKey: "",
