@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { getDatabase } from "./client";
 import type {
+  AIProviderName,
+  AISettingsRecord,
+  AISettingsUpdateInput,
   ActivityRecord,
   ApplicationAnswerDraftInput,
   ApplicationAnswerDraftRecord,
   ApplicationRecord,
   ApplicationStatusUpdateInput,
+  CompanyResearchInput,
+  CompanyResearchRecord,
   DashboardMetric,
   EvaluationCorrectionInput,
   EvaluationFeedbackRecord,
@@ -16,6 +21,8 @@ import type {
   JobEvaluationResultInput,
   JobRecord,
   JsonValue,
+  OutreachDraftInput,
+  OutreachDraftRecord,
   ProfileUpdateInput,
   ResumeRecord,
   RoleDirectionRecord,
@@ -23,7 +30,10 @@ import type {
   ScannedJobInput,
   ScanRunRecord,
   SkillRecord,
-  UserProfileRecord
+  StoryInput,
+  StoryRecord,
+  UserProfileRecord,
+  WritingStyleRecord
 } from "./types";
 
 const parseJson = <T>(value: string): T => JSON.parse(value) as T;
@@ -110,6 +120,10 @@ type EvaluationRow = {
   legitimacy_label: string;
   keywords_json: string;
   user_correction_json: string;
+  provider_used: string;
+  model_used: string;
+  tokens_used: number;
+  generation_ms: number;
   created_at: string;
 };
 
@@ -1257,6 +1271,10 @@ function mapEvaluation(row: EvaluationRow): EvaluationRecord {
     legitimacyLabel: row.legitimacy_label,
     keywords: parseJson<string[]>(row.keywords_json || "[]"),
     userCorrection: parseJson<Record<string, JsonValue>>(row.user_correction_json || "{}"),
+    providerUsed: row.provider_used ?? "",
+    modelUsed: row.model_used ?? "",
+    tokensUsed: row.tokens_used ?? 0,
+    generationMs: row.generation_ms ?? 0,
     createdAt: row.created_at
   };
 }
@@ -1302,4 +1320,285 @@ function scanActivityLabel(run: ScanRunRecord) {
   }
 
   return `Job scan completed with ${run.newJobsCount} new jobs`;
+}
+
+// ─── AI Settings ─────────────────────────────────────────────────────────────
+
+type AISettingsRow = {
+  id: string;
+  active_provider: string;
+  anthropic_api_key: string;
+  gemini_api_key: string;
+  openai_api_key: string;
+  anthropic_model: string;
+  gemini_model: string;
+  openai_model: string;
+  fallback_provider: string;
+  onboarding_dismissed: number;
+  updated_at: string;
+};
+
+export function getAISettings(): AISettingsRecord {
+  const row = getDatabase().prepare("select * from ai_settings where id = 'singleton'").get() as AISettingsRow | undefined;
+  if (!row) {
+    return {
+      id: "singleton",
+      activeProvider: "anthropic",
+      anthropicApiKey: "",
+      geminiApiKey: "",
+      openaiApiKey: "",
+      anthropicModel: "claude-sonnet-4-6",
+      geminiModel: "gemini-2.5-flash",
+      openaiModel: "gpt-5.4-mini",
+      fallbackProvider: "",
+      onboardingDismissed: false,
+      updatedAt: new Date().toISOString()
+    };
+  }
+  return {
+    id: row.id,
+    activeProvider: row.active_provider as AIProviderName,
+    anthropicApiKey: row.anthropic_api_key,
+    geminiApiKey: row.gemini_api_key,
+    openaiApiKey: row.openai_api_key,
+    anthropicModel: row.anthropic_model,
+    geminiModel: row.gemini_model,
+    openaiModel: row.openai_model,
+    fallbackProvider: row.fallback_provider,
+    onboardingDismissed: Boolean(row.onboarding_dismissed),
+    updatedAt: row.updated_at
+  };
+}
+
+export function saveAISettings(input: AISettingsUpdateInput) {
+  getDatabase()
+    .prepare(
+      `update ai_settings set
+        active_provider = @activeProvider,
+        anthropic_api_key = @anthropicApiKey,
+        gemini_api_key = @geminiApiKey,
+        openai_api_key = @openaiApiKey,
+        anthropic_model = @anthropicModel,
+        gemini_model = @geminiModel,
+        openai_model = @openaiModel,
+        fallback_provider = @fallbackProvider,
+        onboarding_dismissed = @onboardingDismissed,
+        updated_at = current_timestamp
+      where id = 'singleton'`
+    )
+    .run({
+      ...input,
+      onboardingDismissed: input.onboardingDismissed ? 1 : 0
+    });
+}
+
+// ─── Story Bank ───────────────────────────────────────────────────────────────
+
+type StoryRow = {
+  id: string;
+  title: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+  reflection: string;
+  skills_json: string;
+  themes_json: string;
+  source_job_id: string | null;
+  source_block_f: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapStory(row: StoryRow): StoryRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    situation: row.situation,
+    task: row.task,
+    action: row.action,
+    result: row.result,
+    reflection: row.reflection,
+    skills: parseJson<string[]>(row.skills_json || "[]"),
+    themes: parseJson<string[]>(row.themes_json || "[]"),
+    sourceJobId: row.source_job_id,
+    sourceBlockF: row.source_block_f,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function getStories(): StoryRecord[] {
+  const rows = getDatabase().prepare("select * from story_bank order by updated_at desc").all() as StoryRow[];
+  return rows.map(mapStory);
+}
+
+export function getStoriesByJobId(jobId: string): StoryRecord[] {
+  const rows = getDatabase().prepare("select * from story_bank where source_job_id = @jobId order by updated_at desc").all({ jobId }) as StoryRow[];
+  return rows.map(mapStory);
+}
+
+export function saveStory(input: StoryInput) {
+  getDatabase()
+    .prepare(
+      `insert or replace into story_bank (
+        id, title, situation, task, action, result, reflection,
+        skills_json, themes_json, source_job_id, source_block_f,
+        updated_at
+      ) values (
+        @id, @title, @situation, @task, @action, @result, @reflection,
+        @skillsJson, @themesJson, @sourceJobId, @sourceBlockF,
+        current_timestamp
+      )`
+    )
+    .run({
+      ...input,
+      skillsJson: JSON.stringify(input.skills),
+      themesJson: JSON.stringify(input.themes),
+      sourceJobId: input.sourceJobId ?? null,
+      sourceBlockF: input.sourceBlockF ?? ""
+    });
+  logActivity("story_bank", input.id, `Story saved: ${input.title}`, { sourceJobId: input.sourceJobId });
+}
+
+export function deleteStory(id: string) {
+  getDatabase().prepare("delete from story_bank where id = @id").run({ id });
+  logActivity("story_bank", id, "Story deleted", {});
+}
+
+// ─── Company Research ─────────────────────────────────────────────────────────
+
+type CompanyResearchRow = {
+  id: string;
+  job_id: string;
+  company: string;
+  ai_strategy: string;
+  recent_movements: string;
+  engineering_culture: string;
+  technical_challenges: string;
+  competitive_position: string;
+  candidate_angle: string;
+  provider_used: string;
+  model_used: string;
+  created_at: string;
+};
+
+function mapCompanyResearch(row: CompanyResearchRow): CompanyResearchRecord {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    company: row.company,
+    aiStrategy: row.ai_strategy,
+    recentMovements: row.recent_movements,
+    engineeringCulture: row.engineering_culture,
+    technicalChallenges: row.technical_challenges,
+    competitivePosition: row.competitive_position,
+    candidateAngle: row.candidate_angle,
+    providerUsed: row.provider_used,
+    modelUsed: row.model_used,
+    createdAt: row.created_at
+  };
+}
+
+export function getCompanyResearch(jobId: string): CompanyResearchRecord | null {
+  const row = getDatabase().prepare("select * from company_research where job_id = @jobId").get({ jobId }) as CompanyResearchRow | undefined;
+  return row ? mapCompanyResearch(row) : null;
+}
+
+export function saveCompanyResearch(input: CompanyResearchInput) {
+  getDatabase()
+    .prepare(
+      `insert or replace into company_research (
+        id, job_id, company, ai_strategy, recent_movements,
+        engineering_culture, technical_challenges, competitive_position,
+        candidate_angle, provider_used, model_used
+      ) values (
+        @id, @jobId, @company, @aiStrategy, @recentMovements,
+        @engineeringCulture, @technicalChallenges, @competitivePosition,
+        @candidateAngle, @providerUsed, @modelUsed
+      )`
+    )
+    .run(input);
+  logActivity("company_research", input.jobId, `Company research generated for ${input.company}`, {
+    providerUsed: input.providerUsed,
+    modelUsed: input.modelUsed
+  });
+}
+
+// ─── Outreach Drafts ──────────────────────────────────────────────────────────
+
+type OutreachDraftRow = {
+  id: string;
+  job_id: string;
+  contact_type: string;
+  message: string;
+  char_count: number;
+  status: string;
+  created_at: string;
+};
+
+function mapOutreachDraft(row: OutreachDraftRow): OutreachDraftRecord {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    contactType: row.contact_type as OutreachDraftRecord["contactType"],
+    message: row.message,
+    charCount: row.char_count,
+    status: row.status,
+    createdAt: row.created_at
+  };
+}
+
+export function getOutreachDrafts(jobId: string): OutreachDraftRecord[] {
+  const rows = getDatabase().prepare("select * from outreach_drafts where job_id = @jobId order by created_at desc").all({ jobId }) as OutreachDraftRow[];
+  return rows.map(mapOutreachDraft);
+}
+
+export function saveOutreachDraft(input: OutreachDraftInput) {
+  getDatabase()
+    .prepare(
+      `insert or replace into outreach_drafts (
+        id, job_id, contact_type, message, char_count
+      ) values (
+        @id, @jobId, @contactType, @message, @charCount
+      )`
+    )
+    .run({ ...input, charCount: input.message.length });
+  logActivity("outreach", input.jobId, `Outreach draft saved for ${input.contactType}`, { charCount: input.message.length });
+}
+
+export function deleteOutreachDraftsForJob(jobId: string) {
+  getDatabase().prepare("delete from outreach_drafts where job_id = @jobId").run({ jobId });
+}
+
+// ─── Writing Style Cache ──────────────────────────────────────────────────────
+
+type WritingStyleRow = {
+  id: string;
+  tone_profile: string;
+  sample_count: number;
+  last_updated: string;
+};
+
+export function getWritingStyle(): WritingStyleRecord {
+  const row = getDatabase().prepare("select * from writing_style_cache where id = 'singleton'").get() as WritingStyleRow | undefined;
+  return {
+    id: "singleton",
+    toneProfile: row?.tone_profile ?? "",
+    sampleCount: row?.sample_count ?? 0,
+    lastUpdated: row?.last_updated ?? new Date().toISOString()
+  };
+}
+
+export function saveWritingStyle(toneProfile: string, sampleCount: number) {
+  getDatabase()
+    .prepare(
+      `update writing_style_cache set
+        tone_profile = @toneProfile,
+        sample_count = @sampleCount,
+        last_updated = current_timestamp
+      where id = 'singleton'`
+    )
+    .run({ toneProfile, sampleCount });
+  logActivity("writing_style", "singleton", "Writing style cache updated", { sampleCount });
 }
