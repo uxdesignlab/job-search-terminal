@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select, Shell, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Select, Shell, Table, Td, Th } from "@/components/ui";
 import { getJobs } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +55,13 @@ export default function JobsPage() {
           </div>
         </Card>
 
+        {jobs.length === 0 ? (
+          <EmptyState
+            description="Run a scan from the dashboard to add discovered roles before reviewing fit or status."
+            title="No jobs found yet"
+          />
+        ) : null}
+
         <div className="grid gap-4 lg:hidden">
           {jobs.map((job) => (
             <Card key={job.id}>
@@ -75,6 +82,7 @@ export default function JobsPage() {
           ))}
         </div>
 
+        {jobs.length > 0 ? (
         <div className="hidden lg:block">
           <Table>
             <thead>
@@ -110,6 +118,7 @@ export default function JobsPage() {
             </tbody>
           </Table>
         </div>
+        ) : null}
       </div>
     </Shell>
   );

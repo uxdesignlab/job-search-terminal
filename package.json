@@ -18,7 +18,10 @@
     "scanner:check": "tsx scripts/scanner-check.ts",
     "evaluation:check": "tsx scripts/evaluation-check.ts",
     "document:check": "tsx scripts/document-check.ts",
-    "application:check": "tsx scripts/application-check.ts"
+    "application:check": "tsx scripts/application-check.ts",
+    "quality:check": "tsx scripts/quality-check.ts",
+    "data:backup": "tsx scripts/data-backup.ts",
+    "data:export": "tsx scripts/data-export.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",

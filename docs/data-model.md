@@ -57,6 +57,9 @@ npm run scanner:check
 npm run evaluation:check
 npm run document:check
 npm run application:check
+npm run quality:check
+npm run data:backup
+npm run data:export
 ```
 
 The local database file is `data/js.sqlite`. It is intentionally ignored by git.
@@ -78,6 +81,10 @@ The local database file is `data/js.sqlite`. It is intentionally ignored by git.
   metadata.
 - `application:check` verifies answer generation, custom questions, status
   transitions, follow-up dates, funnel metrics, and activity logging.
+- `quality:check` verifies primary dashboard routes, sampled accessibility
+  rules, keyboard focus, contrast, and desktop/mobile screenshots.
+- `data:backup` creates a SQLite backup in `output/backups/`.
+- `data:export` creates a readable JSON export in `output/exports/`.
 - Phase 3 keeps mock source modules as seed inputs only; dashboard pages no
   longer read mock modules directly.
 

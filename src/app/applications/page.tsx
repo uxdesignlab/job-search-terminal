@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
-import { getApplications, getFunnelStages } from "@/lib/db/queries";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
+import { getApplications, getFunnelStages, getJobById } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -28,36 +28,51 @@ export default function ApplicationsPage() {
             <CardTitle>Tracked applications</CardTitle>
             <CardDescription>Current status, follow-up timing, and fit for active opportunities.</CardDescription>
           </CardHeader>
-          <Table>
-            <thead>
-              <tr>
-                <Th scope="col">Company</Th>
-                <Th scope="col">Role</Th>
-                <Th scope="col">Status</Th>
-                <Th scope="col">Follow-up</Th>
-                <Th scope="col">Fit</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {applications.map((application) => (
-                <tr key={application.id}>
-                  <Td>{application.company}</Td>
-                  <Td>
-                    <Link className="font-medium text-accent hover:underline" href={`/jobs/${application.jobId}`}>
-                      {application.role}
-                    </Link>
-                  </Td>
-                  <Td>
-                    <Badge tone={application.status === "Rejected" ? "danger" : application.status === "Interviewing" ? "success" : "neutral"}>
-                      {application.status}
-                    </Badge>
-                  </Td>
-                  <Td>{application.followUpDate || "Not set"}</Td>
-                  <Td>{application.fitScore}%</Td>
+          {applications.length > 0 ? (
+            <Table>
+              <thead>
+                <tr>
+                  <Th scope="col">Company</Th>
+                  <Th scope="col">Role</Th>
+                  <Th scope="col">Status</Th>
+                  <Th scope="col">Follow-up</Th>
+                  <Th scope="col">Fit</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {applications.map((application) => {
+                  const linkedJob = getJobById(application.jobId);
+
+                  return (
+                    <tr key={application.id}>
+                      <Td>{application.company}</Td>
+                      <Td>
+                        {linkedJob ? (
+                          <Link className="font-medium text-accent hover:underline" href={`/jobs/${application.jobId}`}>
+                            {application.role}
+                          </Link>
+                        ) : (
+                          application.role
+                        )}
+                      </Td>
+                      <Td>
+                        <Badge tone={application.status === "Rejected" ? "danger" : application.status === "Interviewing" ? "success" : "neutral"}>
+                          {application.status}
+                        </Badge>
+                      </Td>
+                      <Td>{application.followUpDate || "Not set"}</Td>
+                      <Td>{application.fitScore}%</Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          ) : (
+            <EmptyState
+              description="Mark a job as applied or add a follow-up from a job detail page to start the tracker."
+              title="No tracked applications yet"
+            />
+          )}
         </Card>
       </div>
     </Shell>
