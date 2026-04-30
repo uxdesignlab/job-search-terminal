@@ -578,10 +578,12 @@ export function getDashboardMetrics(): DashboardMetric[] {
   const documents = getGeneratedDocuments();
   const today = new Date().toISOString().slice(0, 10);
 
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
   return [
     {
       label: "New jobs",
-      value: String(jobs.filter((job) => job.freshnessLabel === "New today" || job.freshnessLabel === "New this week").length),
+      value: String(jobs.filter((job) => job.firstSeenDate >= sevenDaysAgo).length),
       detail: "This week",
       tone: "success"
     },

@@ -63,14 +63,14 @@ export default function ResumesPage() {
                       <Td>
                         {job ? (
                           <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
-                            {document.company}
+                            {document.role}
                           </Link>
                         ) : (
-                          document.company
+                          document.role
                         )}
-                        <p className="text-xs text-muted">{document.role}</p>
+                        <p className="text-xs text-muted">{document.company}</p>
                       </Td>
-                      <Td>{job ? formatPostedDate(job) : "Posted date unavailable"}</Td>
+                      <Td>{job ? formatPostedDate(job) : "Date unavailable"}</Td>
                       <Td>{document.baseResume}</Td>
                       <Td>{document.generatedDate}</Td>
                       <Td>{document.keywordCoverage}%</Td>
@@ -91,9 +91,9 @@ export default function ResumesPage() {
                               PDF
                             </a>
                           ) : null}
-                          {job ? (
+                          {job?.url ? (
                             <a className="font-medium text-accent hover:underline" href={job.url} rel="noreferrer" target="_blank">
-                              Job posting
+                              Job posting ↗
                             </a>
                           ) : null}
                         </div>

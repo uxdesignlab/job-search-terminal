@@ -77,6 +77,11 @@ export default function JobsPage() {
                 <Badge>{job.fitScore}% fit</Badge>
                 <Badge>{formatPostedDate(job)}</Badge>
                 <Badge tone={toneForRecommendation(job.recommendation)}>{job.recommendation}</Badge>
+                {job.url ? (
+                  <a className="text-xs font-medium text-accent hover:underline" href={job.url} rel="noreferrer" target="_blank">
+                    Job posting ↗
+                  </a>
+                ) : null}
               </div>
             </Card>
           ))}
@@ -93,6 +98,7 @@ export default function JobsPage() {
                 <Th scope="col">Posted</Th>
                 <Th scope="col">Status</Th>
                 <Th scope="col">Action</Th>
+                <Th scope="col">Posting</Th>
               </tr>
             </thead>
             <tbody>
@@ -112,6 +118,13 @@ export default function JobsPage() {
                   <Td>{job.status}</Td>
                   <Td>
                     <Badge tone={toneForRecommendation(job.recommendation)}>{job.recommendation}</Badge>
+                  </Td>
+                  <Td>
+                    {job.url ? (
+                      <a className="font-medium text-accent hover:underline" href={job.url} rel="noreferrer" target="_blank">
+                        ↗
+                      </a>
+                    ) : null}
                   </Td>
                 </tr>
               ))}
