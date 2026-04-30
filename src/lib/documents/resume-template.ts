@@ -115,17 +115,13 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
         color: #0057b8;
         text-decoration: none;
       }
-
-      @page {
-        margin: 0.45in 0.55in;
-      }
     </style>
   </head>
   <body>
     <main class="page">
       <header>
         <h1>${escapeHtml(input.name)}</h1>
-        <p class="headline">${escapeHtml(input.headline)}</p>
+        ${input.headline ? `<p class="headline">${escapeHtml(input.headline)}</p>` : ""}
         <p class="contact">${renderContact(input.contactItems)}</p>
       </header>
 
@@ -145,8 +141,7 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
         <h2>${escapeHtml(input.experienceHeading)}</h2>
         ${input.experience
           .map(
-            (item) => `
-          <article>
+            (item) => `          <div class="job-entry">
             <h3>${escapeHtml(item.title)}</h3>
             <div class="job-meta">
               <p class="organization">${escapeHtml(item.organization)}</p>
@@ -155,7 +150,7 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
             <ul>
               ${item.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}
             </ul>
-          </article>`
+          </div>`
           )
           .join("")}
       </section>

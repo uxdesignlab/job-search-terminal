@@ -18,6 +18,12 @@ export function formatDisplayDate(value: string | null | undefined) {
 }
 
 export function formatPostedDate(job: JobRecord) {
-  return job.datePosted ? formatDisplayDate(job.datePosted) : "Posted date unavailable";
+  if (job.datePosted) {
+    return formatDisplayDate(job.datePosted);
+  }
+  if (job.firstSeenDate) {
+    return `Seen ${formatDisplayDate(job.firstSeenDate)}`;
+  }
+  return "Date unavailable";
 }
 

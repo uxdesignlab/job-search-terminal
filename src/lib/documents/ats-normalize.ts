@@ -67,5 +67,13 @@ function sanitizeText(text: string, replacements: Record<string, number>) {
     .replace(/\u00A0/g, () => {
       bump("nbsp");
       return " ";
+    })
+    .replace(/\u25CF/g, () => {
+      bump("bullet-circle");
+      return "";
+    })
+    .replace(/\u2022/g, () => {
+      bump("bullet-dot");
+      return "|";
     });
 }

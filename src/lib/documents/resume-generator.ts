@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { PDFParse } from "pdf-parse";
 import { getEvaluationByJobId, getJobById, getResumes, getSkills, getUserProfile, saveGeneratedDocument } from "../db/queries";
 import type { EvaluationRecord, GeneratedDocumentInput, JobRecord, ResumeRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
@@ -89,6 +88,7 @@ async function loadSourceResumeText(resume: ResumeRecord) {
   const sourcePath = path.join(process.cwd(), resume.sourceFile);
 
   try {
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: readFileSync(sourcePath) });
     const result = await parser.getText();
     await parser.destroy();
@@ -106,7 +106,7 @@ function buildTailoredContent(
   skills: SkillRecord[],
   sourceResumeText: string
 ) {
-  const source = parseSourceResume(sourceResumeText, profile, resume);
+  const source = parseSourceResume(sourceResumeText, profile);
   const keywords = evaluation.keywords.slice(0, 8);
   const preferredSkillNames = skills
       .filter((skill) => skill.usePreference !== "use_less")
@@ -131,7 +131,7 @@ function buildTailoredContent(
   } satisfies ResumeTemplateInput;
 }
 
-function parseSourceResume(text: string, profile: UserProfileRecord, resume: ResumeRecord) {
+function parseSourceResume(text: string, profile: UserProfileRecord) {
   const lines = text
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
@@ -143,7 +143,7 @@ function parseSourceResume(text: string, profile: UserProfileRecord, resume: Res
   const recognitionIndex = findHeading(lines, ["Recognition"], experienceIndex + 1);
   const educationIndex = findHeading(lines, ["Education"], experienceIndex + 1);
   const firstTailIndex = minPositive([skillsIndex, recognitionIndex, educationIndex], lines.length);
-  const header = parseHeader(lines.slice(0, Math.max(summaryIndex, 0)), profile, resume);
+  const header = parseHeader(lines.slice(0, Math.max(summaryIndex, 0)), profile);
 
   return {
     ...header,
@@ -158,10 +158,15 @@ function parseSourceResume(text: string, profile: UserProfileRecord, resume: Res
   };
 }
 
-function parseHeader(lines: string[], profile: UserProfileRecord, resume: ResumeRecord) {
+function parseHeader(lines: string[], profile: UserProfileRecord) {
   const name = lines[0] || profile.name;
-  const contactIndex = lines.findIndex((line) => line.includes("@") || line.includes("+1-"));
-  const headline = contactIndex > 1 ? lines.slice(1, contactIndex).join(" ") : resume.name;
+  // Find the first line that looks like a contact line (email or phone)
+  const contactIndex = lines.findIndex((line) => line.includes("@") || line.includes("+1-") || line.includes("+1 "));
+  // Extract headline: lines between name and contact line that aren't location/contact info
+  const headlineLines = contactIndex > 1
+    ? lines.slice(1, contactIndex).filter((line) => !line.match(/^[\d+]/) && !line.includes("linkedin."))
+    : [];
+  const headline = headlineLines.length > 0 ? headlineLines.join(" ") : "";
   const contactLine = contactIndex >= 0 ? lines[contactIndex] : `${profile.location} • ${profile.portfolio}`;
 
   return {
@@ -176,38 +181,65 @@ function parseExperience(lines: string[]) {
   let current: ResumeTemplateInput["experience"][number] | undefined;
   let pendingTitle = "";
 
+  // Matches a date range anywhere in the line — handles / and . separators,
+  // regular hyphen AND Unicode en-dash (–) as separators.
+  const DATE_RANGE_RE = /(\d{2}[/.]\d{4})\s*[–\-\u2013]\s*(Present|\d{2}[/.]\d{4})/;
+
   for (const line of lines) {
+    // ── Bullet line ──────────────────────────────────────────────────────────
     if (line.startsWith("●")) {
       const bullet = line.replace(/^●\s*/, "").trim();
       if (current) {
         current.bullets.push(bullet);
       }
-      continue;
-    }
-
-    const datedOrganization = line.match(/^(.+?)\s+((?:\d{2}[/.]\d{4})\s+[–-]\s+(?:Present|\d{2}[/.]\d{4}))$/);
-    if (pendingTitle && datedOrganization) {
-      current = {
-        title: pendingTitle,
-        organization: datedOrganization[1].trim(),
-        dateRange: datedOrganization[2].trim(),
-        bullets: []
-      };
-      entries.push(current);
+      // A fresh bullet resets any stray pendingTitle
       pendingTitle = "";
       continue;
     }
 
-    if (current?.bullets.length) {
-      current.bullets[current.bullets.length - 1] = `${current.bullets[current.bullets.length - 1]} ${line}`.trim();
+    // ── Org + date line ───────────────────────────────────────────────────────
+    // If the line contains a date range, it's "Organization | Location  DATE – DATE"
+    const dateMatch = DATE_RANGE_RE.exec(line);
+    if (dateMatch) {
+      // Everything before the date range is the org/location string
+      const orgPart = line.slice(0, dateMatch.index).replace(/[\t|]+\s*$/, "").trim();
+      const dateRange = `${dateMatch[1]} – ${dateMatch[2]}`;
+
+      if (pendingTitle) {
+        current = { title: pendingTitle, organization: orgPart, dateRange, bullets: [] };
+        entries.push(current);
+        pendingTitle = "";
+      } else {
+        // Org+date line without a preceding title — use org as title
+        current = { title: orgPart, organization: "", dateRange, bullets: [] };
+        entries.push(current);
+      }
       continue;
     }
 
-    pendingTitle = pendingTitle ? `${pendingTitle} ${line}` : line;
+    // ── Everything else: new job title OR wrapped bullet continuation ─────────
+    // Heuristic: if the line starts with an uppercase letter and is short enough
+    // to be a title, treat it as a new pending title. Otherwise, append to the
+    // last bullet as a wrapped continuation.
+    const looksLikeTitle =
+      /^[A-Z]/.test(line) &&
+      line.length <= 120 &&
+      !line.startsWith("–") &&
+      !line.startsWith("-");
+
+    if (looksLikeTitle || !current?.bullets.length) {
+      // Start or extend a pending title
+      pendingTitle = pendingTitle ? `${pendingTitle} ${line}` : line;
+    } else if (current?.bullets.length) {
+      // Wrapped bullet continuation
+      current.bullets[current.bullets.length - 1] =
+        `${current.bullets[current.bullets.length - 1]} ${line}`.trim();
+    }
   }
 
   return entries;
 }
+
 
 function parseSectionList(lines: string[], startIndex: number, endIndex: number) {
   if (startIndex < 0) {
@@ -242,7 +274,7 @@ function rankItems(items: string[], keywords: string[]) {
   return unique(
     items
       .map((item, index) => ({
-        item: trimEvidence(item),
+        item: item.trim(),
         index,
         score: keywords.reduce((count, keyword) => count + (item.toLowerCase().includes(keyword.toLowerCase()) ? 1 : 0), 0)
       }))
@@ -301,12 +333,7 @@ function normalizePdfText(text: string) {
     .trim();
 }
 
-function trimEvidence(value: string) {
-  return value
-    .replace(/^[^:]+:\s*/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+
 
 function slugify(value: string) {
   return value
