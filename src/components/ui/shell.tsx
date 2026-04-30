@@ -12,6 +12,8 @@ const navItems = [
   { label: "Strategy", href: "/strategy" },
   { label: "Jobs", href: "/jobs" },
   { label: "Applications", href: "/applications" },
+  { label: "Interview Prep", href: "/interview-prep" },
+  { label: "Analytics", href: "/analytics" },
   { label: "Resumes", href: "/resumes" },
   { label: "Settings", href: "/settings" }
 ];

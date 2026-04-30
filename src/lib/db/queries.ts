@@ -199,6 +199,22 @@ export function getSkills(): SkillRecord[] {
     .all() as SkillRecord[];
 }
 
+export function saveSkills(skills: SkillRecord[]) {
+  const db = getDatabase();
+  const insert = db.prepare(
+    `insert or replace into skill_inventory
+      (id, user_profile_id, skill_name, skill_category, evidence_source, strength_level, market_relevance, user_interest_level, use_preference)
+     values
+      (@id, 'pavel', @skillName, @skillCategory, @evidenceSource, @strengthLevel, @marketRelevance, @userInterestLevel, @usePreference)`
+  );
+  const run = db.transaction(() => {
+    db.prepare("delete from skill_inventory where user_profile_id = 'pavel'").run();
+    for (const skill of skills) insert.run(skill);
+  });
+  run();
+  logActivity("profile", "pavel", `Skill inventory replaced: ${skills.length} skills`, { count: skills.length });
+}
+
 export function getRoleDirections(): RoleDirectionRecord[] {
   const rows = getDatabase()
     .prepare(
@@ -250,6 +266,13 @@ export function getEvaluationByJobId(jobId: string): EvaluationRecord | undefine
     .get(jobId) as EvaluationRow | undefined;
 
   return row ? mapEvaluation(row) : undefined;
+}
+
+export function getAllEvaluations(): EvaluationRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from evaluations order by created_at desc")
+    .all() as EvaluationRow[];
+  return rows.map(mapEvaluation);
 }
 
 export function getEvaluationFeedback(limit = 5): EvaluationFeedbackRecord[] {

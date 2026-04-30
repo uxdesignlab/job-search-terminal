@@ -7,6 +7,8 @@ import { PrepareApplicationAnswersForm } from "@/components/prepare-application-
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select, Shell, Textarea } from "@/components/ui";
 import { prepareApplicationAnswers } from "@/lib/applications/application-assistant";
+import { prepareApplicationAnswersWithAI } from "@/lib/applications/llm-answer-generator";
+import { getAISettings } from "@/lib/db/queries";
 import { isApplicationStatus } from "@/lib/applications/status";
 import { formatPostedDate } from "@/lib/dates";
 import {
@@ -16,6 +18,7 @@ import {
   getGeneratedDocumentById,
   getJobById,
   saveEvaluationCorrection,
+  saveStory,
   updateApplicationStatus
 } from "@/lib/db/queries";
 import { generateTailoredResume } from "@/lib/documents/resume-generator";
@@ -82,10 +85,38 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
   async function prepareAnswersAction(formData: FormData) {
     "use server";
 
-    prepareApplicationAnswers(id, String(formData.get("customQuestion") ?? ""));
+    const customQuestion = String(formData.get("customQuestion") ?? "");
+    const aiSettings = getAISettings();
+    const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
+
+    if (hasAIKey) {
+      await prepareApplicationAnswersWithAI(id, customQuestion);
+    } else {
+      prepareApplicationAnswers(id, customQuestion);
+    }
     revalidatePath(`/jobs/${id}`);
     revalidatePath("/applications");
     revalidatePath("/dashboard");
+  }
+
+  async function saveStoryAction(formData: FormData) {
+    "use server";
+
+    const { randomUUID } = await import("node:crypto");
+    saveStory({
+      id: randomUUID(),
+      title: String(formData.get("title") ?? ""),
+      situation: String(formData.get("situation") ?? ""),
+      task: String(formData.get("task") ?? ""),
+      action: String(formData.get("action") ?? ""),
+      result: String(formData.get("result") ?? ""),
+      reflection: "",
+      skills: [],
+      themes: [],
+      sourceJobId: id,
+      sourceBlockF: evaluation?.sections.interviewPlan.join(" ") ?? ""
+    });
+    revalidatePath("/interview-prep");
   }
 
   async function updateStatusAction(formData: FormData) {
@@ -127,6 +158,18 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                 target="_blank"
               >
                 Job posting
+              </a>
+              <a
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent"
+                href={`/jobs/${id}/research`}
+              >
+                Research
+              </a>
+              <a
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent"
+                href={`/jobs/${id}/outreach`}
+              >
+                Outreach
               </a>
               <ApplicationStatusForm action={updateStatusAction} label="Save for follow-up" status="Follow-up needed" variant="quiet" />
             </>
@@ -300,7 +343,7 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                       {answerDrafts.map((draft) => (
                         <li className="rounded-control border border-border bg-surface px-3 py-3" key={draft.id}>
                           <p className="text-sm font-semibold text-ink">{draft.question}</p>
-                          <p className="mt-2 text-sm leading-6 text-muted">{draft.answer}</p>
+                          <p className="mt-2 text-sm leading-6 text-ink whitespace-pre-wrap">{draft.answer}</p>
                           <p className="mt-2 text-xs text-muted">{draft.source}</p>
                         </li>
                       ))}
@@ -330,6 +373,27 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
               <EvaluationSection title="G. Posting legitimacy" items={evaluation.sections.postingLegitimacy} />
               <EvaluationSection title="Keywords" items={evaluation.keywords} />
             </section>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Save a story from Block F</CardTitle>
+                <CardDescription>Pre-fill a STAR story from this job&apos;s interview plan. You can complete it in Interview Prep.</CardDescription>
+              </CardHeader>
+              <form action={saveStoryAction} className="grid gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input label="Story title" name="title" placeholder="e.g. Led API migration at Acme" />
+                  <Input label="Situation (brief)" name="situation" placeholder="What was the context?" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Input label="Task" name="task" placeholder="Your role" />
+                  <Input label="Action" name="action" placeholder="What you did" />
+                  <Input label="Result" name="result" placeholder="Measurable outcome" />
+                </div>
+                <div>
+                  <Button type="submit" variant="secondary">Save to story bank</Button>
+                </div>
+              </form>
+            </Card>
 
             <Card>
               <CardHeader>
