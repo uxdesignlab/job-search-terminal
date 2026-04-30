@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebSearch",
+      "WebFetch(domain:developers.openai.com)",
+      "WebFetch(domain:www.eesel.ai)"
+    ]
+  }
+}

@@ -128,6 +128,10 @@ export function buildEvaluation(
     legitimacyLabel,
     keywords,
     userCorrection: {},
+    providerUsed: "",
+    modelUsed: "",
+    tokensUsed: 0,
+    generationMs: 0,
     whyItMatches,
     mainConcern,
     salaryNotes

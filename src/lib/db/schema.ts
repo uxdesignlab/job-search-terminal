@@ -235,5 +235,113 @@ export const migrations = [
 
       create index if not exists idx_application_answer_drafts_job_id on application_answer_drafts(job_id);
     `
+  },
+  {
+    id: "0008_ai_settings",
+    sql: `
+      create table if not exists ai_settings (
+        id text primary key default 'singleton',
+        active_provider text not null default 'anthropic',
+        anthropic_api_key text not null default '',
+        gemini_api_key text not null default '',
+        openai_api_key text not null default '',
+        anthropic_model text not null default 'claude-sonnet-4-6',
+        gemini_model text not null default 'gemini-2.5-flash',
+        openai_model text not null default 'gpt-5.4-mini',
+        fallback_provider text not null default '',
+        onboarding_dismissed integer not null default 0,
+        updated_at text not null default current_timestamp
+      );
+
+      insert or ignore into ai_settings (id) values ('singleton');
+    `
+  },
+  {
+    id: "0009_story_bank",
+    sql: `
+      create table if not exists story_bank (
+        id text primary key,
+        title text not null,
+        situation text not null,
+        task text not null,
+        action text not null,
+        result text not null,
+        reflection text not null,
+        skills_json text not null default '[]',
+        themes_json text not null default '[]',
+        source_job_id text references jobs(id),
+        source_block_f text not null default '',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_story_bank_source_job on story_bank(source_job_id);
+    `
+  },
+  {
+    id: "0010_company_research",
+    sql: `
+      create table if not exists company_research (
+        id text primary key,
+        job_id text not null references jobs(id),
+        company text not null,
+        ai_strategy text not null default '',
+        recent_movements text not null default '',
+        engineering_culture text not null default '',
+        technical_challenges text not null default '',
+        competitive_position text not null default '',
+        candidate_angle text not null default '',
+        provider_used text not null default '',
+        model_used text not null default '',
+        created_at text not null default current_timestamp
+      );
+
+      create unique index if not exists idx_company_research_job_id on company_research(job_id);
+    `
+  },
+  {
+    id: "0011_outreach_drafts",
+    sql: `
+      create table if not exists outreach_drafts (
+        id text primary key,
+        job_id text not null references jobs(id),
+        contact_type text not null,
+        message text not null,
+        char_count integer not null default 0,
+        status text not null default 'draft',
+        created_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_outreach_drafts_job_id on outreach_drafts(job_id);
+    `
+  },
+  {
+    id: "0012_writing_style_cache",
+    sql: `
+      create table if not exists writing_style_cache (
+        id text primary key default 'singleton',
+        tone_profile text not null default '',
+        sample_count integer not null default 0,
+        last_updated text not null default current_timestamp
+      );
+
+      insert or ignore into writing_style_cache (id) values ('singleton');
+    `
+  },
+  {
+    id: "0013_evaluation_metadata",
+    sql: `
+      alter table evaluations add column provider_used text not null default '';
+      alter table evaluations add column model_used text not null default '';
+      alter table evaluations add column tokens_used integer not null default 0;
+      alter table evaluations add column generation_ms integer not null default 0;
+    `
+  },
+  {
+    id: "0014_latest_model_defaults",
+    sql: `
+      update ai_settings set gemini_model = 'gemini-2.5-flash' where id = 'singleton' and gemini_model = 'gemini-2.0-flash';
+      update ai_settings set openai_model = 'gpt-5.4-mini' where id = 'singleton' and openai_model = 'gpt-4o';
+    `
   }
 ];

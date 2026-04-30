@@ -1,49 +1,28 @@
-import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select, Shell } from "@/components/ui";
-
-const mockSources = ["Working Nomads", "Hiring Cafe", "Remotive", "Wellfound", "The Muse"];
+import { getAISettings } from "@/lib/db/queries";
+import { Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell } from "@/components/ui";
+import { AISettingsForm } from "@/components/ai-settings-form";
 
 export default function SettingsPage() {
+  const settings = getAISettings();
+
   return (
     <Shell activeItem="Settings">
       <div className="grid gap-6">
         <PageHeader
-          description="Static settings shell for future profile, source, and local app configuration."
+          description="Configure your AI provider and API keys for evaluation, resume tailoring, and answer generation."
           eyebrow="Settings"
           title="Settings"
         />
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Search preferences</CardTitle>
-              <CardDescription>Saved preferences for the local search workspace.</CardDescription>
-            </CardHeader>
-            <div className="grid gap-4">
-              <Select label="Remote preference" name="remote-preference">
-                <option>Remote first</option>
-                <option>Hybrid considered</option>
-                <option>Local only</option>
-              </Select>
-              <Select label="Search mode" name="search-mode">
-                <option>Direct and adjacent roles</option>
-                <option>Direct roles only</option>
-                <option>Include stretch roles</option>
-              </Select>
-            </div>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Configured sources</CardTitle>
-              <CardDescription>Sources selected for future job discovery.</CardDescription>
-            </CardHeader>
-            <div className="flex flex-wrap gap-2">
-              {mockSources.map((source) => (
-                <Badge key={source}>{source}</Badge>
-              ))}
-            </div>
-          </Card>
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Provider</CardTitle>
+            <CardDescription>
+              API keys are stored locally in your SQLite database and never sent anywhere except the selected provider.
+            </CardDescription>
+          </CardHeader>
+          <AISettingsForm settings={settings} />
+        </Card>
       </div>
     </Shell>
   );

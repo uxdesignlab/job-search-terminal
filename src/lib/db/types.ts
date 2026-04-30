@@ -110,6 +110,10 @@ export type EvaluationRecord = {
   legitimacyLabel: string;
   keywords: string[];
   userCorrection: Record<string, JsonValue>;
+  providerUsed: string;
+  modelUsed: string;
+  tokensUsed: number;
+  generationMs: number;
   createdAt: string;
 };
 
@@ -300,4 +304,115 @@ export type RoleDirectionUpdateInput = {
   score: number;
   rationale: string;
   gaps: string[];
+};
+
+export type AIProviderName = "anthropic" | "gemini" | "openai";
+
+export type AISettingsRecord = {
+  id: string;
+  activeProvider: AIProviderName;
+  anthropicApiKey: string;
+  geminiApiKey: string;
+  openaiApiKey: string;
+  anthropicModel: string;
+  geminiModel: string;
+  openaiModel: string;
+  fallbackProvider: string;
+  onboardingDismissed: boolean;
+  updatedAt: string;
+};
+
+export type AISettingsUpdateInput = {
+  activeProvider: AIProviderName;
+  anthropicApiKey: string;
+  geminiApiKey: string;
+  openaiApiKey: string;
+  anthropicModel: string;
+  geminiModel: string;
+  openaiModel: string;
+  fallbackProvider: string;
+  onboardingDismissed?: boolean;
+};
+
+export type StoryRecord = {
+  id: string;
+  title: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+  reflection: string;
+  skills: string[];
+  themes: string[];
+  sourceJobId: string | null;
+  sourceBlockF: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StoryInput = {
+  id: string;
+  title: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+  reflection: string;
+  skills: string[];
+  themes: string[];
+  sourceJobId?: string | null;
+  sourceBlockF?: string;
+};
+
+export type CompanyResearchRecord = {
+  id: string;
+  jobId: string;
+  company: string;
+  aiStrategy: string;
+  recentMovements: string;
+  engineeringCulture: string;
+  technicalChallenges: string;
+  competitivePosition: string;
+  candidateAngle: string;
+  providerUsed: string;
+  modelUsed: string;
+  createdAt: string;
+};
+
+export type CompanyResearchInput = {
+  id: string;
+  jobId: string;
+  company: string;
+  aiStrategy: string;
+  recentMovements: string;
+  engineeringCulture: string;
+  technicalChallenges: string;
+  competitivePosition: string;
+  candidateAngle: string;
+  providerUsed: string;
+  modelUsed: string;
+};
+
+export type OutreachDraftRecord = {
+  id: string;
+  jobId: string;
+  contactType: "recruiter" | "hiring_manager" | "peer";
+  message: string;
+  charCount: number;
+  status: string;
+  createdAt: string;
+};
+
+export type OutreachDraftInput = {
+  id: string;
+  jobId: string;
+  contactType: "recruiter" | "hiring_manager" | "peer";
+  message: string;
+};
+
+export type WritingStyleRecord = {
+  id: string;
+  toneProfile: string;
+  sampleCount: number;
+  lastUpdated: string;
 };

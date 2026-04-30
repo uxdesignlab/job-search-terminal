@@ -24,10 +24,13 @@
     "data:export": "tsx scripts/data-export.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@google/generative-ai": "^0.24.1",
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
     "js-yaml": "^4.1.1",
     "next": "^15.3.5",
+    "openai": "^6.35.0",
     "pdf-parse": "^2.4.5",
     "playwright-core": "^1.59.1",
     "react": "^19.0.0",
