@@ -45,7 +45,8 @@ export async function renderHtmlToPdf(input: {
         bottom: "0.6in",
         left: "0.6in"
       },
-      preferCSSPageSize: false
+      preferCSSPageSize: false,
+      tagged: true
     });
 
     await writeFile(input.pdfPath, pdfBuffer);

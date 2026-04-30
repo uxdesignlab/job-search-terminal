@@ -118,9 +118,9 @@ function buildTailoredContent(
     contactItems: source.contactItems,
     title: job.title,
     summary: source.summary,
-    impactHeading: source.impactHeading,
+    impactHeading: "Key Achievements",
     impactItems: rankItems(source.impactItems, keywords).slice(0, source.impactItems.length),
-    experienceHeading: source.experienceHeading,
+    experienceHeading: "Professional Experience",
     experience: source.experience.map((entry) => ({
       ...entry,
       bullets: rankItems(entry.bullets, keywords).slice(0, entry.bullets.length)
@@ -136,25 +136,33 @@ function parseSourceResume(text: string, profile: UserProfileRecord) {
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line && !/^-- \d+ of \d+ --$/.test(line));
-  const summaryIndex = findHeading(lines, ["Summary"]);
-  const impactIndex = findHeading(lines, ["Selected Impact", "Selected Executive Impact", "Career Highlights", "Core Strengths"], summaryIndex + 1);
-  const experienceIndex = findHeading(lines, ["Professional Experience", "Teaching Experience"], impactIndex + 1);
-  const skillsIndex = findHeading(lines, ["Skills", "Core Skills"], experienceIndex + 1);
-  const recognitionIndex = findHeading(lines, ["Recognition"], experienceIndex + 1);
-  const educationIndex = findHeading(lines, ["Education"], experienceIndex + 1);
-  const firstTailIndex = minPositive([skillsIndex, recognitionIndex, educationIndex], lines.length);
-  const header = parseHeader(lines.slice(0, Math.max(summaryIndex, 0)), profile);
+
+  const sections = {
+    summary: findHeading(lines, ["Summary", "Professional Summary"]),
+    impact: findHeading(lines, ["Selected Impact", "Selected Executive Impact", "Career Highlights", "Core Strengths", "Key Achievements"]),
+    experience: findHeading(lines, ["Professional Experience", "Teaching Experience", "Experience"]),
+    skills: findHeading(lines, ["Skills", "Core Skills", "Core Competencies"]),
+    recognition: findHeading(lines, ["Recognition", "Industry Leadership, Publications & Mentorship", "Awards and Recognition"]),
+    education: findHeading(lines, ["Education"]),
+  };
+
+  const getNextBoundary = (currentIndex: number) => {
+    const boundaries = Object.values(sections).filter(v => v > currentIndex);
+    return boundaries.length > 0 ? Math.min(...boundaries) : lines.length;
+  };
+
+  const header = parseHeader(lines.slice(0, Math.max(sections.summary, 0)), profile);
 
   return {
     ...header,
-    summary: joinLines(lines.slice(summaryIndex + 1, impactIndex)),
-    impactHeading: lines[impactIndex] || "Selected Impact",
-    impactItems: parseBulletLines(lines.slice(impactIndex + 1, experienceIndex)),
-    experienceHeading: lines[experienceIndex] || "Professional Experience",
-    experience: parseExperience(lines.slice(experienceIndex + 1, firstTailIndex)),
-    skills: parseSectionList(lines, skillsIndex, minPositive([recognitionIndex, educationIndex], lines.length)),
-    recognition: parseSectionList(lines, recognitionIndex, educationIndex > recognitionIndex ? educationIndex : lines.length),
-    education: parseSectionList(lines, educationIndex, lines.length)
+    summary: sections.summary !== -1 ? joinLines(lines.slice(sections.summary + 1, getNextBoundary(sections.summary))) : "",
+    impactHeading: sections.impact !== -1 ? lines[sections.impact] : "Key Achievements",
+    impactItems: sections.impact !== -1 ? parseBulletLines(lines.slice(sections.impact + 1, getNextBoundary(sections.impact))) : [],
+    experienceHeading: sections.experience !== -1 ? lines[sections.experience] : "Professional Experience",
+    experience: sections.experience !== -1 ? parseExperience(lines.slice(sections.experience + 1, getNextBoundary(sections.experience))) : [],
+    skills: sections.skills !== -1 ? parseSectionList(lines, sections.skills, getNextBoundary(sections.skills)) : [],
+    recognition: sections.recognition !== -1 ? parseSectionList(lines, sections.recognition, getNextBoundary(sections.recognition)) : [],
+    education: sections.education !== -1 ? parseEducation(lines.slice(sections.education + 1, getNextBoundary(sections.education))) : []
   };
 }
 
@@ -167,12 +175,12 @@ function parseHeader(lines: string[], profile: UserProfileRecord) {
     ? lines.slice(1, contactIndex).filter((line) => !line.match(/^[\d+]/) && !line.includes("linkedin."))
     : [];
   const headline = headlineLines.length > 0 ? headlineLines.join(" ") : "";
-  const contactLine = contactIndex >= 0 ? lines[contactIndex] : `${profile.location} • ${profile.portfolio}`;
+  const contactLine = contactIndex >= 0 ? lines[contactIndex] : `${profile.location} | ${profile.portfolio}`;
 
   return {
     name,
     headline,
-    contactItems: contactLine.split("•").map((item) => item.trim()).filter(Boolean)
+    contactItems: contactLine.split(/[|•]/).map((item) => item.trim()).filter(Boolean)
   };
 }
 
@@ -203,7 +211,7 @@ function parseExperience(lines: string[]) {
     if (dateMatch) {
       // Everything before the date range is the org/location string
       const orgPart = line.slice(0, dateMatch.index).replace(/[\t|]+\s*$/, "").trim();
-      const dateRange = `${dateMatch[1]} – ${dateMatch[2]}`;
+      const dateRange = formatDate(`${dateMatch[1]} - ${dateMatch[2]}`);
 
       if (pendingTitle) {
         current = { title: pendingTitle, organization: orgPart, dateRange, bullets: [] };
@@ -237,6 +245,44 @@ function parseExperience(lines: string[]) {
     }
   }
 
+  return entries;
+}
+
+function formatDate(dateStr: string) {
+  return dateStr.replace(/(\d{2})[/.](\d{4})/g, (_, m, y) => {
+    const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][parseInt(m, 10) - 1];
+    return `${month} ${y}`;
+  });
+}
+
+function parseEducation(lines: string[]) {
+  const entries: ResumeTemplateInput["education"] = [];
+  let current: ResumeTemplateInput["education"][number] | undefined;
+  
+  for (const line of lines) {
+    const text = line.replace(/^●\s*/, "").trim();
+    if (!text || /^-- \d+ of \d+ --$/.test(text)) continue;
+    
+    if (text.includes(" | ") || text.includes("Bachelor") || text.includes("Master")) {
+      let degree = text;
+      if (text.includes(" | ")) {
+         const parts = text.split(" | ");
+         if (parts[1].includes("Master") || parts[1].includes("Bachelor")) {
+            degree = `${parts[1]}, ${parts[0]}`;
+         } else {
+            degree = `${parts[0]}, ${parts[1]}`;
+         }
+      }
+      current = { degree, school: "" };
+      entries.push(current);
+    } else if (current) {
+      if (text.startsWith("Focus:")) {
+        current.focus = text;
+      } else if (!current.school) {
+        current.school = text;
+      }
+    }
+  }
   return entries;
 }
 
@@ -310,15 +356,12 @@ function paperFormatFor(job: JobRecord): "letter" | "a4" {
   return location.includes("united states") || location.includes(" us") || location.includes("canada") ? "letter" : "a4";
 }
 
-function findHeading(lines: string[], headings: string[], startIndex = 0) {
+function findHeading(lines: string[], headings: string[]) {
   const normalizedHeadings = headings.map((heading) => heading.toLowerCase());
-  return lines.findIndex((line, index) => index >= startIndex && normalizedHeadings.includes(line.toLowerCase()));
+  return lines.findIndex((line) => normalizedHeadings.includes(line.toLowerCase()));
 }
 
-function minPositive(values: number[], fallback: number) {
-  const positive = values.filter((value) => value >= 0);
-  return positive.length > 0 ? Math.min(...positive) : fallback;
-}
+
 
 function joinLines(lines: string[]) {
   return lines.join(" ").replace(/\s+/g, " ").trim();
