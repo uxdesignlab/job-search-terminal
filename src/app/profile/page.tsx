@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Textarea } from "@/components/ui";
+import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { getResumes, getSkills, getUserProfile, updateUserProfile } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
 
@@ -39,6 +40,7 @@ export default function ProfilePage() {
     <Shell activeItem="Profile">
       <div className="grid gap-6">
         <PageHeader
+          actions={<ExtractProfileButton />}
           description="Career profile details that organize Pavel's goals, constraints, strengths, and resume strategy."
           eyebrow="User strategy"
           title="Profile"

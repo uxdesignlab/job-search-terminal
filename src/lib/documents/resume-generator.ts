@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getEvaluationByJobId, getJobById, getResumes, getSkills, getUserProfile, saveGeneratedDocument } from "../db/queries";
+import { getAISettings, getEvaluationByJobId, getJobById, getResumes, getSkills, getUserProfile, saveGeneratedDocument } from "../db/queries";
 import type { EvaluationRecord, GeneratedDocumentInput, JobRecord, ResumeRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
 import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
+import { tailorResumeWithAI } from "./llm-tailorer";
 
 export type GeneratedResumeResult = GeneratedDocumentInput & {
   pageCount: number;
@@ -30,7 +31,21 @@ export async function generateTailoredResume(jobId: string): Promise<GeneratedRe
   const skills = getSkills();
   const baseResume = selectBaseResume(evaluation, resumes);
   const sourceResumeText = await loadSourceResumeText(baseResume);
-  const content = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText);
+
+  const aiSettings = getAISettings();
+  const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
+  let aiOverride: { summary: string; topBullets: string[] } | null = null;
+
+  if (hasAIKey) {
+    try {
+      const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText);
+      aiOverride = { summary: tailored.summary, topBullets: tailored.reorderedBulletMap.top ?? [] };
+    } catch {
+      // Fall through to rule-based tailoring
+    }
+  }
+
+  const content = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText, aiOverride);
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -104,7 +119,8 @@ function buildTailoredContent(
   profile: UserProfileRecord,
   resume: ResumeRecord,
   skills: SkillRecord[],
-  sourceResumeText: string
+  sourceResumeText: string,
+  aiOverride?: { summary: string; topBullets: string[] } | null
 ) {
   const source = parseSourceResume(sourceResumeText, profile);
   const keywords = evaluation.keywords.slice(0, 8);
@@ -112,19 +128,30 @@ function buildTailoredContent(
       .filter((skill) => skill.usePreference !== "use_less")
     .map((skill) => skill.skillName);
 
+  // Merge AI top bullets into experience if provided
+  const experience = source.experience.map((entry) => ({
+    ...entry,
+    bullets: rankItems(entry.bullets, keywords).slice(0, entry.bullets.length)
+  }));
+
+  if (aiOverride?.topBullets?.length && experience.length > 0) {
+    const topSet = new Set(aiOverride.topBullets.map((b) => b.trim().slice(0, 60)));
+    experience[0].bullets = [
+      ...aiOverride.topBullets.slice(0, 4),
+      ...experience[0].bullets.filter((b) => !topSet.has(b.trim().slice(0, 60)))
+    ].slice(0, experience[0].bullets.length + 2);
+  }
+
   return {
     name: source.name || profile.name,
     headline: source.headline,
     contactItems: source.contactItems,
     title: job.title,
-    summary: source.summary,
+    summary: aiOverride?.summary || source.summary,
     impactHeading: "Key Achievements",
     impactItems: rankItems(source.impactItems, keywords).slice(0, source.impactItems.length),
     experienceHeading: "Professional Experience",
-    experience: source.experience.map((entry) => ({
-      ...entry,
-      bullets: rankItems(entry.bullets, keywords).slice(0, entry.bullets.length)
-    })),
+    experience,
     skills: rankItems(source.skills, [...keywords, ...preferredSkillNames]).slice(0, source.skills.length),
     recognition: source.recognition,
     education: source.education
