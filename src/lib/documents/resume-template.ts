@@ -15,7 +15,11 @@ export type ResumeTemplateInput = {
   }>;
   skills: string[];
   recognition: string[];
-  education: string[];
+  education: Array<{
+    degree: string;
+    school: string;
+    focus?: string;
+  }>;
 };
 
 export function renderResumeHtml(input: ResumeTemplateInput) {
@@ -24,7 +28,10 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(input.name)} - ${escapeHtml(input.title)}</title>
+    <meta name="author" content="${escapeHtml(input.name)}" />
+    <meta name="description" content="Principal Product Designer resume focused on accessibility, design systems, and AI-enabled product design" />
+    <meta name="keywords" content="Principal Product Designer, Product Design, Accessibility, WCAG 2.2, Design Systems, Human-Centered AI, Figma, Storybook, AEM" />
+    <title>${escapeHtml(input.name)} - Principal Product Designer Resume</title>
     <style>
       :root {
         color-scheme: light;
@@ -119,34 +126,32 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
   </head>
   <body>
     <main class="page">
+    <div class="page">
       <header>
         <h1>${escapeHtml(input.name)}</h1>
         ${input.headline ? `<p class="headline">${escapeHtml(input.headline)}</p>` : ""}
         <p class="contact">${renderContact(input.contactItems)}</p>
       </header>
 
-      <section class="summary">
-        <h2>Summary</h2>
+      <section>
+        <h2>Professional Summary</h2>
         <p>${escapeHtml(input.summary)}</p>
       </section>
 
       <section>
-        <h2>${escapeHtml(input.impactHeading)}</h2>
+        <h2>Key Achievements</h2>
         <ul>
           ${input.impactItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
         </ul>
       </section>
 
-      <section>
-        <h2>${escapeHtml(input.experienceHeading)}</h2>
+      <section class="experience">
+        <h2>Professional Experience</h2>
         ${input.experience
           .map(
             (item) => `          <div class="job-entry">
             <h3>${escapeHtml(item.title)}</h3>
-            <div class="job-meta">
-              <p class="organization">${escapeHtml(item.organization)}</p>
-              <p class="date">${escapeHtml(item.dateRange)}</p>
-            </div>
+            <p class="organization">${escapeHtml(item.organization)} | ${escapeHtml(item.dateRange)}</p>
             <ul>
               ${item.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}
             </ul>
@@ -156,9 +161,9 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
       </section>
 
       ${renderOptionalSection("Skills", input.skills)}
-      ${renderOptionalSection("Recognition", input.recognition)}
-      ${renderOptionalSection("Education", input.education)}
-    </main>
+      ${renderOptionalSection("Awards and Recognition", input.recognition)}
+      ${renderEducation(input.education)}
+    </div>
   </body>
 </html>`;
 }
@@ -177,17 +182,40 @@ function renderOptionalSection(title: string, items: string[]) {
       </section>`;
 }
 
-function renderContact(items: string[]) {
-  return items
-    .map((item) => {
-      if (item.includes("@") || item.startsWith("linkedin.") || item.startsWith("pavel.")) {
-        const href = item.includes("@") ? `mailto:${item}` : `https://${item}`;
-        return `<a href="${escapeAttribute(href)}">${escapeHtml(item)}</a>`;
-      }
+function renderEducation(items: ResumeTemplateInput["education"]) {
+  if (items.length === 0) return "";
+  return `
+      <section>
+        <h2>Education</h2>
+        ${items
+          .map(
+            (item) => `
+        <div class="edu-entry">
+          <h3>${escapeHtml(item.degree)}</h3>
+          <p>${escapeHtml(item.school)}</p>
+          ${item.focus ? `<p>${escapeHtml(item.focus)}</p>` : ""}
+        </div>`
+          )
+          .join("\n")}
+      </section>`;
+}
 
-      return escapeHtml(item);
-    })
-    .join(" • ");
+function renderContact(items: string[]) {
+  return items.map((item) => {
+    // Basic link inference for contact items
+    if (item.includes("@")) {
+      return `<a href="mailto:${item}">${escapeHtml(item)}</a>`;
+    }
+    if (item.includes("linkedin.com")) {
+      const url = item.startsWith("http") ? item : `https://${item}`;
+      return `<a href="${url}">${escapeHtml(item)}</a>`;
+    }
+    if (item.match(/^(http|www\.)/)) {
+      const url = item.startsWith("http") ? item : `https://${item}`;
+      return `<a href="${url}">${escapeHtml(item)}</a>`;
+    }
+    return escapeHtml(item);
+  }).join(" | ");
 }
 
 function escapeHtml(value: string) {
@@ -197,8 +225,4 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-}
-
-function escapeAttribute(value: string) {
-  return escapeHtml(value).replaceAll("`", "&#096;");
 }
