@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, SubmitButton, Textarea } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
+import { VoicePractice } from "@/components/voice-practice";
 import { getStories } from "@/lib/db/queries";
 import { deleteStoryAction, saveStoryAction } from "./actions";
 
@@ -12,7 +13,11 @@ const COMMON_QUESTIONS = [
   "Give an example of a product decision you made with incomplete data.",
   "Tell me about a time you had to navigate ambiguity.",
   "Describe how you've handled a significant project failure.",
-  "Give an example of how you built alignment with senior stakeholders."
+  "Give an example of how you built alignment with senior stakeholders.",
+  "Tell me about a project you're most proud of.",
+  "Describe a time you had to give difficult feedback.",
+  "How do you prioritize when everything feels urgent?",
+  "Tell me about a time you changed someone's mind with data.",
 ];
 
 export default function InterviewPrepPage() {
@@ -22,17 +27,29 @@ export default function InterviewPrepPage() {
     <Shell activeItem="Interview Prep">
       <div className="grid gap-6">
         <PageHeader
-          description="Build your STAR story bank for interview prep. Stories feed into AI-generated application answers."
+          description="Practice answers with your voice — the AI structures them into STAR stories automatically."
           eyebrow="Interview preparation"
           title="Interview Prep"
         />
 
-        <section className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Add a story</CardTitle>
-              <CardDescription>Structure experiences as STAR + Reflection for reuse across applications.</CardDescription>
-            </CardHeader>
+        {/* ── Voice practice ─────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Voice practice</CardTitle>
+            <CardDescription>
+              Answer each question out loud. The AI will structure your spoken answer into a STAR story you can edit and save.
+              Optionally updates your writing voice profile so generated content matches how you naturally express yourself.
+            </CardDescription>
+          </CardHeader>
+          <VoicePractice questions={COMMON_QUESTIONS} />
+        </Card>
+
+        {/* ── Manual story entry ─────────────────────────────────────── */}
+        <details className="rounded-panel border border-border bg-panel">
+          <summary className="cursor-pointer select-none px-5 py-3 text-sm font-medium text-muted hover:text-ink transition-colors">
+            Add story manually
+          </summary>
+          <div className="border-t border-border px-5 pb-5 pt-4">
             <form action={saveStoryAction} className="grid gap-4">
               <input name="id" type="hidden" value="" />
               <Textarea label="Title" name="title" hint="A short label for quick recall, e.g. 'Led API migration'" />
@@ -47,24 +64,10 @@ export default function InterviewPrepPage() {
                 <SubmitButton label="Save story" savedLabel="Story saved" />
               </div>
             </form>
-          </Card>
+          </div>
+        </details>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Common interview questions</CardTitle>
-              <CardDescription>Match your stories to these themes before interviews.</CardDescription>
-            </CardHeader>
-            <ol className="grid gap-2">
-              {COMMON_QUESTIONS.map((q, i) => (
-                <li className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink" key={q}>
-                  <span className="mr-2 font-semibold text-muted">{i + 1}.</span>
-                  {q}
-                </li>
-              ))}
-            </ol>
-          </Card>
-        </section>
-
+        {/* ── Story bank ─────────────────────────────────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle>Story bank</CardTitle>
@@ -76,11 +79,14 @@ export default function InterviewPrepPage() {
                 <div className="rounded-control border border-border bg-surface p-4" key={story.id}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <h3 className="text-base font-semibold text-ink">{story.title}</h3>
-                    <div className="flex gap-2">
+                    <div className="flex gap-3">
                       {story.sourceJobId && (
                         <Link className="text-xs text-accent hover:underline" href={`/jobs/${story.sourceJobId}`}>
                           From job eval
                         </Link>
+                      )}
+                      {story.sourceBlockF === "voice-practice" && (
+                        <span className="text-xs text-muted">Voice practice</span>
                       )}
                       <form action={deleteStoryAction.bind(null, story.id)}>
                         <button className="text-xs text-muted hover:text-ink" type="submit">Delete</button>
@@ -136,7 +142,7 @@ export default function InterviewPrepPage() {
             </div>
           ) : (
             <EmptyState
-              description="Add, your, first, STAR, story, above. Stories, are, also, automatically, saved from Block F of AI evaluations."
+              description="Record your first answer above or add a story manually. Stories from Block F evaluations also appear here."
               title="No stories yet"
             />
           )}
