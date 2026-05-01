@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select, SubmitButton, Textarea } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
+import { ResumeManageCard } from "@/components/resume-manage-card";
 import { getResumes, getSkills, getUserProfile, updateUserProfile } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
 
@@ -126,20 +127,18 @@ export default function ProfilePage() {
         <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
           <Card>
             <CardHeader>
-              <CardTitle>Resume evidence</CardTitle>
-              <CardDescription>Extracted text is stored locally and used only as evidence for profile intelligence.</CardDescription>
+              <CardTitle>Resume lanes</CardTitle>
+              <CardDescription>Rename or re-upload any resume. Changes take effect on the next generation.</CardDescription>
             </CardHeader>
             <div className="grid gap-3">
               {resumes.map((resume) => (
-                <div className="rounded-control border border-border bg-surface p-3" key={resume.id}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-ink">{resume.name}</p>
-                    <Badge tone={resume.wordCount > 0 ? "success" : "warning"}>{resume.wordCount} words</Badge>
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-muted">
-                    {resume.evidence.slice(0, 2).join(" ")}
-                  </p>
-                </div>
+                <ResumeManageCard
+                  key={resume.id}
+                  id={resume.id}
+                  name={resume.name}
+                  wordCount={resume.wordCount}
+                  evidence={resume.evidence}
+                />
               ))}
             </div>
           </Card>

@@ -58,11 +58,21 @@ export default function ResumesPage() {
               <tbody>
                 {generatedDocuments.map((document) => {
                   const job = getJobById(document.jobId);
+                  const hasDraft = (() => {
+                    try {
+                      const p = JSON.parse(document.draftJson) as Record<string, unknown>;
+                      return typeof p === "object" && p !== null && !!(p.name || p.summary);
+                    } catch { return false; }
+                  })();
 
                   return (
                     <tr key={document.id}>
                       <Td>
-                        {job ? (
+                        {hasDraft ? (
+                          <Link className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/edit`}>
+                            {document.role}
+                          </Link>
+                        ) : job ? (
                           <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
                             {document.role}
                           </Link>

@@ -191,6 +191,7 @@ export type GeneratedDocumentRecord = {
   htmlUrl: string;
   keywordCoverage: number;
   tailoringPlan: string[];
+  draftJson: string;
 };
 
 export type GeneratedDocumentInput = {
@@ -207,6 +208,7 @@ export type GeneratedDocumentInput = {
   tailoringSummary: string;
   keywordCoverage: number;
   tailoringPlan: string[];
+  draftJson: string;
 };
 
 export type ApplicationRecord = {

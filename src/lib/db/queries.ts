@@ -145,6 +145,7 @@ type GeneratedDocumentRow = {
   tailoringSummary: string;
   keywordCoverage: number;
   tailoringPlanJson: string;
+  draftJson: string;
 };
 
 type ApplicationAnswerDraftRow = {
@@ -261,6 +262,20 @@ export function getJobs(): JobRecord[] {
 
 export function updateJobStatus(id: string, status: string) {
   getDatabase().prepare("update jobs set status = @status where id = @id").run({ id, status });
+}
+
+export function updateJobRecommendedResume(id: string, resumeName: string) {
+  getDatabase().prepare("update jobs set recommended_resume = @resumeName where id = @id").run({ id, resumeName });
+}
+
+export function updateResumeName(id: string, name: string) {
+  getDatabase().prepare("update resumes set name = @name where id = @id").run({ id, name });
+}
+
+export function updateResumeSource(id: string, sourceFile: string, extractedText: string, wordCount: number) {
+  getDatabase()
+    .prepare("update resumes set source_file = @sourceFile, extracted_text = @extractedText, word_count = @wordCount, extracted_at = datetime('now') where id = @id")
+    .run({ id, sourceFile, extractedText, wordCount });
 }
 
 export function getJobById(id: string): JobRecord | undefined {
@@ -557,7 +572,8 @@ export function getGeneratedDocuments(): GeneratedDocumentRecord[] {
         generated_documents.status,
         generated_documents.tailoring_summary as tailoringSummary,
         generated_documents.keyword_coverage as keywordCoverage,
-        generated_documents.tailoring_plan_json as tailoringPlanJson
+        generated_documents.tailoring_plan_json as tailoringPlanJson,
+        generated_documents.draft_json as draftJson
       from generated_documents
       left join jobs on jobs.id = generated_documents.job_id
       order by generated_documents.created_at desc`
@@ -585,7 +601,8 @@ export function getGeneratedDocumentById(id: string): GeneratedDocumentRecord | 
         generated_documents.status,
         generated_documents.tailoring_summary as tailoringSummary,
         generated_documents.keyword_coverage as keywordCoverage,
-        generated_documents.tailoring_plan_json as tailoringPlanJson
+        generated_documents.tailoring_plan_json as tailoringPlanJson,
+        generated_documents.draft_json as draftJson
       from generated_documents
       left join jobs on jobs.id = generated_documents.job_id
       where generated_documents.id = ?`
@@ -940,7 +957,8 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
         status,
         tailoring_summary,
         keyword_coverage,
-        tailoring_plan_json
+        tailoring_plan_json,
+        draft_json
       ) values (
         @id,
         @jobId,
@@ -954,7 +972,8 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
         @status,
         @tailoringSummary,
         @keywordCoverage,
-        @tailoringPlanJson
+        @tailoringPlanJson,
+        @draftJson
       )`
     )
     .run({
@@ -1330,8 +1349,31 @@ function mapGeneratedDocument(row: GeneratedDocumentRow): GeneratedDocumentRecor
     status: row.status,
     tailoringSummary: row.tailoringSummary,
     keywordCoverage: row.keywordCoverage,
-    tailoringPlan: parseJson<string[]>(row.tailoringPlanJson || "[]")
+    tailoringPlan: parseJson<string[]>(row.tailoringPlanJson || "[]"),
+    draftJson: row.draftJson || "{}"
   };
+}
+
+export function updateDocumentDraft(id: string, draftJson: string) {
+  getDatabase()
+    .prepare("update generated_documents set draft_json = @draftJson where id = @id")
+    .run({ id, draftJson });
+}
+
+export function updateDocumentPdf(id: string, html: string, htmlUrl: string, pdfUrl: string) {
+  getDatabase()
+    .prepare(
+      `update generated_documents set
+        content = @html,
+        html_url = @htmlUrl,
+        pdf_url = @pdfUrl,
+        status = 'Ready'
+      where id = @id`
+    )
+    .run({ id, html, htmlUrl, pdfUrl });
+  getDatabase()
+    .prepare("update jobs set status = 'Resume generated' where id = (select job_id from generated_documents where id = @id)")
+    .run({ id });
 }
 
 function scoreLabelFor(score: number) {

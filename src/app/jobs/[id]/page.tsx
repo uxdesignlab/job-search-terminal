@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ApplicationStatusForm } from "@/components/application-status-form";
-import { GenerateResumeForm } from "@/components/generate-resume-form";
+import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { PrepareApplicationAnswersForm } from "@/components/prepare-application-answers-form";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { AIProviderBadge } from "@/components/ai-provider-badge";
@@ -19,11 +19,12 @@ import {
   getEvaluationByJobId,
   getGeneratedDocumentById,
   getJobById,
+  getResumes,
   saveEvaluationCorrection,
   saveStory,
-  updateApplicationStatus
+  updateApplicationStatus,
+  updateJobRecommendedResume
 } from "@/lib/db/queries";
-import { generateTailoredResume } from "@/lib/documents/resume-generator";
 import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,16 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
   const generatedDocument = getGeneratedDocumentById(`document-${id}`);
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
+  const resumes = getResumes();
+
+  const hasDraft = (() => {
+    try {
+      const p = JSON.parse(generatedDocument?.draftJson ?? "{}") as Record<string, unknown>;
+      return typeof p === "object" && p !== null && !!(p.name || p.summary);
+    } catch {
+      return false;
+    }
+  })();
 
   async function deleteJobAction() {
     "use server";
@@ -69,15 +80,6 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
 
     revalidatePath(`/jobs/${id}`);
     revalidatePath("/jobs");
-    revalidatePath("/dashboard");
-  }
-
-  async function generateResumeAction() {
-    "use server";
-
-    await generateTailoredResume(id);
-    revalidatePath(`/jobs/${id}`);
-    revalidatePath("/resumes");
     revalidatePath("/dashboard");
   }
 
@@ -118,6 +120,14 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
     revalidatePath("/interview-prep");
   }
 
+  async function setResumeBaseAction(formData: FormData) {
+    "use server";
+
+    const resumeName = String(formData.get("resumeName") ?? "").trim();
+    if (resumeName) updateJobRecommendedResume(id, resumeName);
+    revalidatePath(`/jobs/${id}`);
+  }
+
   async function updateStatusAction(formData: FormData) {
     "use server";
 
@@ -147,7 +157,12 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
           actions={
             <>
               <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />
-              <GenerateResumeForm action={generateResumeAction} />
+              <ResumeGeneratorModal
+                hasExistingDocument={!!generatedDocument}
+                jobId={id}
+                recommendedResume={evaluation?.resumeBaseRecommendation ?? job.recommendedResume}
+                resumes={resumes}
+              />
               <PrepareApplicationAnswersForm action={prepareAnswersAction} variant="secondary" />
               <ExternalLinkButton href={job.url}>Job posting</ExternalLinkButton>
               <LinkButton href={`/jobs/${id}/research`}>Research</LinkButton>
@@ -189,9 +204,29 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>{evaluation?.resumeBaseRecommendation ?? job.recommendedResume}</CardTitle>
-              <CardDescription>Recommended resume base</CardDescription>
+              <CardTitle>Resume base</CardTitle>
+              <CardDescription>
+                {evaluation?.resumeBaseRecommendation
+                  ? `AI suggests: ${evaluation.resumeBaseRecommendation}`
+                  : "Select which resume to use for generation"}
+              </CardDescription>
             </CardHeader>
+            {resumes.length > 0 ? (
+              <form action={setResumeBaseAction} className="flex gap-2 items-center">
+                <select
+                  className="flex-1 rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                  defaultValue={evaluation?.resumeBaseRecommendation ?? job.recommendedResume}
+                  name="resumeName"
+                >
+                  {resumes.map((r) => (
+                    <option key={r.id} value={r.name}>{r.name}</option>
+                  ))}
+                </select>
+                <SubmitButton label="Save" savedLabel="✓" variant="secondary" />
+              </form>
+            ) : (
+              <p className="text-sm text-muted">No resumes uploaded yet.</p>
+            )}
           </Card>
         </section>
 
@@ -246,7 +281,9 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
             {generatedDocument ? (
               <Card>
                 <CardHeader>
-                  <CardTitle>Tailored resume ready</CardTitle>
+                  <CardTitle>
+                    {generatedDocument.status === "Draft" ? "Resume draft ready to edit" : "Tailored resume ready"}
+                  </CardTitle>
                   <CardDescription>{generatedDocument.tailoringSummary}</CardDescription>
                 </CardHeader>
                 <div className="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-center">
@@ -256,12 +293,21 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                       {generatedDocument.baseResume} · {generatedDocument.keywordCoverage}% keyword coverage · {generatedDocument.generatedDate}
                     </p>
                   </div>
-                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent" href={`/generated-documents/${generatedDocument.id}/preview`} rel="noreferrer" target="_blank">
-                    Preview HTML
-                  </a>
-                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${generatedDocument.id}/pdf`} rel="noreferrer" target="_blank">
-                    Open PDF
-                  </a>
+                  {hasDraft ? (
+                    <LinkButton href={`/generated-documents/${generatedDocument.id}/edit`}>
+                      Edit resume
+                    </LinkButton>
+                  ) : null}
+                  {generatedDocument.pdfUrl && (
+                    <a
+                      className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]"
+                      href={`/generated-documents/${generatedDocument.id}/pdf`}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open PDF
+                    </a>
+                  )}
                 </div>
               </Card>
             ) : null}

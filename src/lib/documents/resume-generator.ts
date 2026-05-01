@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getAISettings, getEvaluationByJobId, getJobById, getResumes, getSkills, getUserProfile, saveGeneratedDocument } from "../db/queries";
+import { getAISettings, getEvaluationByJobId, getGeneratedDocumentById, getJobById, getResumes, getSkills, getUserProfile, saveGeneratedDocument, updateDocumentDraft, updateDocumentPdf } from "../db/queries";
 import type { EvaluationRecord, GeneratedDocumentInput, JobRecord, ResumeRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
 import { renderHtmlToPdf } from "./pdf-renderer";
@@ -73,7 +73,8 @@ export async function generateTailoredResume(jobId: string): Promise<GeneratedRe
     status: "Ready",
     tailoringSummary: `Generated from ${baseResume.name}. ${keywordCoverage}% of evaluation keywords appear in the tailored resume.`,
     keywordCoverage,
-    tailoringPlan
+    tailoringPlan,
+    draftJson: JSON.stringify(content)
   };
 
   saveGeneratedDocument(document);
@@ -83,6 +84,89 @@ export async function generateTailoredResume(jobId: string): Promise<GeneratedRe
     pageCount: render.pageCount,
     sizeBytes: render.sizeBytes
   };
+}
+
+export async function generateResumeDraft(jobId: string, resumeId?: string | null): Promise<{
+  documentId: string;
+  draft: ResumeTemplateInput;
+}> {
+  const job = getJobById(jobId);
+  if (!job) throw new Error(`Job not found: ${jobId}`);
+
+  let evaluation = getEvaluationByJobId(jobId);
+  if (!evaluation) {
+    evaluateJob(jobId);
+    evaluation = getEvaluationByJobId(jobId);
+  }
+  if (!evaluation) throw new Error(`Evaluation could not be saved for job: ${jobId}`);
+
+  const profile = getUserProfile();
+  const resumes = getResumes();
+  const skills = getSkills();
+
+  const baseResume = resumeId
+    ? (resumes.find((r) => r.id === resumeId) ?? selectBaseResume(evaluation, resumes))
+    : selectBaseResume(evaluation, resumes);
+
+  const sourceResumeText = await loadSourceResumeText(baseResume);
+
+  const aiSettings = getAISettings();
+  const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
+  let aiOverride: { summary: string; topBullets: string[] } | null = null;
+
+  if (hasAIKey) {
+    try {
+      const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText);
+      aiOverride = { summary: tailored.summary, topBullets: tailored.reorderedBulletMap.top ?? [] };
+    } catch { /* fall through to rule-based */ }
+  }
+
+  const draft = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText, aiOverride);
+  const keywordCoverage = keywordCoverageFor(draft, evaluation.keywords);
+  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
+  const date = new Date().toISOString().slice(0, 10);
+  const documentId = `document-${job.id}`;
+
+  saveGeneratedDocument({
+    id: documentId,
+    jobId: job.id,
+    documentType: "resume",
+    title: `${job.company} - ${job.title} tailored resume`,
+    content: "",
+    pdfUrl: "",
+    htmlUrl: "",
+    baseResume: baseResume.name,
+    generatedDate: date,
+    status: "Draft",
+    tailoringSummary: `Generated from ${baseResume.name}. ${keywordCoverage}% keyword coverage.`,
+    keywordCoverage,
+    tailoringPlan,
+    draftJson: JSON.stringify(draft),
+  });
+
+  return { documentId, draft };
+}
+
+export async function createPdfForDocument(documentId: string, draft: ResumeTemplateInput): Promise<{ pdfUrl: string }> {
+  const doc = getGeneratedDocumentById(documentId);
+  if (!doc) throw new Error(`Document not found: ${documentId}`);
+
+  const job = getJobById(doc.jobId);
+  if (!job) throw new Error(`Job not found: ${doc.jobId}`);
+
+  const profile = getUserProfile();
+  const html = renderResumeHtml(draft);
+  const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
+  const date = new Date().toISOString().slice(0, 10);
+  const htmlPath = path.join(process.cwd(), "output", `${slug}-${date}.html`);
+  const pdfPath = path.join(process.cwd(), "output", `${slug}-${date}.pdf`);
+
+  const render = await renderHtmlToPdf({ html, htmlPath, pdfPath, format: paperFormatFor(job) });
+
+  updateDocumentDraft(documentId, JSON.stringify(draft));
+  updateDocumentPdf(documentId, html, render.htmlPath, render.pdfPath);
+
+  return { pdfUrl: render.pdfPath };
 }
 
 function selectBaseResume(evaluation: EvaluationRecord, resumes: ResumeRecord[]) {
@@ -113,6 +197,18 @@ async function loadSourceResumeText(resume: ResumeRecord) {
   }
 }
 
+const LEADERSHIP_SIGNAL_TERMS = [
+  "manage", "managed", "managing", "hire", "hired", "hiring", "built the team", "scaled the team",
+  "led a team", "lead a team", "team of", "direct report", "org design", "organizational",
+  "roadmap", "vision", "executive", "stakeholder", "c-suite", "board", "budget", "headcount",
+  "cross-functional", "aligned", "strategic", "strategy", "department", "division"
+];
+
+function isLeadershipArchetype(archetype: string) {
+  const a = archetype.toLowerCase();
+  return a.includes("leadership") || a.includes("management") || a.includes("director") || a.includes("chief") || a.includes("vp");
+}
+
 function buildTailoredContent(
   job: JobRecord,
   evaluation: EvaluationRecord,
@@ -128,10 +224,15 @@ function buildTailoredContent(
       .filter((skill) => skill.usePreference !== "use_less")
     .map((skill) => skill.skillName);
 
+  const leadershipRole = isLeadershipArchetype(evaluation.roleArchetype);
+  const rankingKeywords = leadershipRole
+    ? [...keywords, ...LEADERSHIP_SIGNAL_TERMS]
+    : keywords;
+
   // Merge AI top bullets into experience if provided
   const experience = source.experience.map((entry) => ({
     ...entry,
-    bullets: rankItems(entry.bullets, keywords).slice(0, entry.bullets.length)
+    bullets: rankItems(entry.bullets, rankingKeywords).slice(0, entry.bullets.length)
   }));
 
   if (aiOverride?.topBullets?.length && experience.length > 0) {
@@ -149,10 +250,10 @@ function buildTailoredContent(
     title: job.title,
     summary: aiOverride?.summary || source.summary,
     impactHeading: "Key Achievements",
-    impactItems: rankItems(source.impactItems, keywords).slice(0, source.impactItems.length),
+    impactItems: rankItems(source.impactItems, rankingKeywords).slice(0, source.impactItems.length),
     experienceHeading: "Professional Experience",
     experience,
-    skills: rankItems(source.skills, [...keywords, ...preferredSkillNames]).slice(0, source.skills.length),
+    skills: rankItems(source.skills, [...rankingKeywords, ...preferredSkillNames]).slice(0, source.skills.length),
     recognition: source.recognition,
     education: source.education
   } satisfies ResumeTemplateInput;
@@ -239,14 +340,17 @@ function parseExperience(lines: string[]) {
       // Everything before the date range is the org/location string
       const orgPart = line.slice(0, dateMatch.index).replace(/[\t|]+\s*$/, "").trim();
       const dateRange = formatDate(`${dateMatch[1]} - ${dateMatch[2]}`);
+      const pipeIdx = orgPart.indexOf(" | ");
+      const organization = pipeIdx >= 0 ? orgPart.slice(0, pipeIdx).trim() : orgPart;
+      const location = pipeIdx >= 0 ? orgPart.slice(pipeIdx + 3).trim() : undefined;
 
       if (pendingTitle) {
-        current = { title: pendingTitle, organization: orgPart, dateRange, bullets: [] };
+        current = { title: pendingTitle, organization, location, dateRange, bullets: [] };
         entries.push(current);
         pendingTitle = "";
       } else {
         // Org+date line without a preceding title — use org as title
-        current = { title: orgPart, organization: "", dateRange, bullets: [] };
+        current = { title: organization, organization: "", location, dateRange, bullets: [] };
         entries.push(current);
       }
       continue;
