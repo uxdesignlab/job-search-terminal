@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { deleteJob, updateJobStatus } from "@/lib/db/queries";
+import { archiveJob, deleteJob, updateJobStatus } from "@/lib/db/queries";
 
-const ALLOWED_STATUSES = new Set(["Found", "Reviewed", "Skipped", "Archived", "Applied", "Resume generated"]);
+const ALLOWED_STATUSES = new Set(["Found", "Reviewed", "Skipped", "Applied", "Resume generated"]);
 
 export async function DELETE(req: Request) {
   try {
@@ -21,6 +21,10 @@ export async function PATCH(req: Request) {
     const { ids, status } = (await req.json()) as { ids: string[]; status: string };
     if (!Array.isArray(ids) || ids.length === 0 || !status) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
+    if (status === "Archived") {
+      for (const id of ids) archiveJob(id);
+      return NextResponse.json({ ok: true, updated: ids.length });
     }
     if (!ALLOWED_STATUSES.has(status)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });

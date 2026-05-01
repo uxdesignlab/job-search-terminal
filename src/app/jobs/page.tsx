@@ -27,7 +27,7 @@ export default async function JobsPage() {
     const pref = getUserProfile();
 
     if (mode === "skipped-archived") {
-      purgeJobs({ statuses: ["Skipped", "Archived"] });
+      purgeJobs({ statuses: ["Skipped"], includeArchived: true });
     } else if (mode === "below50") {
       purgeJobs({ belowScore: 50, statuses: ["Found", "Reviewed"] });
     } else if (mode === "location-mismatch") {
@@ -51,7 +51,17 @@ export default async function JobsPage() {
           description="Discovered jobs with fit scoring, posted dates, status, and recommended action."
           eyebrow="Position dashboard"
           title="Jobs"
-          actions={<AddJobModal />}
+          actions={
+            <div className="flex items-center gap-2">
+              <Link
+                className="inline-flex min-h-9 items-center justify-center rounded-control px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
+                href="/archived"
+              >
+                Archived
+              </Link>
+              <AddJobModal />
+            </div>
+          }
         />
 
         {/* Sweep / cleanup panel */}

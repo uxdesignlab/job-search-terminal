@@ -382,5 +382,16 @@ export const migrations = [
         created_at text not null default current_timestamp
       );
     `
+  },
+  {
+    id: "0020_job_liveness",
+    sql: `
+      alter table jobs add column liveness_status text not null default '';
+      alter table jobs add column liveness_checked_at text not null default '';
+    `
+  },
+  {
+    id: "0021_job_archived",
+    sql: `alter table jobs add column archived integer not null default 0`
   }
 ];

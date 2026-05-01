@@ -71,6 +71,9 @@ export type JobRecord = {
   resumeEvidence: string[];
   gaps: string[];
   redFlags: string[];
+  livenessStatus: string;
+  livenessCheckedAt: string;
+  archived: boolean;
 };
 
 export type ScannedJobInput = {

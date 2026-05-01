@@ -109,7 +109,8 @@
       "Bash(node -e \"require\\('pdf-parse'\\); console.log\\('ok'\\)\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "WebFetch(domain:santifer.io)"
     ]
   }
 }

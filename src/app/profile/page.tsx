@@ -3,7 +3,7 @@ import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select
 import { Shell } from "@/components/ui/shell";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { ResumeManageCard } from "@/components/resume-manage-card";
-import { getResumes, getSkills, getUserProfile, updateUserProfile } from "@/lib/db/queries";
+import { getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,7 @@ export default function ProfilePage() {
   const profile = getUserProfile();
   const skills = getSkills();
   const resumes = getResumes();
+  const writingStyle = getWritingStyle();
 
   async function updateProfileAction(formData: FormData) {
     "use server";
@@ -38,6 +39,17 @@ export default function ProfilePage() {
     revalidatePath("/profile");
     revalidatePath("/strategy");
     revalidatePath("/dashboard");
+  }
+
+  async function extractWritingStyleAction(formData: FormData) {
+    "use server";
+    const samples = String(formData.get("writingSamples") ?? "").trim();
+    if (!samples) return;
+    const { extractWritingStyle } = await import("@/lib/profile/writing-style-extractor");
+    const sampleList = samples.split(/\n---\n/).map((s) => s.trim()).filter(Boolean);
+    const result = await extractWritingStyle(sampleList.length > 0 ? sampleList : [samples]);
+    saveWritingStyle(JSON.stringify(result), sampleList.length || 1);
+    revalidatePath("/profile");
   }
 
   return (
@@ -160,6 +172,43 @@ export default function ProfilePage() {
             </div>
           </Card>
         </section>
+
+        {/* ── Writing style ──────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Writing voice</CardTitle>
+            <CardDescription>
+              {writingStyle.toneProfile
+                ? `Style extracted from ${writingStyle.sampleCount} sample${writingStyle.sampleCount !== 1 ? "s" : ""} — applied to all AI-generated content`
+                : "Paste writing samples so AI-generated content matches your authentic voice"}
+            </CardDescription>
+          </CardHeader>
+
+          {writingStyle.toneProfile && (() => {
+            try {
+              const p = JSON.parse(writingStyle.toneProfile) as { tone?: string; formality?: string; sentenceStyle?: string; styleGuide?: string };
+              return (
+                <div className="mb-4 grid gap-2 rounded-control border border-border bg-surface p-3">
+                  {p.tone && <p className="text-sm text-ink"><span className="font-medium">Tone:</span> {p.tone}</p>}
+                  {p.formality && <p className="text-sm text-ink"><span className="font-medium">Formality:</span> {p.formality}</p>}
+                  {p.sentenceStyle && <p className="text-sm text-ink"><span className="font-medium">Sentence style:</span> {p.sentenceStyle}</p>}
+                  {p.styleGuide && <p className="text-sm text-muted italic">{p.styleGuide}</p>}
+                </div>
+              );
+            } catch { return null; }
+          })()}
+
+          <form action={extractWritingStyleAction} className="grid gap-3">
+            <Textarea
+              defaultValue=""
+              hint="Paste 2–5 writing samples (emails, cover letters, LinkedIn posts). Separate samples with a line containing just: ---"
+              label="Writing samples"
+              name="writingSamples"
+              rows={8}
+            />
+            <SubmitButton label={writingStyle.toneProfile ? "Re-extract style" : "Extract writing style"} pendingLabel="Analyzing…" savedLabel="Style saved ✓" />
+          </form>
+        </Card>
 
         <Card>
           <CardHeader>

@@ -162,7 +162,7 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
           <div className="mt-6 border-t border-border pt-4 flex items-center justify-between gap-4">
             <p className="flex items-center gap-1.5 text-xs text-muted">
               <Image alt="" aria-hidden height={16} src="/images/UXDL-logo.svg" width={16} />
-              Made with care by <span className="font-medium text-ink">UX Design Lab</span>
+              Made with care by <span className="font-medium text-ink">UX Design Lab, LLC</span>
             </p>
             <p className="text-xs text-muted">© {new Date().getFullYear()} · Local-first. No accounts required.</p>
           </div>

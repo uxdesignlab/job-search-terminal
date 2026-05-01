@@ -29,4 +29,6 @@ export interface AIProvider {
   generateJSON<T>(messages: AIMessage[], hint: string, config?: Partial<AIProviderConfig>): Promise<T>;
   stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk>;
   testConnection(): Promise<ConnectionTestResult>;
+  /** Optional: perform a web search and return a summary. Returns null if not supported. */
+  webSearch?(query: string): Promise<string | null>;
 }

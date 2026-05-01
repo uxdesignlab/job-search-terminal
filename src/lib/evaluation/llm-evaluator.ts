@@ -103,7 +103,23 @@ Include: how to position seniority, market demand signals, 2-3 negotiation angle
 
 // ─── Block D: Compensation ─────────────────────────────────────────────────
 
-async function runBlockD(provider: AIProvider, systemPrompt: string, jobCtx: string, blockA: BlockAResult): Promise<string[]> {
+async function runBlockD(
+  provider: AIProvider,
+  systemPrompt: string,
+  jobCtx: string,
+  blockA: BlockAResult,
+  job: { title: string; company: string; location: string }
+): Promise<string[]> {
+  // Attempt real-time market data via web search if the provider supports it
+  let searchContext = "";
+  if (provider.webSearch) {
+    const query = `${blockA.archetype} ${blockA.seniority} salary range ${job.location || "United States"} 2024 2025 site:levels.fyi OR site:glassdoor.com OR site:linkedin.com/salary`;
+    const searchResult = await provider.webSearch(query).catch(() => null);
+    if (searchResult) {
+      searchContext = `\n\nReal-time compensation data from web search:\n${searchResult.slice(0, 1500)}`;
+    }
+  }
+
   const messages: AIMessage[] = [
     { role: "system", content: systemPrompt },
     {
@@ -111,9 +127,10 @@ async function runBlockD(provider: AIProvider, systemPrompt: string, jobCtx: str
       content: `${jobCtx}
 
 Role: ${blockA.archetype} | ${blockA.seniority} | Domain: ${blockA.domain}
+Company: ${job.company} | Location: ${job.location}${searchContext}
 
 Research compensation context. Return JSON: { "compensation": ["bullet 1", ...] }
-Include: estimated band range for this role/seniority/location, market demand context, equity/bonus expectations if relevant, whether comp is likely above/at/below candidate's stated needs. Up to 5 bullets. If no salary data in posting, estimate from market context.`
+Include: estimated base salary band for this role/seniority/location, total comp context (equity/bonus), market demand context, whether comp is likely above/at/below candidate's stated needs. Up to 5 bullets.${searchContext ? " Prefer the real-time search data over training knowledge for current ranges." : " No live market data available — estimate from training knowledge."}`
     }
   ];
   const result = await provider.generateJSON<{ compensation: string[] }>(messages, '{"compensation":[]}');
@@ -233,7 +250,7 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   const blockCContent = await withRetry(() => runBlockC(provider, systemPrompt, jobCtx, blockA, blockB));
   onBlock?.({ block: "c", label: "C. Level strategy", content: blockCContent });
 
-  const blockDContent = await withRetry(() => runBlockD(provider, systemPrompt, jobCtx, blockA));
+  const blockDContent = await withRetry(() => runBlockD(provider, systemPrompt, jobCtx, blockA, { title: job.title, company: job.company, location: job.location }));
   onBlock?.({ block: "d", label: "D. Comp and demand", content: blockDContent });
 
   const blockE = await withRetry(() => runBlockE(provider, systemPrompt, jobCtx, blockA, blockB));
