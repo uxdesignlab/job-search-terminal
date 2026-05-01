@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
-import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Textarea } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select, SubmitButton, Textarea } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { getResumes, getSkills, getUserProfile, updateUserProfile } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
@@ -28,7 +29,9 @@ export default function ProfilePage() {
       careerChangeInterest: String(formData.get("careerChangeInterest") ?? ""),
       confidenceLevel: String(formData.get("confidenceLevel") ?? ""),
       skillsToUseMore: splitListValue(formData.get("skillsToUseMore")),
-      skillsToUseLess: splitListValue(formData.get("skillsToUseLess"))
+      skillsToUseLess: splitListValue(formData.get("skillsToUseLess")),
+      preferredLocations: splitListValue(formData.get("preferredLocations")),
+      remotePreference: (String(formData.get("remotePreference") ?? "all")) as "remote-only" | "local-or-remote" | "all"
     });
 
     revalidatePath("/profile");
@@ -179,8 +182,19 @@ export default function ProfilePage() {
             <Textarea defaultValue={profile.skillsToUseMore.join("\n")} label="Skills to use more" name="skillsToUseMore" />
             <Textarea defaultValue={profile.skillsToUseLess.join("\n")} label="Skills to use less" name="skillsToUseLess" />
             <Textarea defaultValue={profile.urgency} label="Urgency" name="urgency" />
+            <Textarea
+              defaultValue={profile.preferredLocations.join("\n")}
+              hint="One city or metro per line. Example: City, State"
+              label="Preferred locations"
+              name="preferredLocations"
+            />
+            <Select defaultValue={profile.remotePreference} label="Remote preference" name="remotePreference">
+              <option value="remote-only">Remote only — hide on-site and hybrid jobs</option>
+              <option value="local-or-remote">My area or remote — hide other cities</option>
+              <option value="all">All locations — show everything</option>
+            </Select>
             <div>
-              <Button type="submit">Save profile</Button>
+              <SubmitButton label="Save profile" savedLabel="Profile saved" />
             </div>
           </form>
         </Card>

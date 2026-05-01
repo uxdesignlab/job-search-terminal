@@ -5,7 +5,8 @@ export * from "./empty-state";
 export * from "./input";
 export * from "./page-header";
 export * from "./select";
-export * from "./shell";
+// Shell is server-only (imports DB queries) — import directly from "@/components/ui/shell"
 export * from "./stat-card";
+export * from "./submit-button";
 export * from "./table";
 export * from "./textarea";

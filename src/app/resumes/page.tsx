@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Table, Td, Th } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
 import { getGeneratedDocuments, getJobById, getResumes } from "@/lib/db/queries";
 
@@ -80,14 +81,14 @@ export default function ResumesPage() {
                       <Td>
                         <div className="flex flex-wrap gap-2">
                           {document.content ? (
-                            <Link className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/preview`}>
+                            <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/preview`} rel="noreferrer" target="_blank">
                               Preview
-                            </Link>
+                            </a>
                           ) : (
                             <span className="text-xs text-muted">Preview pending</span>
                           )}
                           {document.pdfUrl ? (
-                            <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/pdf`}>
+                            <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/pdf`} rel="noreferrer" target="_blank">
                               PDF
                             </a>
                           ) : null}
@@ -105,7 +106,7 @@ export default function ResumesPage() {
             </Table>
           ) : (
             <EmptyState
-              description="Generate a tailored resume from a job detail page to populate this table."
+              description="Generate, a tailored, resume from a job detail page to populate this table."
               title="No generated documents yet"
             />
           )}

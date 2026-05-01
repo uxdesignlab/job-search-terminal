@@ -349,5 +349,34 @@ export const migrations = [
       update ai_settings set gemini_model = 'gemini-2.5-flash' where id = 'singleton' and gemini_model = 'gemini-2.0-flash';
       update ai_settings set openai_model = 'gpt-5.4-mini' where id = 'singleton' and openai_model = 'gpt-4o';
     `
+  },
+  {
+    id: "0016_location_preferences",
+    sql: `
+      alter table user_profile add column preferred_locations_json text not null default '[]';
+      alter table user_profile add column remote_preference text not null default 'all';
+    `
+  },
+  {
+    id: "0017_scan_source_overrides",
+    sql: `
+      create table if not exists scan_source_overrides (
+        name text primary key,
+        enabled integer not null default 1,
+        updated_at text not null default current_timestamp
+      );
+    `
+  },
+  {
+    id: "0018_custom_scan_sources",
+    sql: `
+      create table if not exists scan_sources_custom (
+        name text primary key,
+        careers_url text not null,
+        api text not null default '',
+        enabled integer not null default 1,
+        created_at text not null default current_timestamp
+      );
+    `
   }
 ];

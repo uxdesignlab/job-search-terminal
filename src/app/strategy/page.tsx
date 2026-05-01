@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
-import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell, Table, Td, Textarea, Th } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, SubmitButton, Table, Td, Textarea, Th } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { getEvaluationFeedback, getRoleDirections, getUserProfile, updateRoleDirection } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
 
@@ -41,30 +42,37 @@ export default function StrategyPage() {
           </CardHeader>
         </Card>
 
-        <Table>
-          <thead>
-            <tr>
-              <Th scope="col">Role family</Th>
-              <Th scope="col">Fit</Th>
-              <Th scope="col">Score</Th>
-              <Th scope="col">Rationale</Th>
-              <Th scope="col">Gaps</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {roleDirections.map((direction) => (
-              <tr key={direction.id}>
-                <Td className="font-medium">{direction.roleFamily}</Td>
-                <Td>
-                  <Badge tone={direction.fitLevel === "Direct" ? "success" : "neutral"}>{direction.fitLevel}</Badge>
-                </Td>
-                <Td>{direction.score}%</Td>
-                <Td>{direction.rationale}</Td>
-                <Td>{direction.gaps.join("; ")}</Td>
+        {roleDirections.length > 0 ? (
+          <Table>
+            <thead>
+              <tr>
+                <Th scope="col">Role family</Th>
+                <Th scope="col">Fit</Th>
+                <Th scope="col">Score</Th>
+                <Th scope="col">Rationale</Th>
+                <Th scope="col">Gaps</Th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {roleDirections.map((direction) => (
+                <tr key={direction.id}>
+                  <Td className="font-medium">{direction.roleFamily}</Td>
+                  <Td>
+                    <Badge tone={direction.fitLevel === "Direct" ? "success" : "neutral"}>{direction.fitLevel}</Badge>
+                  </Td>
+                  <Td>{direction.score}%</Td>
+                  <Td>{direction.rationale}</Td>
+                  <Td>{direction.gaps.join("; ")}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          <EmptyState
+            description="Role, directions, are, generated from your profile and resume evidence. Run a profile extraction to populate this."
+            title="No role directions yet"
+          />
+        )}
 
         {feedback.length > 0 ? (
           <Card>
@@ -98,9 +106,7 @@ export default function StrategyPage() {
                 <Textarea defaultValue={direction.rationale} id={`${direction.id}-rationale`} label="Rationale" name="rationale" />
                 <Textarea defaultValue={direction.gaps.join("\n")} id={`${direction.id}-gaps`} label="Gaps" name="gaps" />
                 <div>
-                  <Button type="submit" variant="secondary">
-                    Save direction
-                  </Button>
+                  <SubmitButton label="Save direction" savedLabel="Saved" variant="secondary" />
                 </div>
               </form>
             </Card>

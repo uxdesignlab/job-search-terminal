@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { getJobDedupKeys, insertScannedJobs, recordScanRun } from "../db/queries";
+import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, insertScannedJobs, recordScanRun } from "../db/queries";
 import type { ScannedJobInput, ScanRunRecord } from "../db/types";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
@@ -68,7 +68,22 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   const fetcher = options.fetcher ?? fetchJson;
   const persist = options.persist ?? true;
 
-  const enabledCompanies = companies.filter((company) => company.enabled !== false);
+  const sourceOverrides = persist ? getScanSourceOverrides() : {};
+  const customSources = persist ? getCustomScanSources() : [];
+
+  // Merge YAML companies with custom DB sources (custom sources with matching name override YAML)
+  const yamlNames = new Set(companies.map((c) => c.name));
+  const mergedCompanies = [
+    ...companies,
+    ...customSources
+      .filter((c) => !yamlNames.has(c.name))
+      .map((c) => ({ name: c.name, careers_url: c.careersUrl, api: c.api, enabled: c.enabled }))
+  ];
+
+  const enabledCompanies = mergedCompanies.filter((company) => {
+    if (company.name in sourceOverrides) return sourceOverrides[company.name];
+    return company.enabled !== false;
+  });
   const targets = enabledCompanies
     .filter((company) => !filterCompany || company.name.toLowerCase().includes(filterCompany))
     .map((company) => ({ ...company, _api: detectApi(company) }))

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard, Table, Td, Th } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { getAllEvaluations, getApplications, getFunnelStages, getJobs } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export default function AnalyticsPage() {
     return { type, total: matching.length, applied };
   }).filter((r) => r.total > 0);
 
-  // Top gap patterns from evaluations
+  // Top, gap, patterns from evaluations
   const gapMap = new Map<string, number>();
   for (const ev of evaluations) {
     for (const gap of ev.gaps ?? []) {
@@ -241,7 +242,7 @@ export default function AnalyticsPage() {
                 })}
               </div>
             ) : (
-              <EmptyState description="Gap patterns are extracted from job evaluations." title="No gap data yet" />
+              <EmptyState description="Gap, patterns, are, extracted from job evaluations." title="No gap data yet" />
             )}
           </Card>
         </section>

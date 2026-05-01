@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { Card, CardDescription, CardHeader, CardTitle, PageHeader, Shell } from "@/components/ui";
+import { Card, CardDescription, CardHeader, CardTitle, PageHeader} from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { getGeneratedDocumentById, getJobById } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +35,7 @@ export default async function GeneratedDocumentPreview({ params }: GeneratedDocu
                   Job posting
                 </a>
               ) : null}
-              <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${document.id}/pdf`}>
+              <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${document.id}/pdf`} rel="noreferrer" target="_blank">
                 Open PDF
               </a>
             </>

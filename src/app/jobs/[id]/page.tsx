@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ApplicationStatusForm } from "@/components/application-status-form";
-import { EvaluateJobForm } from "@/components/evaluate-job-form";
 import { GenerateResumeForm } from "@/components/generate-resume-form";
 import { PrepareApplicationAnswersForm } from "@/components/prepare-application-answers-form";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
-import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, Select, Shell, Textarea } from "@/components/ui";
+import { AIProviderBadge } from "@/components/ai-provider-badge";
+import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, ExternalLinkButton, Input, LinkButton, PageHeader, Select, SubmitButton, Textarea } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { prepareApplicationAnswers } from "@/lib/applications/application-assistant";
 import { prepareApplicationAnswersWithAI } from "@/lib/applications/llm-answer-generator";
 import { getAISettings } from "@/lib/db/queries";
@@ -22,7 +23,6 @@ import {
   updateApplicationStatus
 } from "@/lib/db/queries";
 import { generateTailoredResume } from "@/lib/documents/resume-generator";
-import { evaluateJob } from "@/lib/evaluation/job-evaluator";
 import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -43,15 +43,6 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
   const generatedDocument = getGeneratedDocumentById(`document-${id}`);
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
-
-  async function evaluateJobFallbackAction() {
-    "use server";
-
-    evaluateJob(id);
-    revalidatePath(`/jobs/${id}`);
-    revalidatePath("/jobs");
-    revalidatePath("/dashboard");
-  }
 
   async function saveCorrectionAction(formData: FormData) {
     "use server";
@@ -113,8 +104,8 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
       reflection: "",
       skills: [],
       themes: [],
-      sourceJobId: id,
-      sourceBlockF: evaluation?.sections.interviewPlan.join(" ") ?? ""
+      sourceJobId: String(formData.get("jobId") ?? ""),
+      sourceBlockF: String(formData.get("sourceBlockF") ?? "")
     });
     revalidatePath("/interview-prep");
   }
@@ -148,29 +139,11 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
           actions={
             <>
               <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />
-              <EvaluateJobForm action={evaluateJobFallbackAction} />
               <GenerateResumeForm action={generateResumeAction} />
               <PrepareApplicationAnswersForm action={prepareAnswersAction} variant="secondary" />
-              <a
-                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent"
-                href={job.url}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Job posting
-              </a>
-              <a
-                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent"
-                href={`/jobs/${id}/research`}
-              >
-                Research
-              </a>
-              <a
-                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent"
-                href={`/jobs/${id}/outreach`}
-              >
-                Outreach
-              </a>
+              <ExternalLinkButton href={job.url}>Job posting</ExternalLinkButton>
+              <LinkButton href={`/jobs/${id}/research`}>Research</LinkButton>
+              <LinkButton href={`/jobs/${id}/outreach`}>Outreach</LinkButton>
               <ApplicationStatusForm action={updateStatusAction} label="Save for follow-up" status="Follow-up needed" variant="quiet" />
             </>
           }
@@ -267,10 +240,10 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                       {generatedDocument.baseResume} · {generatedDocument.keywordCoverage}% keyword coverage · {generatedDocument.generatedDate}
                     </p>
                   </div>
-                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent" href={`/generated-documents/${generatedDocument.id}/preview`}>
+                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-panel px-4 py-2 text-sm font-medium text-ink hover:border-accent" href={`/generated-documents/${generatedDocument.id}/preview`} rel="noreferrer" target="_blank">
                     Preview HTML
                   </a>
-                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${generatedDocument.id}/pdf`}>
+                  <a className="inline-flex min-h-11 items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))]" href={`/generated-documents/${generatedDocument.id}/pdf`} rel="noreferrer" target="_blank">
                     Open PDF
                   </a>
                 </div>
@@ -324,12 +297,12 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
               <Card>
                 <CardHeader>
                   <CardTitle>Application assistant</CardTitle>
-                  <CardDescription>Draft copy-paste answers from saved evaluation and resume evidence.</CardDescription>
+                  <CardDescription>Draft, copy-paste, answers from saved evaluation and resume evidence.</CardDescription>
                 </CardHeader>
                 <div className="grid gap-4">
                   <form action={prepareAnswersAction} className="grid gap-3">
                     <Textarea
-                      hint="Paste one extra question from the application. Common questions are generated automatically."
+                      hint="Paste, one, extra, question from the application. Common questions are generated automatically."
                       label="Custom application question"
                       name="customQuestion"
                       placeholder="Example: Describe a product decision you influenced with research."
@@ -357,11 +330,12 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
               </Card>
             </section>
 
-            {evaluation.providerUsed && (
-              <p className="text-xs text-muted">
-                Generated with {evaluation.providerUsed} / {evaluation.modelUsed} · {(evaluation.generationMs / 1000).toFixed(1)}s
-              </p>
-            )}
+            <AIProviderBadge
+              generationMs={evaluation.generationMs}
+              model={evaluation.modelUsed}
+              provider={evaluation.providerUsed}
+              tokensUsed={evaluation.tokensUsed}
+            />
 
             <section className="grid gap-4 lg:grid-cols-2">
               <EvaluationSection title="A. Role summary" items={evaluation.sections.roleSummary} />
@@ -376,10 +350,12 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Save a story from Block F</CardTitle>
-                <CardDescription>Pre-fill a STAR story from this job&apos;s interview plan. You can complete it in Interview Prep.</CardDescription>
+                <CardTitle>Save, a story from Block F</CardTitle>
+                <CardDescription>Pre-fill, a STAR, story from this job&apos;s interview plan. You can complete it in Interview Prep.</CardDescription>
               </CardHeader>
               <form action={saveStoryAction} className="grid gap-3">
+                <input name="jobId" type="hidden" value={id} />
+                <input name="sourceBlockF" type="hidden" value={evaluation?.sections.interviewPlan.join(" ") ?? ""} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Input label="Story title" name="title" placeholder="e.g. Led API migration at Acme" />
                   <Input label="Situation (brief)" name="situation" placeholder="What was the context?" />
@@ -390,7 +366,7 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                   <Input label="Result" name="result" placeholder="Measurable outcome" />
                 </div>
                 <div>
-                  <Button type="submit" variant="secondary">Save to story bank</Button>
+                  <SubmitButton label="Save to story bank" savedLabel="Saved" variant="secondary" />
                 </div>
               </form>
             </Card>
@@ -423,7 +399,7 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                   name="correctionNote"
                 />
                 <div>
-                  <Button type="submit" variant="secondary">Save correction</Button>
+                  <SubmitButton label="Save correction" savedLabel="Saved" variant="secondary" />
                 </div>
               </form>
             </Card>
