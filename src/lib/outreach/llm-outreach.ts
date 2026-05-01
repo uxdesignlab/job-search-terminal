@@ -2,7 +2,8 @@ import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import type { JobRecord, UserProfileRecord } from "../db/types";
-import { getJobById, getUserProfile, saveOutreachDraft, deleteOutreachDraftsForJob } from "../db/queries";
+import { getJobById, getUserProfile, getWritingStyle, saveOutreachDraft, deleteOutreachDraftsForJob } from "../db/queries";
+import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 
 type ContactType = "recruiter" | "hiring_manager" | "peer";
 
@@ -22,7 +23,8 @@ async function generateMessage(
   contactType: ContactType,
   job: JobRecord,
   profile: UserProfileRecord,
-  provider: ReturnType<typeof getActiveProvider>
+  provider: ReturnType<typeof getActiveProvider>,
+  styleContext: string
 ): Promise<string> {
   const prompts: Record<ContactType, string> = {
     recruiter: `Write a LinkedIn connection request message from ${profile.name} to a recruiter at ${job.company} for the ${job.title} role. Requirements: under 300 characters, no opener like "Hi [Name]" (they'll add it), mention the role, one specific reason the candidate is a fit, end with a low-friction ask. First-person, no "I am" opener.`,
@@ -33,7 +35,7 @@ async function generateMessage(
   const messages: AIMessage[] = [
     {
       role: "system",
-      content: `You are a LinkedIn outreach specialist. Write concise, authentic connection messages. Hard limit: 300 characters. No placeholder text in brackets. Candidate profile: ${profile.currentSearchGoal}. Target strengths: ${profile.strongestSkills.slice(0, 3).join(", ")}.`
+      content: `You are a LinkedIn outreach specialist. Write concise, authentic connection messages. Hard limit: 300 characters. No placeholder text in brackets. Candidate profile: ${profile.currentSearchGoal}. Target strengths: ${profile.strongestSkills.slice(0, 3).join(", ")}.${styleContext ? `\n\n${styleContext}` : ""}`
     },
     {
       role: "user",
@@ -51,6 +53,8 @@ export async function generateOutreachDrafts(jobId: string): Promise<OutreachDra
 
   const profile = getUserProfile();
   const provider = getActiveProvider();
+  const writingStyle = getWritingStyle();
+  const styleContext = writingStyle.toneProfile ? formatStyleForPrompt(writingStyle.toneProfile) : "";
 
   const contactTypes: ContactType[] = ["recruiter", "hiring_manager", "peer"];
   const results: OutreachDraftResult[] = [];
@@ -58,7 +62,7 @@ export async function generateOutreachDrafts(jobId: string): Promise<OutreachDra
   deleteOutreachDraftsForJob(jobId);
 
   for (const contactType of contactTypes) {
-    const message = await generateMessage(contactType, job, profile, provider);
+    const message = await generateMessage(contactType, job, profile, provider, styleContext);
     results.push({ contactType, message, charCount: message.length });
 
     saveOutreachDraft({

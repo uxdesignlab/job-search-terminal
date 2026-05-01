@@ -48,7 +48,7 @@ When you evaluate a job, the AI runs seven analysis blocks in sequence:
 | A | Role Summary | Archetype classification, seniority level, domain, team context, remote policy |
 | B | CV Match | Fit score (0–100), recommendation, strengths, gaps, red flags |
 | C | Level Strategy | Positioning advice, seniority negotiation angles, market demand |
-| D | Compensation & Demand | Salary band estimate, market context |
+| D | Compensation & Demand | Salary band estimate, market context (uses real-time web search when available) |
 | E | Tailoring Plan | Specific resume changes to make for this role |
 | F | Interview Plan | 3–6 STAR stories mapped to likely questions |
 | G | Posting Legitimacy | Freshness signals, repost indicators, ghost job risk |
@@ -182,6 +182,18 @@ Two sections:
 
 **Generated documents table** — All tailored resumes produced so far. Columns: Target (job title + company), Posted date, Base resume used, Generated date, Keyword coverage %, Status, Output links (Preview / PDF / Job posting). Draft-status rows link the title to the edit page.
 
+### Job Liveness Check
+
+On any job detail page, click **"Check live"** in the header actions. The app fetches the posting URL and classifies it as:
+
+- **Live ✓** — HTTP 200, active posting signals found
+- **Expired** — HTTP 404/410 or expired content pattern matched (e.g., "position filled", "no longer accepting applications")
+- **Status uncertain** — Request failed or no clear signal either way
+
+The status badge persists in the header until you check again. Use it before finalizing your application to avoid wasted effort on ghost postings.
+
+**How it works:** A lightweight HTTP fetch reads up to 30 KB of the page body and matches against a pattern library — no Playwright or browser needed. No browser fingerprinting, no login, no third-party service.
+
 ### Research (`/jobs/[id]/research`)
 
 AI-generated company deep-dive on six axes:
@@ -209,6 +221,8 @@ Your career profile. This data feeds into every evaluation and generation:
 - Name, location, portfolio
 - Target roles, strongest skills
 - Constraints
+
+**Writing voice** — Paste writing samples (emails, cover letters, LinkedIn posts) separated by `---`. The AI extracts your personal tone, formality, sentence structure, and vocabulary patterns, then stores this as a style profile. All AI-generated content (application answers, resume summaries, outreach drafts) will be written to match your authentic voice instead of generic AI defaults.
 
 **Editable fields:**
 - Current search goal, direction, urgency
@@ -311,6 +325,39 @@ When using Anthropic, long system prompts are marked with `cache_control: epheme
 ### Testing Your Connection
 
 Go to **Account → Settings → AI provider**, enter a key, and click **Test connection**. The result shows latency and confirms the model is reachable.
+
+### Web Search for Compensation (Block D)
+
+Block D now attempts real-time market data before falling back to training knowledge:
+
+- **Anthropic** — uses the `web_search_20250305` managed tool. The model decides what to search and synthesizes the results into the compensation analysis.
+- **Gemini** — uses Google Search grounding. The model has live Google Search access during the Block D call.
+- **OpenAI** — falls back to training data (web search not available in the standard Chat Completions API).
+
+When live data is used, Block D bullets will be more specific to the current market for that archetype/location combination. No additional API key is required — the search runs through the same provider you have configured.
+
+### Writing Voice (Style Extraction)
+
+When you extract your writing style on the **Profile** page, the app analyzes your samples and stores a structured profile:
+
+```json
+{
+  "tone": "confident, direct, occasionally self-deprecating",
+  "formality": "semi-formal",
+  "sentenceStyle": "short punchy sentences mixed with longer elaborations",
+  "vocabularyLevel": "plain",
+  "rhetoricalPatterns": ["opens with concrete examples", "uses questions to engage"],
+  "thingsToAvoid": ["passive voice", "corporate jargon"],
+  "styleGuide": "Write like someone who has earned confidence through results..."
+}
+```
+
+This profile is injected into the system prompt for:
+- **Application answers** (`llm-answer-generator.ts`)
+- **Resume summaries** (`llm-tailorer.ts`)
+- **Outreach messages** (`llm-outreach.ts`)
+
+If no style has been extracted, generators use a generic "professional but natural" default.
 
 ---
 

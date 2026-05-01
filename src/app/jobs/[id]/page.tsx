@@ -26,6 +26,7 @@ import { getAISettings } from "@/lib/db/queries";
 import { isApplicationStatus } from "@/lib/applications/status";
 import { formatPostedDate } from "@/lib/dates";
 import {
+  archiveJob,
   deleteJob,
   getApplicationAnswerDrafts,
   getApplicationByJobId,
@@ -34,7 +35,9 @@ import {
   getJobById,
   getResumes,
   saveEvaluationCorrection,
+  saveJobLiveness,
   saveStory,
+  unarchiveJob,
   updateApplicationStatus,
   updateJobRecommendedResume,
 } from "@/lib/db/queries";
@@ -154,6 +157,37 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
     revalidatePath(`/jobs/${id}`);
   }
 
+  async function checkLivenessAction() {
+    "use server";
+    const { checkJobLiveness } = await import("@/lib/scanner/liveness-checker");
+    const current = getJobById(id);
+    if (current?.url) {
+      const result = await checkJobLiveness(current.url);
+      saveJobLiveness(id, result.status, result.reason);
+    }
+    revalidatePath(`/jobs/${id}`);
+    revalidatePath("/jobs");
+    revalidatePath("/archived");
+  }
+
+  async function archiveJobAction() {
+    "use server";
+    archiveJob(id);
+    revalidatePath(`/jobs/${id}`);
+    revalidatePath("/jobs");
+    revalidatePath("/archived");
+    redirect("/jobs");
+  }
+
+  async function unarchiveJobAction() {
+    "use server";
+    unarchiveJob(id);
+    revalidatePath(`/jobs/${id}`);
+    revalidatePath("/jobs");
+    revalidatePath("/archived");
+    redirect("/jobs");
+  }
+
   async function updateStatusAction(formData: FormData) {
     "use server";
     const status = String(formData.get("status") ?? "");
@@ -192,6 +226,14 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
     <Shell activeItem="Jobs">
       <div className="grid gap-0">
 
+        {/* ── Archived banner ──────────────────────────────────────── */}
+        {job.archived && (
+          <div className="mb-4 flex items-center gap-3 rounded-control border border-warning/40 bg-warning/8 px-4 py-3">
+            <span className="text-sm font-medium text-warning">This job is archived</span>
+            <span className="text-xs text-muted">— hidden from the main Jobs list. Click Unarchive to restore it.</span>
+          </div>
+        )}
+
         {/* ── Page header ─────────────────────────────────────────── */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -203,6 +245,9 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
               <Badge tone={scoreTone}>{fitScore}% · {scoreLabel}</Badge>
               <Badge tone={recommendation === "Skip" ? "danger" : "success"}>{recommendation}</Badge>
               {evaluation?.legitimacyLabel ? <Badge>{evaluation.legitimacyLabel}</Badge> : null}
+              {job.livenessStatus === "active" && <Badge tone="success">Live ✓</Badge>}
+              {job.livenessStatus === "expired" && <Badge tone="danger">Expired</Badge>}
+              {job.livenessStatus === "uncertain" && <Badge tone="warning">Status uncertain</Badge>}
               <span className="text-xs text-muted">{formatPostedDate(job)}</span>
               <span className="text-xs text-muted">· {job.status}</span>
             </div>
@@ -210,8 +255,32 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
 
           {/* Header actions — only universal ones */}
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />
+            {!job.archived && <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />}
+            {!job.archived && (
+              <form action={checkLivenessAction}>
+                <SubmitButton label="Check live" pendingLabel="Checking…" savedLabel="Done ✓" variant="secondary" />
+              </form>
+            )}
             <ExternalLinkButton href={job.url}>Job posting ↗</ExternalLinkButton>
+            {job.archived ? (
+              <form action={unarchiveJobAction}>
+                <button
+                  className="inline-flex min-h-9 items-center justify-center rounded-control border border-border px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
+                  type="submit"
+                >
+                  Unarchive
+                </button>
+              </form>
+            ) : (
+              <form action={archiveJobAction}>
+                <button
+                  className="inline-flex min-h-9 items-center justify-center rounded-control border border-border px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
+                  type="submit"
+                >
+                  Archive
+                </button>
+              </form>
+            )}
             <form action={deleteJobAction}>
               <button
                 className="inline-flex min-h-9 items-center justify-center rounded-control border border-danger/40 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/8"

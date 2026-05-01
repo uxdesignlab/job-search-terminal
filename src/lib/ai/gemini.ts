@@ -103,4 +103,21 @@ export class GeminiProvider implements AIProvider {
       };
     }
   }
+
+  async webSearch(query: string): Promise<string | null> {
+    try {
+      const model = this.client.getGenerativeModel({
+        model: this.model,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tools: [{ googleSearch: {} } as any]
+      });
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: query }] }],
+        generationConfig: { maxOutputTokens: 800 }
+      });
+      return result.response.text().trim() || null;
+    } catch {
+      return null;
+    }
+  }
 }

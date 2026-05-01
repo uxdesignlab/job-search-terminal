@@ -2,6 +2,8 @@ import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import type { EvaluationRecord, JobRecord, UserProfileRecord } from "../db/types";
+import { getWritingStyle } from "../db/queries";
+import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 
 type TailoredSummary = {
   summary: string;
@@ -17,6 +19,10 @@ export async function tailorResumeWithAI(
   const keywords = evaluation.keywords.slice(0, 12).join(", ");
   const strengths = evaluation.strengths.slice(0, 4).join("; ");
   const archetype = evaluation.roleArchetype;
+  const writingStyle = getWritingStyle();
+  const styleContext = writingStyle.toneProfile
+    ? `\n\n${formatStyleForPrompt(writingStyle.toneProfile)}`
+    : "";
 
   const messages: AIMessage[] = [
     {
@@ -28,7 +34,7 @@ STRICT RULES — violating any of these is a failure:
 2. Do NOT touch, move, reorder, or rewrite any experience bullet points.
 3. Do NOT invent, fabricate, or imply any achievement, metric, skill, company, title, or date that is not explicitly stated in the source resume text.
 4. Do NOT move content from one job role to another.
-5. The summary must be grounded solely in the candidate's actual background as written in the source resume.`
+5. The summary must be grounded solely in the candidate's actual background as written in the source resume.${styleContext}`
     },
     {
       role: "user",

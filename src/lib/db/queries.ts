@@ -88,6 +88,9 @@ type JobRow = {
   resume_evidence_json: string;
   gaps_json: string;
   red_flags_json: string;
+  liveness_status: string;
+  liveness_checked_at: string;
+  archived: number;
 };
 
 type ScanRunRow = {
@@ -256,8 +259,23 @@ export function getRoleDirections(): RoleDirectionRecord[] {
 }
 
 export function getJobs(): JobRecord[] {
-  const rows = getDatabase().prepare("select * from jobs order by fit_score desc, first_seen_date desc").all() as JobRow[];
+  const rows = getDatabase().prepare("select * from jobs where archived = 0 order by fit_score desc, first_seen_date desc").all() as JobRow[];
   return rows.map(mapJob);
+}
+
+export function getArchivedJobs(): JobRecord[] {
+  const rows = getDatabase().prepare("select * from jobs where archived = 1 order by liveness_checked_at desc, first_seen_date desc").all() as JobRow[];
+  return rows.map(mapJob);
+}
+
+export function archiveJob(id: string) {
+  getDatabase().prepare("update jobs set archived = 1, updated_at = current_timestamp where id = @id").run({ id });
+  logActivity("job", id, "Job archived", {});
+}
+
+export function unarchiveJob(id: string) {
+  getDatabase().prepare("update jobs set archived = 0, updated_at = current_timestamp where id = @id").run({ id });
+  logActivity("job", id, "Job unarchived", {});
 }
 
 export function updateJobStatus(id: string, status: string) {
@@ -1280,7 +1298,10 @@ function mapJob(row: JobRow): JobRecord {
     requirementMatch: parseJson<string[]>(row.requirement_match_json),
     resumeEvidence: parseJson<string[]>(row.resume_evidence_json),
     gaps: parseJson<string[]>(row.gaps_json),
-    redFlags: parseJson<string[]>(row.red_flags_json)
+    redFlags: parseJson<string[]>(row.red_flags_json),
+    livenessStatus: row.liveness_status ?? "",
+    livenessCheckedAt: row.liveness_checked_at ?? "",
+    archived: (row.archived ?? 0) === 1
   };
 }
 
@@ -1686,6 +1707,20 @@ export function saveWritingStyle(toneProfile: string, sampleCount: number) {
   logActivity("writing_style", "singleton", "Writing style cache updated", { sampleCount });
 }
 
+export function saveJobLiveness(id: string, status: string, reason: string) {
+  const db = getDatabase();
+  db.prepare(
+    `update jobs set
+      liveness_status = @status,
+      liveness_checked_at = current_timestamp
+    where id = @id`
+  ).run({ id, status });
+  if (status === "expired") {
+    db.prepare("update jobs set archived = 1, updated_at = current_timestamp where id = @id").run({ id });
+  }
+  logActivity("job", id, `Liveness check: ${status}`, { reason });
+}
+
 export function getScanSourceOverrides(): Record<string, boolean> {
   const rows = getDatabase()
     .prepare("select name, enabled from scan_source_overrides")
@@ -1750,18 +1785,24 @@ export function purgeJobs(criteria: {
   statuses?: string[];
   locationKeywords?: string[];
   excludeLocationKeywords?: string[];
+  includeArchived?: boolean;
 }): number {
   const db = getDatabase();
-  let jobs = db.prepare("select id, fit_score, status, location from jobs").all() as Array<{
+  let jobs = db.prepare("select id, fit_score, status, location, archived from jobs").all() as Array<{
     id: string;
     fit_score: number;
     status: string;
     location: string;
+    archived: number;
   }>;
 
   jobs = jobs.filter((j) => {
     if (criteria.belowScore !== undefined && j.fit_score >= criteria.belowScore) return false;
-    if (criteria.statuses?.length && !criteria.statuses.includes(j.status)) return false;
+    if (criteria.statuses?.length) {
+      const statusMatch = criteria.statuses.includes(j.status);
+      const archivedMatch = criteria.includeArchived && j.archived === 1;
+      if (!statusMatch && !archivedMatch) return false;
+    }
     if (criteria.locationKeywords?.length) {
       const loc = j.location.toLowerCase();
       const isRemote = loc.includes("remote");
@@ -1771,6 +1812,13 @@ export function purgeJobs(criteria: {
     return true;
   });
 
+  for (const job of jobs) deleteJob(job.id);
+  return jobs.length;
+}
+
+export function purgeAllArchivedJobs(): number {
+  const db = getDatabase();
+  const jobs = db.prepare("select id from jobs where archived = 1").all() as Array<{ id: string }>;
   for (const job of jobs) deleteJob(job.id);
   return jobs.length;
 }

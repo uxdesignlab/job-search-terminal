@@ -112,4 +112,23 @@ export class AnthropicProvider implements AIProvider {
       };
     }
   }
+
+  async webSearch(query: string): Promise<string | null> {
+    try {
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 800,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tools: [{ type: "web_search_20250305" as any, name: "web_search", max_uses: 3 }],
+        messages: [{ role: "user", content: query }]
+      });
+      const texts: string[] = [];
+      for (const block of response.content) {
+        if (block.type === "text") texts.push(block.text);
+      }
+      return texts.join("\n").trim() || null;
+    } catch {
+      return null;
+    }
+  }
 }

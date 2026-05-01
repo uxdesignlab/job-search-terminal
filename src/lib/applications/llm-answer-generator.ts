@@ -8,10 +8,12 @@ import {
   getJobById,
   getStories,
   getUserProfile,
+  getWritingStyle,
   saveApplicationAnswerDrafts
 } from "../db/queries";
 import type { ApplicationAnswerDraftInput } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
+import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 
 export async function prepareApplicationAnswersWithAI(jobId: string, customQuestion?: string) {
   const job = getJobById(jobId);
@@ -26,11 +28,16 @@ export async function prepareApplicationAnswersWithAI(jobId: string, customQuest
 
   const profile = getUserProfile();
   const stories = getStories().slice(0, 5);
+  const writingStyle = getWritingStyle();
 
   const provider = getActiveProvider();
 
   const storyContext = stories.length > 0
     ? `\n\nSTAR Stories available:\n${stories.map((s) => `- ${s.title}: ${s.situation} → ${s.result}`).join("\n")}`
+    : "";
+
+  const styleContext = writingStyle.toneProfile
+    ? `\n\n${formatStyleForPrompt(writingStyle.toneProfile)}`
     : "";
 
   const systemPrompt = `You are a job application coach writing copy-paste ready answers for a job seeker. Write in first person, professional but natural tone. Be specific — reference the actual company name and role. Draw only from the candidate context provided. Never start answers with "I am" or "I'm". Keep answers under 150 words each.
@@ -42,7 +49,7 @@ Compensation target: ${profile.compensationNeeds || "flexible"}
 Work preferences: ${profile.workPreferences.join(", ")}
 Role evaluation: ${evaluation.summary}
 Top strengths for this role: ${evaluation.strengths.slice(0, 4).join("; ")}
-Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyContext}`;
+Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyContext}${styleContext}`;
 
   const commonQuestions = [
     "Why are you interested in this role?",
