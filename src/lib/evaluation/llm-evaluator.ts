@@ -200,8 +200,19 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   const start = Date.now();
   const provider = getActiveProvider();
 
-  const job = getJobById(jobId);
+  let job = getJobById(jobId);
   if (!job) throw new Error(`Job not found: ${jobId}`);
+
+  // Auto-fetch JD for scanned jobs that don't have a description yet
+  if (!job.rawDescription && job.url) {
+    const { fetchJobDescription } = await import("../scanner/jd-fetcher");
+    const { saveJobDescription } = await import("../db/queries");
+    const desc = await fetchJobDescription(job);
+    if (desc) {
+      saveJobDescription(jobId, desc);
+      job = { ...job, rawDescription: desc, parsedDescription: desc };
+    }
+  }
 
   const profile = getUserProfile();
   const skills = getSkills();

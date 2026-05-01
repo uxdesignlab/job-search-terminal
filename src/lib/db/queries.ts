@@ -264,6 +264,12 @@ export function updateJobStatus(id: string, status: string) {
   getDatabase().prepare("update jobs set status = @status where id = @id").run({ id, status });
 }
 
+export function saveJobDescription(id: string, rawDescription: string) {
+  getDatabase()
+    .prepare("update jobs set raw_description = @rawDescription, parsed_description = @rawDescription where id = @id")
+    .run({ id, rawDescription });
+}
+
 export function updateJobRecommendedResume(id: string, resumeName: string) {
   getDatabase().prepare("update jobs set recommended_resume = @resumeName where id = @id").run({ id, resumeName });
 }
