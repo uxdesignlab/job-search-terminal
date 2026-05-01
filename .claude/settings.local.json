@@ -106,7 +106,10 @@
       "Bash(node -e ' *)",
       "Bash(sqlite3 data/jobsearch.db \"SELECT id, status, length\\(draft_json\\), substr\\(draft_json,1,50\\) FROM generated_documents LIMIT 5;\")",
       "Bash(sqlite3 data/jobsearch.db \".tables\")",
-      "Bash(node -e \"require\\('pdf-parse'\\); console.log\\('ok'\\)\")"
+      "Bash(node -e \"require\\('pdf-parse'\\); console.log\\('ok'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
