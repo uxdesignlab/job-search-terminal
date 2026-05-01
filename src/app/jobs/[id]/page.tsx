@@ -405,7 +405,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <ResumeGeneratorModal
                       hasExistingDocument={!!generatedDocument}
                       jobId={id}
-                      recommendedResume={evaluation?.resumeBaseRecommendation ?? job.recommendedResume}
+                      recommendedResume={job.recommendedResume}
                       resumes={resumes}
                     />
                     {hasDraft && generatedDocument && (
