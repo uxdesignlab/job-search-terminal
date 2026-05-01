@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { getAISettings } from "@/lib/db/queries";
 
@@ -54,8 +55,9 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-0">
           {/* Logo */}
-          <Link className="py-4 text-sm font-bold tracking-tight text-ink" href="/dashboard">
-            Job Search
+          <Link className="flex items-center gap-2.5 py-3 shrink-0" href="/dashboard">
+            <Image alt="UX Design Lab" height={28} src="/images/UXDL-logo.svg" width={28} />
+            <span className="text-sm font-bold tracking-tight text-ink">Job Search</span>
           </Link>
 
           {/* Primary nav */}
@@ -122,6 +124,50 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+
+      <footer className="border-t border-border bg-panel mt-16">
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <div className="grid gap-6 sm:grid-cols-[1fr_auto]">
+            {/* Left: free-to-use notice */}
+            <div className="grid gap-1.5">
+              <p className="text-sm font-medium text-ink">Free &amp; open source</p>
+              <p className="text-xs leading-5 text-muted max-w-prose">
+                This tool is free to use, self-hosted, and runs entirely on your computer — your data never leaves your machine.
+                No subscriptions, no tracking, no cloud. Fork it, adapt it, share it.
+              </p>
+            </div>
+
+            {/* Right: attribution */}
+            <div className="text-xs text-muted text-right grid gap-1">
+              <p className="font-medium text-ink">Built on the shoulders of</p>
+              <a
+                className="hover:text-accent hover:underline transition-colors"
+                href="https://github.com/santifer/career-ops/"
+                rel="noreferrer"
+                target="_blank"
+              >
+                career-ops by santifer ↗
+              </a>
+              <a
+                className="hover:text-accent hover:underline transition-colors"
+                href="https://santifer.io/career-ops-system"
+                rel="noreferrer"
+                target="_blank"
+              >
+                career-ops system ↗
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-border pt-4 flex items-center justify-between gap-4">
+            <p className="flex items-center gap-1.5 text-xs text-muted">
+              <Image alt="" aria-hidden height={16} src="/images/UXDL-logo.svg" width={16} />
+              Made with care by <span className="font-medium text-ink">UX Design Lab</span>
+            </p>
+            <p className="text-xs text-muted">© {new Date().getFullYear()} · Local-first. No accounts required.</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

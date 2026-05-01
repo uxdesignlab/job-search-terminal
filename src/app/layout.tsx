@@ -2,8 +2,13 @@ import type { Metadata } from "next";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "JS Job Search Agent",
-  description: "Local-first dashboard scaffold for the JS job-search command center."
+  title: "Job Search — UX Design Lab",
+  description: "Local-first job search dashboard. Runs on your machine, keeps your data private.",
+  icons: {
+    icon: "/logo.svg",
+    shortcut: "/logo.svg",
+    apple: "/logo.svg",
+  }
 };
 
 export default function RootLayout({
