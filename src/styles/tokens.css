@@ -9,9 +9,9 @@
   --color-muted: 94 104 120;
   --color-border: 225 229 235;
 
-  /* Indigo accent — clean, modern */
-  --color-accent: 79 70 229;
-  --color-accent-strong: 55 48 163;
+  /* Brand accent */
+  --color-accent: 215 69 39;
+  --color-accent-strong: 179 53 32;
 
   /* Semantic */
   --color-success: 22 163 74;
@@ -33,7 +33,7 @@
   --radius-panel: 0.75rem;
 
   --border-subtle: 1px solid rgb(var(--color-border));
-  --shadow-focus: 0 0 0 3px rgb(79 70 229 / 0.2);
+  --shadow-focus: 0 0 0 3px rgb(215 69 39 / 0.2);
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
 }
 

@@ -259,6 +259,10 @@ export function getJobs(): JobRecord[] {
   return rows.map(mapJob);
 }
 
+export function updateJobStatus(id: string, status: string) {
+  getDatabase().prepare("update jobs set status = @status where id = @id").run({ id, status });
+}
+
 export function getJobById(id: string): JobRecord | undefined {
   const row = getDatabase().prepare("select * from jobs where id = ?").get(id) as JobRow | undefined;
   return row ? mapJob(row) : undefined;
@@ -1676,4 +1680,49 @@ export function addCustomScanSource(name: string, careersUrl: string, api: strin
 export function deleteCustomScanSource(name: string) {
   getDatabase().prepare("delete from scan_sources_custom where name = @name").run({ name });
   getDatabase().prepare("delete from scan_source_overrides where name = @name").run({ name });
+}
+
+export function deleteJob(jobId: string) {
+  const db = getDatabase();
+  db.transaction(() => {
+    db.prepare("delete from application_answer_drafts where job_id = @jobId").run({ jobId });
+    db.prepare("delete from outreach_drafts where job_id = @jobId").run({ jobId });
+    db.prepare("delete from company_research where job_id = @jobId").run({ jobId });
+    db.prepare("delete from evaluation_feedback where job_id = @jobId").run({ jobId });
+    db.prepare("delete from evaluations where job_id = @jobId").run({ jobId });
+    db.prepare("delete from applications where job_id = @jobId").run({ jobId });
+    db.prepare("delete from generated_documents where job_id = @jobId").run({ jobId });
+    db.prepare("update story_bank set source_job_id = null where source_job_id = @jobId").run({ jobId });
+    db.prepare("delete from jobs where id = @jobId").run({ jobId });
+  })();
+}
+
+export function purgeJobs(criteria: {
+  belowScore?: number;
+  statuses?: string[];
+  locationKeywords?: string[];
+  excludeLocationKeywords?: string[];
+}): number {
+  const db = getDatabase();
+  let jobs = db.prepare("select id, fit_score, status, location from jobs").all() as Array<{
+    id: string;
+    fit_score: number;
+    status: string;
+    location: string;
+  }>;
+
+  jobs = jobs.filter((j) => {
+    if (criteria.belowScore !== undefined && j.fit_score >= criteria.belowScore) return false;
+    if (criteria.statuses?.length && !criteria.statuses.includes(j.status)) return false;
+    if (criteria.locationKeywords?.length) {
+      const loc = j.location.toLowerCase();
+      const isRemote = loc.includes("remote");
+      const isLocal = criteria.locationKeywords.some((kw) => loc.includes(kw.toLowerCase()));
+      if (!isRemote && !isLocal) return false;
+    }
+    return true;
+  });
+
+  for (const job of jobs) deleteJob(job.id);
+  return jobs.length;
 }

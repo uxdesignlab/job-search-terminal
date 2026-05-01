@@ -8,7 +8,7 @@ import type { ScannedJobInput, ScanRunRecord } from "../db/types";
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
 const FALLBACK_CONFIG_PATH = "config/portals.example.yml";
 const CONCURRENCY = 10;
-const FETCH_TIMEOUT_MS = 10_000;
+const FETCH_TIMEOUT_MS = 30_000;
 
 type PortalCompany = {
   name: string;
@@ -135,10 +135,11 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
         });
       }
     } catch (error) {
-      errors.push({
-        company: company.name,
-        error: error instanceof Error ? error.message : "Unknown scanner error"
-      });
+      let message = error instanceof Error ? error.message : "Unknown scanner error";
+      if (message === "This operation was aborted" || message === "The operation was aborted." || message.toLowerCase().includes("abort")) {
+        message = `Fetch timed out after ${FETCH_TIMEOUT_MS / 1000}s — the careers API may be slow or down`;
+      }
+      errors.push({ company: company.name, error: message });
     }
   });
 
