@@ -25,9 +25,5 @@ reports/*
 assets/*
 !assets/.gitkeep
 
-# Personal config — portals.yml contains your job search terms
-# Others should copy portals.example.yml → portals.yml
-config/portals.yml
-
 # System files
 .DS_Store
