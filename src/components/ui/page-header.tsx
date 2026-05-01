@@ -14,7 +14,7 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
       <div className="max-w-3xl space-y-3">
         {eyebrow ? <Badge>{eyebrow}</Badge> : null}
         <div className="space-y-2">
-          <h2 className="text-3xl font-semibold tracking-normal text-ink">{title}</h2>
+          <h1 className="text-3xl font-semibold tracking-normal text-ink">{title}</h1>
           <p className="text-base leading-7 text-muted">{description}</p>
         </div>
       </div>

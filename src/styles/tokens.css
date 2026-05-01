@@ -2,17 +2,23 @@
   color-scheme: light;
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
-  --color-surface: 247 248 245;
+  /* Neutral whites + near-black */
+  --color-surface: 246 247 249;
   --color-panel: 255 255 255;
-  --color-ink: 29 34 40;
-  --color-muted: 91 99 111;
-  --color-border: 204 210 216;
-  --color-accent: 21 89 120;
-  --color-accent-strong: 13 66 92;
-  --color-success: 34 112 78;
-  --color-warning: 150 96 24;
-  --color-danger: 172 49 49;
+  --color-ink: 14 17 22;
+  --color-muted: 94 104 120;
+  --color-border: 225 229 235;
 
+  /* Indigo accent — clean, modern */
+  --color-accent: 79 70 229;
+  --color-accent-strong: 55 48 163;
+
+  /* Semantic */
+  --color-success: 22 163 74;
+  --color-warning: 202 138 4;
+  --color-danger: 220 38 38;
+
+  /* Spacing */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -22,10 +28,13 @@
   --space-8: 2rem;
   --space-10: 2.5rem;
 
-  --radius-control: 0.375rem;
-  --radius-panel: 0.5rem;
+  /* Radii — softer, more contemporary */
+  --radius-control: 0.5rem;
+  --radius-panel: 0.75rem;
+
   --border-subtle: 1px solid rgb(var(--color-border));
-  --shadow-focus: 0 0 0 3px rgb(21 89 120 / 0.28);
+  --shadow-focus: 0 0 0 3px rgb(79 70 229 / 0.2);
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
 }
 
 @media (prefers-reduced-motion: reduce) {

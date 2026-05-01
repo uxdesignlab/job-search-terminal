@@ -20,6 +20,8 @@ export type UserProfileRecord = {
   strongestSkills: string[];
   skillsToUseMore: string[];
   skillsToUseLess: string[];
+  preferredLocations: string[];
+  remotePreference: "remote-only" | "local-or-remote" | "all";
 };
 
 export type SkillRecord = {
@@ -296,6 +298,8 @@ export type ProfileUpdateInput = {
   confidenceLevel: string;
   skillsToUseMore: string[];
   skillsToUseLess: string[];
+  preferredLocations: string[];
+  remotePreference: "remote-only" | "local-or-remote" | "all";
 };
 
 export type RoleDirectionUpdateInput = {

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, Textarea } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, SubmitButton, Textarea } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { getStories } from "@/lib/db/queries";
 import { deleteStoryAction, saveStoryAction } from "./actions";
 
@@ -43,7 +44,7 @@ export default function InterviewPrepPage() {
               <Textarea label="Skills demonstrated" name="skills" hint="Comma-separated, e.g. stakeholder management, SQL" />
               <Textarea label="Themes" name="themes" hint="Comma-separated, e.g. leadership, data-driven, cross-functional" />
               <div>
-                <Button type="submit">Save story</Button>
+                <SubmitButton label="Save story" savedLabel="Story saved" />
               </div>
             </form>
           </Card>
@@ -135,7 +136,7 @@ export default function InterviewPrepPage() {
             </div>
           ) : (
             <EmptyState
-              description="Add your first STAR story above. Stories are also automatically saved from Block F of AI evaluations."
+              description="Add, your, first, STAR, story, above. Stories, are, also, automatically, saved from Block F of AI evaluations."
               title="No stories yet"
             />
           )}

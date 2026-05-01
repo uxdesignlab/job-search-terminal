@@ -1,12 +1,34 @@
 import Link from "next/link";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard, Table, Td, Th } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { getApplications, getFunnelStages, getJobById } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
+const TERMINAL_STATUSES = new Set(["Rejected", "Archived", "Skipped", "Offer"]);
+
+function isOverdue(followUpDate: string, status: string): boolean {
+  if (TERMINAL_STATUSES.has(status) || !followUpDate) return false;
+  return followUpDate < new Date().toISOString().slice(0, 10);
+}
+
+function daysDue(followUpDate: string): number {
+  const today = new Date().toISOString().slice(0, 10);
+  const msPerDay = 86_400_000;
+  return Math.floor((new Date(today).getTime() - new Date(followUpDate).getTime()) / msPerDay);
+}
+
+function statusTone(status: string) {
+  if (status === "Rejected") return "danger" as const;
+  if (status === "Interviewing" || status === "Offer") return "success" as const;
+  return "neutral" as const;
+}
+
 export default function ApplicationsPage() {
   const applications = getApplications();
   const funnel = getFunnelStages();
+  const today = new Date().toISOString().slice(0, 10);
+  const overdueCount = applications.filter((a) => isOverdue(a.followUpDate, a.status)).length;
 
   return (
     <Shell activeItem="Applications">
@@ -17,10 +39,23 @@ export default function ApplicationsPage() {
           title="Applications"
         />
 
+        {overdueCount > 0 && (
+          <div className="flex items-start gap-3 rounded-panel border border-warning/40 bg-warning/10 px-4 py-3" role="alert">
+            <span aria-hidden="true" className="mt-0.5 text-warning">⚠</span>
+            <p className="text-sm text-ink">
+              <span className="font-semibold">{overdueCount} follow-up{overdueCount !== 1 ? "s" : ""} overdue.</span>{" "}
+              Review the table below and take action on each marked application.
+            </p>
+          </div>
+        )}
+
         <section aria-label="Application funnel" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {funnel.map((stage) => (
-            <StatCard detail="Current" key={stage.label} label={stage.label} value={String(stage.value)} />
-          ))}
+          {funnel
+            .filter((s) => s.value > 0)
+            .slice(0, 8)
+            .map((stage) => (
+              <StatCard detail="Current" key={stage.label} label={stage.label} value={String(stage.value)} />
+            ))}
         </section>
 
         <Card>
@@ -42,6 +77,8 @@ export default function ApplicationsPage() {
               <tbody>
                 {applications.map((application) => {
                   const linkedJob = getJobById(application.jobId);
+                  const overdue = isOverdue(application.followUpDate, application.status);
+                  const days = overdue ? daysDue(application.followUpDate) : 0;
 
                   return (
                     <tr key={application.id}>
@@ -56,11 +93,23 @@ export default function ApplicationsPage() {
                         )}
                       </Td>
                       <Td>
-                        <Badge tone={application.status === "Rejected" ? "danger" : application.status === "Interviewing" ? "success" : "neutral"}>
-                          {application.status}
-                        </Badge>
+                        <Badge tone={statusTone(application.status)}>{application.status}</Badge>
                       </Td>
-                      <Td>{application.followUpDate || "Not set"}</Td>
+                      <Td>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={overdue ? "text-warning" : "text-ink"}>
+                            {application.followUpDate || "Not set"}
+                          </span>
+                          {overdue && (
+                            <Badge tone="warning" aria-label={`Overdue by ${days} day${days !== 1 ? "s" : ""}`}>
+                              Overdue {days}d
+                            </Badge>
+                          )}
+                          {!overdue && application.followUpDate && application.followUpDate >= today && !TERMINAL_STATUSES.has(application.status) && (
+                            <Badge tone="neutral">Upcoming</Badge>
+                          )}
+                        </div>
+                      </Td>
                       <Td>{application.fitScore}%</Td>
                     </tr>
                   );
@@ -69,7 +118,7 @@ export default function ApplicationsPage() {
             </Table>
           ) : (
             <EmptyState
-              description="Mark a job as applied or add a follow-up from a job detail page to start the tracker."
+              description="Mark, a job, as, applied, or, add, a follow-up from a job detail page to start the tracker."
               title="No tracked applications yet"
             />
           )}

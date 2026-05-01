@@ -111,7 +111,9 @@ ${resumeText}`
     careerChangeInterest: result.profile.careerChangeInterest || "",
     confidenceLevel: result.profile.confidenceLevel || "high",
     skillsToUseMore: result.profile.skillsToUseMore || [],
-    skillsToUseLess: result.profile.skillsToUseLess || []
+    skillsToUseLess: result.profile.skillsToUseLess || [],
+    preferredLocations: [],
+    remotePreference: "all"
   };
 
   updateUserProfile(profileUpdate);

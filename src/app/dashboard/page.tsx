@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Shell, StatCard, Table, Td, Th } from "@/components/ui";
+import { OnboardingBanner } from "@/components/onboarding-banner";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard, Table, Td, Th } from "@/components/ui";
+import { Shell } from "@/components/ui/shell";
 import { getActivity, getDashboardMetrics, getJobs, getLatestScanRun } from "@/lib/db/queries";
 import { runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 
@@ -31,12 +33,14 @@ export default function DashboardPage() {
           title="Dashboard"
         />
 
+        <OnboardingBanner />
+
         {latestScan ? (
           <Card>
             <CardHeader>
               <CardTitle>Latest scan</CardTitle>
               <CardDescription>
-                {latestScan.newJobsCount} new jobs from {latestScan.companiesScanned} companies. {latestScan.duplicateCount} duplicates skipped.
+                {latestScan.newJobsCount} new, jobs from {latestScan.companiesScanned} companies. {latestScan.duplicateCount} duplicates skipped.
               </CardDescription>
             </CardHeader>
             <div className="flex flex-wrap gap-2">

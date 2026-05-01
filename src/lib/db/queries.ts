@@ -58,6 +58,8 @@ type ProfileRow = {
   strongest_skills_json: string;
   skills_to_use_more_json: string;
   skills_to_use_less_json: string;
+  preferred_locations_json: string;
+  remote_preference: string;
 };
 
 type JobRow = {
@@ -177,7 +179,9 @@ export function getUserProfile(): UserProfileRecord {
     targetRoles: parseJson<string[]>(row.target_roles_json),
     strongestSkills: parseJson<string[]>(row.strongest_skills_json),
     skillsToUseMore: parseJson<string[]>(row.skills_to_use_more_json),
-    skillsToUseLess: parseJson<string[]>(row.skills_to_use_less_json)
+    skillsToUseLess: parseJson<string[]>(row.skills_to_use_less_json),
+    preferredLocations: parseJson<string[]>(row.preferred_locations_json ?? "[]"),
+    remotePreference: (row.remote_preference ?? "all") as UserProfileRecord["remotePreference"]
   };
 }
 
@@ -706,6 +710,8 @@ export function updateUserProfile(input: ProfileUpdateInput) {
         confidence_level = @confidenceLevel,
         skills_to_use_more_json = @skillsToUseMoreJson,
         skills_to_use_less_json = @skillsToUseLessJson,
+        preferred_locations_json = @preferredLocationsJson,
+        remote_preference = @remotePreference,
         updated_at = current_timestamp
       where id = 'pavel'`
     )
@@ -717,7 +723,9 @@ export function updateUserProfile(input: ProfileUpdateInput) {
       constraintsJson: JSON.stringify(input.constraints),
       dealBreakersJson: JSON.stringify(input.dealBreakers),
       skillsToUseMoreJson: JSON.stringify(input.skillsToUseMore),
-      skillsToUseLessJson: JSON.stringify(input.skillsToUseLess)
+      skillsToUseLessJson: JSON.stringify(input.skillsToUseLess),
+      preferredLocationsJson: JSON.stringify(input.preferredLocations),
+      remotePreference: input.remotePreference
     });
 
   logActivity("profile", "pavel", "Profile updated from dashboard", { fields: Object.keys(input) });
@@ -1624,4 +1632,48 @@ export function saveWritingStyle(toneProfile: string, sampleCount: number) {
     )
     .run({ toneProfile, sampleCount });
   logActivity("writing_style", "singleton", "Writing style cache updated", { sampleCount });
+}
+
+export function getScanSourceOverrides(): Record<string, boolean> {
+  const rows = getDatabase()
+    .prepare("select name, enabled from scan_source_overrides")
+    .all() as Array<{ name: string; enabled: number }>;
+  return Object.fromEntries(rows.map((r) => [r.name, r.enabled === 1]));
+}
+
+export function setScanSourceEnabled(name: string, enabled: boolean) {
+  getDatabase()
+    .prepare(
+      `insert or replace into scan_source_overrides (name, enabled, updated_at)
+       values (@name, @enabled, current_timestamp)`
+    )
+    .run({ name, enabled: enabled ? 1 : 0 });
+}
+
+export type CustomScanSource = {
+  name: string;
+  careersUrl: string;
+  api: string;
+  enabled: boolean;
+};
+
+export function getCustomScanSources(): CustomScanSource[] {
+  const rows = getDatabase()
+    .prepare("select name, careers_url, api, enabled from scan_sources_custom order by name")
+    .all() as Array<{ name: string; careers_url: string; api: string; enabled: number }>;
+  return rows.map((r) => ({ name: r.name, careersUrl: r.careers_url, api: r.api, enabled: r.enabled === 1 }));
+}
+
+export function addCustomScanSource(name: string, careersUrl: string, api: string) {
+  getDatabase()
+    .prepare(
+      `insert or replace into scan_sources_custom (name, careers_url, api, enabled)
+       values (@name, @careersUrl, @api, 1)`
+    )
+    .run({ name, careersUrl, api });
+}
+
+export function deleteCustomScanSource(name: string) {
+  getDatabase().prepare("delete from scan_sources_custom where name = @name").run({ name });
+  getDatabase().prepare("delete from scan_source_overrides where name = @name").run({ name });
 }

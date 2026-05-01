@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <section
-      className={cn("rounded-panel border border-border bg-panel p-5", className)}
+    <div
+      className={cn("rounded-panel border border-border bg-panel p-5 shadow-[var(--shadow-card)]", className)}
       {...props}
     />
   );
