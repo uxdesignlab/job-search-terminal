@@ -4,7 +4,7 @@ import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { OnboardingBanner } from "@/components/onboarding-banner";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard, Table, Td, Th } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
-import { getActivity, getDashboardMetrics, getJobs, getLatestScanRun } from "@/lib/db/queries";
+import { getActivity, getDashboardMetrics, getJobs, getLatestScanRun, setScanSourceEnabled } from "@/lib/db/queries";
 import { runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,15 @@ export default function DashboardPage() {
     await runCareerOpsScanner();
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
+  }
+
+  async function disableSourceAction(formData: FormData) {
+    "use server";
+
+    const name = String(formData.get("name") ?? "");
+    if (name) setScanSourceEnabled(name, false);
+    revalidatePath("/dashboard");
+    revalidatePath("/settings");
   }
 
   const priorityJobs = getJobs().filter((job) => job.recommendation === "Priority apply");
@@ -52,13 +61,30 @@ export default function DashboardPage() {
               <Badge>{latestScan.skippedCompanies} skipped sources</Badge>
             </div>
             {latestScan.errors.length > 0 ? (
-              <ul className="mt-4 grid gap-2" aria-label="Latest scan errors">
-                {latestScan.errors.slice(0, 3).map((error) => (
-                  <li className="rounded-control border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-ink" key={`${error.company}-${error.error}`}>
-                    <span className="font-medium">{error.company}:</span> {error.error}
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-4 grid gap-2">
+                <p className="text-xs font-medium text-muted">
+                  {latestScan.errors.length} source{latestScan.errors.length !== 1 ? "s" : ""} failed — other sources completed normally. Disable a source to skip it on the next scan.
+                </p>
+                <ul className="grid gap-1" aria-label="Latest scan errors">
+                  {latestScan.errors.slice(0, 5).map((error) => (
+                    <li className="flex items-center gap-3 rounded-control border border-warning/30 bg-warning/8 px-3 py-2 text-sm text-ink" key={`${error.company}-${error.error}`}>
+                      <span className="flex-1">
+                        <span className="font-medium">{error.company}:</span>{" "}
+                        <span className="text-muted">{error.error}</span>
+                      </span>
+                      <form action={disableSourceAction}>
+                        <input name="name" type="hidden" value={error.company} />
+                        <button className="whitespace-nowrap text-xs text-muted underline-offset-2 hover:text-danger hover:underline" type="submit">
+                          Disable source
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                  {latestScan.errors.length > 5 ? (
+                    <li className="px-3 py-1 text-xs text-muted">+{latestScan.errors.length - 5} more</li>
+                  ) : null}
+                </ul>
+              </div>
             ) : null}
           </Card>
         ) : null}

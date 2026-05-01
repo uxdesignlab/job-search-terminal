@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ApplicationStatusForm } from "@/components/application-status-form";
 import { GenerateResumeForm } from "@/components/generate-resume-form";
@@ -13,6 +13,7 @@ import { getAISettings } from "@/lib/db/queries";
 import { isApplicationStatus } from "@/lib/applications/status";
 import { formatPostedDate } from "@/lib/dates";
 import {
+  deleteJob,
   getApplicationAnswerDrafts,
   getApplicationByJobId,
   getEvaluationByJobId,
@@ -43,6 +44,13 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
   const generatedDocument = getGeneratedDocumentById(`document-${id}`);
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
+
+  async function deleteJobAction() {
+    "use server";
+
+    deleteJob(id);
+    redirect("/jobs");
+  }
 
   async function saveCorrectionAction(formData: FormData) {
     "use server";
@@ -145,6 +153,14 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
               <LinkButton href={`/jobs/${id}/research`}>Research</LinkButton>
               <LinkButton href={`/jobs/${id}/outreach`}>Outreach</LinkButton>
               <ApplicationStatusForm action={updateStatusAction} label="Save for follow-up" status="Follow-up needed" variant="quiet" />
+              <form action={deleteJobAction}>
+                <button
+                  className="inline-flex min-h-11 items-center justify-center rounded-control border border-danger/40 px-4 py-2 text-sm font-medium text-danger hover:bg-danger/8"
+                  type="submit"
+                >
+                  Delete job
+                </button>
+              </form>
             </>
           }
           description={`${job.company} · ${job.location} · ${job.remoteType}`}

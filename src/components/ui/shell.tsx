@@ -54,9 +54,8 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
       <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-0">
           {/* Logo */}
-          <Link className="flex items-center gap-2 py-4 text-sm font-semibold text-ink" href="/dashboard">
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-accent text-[10px] font-bold text-white">JS</span>
-            <span className="hidden sm:inline text-ink/70">Job Search</span>
+          <Link className="py-4 text-sm font-bold tracking-tight text-ink" href="/dashboard">
+            Job Search
           </Link>
 
           {/* Primary nav */}
