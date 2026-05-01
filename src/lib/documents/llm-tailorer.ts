@@ -2,11 +2,9 @@ import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import type { EvaluationRecord, JobRecord, UserProfileRecord } from "../db/types";
-import type { ResumeTemplateInput } from "./resume-template";
 
-type TailoredContent = Pick<ResumeTemplateInput, "summary"> & {
-  reorderedBulletMap: Record<string, string[]>; // orgKey -> reordered bullets
-  keywords: string[];
+type TailoredSummary = {
+  summary: string;
 };
 
 export async function tailorResumeWithAI(
@@ -14,7 +12,7 @@ export async function tailorResumeWithAI(
   evaluation: EvaluationRecord,
   profile: UserProfileRecord,
   sourceResumeText: string
-): Promise<TailoredContent> {
+): Promise<TailoredSummary> {
   const provider = getActiveProvider();
   const keywords = evaluation.keywords.slice(0, 12).join(", ");
   const strengths = evaluation.strengths.slice(0, 4).join("; ");
@@ -23,39 +21,46 @@ export async function tailorResumeWithAI(
   const messages: AIMessage[] = [
     {
       role: "system",
-      content: `You are a professional resume writer specializing in ATS-optimized tailoring. Rewrite resume content to match a specific job posting. Be specific and evidence-based — only use information present in the source resume text. Do not invent achievements or skills.`
+      content: `You are a professional resume writer specializing in ATS-optimized tailoring.
+
+STRICT RULES — violating any of these is a failure:
+1. You may ONLY rewrite the Professional Summary section.
+2. Do NOT touch, move, reorder, or rewrite any experience bullet points.
+3. Do NOT invent, fabricate, or imply any achievement, metric, skill, company, title, or date that is not explicitly stated in the source resume text.
+4. Do NOT move content from one job role to another.
+5. The summary must be grounded solely in the candidate's actual background as written in the source resume.`
     },
     {
       role: "user",
-      content: `Tailor this resume for the following job posting.
+      content: `Write a tailored Professional Summary for this candidate applying to the role below.
 
-## Target Job
+## Target Role
 Title: ${job.title}
 Company: ${job.company}
-Role archetype: ${archetype}
-Key keywords to weave in: ${keywords}
-Candidate strengths for this role: ${strengths}
+Archetype: ${archetype}
+ATS keywords to weave in naturally (only where they already fit the candidate's background): ${keywords}
+Candidate's relevant strengths for this role: ${strengths}
 
-## Source Resume Text
-${sourceResumeText.slice(0, 6000)}
+## Candidate's Source Resume
+${sourceResumeText.slice(0, 5000)}
 
-Return a JSON object with:
-- "summary": string — rewritten professional summary (2-4 sentences) that leads with the role archetype, incorporates 3-5 keywords naturally, and connects the candidate's strongest evidence to this specific job. Do not start with "I".
-- "topBullets": string[] — the 6-8 most relevant existing bullet points from the experience section, lightly reworded to emphasize the role keywords where natural. Preserve the original achievement data exactly — only reorder words or swap synonyms to match keywords. Do not fabricate metrics.
-- "keywords": string[] — the 10-15 ATS keywords from the job posting that appear in or were woven into the resume`
+## Instructions
+- Write 2–4 sentences.
+- Lead with the candidate's actual seniority and domain.
+- Incorporate 3–5 of the ATS keywords naturally only if they are supported by the source resume.
+- Do not start with "I".
+- Do not make up or imply any experience that is not in the source resume.
+
+Return a JSON object: { "summary": "..." }`
     }
   ];
 
   const result = await withRetry(() =>
-    provider.generateJSON<{ summary: string; topBullets: string[]; keywords: string[] }>(
+    provider.generateJSON<{ summary: string }>(
       messages,
-      '{"summary":"string","topBullets":[],"keywords":[]}'
+      '{"summary":"string"}'
     )
   );
 
-  return {
-    summary: result.summary || "",
-    reorderedBulletMap: { top: result.topBullets || [] },
-    keywords: result.keywords || evaluation.keywords
-  };
+  return { summary: result.summary || "" };
 }

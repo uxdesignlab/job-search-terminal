@@ -34,18 +34,18 @@ export async function generateTailoredResume(jobId: string): Promise<GeneratedRe
 
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
-  let aiOverride: { summary: string; topBullets: string[] } | null = null;
+  let tailoredSummary: string | null = null;
 
   if (hasAIKey) {
     try {
       const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText);
-      aiOverride = { summary: tailored.summary, topBullets: tailored.reorderedBulletMap.top ?? [] };
+      tailoredSummary = tailored.summary || null;
     } catch {
-      // Fall through to rule-based tailoring
+      // Fall through to source resume summary
     }
   }
 
-  const content = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText, aiOverride);
+  const content = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText, tailoredSummary);
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -112,16 +112,16 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
 
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
-  let aiOverride: { summary: string; topBullets: string[] } | null = null;
+  let tailoredSummary: string | null = null;
 
   if (hasAIKey) {
     try {
       const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText);
-      aiOverride = { summary: tailored.summary, topBullets: tailored.reorderedBulletMap.top ?? [] };
-    } catch { /* fall through to rule-based */ }
+      tailoredSummary = tailored.summary || null;
+    } catch { /* fall through to source resume summary */ }
   }
 
-  const draft = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText, aiOverride);
+  const draft = buildTailoredContent(job, evaluation, profile, baseResume, skills, sourceResumeText, tailoredSummary);
   const keywordCoverage = keywordCoverageFor(draft, evaluation.keywords);
   const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
   const date = new Date().toISOString().slice(0, 10);
@@ -216,12 +216,12 @@ function buildTailoredContent(
   resume: ResumeRecord,
   skills: SkillRecord[],
   sourceResumeText: string,
-  aiOverride?: { summary: string; topBullets: string[] } | null
+  tailoredSummary?: string | null
 ) {
   const source = parseSourceResume(sourceResumeText, profile);
   const keywords = evaluation.keywords.slice(0, 8);
   const preferredSkillNames = skills
-      .filter((skill) => skill.usePreference !== "use_less")
+    .filter((skill) => skill.usePreference !== "use_less")
     .map((skill) => skill.skillName);
 
   const leadershipRole = isLeadershipArchetype(evaluation.roleArchetype);
@@ -229,30 +229,26 @@ function buildTailoredContent(
     ? [...keywords, ...LEADERSHIP_SIGNAL_TERMS]
     : keywords;
 
-  // Merge AI top bullets into experience if provided
+  // Reorder bullets within each role entry by keyword relevance.
+  // Bullets NEVER move between entries — source role assignment is always preserved.
   const experience = source.experience.map((entry) => ({
     ...entry,
     bullets: rankItems(entry.bullets, rankingKeywords).slice(0, entry.bullets.length)
   }));
-
-  if (aiOverride?.topBullets?.length && experience.length > 0) {
-    const topSet = new Set(aiOverride.topBullets.map((b) => b.trim().slice(0, 60)));
-    experience[0].bullets = [
-      ...aiOverride.topBullets.slice(0, 4),
-      ...experience[0].bullets.filter((b) => !topSet.has(b.trim().slice(0, 60)))
-    ].slice(0, experience[0].bullets.length + 2);
-  }
 
   return {
     name: source.name || profile.name,
     headline: source.headline,
     contactItems: source.contactItems,
     title: job.title,
-    summary: aiOverride?.summary || source.summary,
+    // Use AI summary only if provided; otherwise keep the source resume summary verbatim
+    summary: tailoredSummary || source.summary,
     impactHeading: "Key Achievements",
+    // Reorder impact items by relevance but never add or remove any
     impactItems: rankItems(source.impactItems, rankingKeywords).slice(0, source.impactItems.length),
     experienceHeading: "Professional Experience",
     experience,
+    // Reorder skills by relevance but never add or remove any
     skills: rankItems(source.skills, [...rankingKeywords, ...preferredSkillNames]).slice(0, source.skills.length),
     recognition: source.recognition,
     education: source.education
