@@ -840,7 +840,7 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
           summary = @summary,
           why_it_matches = @whyItMatches,
           main_concern = @mainConcern,
-          recommended_resume = @resumeBaseRecommendation,
+          recommended_resume = case when recommended_resume = 'To be selected' then @resumeBaseRecommendation else recommended_resume end,
           salary_notes = @salaryNotes,
           requirement_match_json = @requirementMatchJson,
           resume_evidence_json = @resumeEvidenceJson,

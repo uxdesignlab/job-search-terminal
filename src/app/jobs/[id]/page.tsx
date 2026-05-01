@@ -355,7 +355,9 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                   <form action={setResumeBaseAction} className="grid gap-3">
                     <div className="grid gap-2">
                       {resumes.map((r) => {
-                        const isRec = r.name === (evaluation?.resumeBaseRecommendation ?? job.recommendedResume);
+                        // job.recommendedResume is the user's saved choice (or AI default on first eval).
+                        // evaluation.resumeBaseRecommendation is only shown as a hint, never drives selection.
+                        const isRec = r.name === job.recommendedResume;
                         return (
                           <label
                             key={r.id}
