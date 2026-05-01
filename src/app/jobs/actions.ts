@@ -3,8 +3,6 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { insertManualJob } from "@/lib/db/queries";
-import { evaluateJob } from "@/lib/evaluation/job-evaluator";
-import { generateTailoredResume } from "@/lib/documents/resume-generator";
 
 export async function addManualJobAction(formData: FormData) {
   const company = formData.get("company") as string;
@@ -29,19 +27,7 @@ export async function addManualJobAction(formData: FormData) {
     firstSeenDate: date,
   });
 
-  try {
-    evaluateJob(id);
-    await generateTailoredResume(id);
-  } catch (error) {
-    console.error("Pipeline failed for manual job", error);
-    // Even if evaluation or resume generation fails, the job was inserted.
-    // We revalidate and throw so the UI can show an error or partial success.
-    revalidatePath("/jobs");
-    revalidatePath("/resumes");
-    throw error;
-  }
-
   revalidatePath("/jobs");
-  revalidatePath("/resumes");
+  revalidatePath("/dashboard");
   return { success: true, jobId: id };
 }
