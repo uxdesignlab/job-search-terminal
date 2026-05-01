@@ -368,6 +368,10 @@ export const migrations = [
     `
   },
   {
+    id: "0019_document_draft_json",
+    sql: `alter table generated_documents add column draft_json text not null default '{}'`
+  },
+  {
     id: "0018_custom_scan_sources",
     sql: `
       create table if not exists scan_sources_custom (

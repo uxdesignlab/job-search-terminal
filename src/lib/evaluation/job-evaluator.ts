@@ -10,6 +10,17 @@ type RoleSignal = {
 
 const roleSignals: RoleSignal[] = [
   {
+    // Must come first — management titles share many IC keywords
+    archetype: "Design Leadership",
+    resumeBase: "Principal / Product Design Leadership",
+    keywords: [
+      "chief experience officer", "chief design officer", "vp of design", "vp design",
+      "vice president", "director of design", "director of ux", "head of design",
+      "head of product design", "head of ux", "design manager", "design director",
+      "people manager", "managing director", "design leadership"
+    ]
+  },
+  {
     archetype: "Principal Product Design",
     resumeBase: "Principal / Product Design Leadership",
     keywords: ["principal", "product designer", "product design", "ux", "workflow", "strategy", "senior ic"]

@@ -292,13 +292,16 @@ function scoreLabelFor(score: number) {
 
 function pickResumeBase(archetype: string, resumeNames: string[]) {
   const lower = archetype.toLowerCase();
-  const match = resumeNames.find((name) =>
-    lower.includes("operations") ? name.toLowerCase().includes("operations")
-    : lower.includes("accessibility") ? name.toLowerCase().includes("a11y")
-    : lower.includes("education") ? name.toLowerCase().includes("teach")
-    : name.toLowerCase().includes("principal")
-  );
-  return match ?? resumeNames[0] ?? "To be selected";
+  const find = (substr: string) => resumeNames.find((n) => n.toLowerCase().includes(substr));
+  if (lower.includes("leadership") || lower.includes("management") || lower.includes("director") || lower.includes("chief") || lower.includes("vp"))
+    return find("leadership") ?? find("principal") ?? resumeNames[0] ?? "To be selected";
+  if (lower.includes("operations"))
+    return find("operations") ?? resumeNames[0] ?? "To be selected";
+  if (lower.includes("accessibility") || lower.includes("a11y"))
+    return find("a11y") ?? find("accessibility") ?? resumeNames[0] ?? "To be selected";
+  if (lower.includes("education") || lower.includes("teach"))
+    return find("teach") ?? find("education") ?? resumeNames[0] ?? "To be selected";
+  return find("principal") ?? find("leadership") ?? resumeNames[0] ?? "To be selected";
 }
 
 // Keeps the randomUUID import used (for future batch IDs)

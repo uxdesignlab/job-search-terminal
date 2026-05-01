@@ -102,7 +102,11 @@
       "Bash(curl -sL -A \"Mozilla/5.0\" \"https://coreweave.com/careers/weights-biases\")",
       "Bash(curl -sL \"https://boards-api.greenhouse.io/v1/boards/gongio/jobs\")",
       "Bash(curl -sL \"https://boards-api.greenhouse.io/v1/boards/weights_and_biases/jobs\")",
-      "Bash(xargs cat *)"
+      "Bash(xargs cat *)",
+      "Bash(node -e ' *)",
+      "Bash(sqlite3 data/jobsearch.db \"SELECT id, status, length\\(draft_json\\), substr\\(draft_json,1,50\\) FROM generated_documents LIMIT 5;\")",
+      "Bash(sqlite3 data/jobsearch.db \".tables\")",
+      "Bash(node -e \"require\\('pdf-parse'\\); console.log\\('ok'\\)\")"
     ]
   }
 }

@@ -10,6 +10,7 @@ export type ResumeTemplateInput = {
   experience: Array<{
     title: string;
     organization: string;
+    location?: string;
     dateRange: string;
     bullets: string[];
   }>;
@@ -151,7 +152,7 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
           .map(
             (item) => `          <div class="job-entry">
             <h3>${escapeHtml(item.title)}</h3>
-            <p class="organization">${escapeHtml(item.organization)} | ${escapeHtml(item.dateRange)}</p>
+            <p class="organization">${[item.organization, item.dateRange, item.location].filter((s): s is string => Boolean(s)).map(escapeHtml).join(" · ")}</p>
             <ul>
               ${item.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}
             </ul>
