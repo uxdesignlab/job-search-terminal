@@ -132,7 +132,6 @@ export default function AnalyticsPage() {
           </CardHeader>
           <div className="grid gap-3">
             {funnelStages.filter((s) => s.value > 0).map((stage) => {
-              const pct = Math.min(100, Math.round((stage.value / Math.max(1, jobs.length)) * 100));
               return (
                 <div key={stage.label} className="grid items-center gap-2" style={{ gridTemplateColumns: "9rem 1fr 2.5rem" }}>
                   <span className="text-sm text-muted">{stage.label}</span>
@@ -149,7 +148,7 @@ export default function AnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Score vs. outcome</CardTitle>
-              <CardDescription>Where you're applying by fit score band.</CardDescription>
+              <CardDescription>Where you&apos;re applying by fit score band.</CardDescription>
             </CardHeader>
             {scoreOutcome.some((b) => b.total > 0) ? (
               <div className="grid gap-3">

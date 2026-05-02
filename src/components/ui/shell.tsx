@@ -52,7 +52,7 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
 
   return (
     <div className="min-h-screen bg-surface">
-      <header className="sticky top-0 z-40 border-b border-border bg-white shadow-sm">
+      <header className="sticky top-0 z-40 min-h-[var(--shell-header-offset)] border-b border-border bg-white shadow-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-0">
           {/* Logo */}
           <Link className="flex items-center gap-2.5 py-3 shrink-0" href="/dashboard">

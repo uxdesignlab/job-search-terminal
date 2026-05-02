@@ -2,8 +2,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Badge, EmptyState, PageHeader } from "@/components/ui";
+import {
+  dataTableClass,
+  dataTableStickyHeadClass,
+  dataTableStickySurfaceClass,
+} from "@/components/ui/table";
 import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
+import { cn } from "@/lib/utils";
 import { getArchivedJobs, unarchiveJob, deleteJob, purgeAllArchivedJobs } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -109,17 +115,38 @@ export default function ArchivedPage() {
             </div>
 
             {/* Desktop table */}
-            <div className="hidden overflow-x-auto rounded-panel border border-border lg:block">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-surface">
+            <div className="hidden w-full max-w-full rounded-panel border border-border lg:block">
+              <table
+                className={cn(
+                  dataTableClass,
+                  dataTableStickyHeadClass,
+                  dataTableStickySurfaceClass,
+                  "min-w-max",
+                )}
+              >
+                <thead>
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Role</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Company</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Score</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Posted</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">Reason</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted">Actions</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                      Role
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                      Company
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                      Score
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                      Posted
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                      Reason
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border bg-panel">

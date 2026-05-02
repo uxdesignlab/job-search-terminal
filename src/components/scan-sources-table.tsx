@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { IndustryEditor } from "@/components/industry-editor";
 import { Badge } from "@/components/ui/badge";
+import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -188,7 +190,7 @@ function ColHeader({
   const active = isFiltered || isSorted;
 
   return (
-    <th className={`pb-3 pr-4 text-left ${className ?? ""}`}>
+    <th className={cn("pb-3 pr-4 text-left", className)}>
       <button
         className={`inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider transition-colors hover:text-ink ${active ? "text-accent" : "text-muted"}`}
         onClick={(e) => onOpen(col, e.currentTarget)}
@@ -336,10 +338,10 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
         </div>
       )}
 
-      <div className="overflow-x-auto" role="region" aria-label="Scan sources table">
-        <table className="w-full text-sm">
+      <div className="w-full max-w-full" role="region" aria-label="Scan sources table">
+        <table className={cn(dataTableClass, dataTableStickyHeadClass, "min-w-max")}>
           <thead>
-            <tr className="border-b border-border">
+            <tr>
               <th className="pb-3 pr-3 w-10">
                 <input
                   ref={selectAllRef}

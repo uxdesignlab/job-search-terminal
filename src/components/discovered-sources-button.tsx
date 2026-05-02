@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import {
+  dataTableClass,
+  dataTableStickyHeadClass,
+  dataTableStickyModalClass,
+} from "@/components/ui/table";
 
 type DiscoveredEntry = {
   slug: string;
@@ -179,7 +185,7 @@ function ColHeader({
   const active = isFiltered || isSorted;
 
   return (
-    <th className={`pb-3 pr-4 text-left ${className ?? ""}`}>
+    <th className={cn("pb-3 pr-4 text-left", className)}>
       <button
         className={`inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider transition-colors hover:text-ink ${active ? "text-accent" : "text-muted"}`}
         onClick={(e) => onOpen(col, e.currentTarget)}
@@ -368,9 +374,16 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
                     </button>
                   </div>
                 )}
-                <table className="w-full text-sm">
+                <table
+                  className={cn(
+                    dataTableClass,
+                    dataTableStickyHeadClass,
+                    dataTableStickyModalClass,
+                    "min-w-max",
+                  )}
+                >
                   <thead>
-                    <tr className="border-b border-border">
+                    <tr>
                       <th className="pb-3 pr-3 w-10">
                         <input
                           ref={selectAllRef}

@@ -55,7 +55,7 @@ export function InFlightCard({ data }: { data: ActionQueueData }) {
     <Card>
       <CardHeader>
         <CardTitle>In flight</CardTitle>
-        <CardDescription>Applications you've already submitted.</CardDescription>
+        <CardDescription>Applications you&apos;ve already submitted.</CardDescription>
       </CardHeader>
       {data.recentlyApplied.length === 0 ? (
         <EmptyState
