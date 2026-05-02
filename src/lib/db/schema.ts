@@ -434,5 +434,16 @@ export const migrations = [
         updated_at text not null default current_timestamp
       );
     `
+  },
+  {
+    id: "0025_company_profiles",
+    sql: `
+      create table if not exists company_profiles (
+        name text primary key,
+        industry text not null default '',
+        tags_json text not null default '[]',
+        updated_at text not null default current_timestamp
+      );
+    `
   }
 ];

@@ -1772,6 +1772,41 @@ export function deleteCustomScanSource(name: string) {
   getDatabase().prepare("delete from scan_source_overrides where name = @name").run({ name });
 }
 
+export type CompanyProfile = {
+  name: string;
+  industry: string;
+  tags: string[];
+  updatedAt: string;
+};
+
+export function getCompanyProfiles(): Map<string, CompanyProfile> {
+  const rows = getDatabase()
+    .prepare("select name, industry, tags_json, updated_at from company_profiles order by name")
+    .all() as Array<{ name: string; industry: string; tags_json: string; updated_at: string }>;
+  return new Map(
+    rows.map((r) => [r.name, { name: r.name, industry: r.industry, tags: parseJson<string[]>(r.tags_json), updatedAt: r.updated_at }])
+  );
+}
+
+export function upsertCompanyProfile(name: string, industry: string): void {
+  getDatabase()
+    .prepare(
+      `insert or replace into company_profiles (name, industry, tags_json, updated_at)
+       values (@name, @industry, '[]', current_timestamp)`
+    )
+    .run({ name, industry });
+}
+
+export function syncCompanyProfilesFromYaml(companies: Array<{ name: string; industry?: string }>): void {
+  const stmt = getDatabase().prepare(
+    `insert or ignore into company_profiles (name, industry, tags_json, updated_at)
+     values (@name, @industry, '[]', current_timestamp)`
+  );
+  for (const c of companies) {
+    stmt.run({ name: c.name, industry: c.industry ?? "" });
+  }
+}
+
 export function deleteJob(jobId: string) {
   const db = getDatabase();
   db.transaction(() => {
