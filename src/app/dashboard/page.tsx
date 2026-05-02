@@ -13,7 +13,8 @@ import {
   getUserProfile,
   setScanSourceEnabled,
 } from "@/lib/db/queries";
-import { runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
+import { isScanSourceEnabled, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
+import { cn } from "@/lib/utils";
 import { XpLevelCard } from "@/components/xp-level-card";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 
@@ -152,26 +153,47 @@ export default function DashboardPage() {
                   completed normally. Disable a source to skip it on the next scan.
                 </p>
                 <ul className="grid gap-1" aria-label="Latest scan errors">
-                  {latestScan.errors.slice(0, 5).map((error) => (
-                    <li
-                      className="flex items-center gap-3 rounded-control border border-warning/30 bg-warning/8 px-3 py-2 text-sm text-ink"
-                      key={`${error.company}-${error.error}`}
-                    >
-                      <span className="flex-1">
-                        <span className="font-medium">{error.company}:</span>{" "}
-                        <span className="text-muted">{error.error}</span>
-                      </span>
-                      <form action={disableSourceAction}>
-                        <input name="name" type="hidden" value={error.company} />
-                        <button
-                          className="whitespace-nowrap text-xs text-muted underline-offset-2 hover:text-danger hover:underline"
-                          type="submit"
-                        >
-                          Disable source
-                        </button>
-                      </form>
-                    </li>
-                  ))}
+                  {latestScan.errors.slice(0, 5).map((error) => {
+                    const sourceIsOff = !isScanSourceEnabled(error.company);
+                    return (
+                      <li
+                        className={cn(
+                          "flex flex-wrap items-center gap-3 rounded-control border px-3 py-2 text-sm text-ink",
+                          sourceIsOff
+                            ? "border-border bg-surface text-muted"
+                            : "border-warning/30 bg-warning/8",
+                        )}
+                        key={`${error.company}-${error.error}`}
+                      >
+                        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                          <span>
+                            <span className={cn("font-medium", sourceIsOff && "text-ink/80")}>
+                              {error.company}:
+                            </span>{" "}
+                            <span className="text-muted">{error.error}</span>
+                          </span>
+                          {sourceIsOff && (
+                            <Badge tone="neutral">
+                              Disabled
+                            </Badge>
+                          )}
+                        </span>
+                        {sourceIsOff ? (
+                          <span className="shrink-0 text-xs text-muted">Skipped on next scan</span>
+                        ) : (
+                          <form action={disableSourceAction}>
+                            <input name="name" type="hidden" value={error.company} />
+                            <button
+                              className="whitespace-nowrap text-xs text-muted underline-offset-2 hover:text-danger hover:underline"
+                              type="submit"
+                            >
+                              Disable source
+                            </button>
+                          </form>
+                        )}
+                      </li>
+                    );
+                  })}
                   {latestScan.errors.length > 5 && (
                     <li className="px-3 py-1 text-xs text-muted">+{latestScan.errors.length - 5} more</li>
                   )}

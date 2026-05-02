@@ -27,152 +27,184 @@ tracked_companies:
 
   # ── Design Tools ──────────────────────────────────────────────────────────────
   - name: Figma
+    industry: "Design Tools"
     careers_url: https://job-boards.greenhouse.io/figma
     api: https://boards-api.greenhouse.io/v1/boards/figma/jobs
     enabled: true
 
   # ── Developer & Data Platforms ────────────────────────────────────────────────
   - name: Vercel
+    industry: "Developer Tools"
     careers_url: https://job-boards.greenhouse.io/vercel
     api: https://boards-api.greenhouse.io/v1/boards/vercel/jobs
     enabled: true
 
   - name: Airtable
+    industry: "Developer Tools"
     careers_url: https://job-boards.greenhouse.io/airtable
     api: https://boards-api.greenhouse.io/v1/boards/airtable/jobs
     enabled: true
 
   - name: Contentful
+    industry: "Developer Tools"
     careers_url: https://job-boards.greenhouse.io/contentful
     api: https://boards-api.greenhouse.io/v1/boards/contentful/jobs
     enabled: true
 
   - name: Glean
+    industry: "Developer Tools"
     careers_url: https://job-boards.greenhouse.io/gleanwork
     api: https://boards-api.greenhouse.io/v1/boards/gleanwork/jobs
     enabled: true
 
   - name: Supabase
+    industry: "Developer Tools"
     careers_url: https://jobs.ashbyhq.com/supabase
     enabled: true
 
   - name: Tinybird
+    industry: "Developer Tools"
     careers_url: https://jobs.lever.co/tinybird
     enabled: true
 
   - name: Temporal
+    industry: "Developer Tools"
     careers_url: https://job-boards.greenhouse.io/temporaltechnologies
     api: https://boards-api.greenhouse.io/v1/boards/temporaltechnologies/jobs
     enabled: true
 
   - name: Pinecone
+    industry: "Developer Tools"
     careers_url: https://jobs.ashbyhq.com/pinecone
     enabled: true
 
   # ── Productivity & Automation ─────────────────────────────────────────────────
   - name: Zapier
+    industry: "Productivity & Automation"
     careers_url: https://jobs.ashbyhq.com/zapier
     enabled: true
 
   - name: n8n
+    industry: "Productivity & Automation"
     careers_url: https://jobs.ashbyhq.com/n8n
     enabled: true
 
   - name: Make
+    industry: "Productivity & Automation"
     careers_url: https://job-boards.greenhouse.io/make
     api: https://boards-api.greenhouse.io/v1/boards/make/jobs
     enabled: true
 
   - name: Attio
+    industry: "Productivity & Automation"
     careers_url: https://jobs.ashbyhq.com/attio
     enabled: true
 
   # ── Social, Media & Creator ───────────────────────────────────────────────────
   - name: Hootsuite
+    industry: "Social & Media"
     careers_url: https://job-boards.greenhouse.io/hootsuite
     api: https://boards-api.greenhouse.io/v1/boards/hootsuite/jobs
     enabled: true
 
   - name: Later
+    industry: "Social & Media"
     careers_url: https://job-boards.greenhouse.io/later
     api: https://boards-api.greenhouse.io/v1/boards/later/jobs
     enabled: true
 
   - name: Spotify
+    industry: "Social & Media"
     careers_url: https://jobs.lever.co/spotify
     enabled: true
 
   # ── AI Labs & Foundation Models ───────────────────────────────────────────────
   - name: Anthropic
+    industry: "AI Labs"
     careers_url: https://job-boards.greenhouse.io/anthropic
     api: https://boards-api.greenhouse.io/v1/boards/anthropic/jobs
     enabled: true
 
   - name: OpenAI
+    industry: "AI Labs"
     careers_url: https://jobs.ashbyhq.com/OpenAI
     enabled: true
 
   - name: Mistral
+    industry: "AI Labs"
     careers_url: https://jobs.lever.co/mistral
     enabled: true
 
   - name: Cohere
+    industry: "AI Labs"
     careers_url: https://jobs.ashbyhq.com/cohere
     enabled: true
 
   - name: LangChain
+    industry: "AI Labs"
     careers_url: https://jobs.ashbyhq.com/langchain
     enabled: true
 
   # ── Voice & Conversational AI ─────────────────────────────────────────────────
   - name: ElevenLabs
+    industry: "Voice AI"
     careers_url: https://jobs.ashbyhq.com/elevenlabs
     enabled: true
 
   - name: Hume AI
+    industry: "Voice AI"
     careers_url: https://job-boards.greenhouse.io/humeai
     api: https://boards-api.greenhouse.io/v1/boards/humeai/jobs
     enabled: true
 
   - name: Deepgram
+    industry: "Voice AI"
     careers_url: https://jobs.ashbyhq.com/Deepgram
     enabled: true
 
   - name: Vapi
+    industry: "Voice AI"
     careers_url: https://jobs.ashbyhq.com/vapi
     enabled: true
 
   # ── AI Agents & Automation ────────────────────────────────────────────────────
   - name: Lindy
+    industry: "AI Agents"
     careers_url: https://jobs.ashbyhq.com/lindy
     enabled: true
 
   - name: Sierra
+    industry: "AI Agents"
     careers_url: https://jobs.ashbyhq.com/Sierra
     enabled: true
 
   - name: Decagon
+    industry: "AI Agents"
     careers_url: https://jobs.ashbyhq.com/decagon
     enabled: true
 
   # ── Customer Experience & Revenue ─────────────────────────────────────────────
   - name: Gong
+    industry: "Customer Experience"
     careers_url: https://job-boards.greenhouse.io/gongio
     api: https://boards-api.greenhouse.io/v1/boards/gongio/jobs
     enabled: true
 
   - name: Ada
+    industry: "Customer Experience"
     careers_url: https://job-boards.greenhouse.io/ada18
     api: https://boards-api.greenhouse.io/v1/boards/ada18/jobs
     enabled: true
 
   - name: Talkdesk
+    industry: "Customer Experience"
     careers_url: https://job-boards.greenhouse.io/talkdesk2
     api: https://boards-api.greenhouse.io/v1/boards/talkdesk2/jobs
     enabled: true
 
   # ── Enterprise & Analytics ────────────────────────────────────────────────────
   - name: Clarity AI
+    industry: "Enterprise Analytics"
     careers_url: https://job-boards.greenhouse.io/clarityai
     api: https://boards-api.greenhouse.io/v1/boards/clarityai/jobs
     enabled: true

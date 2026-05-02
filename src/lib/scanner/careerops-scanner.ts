@@ -15,6 +15,7 @@ type PortalCompany = {
   careers_url?: string;
   api?: string;
   enabled?: boolean;
+  industry?: string;
 };
 
 type ScanConfig = {
@@ -185,6 +186,28 @@ export function loadScanConfig(configPath?: string): ScanConfig {
   }
 
   return yaml.load(readFileSync(absolutePath, "utf-8")) as ScanConfig;
+}
+
+/** Whether a source will be scanned on the next run (YAML/custom defaults + `scan_source_overrides`). */
+export function isScanSourceEnabled(name: string, configPath?: string): boolean {
+  const config = loadScanConfig(configPath);
+  const companies = config.tracked_companies ?? [];
+  const sourceOverrides = getScanSourceOverrides();
+  const customSources = getCustomScanSources();
+  const yamlNames = new Set(companies.map((c) => c.name));
+  const mergedCompanies = [
+    ...companies,
+    ...customSources
+      .filter((c) => !yamlNames.has(c.name))
+      .map((c) => ({ name: c.name, careers_url: c.careersUrl, api: c.api, enabled: c.enabled }))
+  ];
+  const company = mergedCompanies.find((c) => c.name === name);
+  if (company) {
+    if (name in sourceOverrides) return sourceOverrides[name];
+    return company.enabled !== false;
+  }
+  if (name in sourceOverrides) return sourceOverrides[name];
+  return true;
 }
 
 export function detectApi(company: PortalCompany): DetectedApi | null {

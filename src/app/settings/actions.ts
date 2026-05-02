@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { saveAISettings } from "@/lib/db/queries";
+import { saveAISettings, upsertCompanyProfile } from "@/lib/db/queries";
 import type { AIProviderName } from "@/lib/db/types";
 
 export async function saveAISettingsAction(formData: FormData) {
@@ -30,5 +30,10 @@ export async function saveAISettingsAction(formData: FormData) {
     fallbackProvider
   });
 
+  revalidatePath("/settings");
+}
+
+export async function saveCompanyIndustryAction(name: string, industry: string) {
+  upsertCompanyProfile(name, industry);
   revalidatePath("/settings");
 }

@@ -21,7 +21,8 @@
     "application:check": "tsx scripts/application-check.ts",
     "quality:check": "tsx scripts/quality-check.ts",
     "data:backup": "tsx scripts/data-backup.ts",
-    "data:export": "tsx scripts/data-export.ts"
+    "data:export": "tsx scripts/data-export.ts",
+    "discover:sources": "tsx scripts/discover-sources.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
