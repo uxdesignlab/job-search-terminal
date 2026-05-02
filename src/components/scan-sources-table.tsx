@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { IndustryEditor } from "@/components/industry-editor";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DataTableActiveFiltersSummary,
+  DataTableColHeader,
+  DataTableSortFilterDropdown,
+  useDataTableSortFilterState,
+} from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
@@ -17,17 +25,29 @@ export type ScanSource = {
   industry: string;
 };
 
+export type CompanyScanResultSummary = {
+  companyName: string;
+  status: "completed" | "completed_with_errors" | "failed";
+  newJobsCount: number;
+  totalJobsFound: number;
+  filteredCount: number;
+  duplicateCount: number;
+  companiesScanned: number;
+  skippedCompanies: number;
+  errors: Array<{ company: string; error: string }>;
+  jobs: Array<{ title: string; url: string; company: string }>;
+};
+
 type Props = {
   sources: ScanSource[];
   onToggle: (name: string, enabled: boolean) => Promise<void>;
   onToggleAll?: (changes: Array<{ name: string; enabled: boolean }>) => Promise<void>;
   onRemove: (name: string) => Promise<void>;
   onSaveIndustry: (name: string, industry: string) => Promise<void>;
+  onScanCompany: (companyName: string) => Promise<CompanyScanResultSummary>;
 };
 
 type SortCol = "company" | "industry" | "ats" | "status";
-type SortDir = "asc" | "desc";
-type FiltersState = Partial<Record<SortCol, Set<string>>>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -50,161 +70,6 @@ function getColOptions(sources: ScanSource[], col: SortCol): string[] {
   return [...new Set(sources.map((s) => getColValue(s, col)))].sort();
 }
 
-// ─── Filter Dropdown ──────────────────────────────────────────────────────────
-
-type FilterDropdownProps = {
-  col: SortCol;
-  label: string;
-  options: string[];
-  filter: Set<string> | undefined;
-  isSortedAsc: boolean;
-  isSortedDesc: boolean;
-  pos: { top: number; left: number };
-  onSortAsc: () => void;
-  onSortDesc: () => void;
-  onFilter: (values: Set<string> | undefined) => void;
-  onClose: () => void;
-};
-
-function FilterDropdown({
-  label, options, filter, isSortedAsc, isSortedDesc, pos,
-  onSortAsc, onSortDesc, onFilter, onClose,
-}: FilterDropdownProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [search, setSearch] = useState("");
-
-  const activeValues: Set<string> = filter ?? new Set(options);
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    const t = setTimeout(() => document.addEventListener("mousedown", handler), 0);
-    return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
-  }, [onClose]);
-
-  const visible = options.filter((o) => !search || o.toLowerCase().includes(search.toLowerCase()));
-  const allChecked = visible.every((o) => activeValues.has(o));
-  const isFiltered = filter !== undefined;
-
-  function toggleAll() {
-    const next = new Set(activeValues);
-    if (allChecked) visible.forEach((o) => next.delete(o));
-    else visible.forEach((o) => next.add(o));
-    onFilter(options.every((o) => next.has(o)) ? undefined : next);
-  }
-
-  function toggleValue(val: string) {
-    const next = new Set(activeValues);
-    if (next.has(val)) next.delete(val); else next.add(val);
-    onFilter(options.every((o) => next.has(o)) ? undefined : next);
-  }
-
-  return (
-    <div
-      ref={ref}
-      style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 1000 }}
-      className="w-52 rounded-lg border border-border bg-panel shadow-xl"
-    >
-      <div className="border-b border-border p-1">
-        <button
-          className={`flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs transition-colors hover:bg-surface ${isSortedAsc ? "font-semibold text-accent" : "text-ink"}`}
-          onClick={() => { onSortAsc(); onClose(); }}
-          type="button"
-        >
-          <span className="w-3">↑</span> Sort A → Z
-        </button>
-        <button
-          className={`flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs transition-colors hover:bg-surface ${isSortedDesc ? "font-semibold text-accent" : "text-ink"}`}
-          onClick={() => { onSortDesc(); onClose(); }}
-          type="button"
-        >
-          <span className="w-3">↓</span> Sort Z → A
-        </button>
-      </div>
-      <div className="p-2">
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-          Filter by {label}
-        </p>
-        {options.length > 7 && (
-          <input
-            autoFocus
-            className="mb-2 w-full rounded border border-border bg-surface px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            type="text"
-            value={search}
-          />
-        )}
-        <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs hover:bg-surface">
-          <input
-            checked={allChecked}
-            className="h-3.5 w-3.5 accent-accent"
-            onChange={toggleAll}
-            type="checkbox"
-          />
-          <span className="font-medium text-ink">Select all</span>
-        </label>
-        <div className="mt-0.5 max-h-44 overflow-y-auto">
-          {visible.map((opt) => (
-            <label key={opt} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-surface">
-              <input
-                checked={activeValues.has(opt)}
-                className="h-3.5 w-3.5 accent-accent"
-                onChange={() => toggleValue(opt)}
-                type="checkbox"
-              />
-              <span className="truncate text-ink">{opt}</span>
-            </label>
-          ))}
-        </div>
-        {isFiltered && (
-          <button
-            className="mt-1.5 w-full text-left text-xs text-muted underline underline-offset-2 hover:text-ink"
-            onClick={() => { onFilter(undefined); onClose(); }}
-            type="button"
-          >
-            Clear filter
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Column Header ────────────────────────────────────────────────────────────
-
-function ColHeader({
-  col, label, sort, filter, isOpen, onOpen, className,
-}: {
-  col: SortCol;
-  label: string;
-  sort: { col: SortCol; dir: SortDir };
-  filter: Set<string> | undefined;
-  isOpen: boolean;
-  onOpen: (col: SortCol, btn: HTMLButtonElement) => void;
-  className?: string;
-}) {
-  const isFiltered = filter !== undefined;
-  const isSorted = sort.col === col;
-  const active = isFiltered || isSorted;
-
-  return (
-    <th className={cn("pb-3 pr-4 text-left", className)}>
-      <button
-        className={`inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider transition-colors hover:text-ink ${active ? "text-accent" : "text-muted"}`}
-        onClick={(e) => onOpen(col, e.currentTarget)}
-        type="button"
-      >
-        {label}
-        {isFiltered && <span className="text-[9px] leading-none text-accent">●</span>}
-        {isSorted && <span className="text-[10px]">{sort.dir === "asc" ? "↑" : "↓"}</span>}
-        <span className={`text-[10px] transition-transform duration-150 ${isOpen ? "rotate-180" : ""} ${active ? "opacity-70" : "opacity-40"}`}>▾</span>
-      </button>
-    </th>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const COL_DEFS: Array<{ col: SortCol; label: string }> = [
@@ -214,34 +79,35 @@ const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "status", label: "Status" },
 ];
 
-export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onSaveIndustry }: Props) {
-  const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: "company", dir: "asc" });
-  const [filters, setFilters] = useState<FiltersState>({});
-  const [openFilterCol, setOpenFilterCol] = useState<SortCol | null>(null);
-  const [filterPos, setFilterPos] = useState({ top: 0, left: 0 });
+export function ScanSourcesTable({
+  sources,
+  onToggle,
+  onToggleAll,
+  onRemove,
+  onSaveIndustry,
+  onScanCompany,
+}: Props) {
+  const router = useRouter();
+  const {
+    sort,
+    filters,
+    openFilterCol,
+    filterPos,
+    openFilter,
+    handleSort,
+    handleFilter,
+    clearAllFilters,
+    setOpenFilterCol,
+    activeFilterCount,
+  } = useDataTableSortFilterState<SortCol>({ col: "company", dir: "asc" });
   const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
   const [pendingRemoves, setPendingRemoves] = useState<Set<string>>(new Set());
   const [enabledOverrides, setEnabledOverrides] = useState<Map<string, boolean>>(() => new Map());
   const [, startTransition] = useTransition();
   const selectAllRef = useRef<HTMLInputElement>(null);
-
-  function openFilter(col: SortCol, btn: HTMLButtonElement) {
-    if (openFilterCol === col) { setOpenFilterCol(null); return; }
-    const rect = btn.getBoundingClientRect();
-    setFilterPos({ top: rect.bottom + 4, left: rect.left });
-    setOpenFilterCol(col);
-  }
-
-  function handleSort(col: SortCol, dir: SortDir) { setSort({ col, dir }); }
-
-  function handleFilter(col: SortCol, values: Set<string> | undefined) {
-    setFilters((prev) => {
-      const next = { ...prev };
-      if (values === undefined) delete next[col];
-      else next[col] = values;
-      return next;
-    });
-  }
+  const [scanResult, setScanResult] = useState<CompanyScanResultSummary | null>(null);
+  const [scanningName, setScanningName] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   function handleToggle(name: string) {
     const currentEnabled = enabledOverrides.has(name)
@@ -303,6 +169,20 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
     }
   }, [allVisibleEnabled, noneVisibleEnabled]);
 
+  async function handleScanCompany(name: string) {
+    setScanningName(name);
+    setScanError(null);
+    try {
+      const summary = await onScanCompany(name);
+      setScanResult(summary);
+      router.refresh();
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : "Scan failed");
+    } finally {
+      setScanningName(null);
+    }
+  }
+
   function handleToggleAll() {
     const toEnable = !allVisibleEnabled;
     const changes = displaySources
@@ -319,23 +199,15 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
     });
   }
 
-  const activeFilterCount = Object.keys(filters).length;
-
   return (
     <div className="relative">
       {activeFilterCount > 0 && (
-        <div className="mb-3 flex items-center gap-3 text-xs">
-          <span className="text-muted">
-            {displaySources.length} of {sources.length} sources
-          </span>
-          <button
-            className="text-accent underline underline-offset-2 hover:text-ink"
-            onClick={() => setFilters({})}
-            type="button"
-          >
-            Clear all filters
-          </button>
-        </div>
+        <DataTableActiveFiltersSummary
+          entityLabel="sources"
+          onClearAll={clearAllFilters}
+          shown={displaySources.length}
+          total={sources.length}
+        />
       )}
 
       <div className="w-full max-w-full" role="region" aria-label="Scan sources table">
@@ -350,11 +222,11 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
                   checked={allVisibleEnabled}
                   onChange={handleToggleAll}
                   disabled={displaySources.length === 0}
-                  className="h-4 w-4 rounded border-border accent-accent"
+                  className="h-4 w-4 rounded border-border"
                 />
               </th>
               {COL_DEFS.map(({ col, label }) => (
-                <ColHeader
+                <DataTableColHeader
                   key={col}
                   col={col}
                   label={label}
@@ -364,6 +236,9 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
                   onOpen={openFilter}
                 />
               ))}
+              <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted w-28">
+                Scan
+              </th>
               <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted w-20">
                 Careers
               </th>
@@ -383,7 +258,7 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
                     <input
                       aria-label={`${isEnabled ? "Disable" : "Enable"} ${source.name}`}
                       checked={isEnabled}
-                      className="h-4 w-4 rounded border-border accent-accent"
+                      className="h-4 w-4 rounded border-border"
                       disabled={isTogglePending}
                       onChange={() => handleToggle(source.name)}
                       type="checkbox"
@@ -415,6 +290,18 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
                     </Badge>
                   </td>
                   <td className="py-3 pr-4">
+                    <Button
+                      aria-label={`Scan for new jobs at ${source.name}`}
+                      className="min-h-8 px-2.5 py-1 text-xs"
+                      disabled={scanningName !== null}
+                      onClick={() => void handleScanCompany(source.name)}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {scanningName === source.name ? "Scanning…" : "Scan jobs"}
+                    </Button>
+                  </td>
+                  <td className="py-3 pr-4">
                     {source.careersUrl ? (
                       <a
                         className="text-xs text-accent hover:underline"
@@ -444,10 +331,121 @@ export function ScanSourcesTable({ sources, onToggle, onToggleAll, onRemove, onS
         </table>
       </div>
 
+      {scanResult && (
+        <div
+          aria-labelledby="scan-result-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm sm:p-6"
+          role="dialog"
+        >
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-panel p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold text-ink" id="scan-result-title">
+                Scan results — {scanResult.companyName}
+              </h2>
+              <button
+                aria-label="Close"
+                className="shrink-0 rounded-control p-1 text-muted hover:bg-surface hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                onClick={() => setScanResult(null)}
+                type="button"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-4 flex flex-wrap gap-2">
+              <Badge
+                tone={
+                  scanResult.status === "completed"
+                    ? "success"
+                    : scanResult.status === "failed"
+                      ? "danger"
+                      : "warning"
+                }
+              >
+                {scanResult.status === "completed"
+                  ? "Completed"
+                  : scanResult.status === "failed"
+                    ? "Failed"
+                    : "Completed with issues"}
+              </Badge>
+              <Badge tone="neutral">{scanResult.newJobsCount} new in app</Badge>
+              <Badge tone="neutral">{scanResult.totalJobsFound} found at source</Badge>
+              {scanResult.filteredCount > 0 && (
+                <Badge tone="neutral">{scanResult.filteredCount} filtered by title rules</Badge>
+              )}
+              {scanResult.duplicateCount > 0 && (
+                <Badge tone="neutral">{scanResult.duplicateCount} duplicates skipped</Badge>
+              )}
+            </div>
+
+            {scanResult.errors.length > 0 && (
+              <ul className="mb-4 list-inside list-disc space-y-1 rounded-md border border-border bg-surface/50 p-3 text-sm text-danger">
+                {scanResult.errors.map((e, i) => (
+                  <li key={`${e.company}-${i}`}>
+                    <span className="font-medium text-ink">{e.company}:</span> {e.error}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {scanResult.jobs.length === 0 ? (
+                <p className="text-sm text-muted">No new listings were added. Existing jobs and filtered titles are unchanged.</p>
+              ) : (
+                <ul className="space-y-2 pr-1">
+                  {scanResult.jobs.map((job) => (
+                    <li className="text-sm" key={job.url}>
+                      <a
+                        className="font-medium text-accent hover:underline"
+                        href={job.url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {job.title}
+                      </a>
+                      {job.company !== scanResult.companyName && (
+                        <span className="text-muted"> — {job.company}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end border-t border-border pt-4">
+              <Button onClick={() => setScanResult(null)} type="button" variant="secondary">
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scanError && (
+        <div
+          aria-live="assertive"
+          className="fixed bottom-4 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-lg border border-danger/30 bg-panel px-4 py-3 text-sm text-danger shadow-lg"
+          role="alert"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <span>{scanError}</span>
+            <button
+              className="shrink-0 text-muted hover:text-ink"
+              onClick={() => setScanError(null)}
+              type="button"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {openFilterCol && (
-        <FilterDropdown
-          col={openFilterCol}
-          label={COL_DEFS.find((c) => c.col === openFilterCol)?.label ?? ""}
+        <DataTableSortFilterDropdown
+          filterByLabel={COL_DEFS.find((c) => c.col === openFilterCol)?.label.toLowerCase() ?? openFilterCol}
           options={colOptions[openFilterCol]}
           filter={filters[openFilterCol]}
           isSortedAsc={sort.col === openFilterCol && sort.dir === "asc"}

@@ -1,0 +1,30 @@
+---
+description: Data tables must match Jobs table sort/filter UX (BatchEvaluateForm)
+alwaysApply: true
+---
+
+# Table sort and filter parity
+
+The **canonical reference** for interactive data tables is the Jobs desktop table: `BatchEvaluateForm` in `src/components/batch-evaluate-form.tsx` (used from `src/app/jobs/page.tsx`).
+
+## When this applies
+
+Any **data `<table>`** that lists multiple rows users scan or compare (jobs, archived jobs, sources, imports, analytics grids, etc.). Does not apply to one-off layout tables or a single header row with no column-driven sort/filter.
+
+## Match the Jobs pattern
+
+1. **Table shell**: Use `dataTableClass` and `dataTableStickyHeadClass` from `@/components/ui/table` the same way as `BatchEvaluateForm` (and `dataTableStickySurfaceClass` when the wrapper matches archived styling).
+
+2. **Column headers**: Sortable/filterable columns use the same header interaction as `ColHeader` in `batch-evaluate-form.tsx`: `button` opens a menu; **accent** when that column is sorted or filtered; **●** when a filter is active; **↑/↓** for current sort direction; **▾** chevron with open-state rotation.
+
+3. **Dropdown menu** (same structure as `FilterDropdown` in that file):
+   - **Sort**: Two actions (ascending / descending). Labels and behavior must match jobs: keep the same copy (“Sort A → Z” / “Sort Z → A”) even when the underlying compare is numeric or date-specific—mirror the column’s sort logic in `BatchEvaluateForm` (e.g. fit score, dates).
+   - **Filter**: Section title `Filter by {label}`; checkbox list of distinct values for that column; **search field** when there are more than seven options; **Select all** for visible options; **Clear filter** when filtered. Filter state: `Partial<Record<ColumnKey, Set<string>>>` with `undefined` meaning no filter.
+
+4. **Data pipeline**: Compute displayed rows by applying all column filters, then sort by `{ col, dir }`—same order of operations as jobs.
+
+5. **DRY**: When adding or changing a table, **reuse or extract** shared primitives (`FilterDropdown`, `ColHeader`, helpers like `getColOptions` / `getColValue`) instead of inventing a second filter/sort pattern. If a new table needs different columns, implement the same UX with that table’s column keys and value getters.
+
+## Non-sortable columns
+
+Columns that are **only actions** (e.g. trailing “Actions” with buttons) do not need sort/filter. Every other data column should follow the pattern above unless the product explicitly documents an exception in `AGENTS.md` or `docs/`.
