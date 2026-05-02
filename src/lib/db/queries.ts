@@ -33,7 +33,14 @@ import type {
   StoryInput,
   StoryRecord,
   UserProfileRecord,
-  WritingStyleRecord
+  WritingStyleRecord,
+  JobGapResponseRecord,
+  JobGapResponseInput,
+  ProfileSupplementRecord,
+  ProfileSupplementInput,
+  Achievement,
+  GamificationData,
+  ActionQueueData
 } from "./types";
 
 const parseJson = <T>(value: string): T => JSON.parse(value) as T;
@@ -1775,6 +1782,7 @@ export function deleteJob(jobId: string) {
     db.prepare("delete from evaluations where job_id = @jobId").run({ jobId });
     db.prepare("delete from applications where job_id = @jobId").run({ jobId });
     db.prepare("delete from generated_documents where job_id = @jobId").run({ jobId });
+    db.prepare("delete from job_gap_responses where job_id = @jobId").run({ jobId });
     db.prepare("update story_bank set source_job_id = null where source_job_id = @jobId").run({ jobId });
     db.prepare("delete from jobs where id = @jobId").run({ jobId });
   })();
@@ -1850,4 +1858,366 @@ export function saveTitleFilters(positive: string[], negative: string[]) {
       positiveJson: JSON.stringify(positive),
       negativeJson: JSON.stringify(negative),
     });
+}
+
+// ─── Job Gap Responses ────────────────────────────────────────────────────────
+
+type JobGapResponseRow = {
+  id: string;
+  job_id: string;
+  gap_text: string;
+  raw_response: string;
+  polished_response: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapGapResponse(row: JobGapResponseRow): JobGapResponseRecord {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    gapText: row.gap_text,
+    rawResponse: row.raw_response,
+    polishedResponse: row.polished_response,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getJobGapResponses(jobId: string): JobGapResponseRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from job_gap_responses where job_id = @jobId order by updated_at desc")
+    .all({ jobId }) as JobGapResponseRow[];
+  return rows.map(mapGapResponse);
+}
+
+export function saveJobGapResponse(input: JobGapResponseInput): void {
+  getDatabase()
+    .prepare(
+      `insert into job_gap_responses (id, job_id, gap_text, raw_response, polished_response, source, updated_at)
+       values (@id, @jobId, @gapText, @rawResponse, @polishedResponse, 'user-added', current_timestamp)
+       on conflict(job_id, gap_text) do update set
+         raw_response = excluded.raw_response,
+         polished_response = excluded.polished_response,
+         updated_at = current_timestamp`
+    )
+    .run(input);
+  logActivity("gap_response", input.jobId, "Gap response saved", { gapText: input.gapText });
+}
+
+export function deleteJobGapResponse(jobId: string, gapText: string): void {
+  getDatabase()
+    .prepare("delete from job_gap_responses where job_id = @jobId and gap_text = @gapText")
+    .run({ jobId, gapText });
+}
+
+// ─── Profile Supplements ──────────────────────────────────────────────────────
+
+type ProfileSupplementRow = {
+  id: string;
+  content: string;
+  tags_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export function getProfileSupplements(): ProfileSupplementRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from profile_gap_supplements order by updated_at desc")
+    .all() as ProfileSupplementRow[];
+  return rows.map((r) => ({
+    id: r.id,
+    content: r.content,
+    tags: parseJson<string[]>(r.tags_json),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export function saveProfileSupplement(input: ProfileSupplementInput): void {
+  getDatabase()
+    .prepare(
+      `insert into profile_gap_supplements (id, content, tags_json, updated_at)
+       values (@id, @content, @tagsJson, current_timestamp)
+       on conflict(id) do update set
+         content = excluded.content,
+         tags_json = excluded.tags_json,
+         updated_at = current_timestamp`
+    )
+    .run({ id: input.id, content: input.content, tagsJson: JSON.stringify(input.tags) });
+  logActivity("profile_supplement", input.id, "Profile supplement saved", {});
+}
+
+export function deleteProfileSupplement(id: string): void {
+  getDatabase().prepare("delete from profile_gap_supplements where id = @id").run({ id });
+  logActivity("profile_supplement", id, "Profile supplement deleted", {});
+}
+
+// ─── Gamification ─────────────────────────────────────────────────────────────
+
+type ActivityRow = { entity_type: string; entity_id: string; action: string; timestamp: string };
+
+const XP_LEVELS = [
+  { level: 1, name: "Scout", floor: 0, ceiling: 99 },
+  { level: 2, name: "Explorer", floor: 100, ceiling: 249 },
+  { level: 3, name: "Candidate", floor: 250, ceiling: 499 },
+  { level: 4, name: "Contender", floor: 500, ceiling: 899 },
+  { level: 5, name: "Finalist", floor: 900, ceiling: 1499 },
+  { level: 6, name: "Operator", floor: 1500, ceiling: Infinity },
+] as const;
+
+function xpToLevel(xp: number): { level: number; levelName: string; xpToNextLevel: number; xpProgress: number } {
+  const band = XP_LEVELS.findLast((l) => xp >= l.floor) ?? XP_LEVELS[0];
+  const isMax = band.level === 6;
+  const range = isMax ? 500 : band.ceiling - band.floor + 1;
+  const progress = isMax ? 100 : Math.round(((xp - band.floor) / range) * 100);
+  return {
+    level: band.level,
+    levelName: band.name,
+    xpToNextLevel: isMax ? 0 : band.ceiling + 1 - xp,
+    xpProgress: Math.min(100, Math.max(0, progress)),
+  };
+}
+
+function computeXP(
+  applications: ApplicationRecord[],
+  documents: GeneratedDocumentRecord[],
+  stories: StoryRecord[],
+  activityRows: ActivityRow[]
+): number {
+  const nonTrivialStatuses = new Set(["Applied", "Follow-up needed", "Recruiter responded", "Interviewing", "Offer", "Rejected"]);
+  let xp = 0;
+
+  for (const app of applications) {
+    if (nonTrivialStatuses.has(app.status)) xp += 50;
+    if (app.status === "Recruiter responded") xp += 25;
+    if (app.status === "Interviewing") xp += 50;
+    if (app.status === "Offer") xp += 100;
+  }
+
+  for (const doc of documents) {
+    xp += 20;
+    if (doc.keywordCoverage >= 80) xp += 15;
+  }
+
+  xp += stories.length * 15;
+
+  const dedupByEntityId = (rows: ActivityRow[]) => new Set(rows.map((r) => r.entity_id)).size;
+
+  const jobEvals = activityRows.filter((r) => r.entity_type === "job" && r.action.toLowerCase().includes("evaluat"));
+  xp += dedupByEntityId(jobEvals) * 10;
+
+  const outreach = activityRows.filter((r) => r.entity_type === "outreach");
+  xp += dedupByEntityId(outreach) * 10;
+
+  const research = activityRows.filter((r) => r.entity_type === "company_research");
+  xp += dedupByEntityId(research) * 10;
+
+  const gapResp = activityRows.filter((r) => r.entity_type === "gap_response");
+  xp += dedupByEntityId(gapResp) * 5;
+
+  const supplements = activityRows.filter((r) => r.entity_type === "profile_supplement" && r.action.toLowerCase().includes("saved"));
+  xp += dedupByEntityId(supplements) * 5;
+
+  const scans = activityRows.filter((r) => r.entity_type === "scan");
+  xp += Math.min(30, scans.length * 5);
+
+  return xp;
+}
+
+function isoWeek(dateStr: string): string {
+  const d = new Date(dateStr);
+  const thursday = new Date(d);
+  thursday.setDate(d.getDate() - ((d.getDay() + 6) % 7) + 3);
+  const jan4 = new Date(thursday.getFullYear(), 0, 4);
+  const week = Math.round(((thursday.getTime() - jan4.getTime()) / 86400000 + ((jan4.getDay() + 6) % 7) - 3) / 7) + 1;
+  return `${thursday.getFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function computeStreak(appliedDates: (string | null)[]): { current: number; longest: number; lastAppliedDate: string | null } {
+  const valid = appliedDates.filter((d): d is string => d !== null);
+  if (valid.length === 0) return { current: 0, longest: 0, lastAppliedDate: null };
+
+  const weeks = [...new Set(valid.map(isoWeek))].sort().reverse();
+  const currentWeek = isoWeek(new Date().toISOString());
+
+  let current = 0;
+  let longest = 0;
+  let streak = 0;
+  let prevWeek: string | null = null;
+
+  for (const week of weeks) {
+    if (prevWeek === null) {
+      const isRecentEnough = week === currentWeek || week === isoWeek(new Date(Date.now() - 7 * 86400000).toISOString());
+      streak = isRecentEnough ? 1 : 0;
+    } else {
+      const prev = new Date(prevWeek + "-1");
+      const curr = new Date(week + "-1");
+      const diffWeeks = Math.round((prev.getTime() - curr.getTime()) / (7 * 86400000));
+      if (diffWeeks === 1) {
+        streak++;
+      } else {
+        streak = 1;
+      }
+    }
+    if (streak > longest) longest = streak;
+    if (prevWeek === null) current = streak;
+    prevWeek = week;
+  }
+
+  return { current, longest, lastAppliedDate: valid.sort().at(-1) ?? null };
+}
+
+function evaluateAchievements(
+  applications: ApplicationRecord[],
+  documents: GeneratedDocumentRecord[],
+  stories: StoryRecord[],
+  activityRows: ActivityRow[],
+  streak: { current: number }
+): Achievement[] {
+  const nonTrivialStatuses = new Set(["Applied", "Follow-up needed", "Recruiter responded", "Interviewing", "Offer", "Rejected"]);
+  const applied = applications.filter((a) => nonTrivialStatuses.has(a.status));
+
+  const jobEvalIds = new Set(
+    activityRows.filter((r) => r.entity_type === "job" && r.action.toLowerCase().includes("evaluat")).map((r) => r.entity_id)
+  );
+
+  const firstApplied = applied.sort((a, b) => (a.appliedDate ?? "").localeCompare(b.appliedDate ?? "")).at(0);
+  const firstDoc = documents.sort((a, b) => a.generatedDate.localeCompare(b.generatedDate)).at(0);
+  const firstStory = stories.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(0);
+  const firstRecruiterApp = applications.find((a) => a.status === "Recruiter responded");
+  const firstInterview = applications.find((a) => a.status === "Interviewing");
+  const firstOffer = applications.find((a) => a.status === "Offer");
+
+  return [
+    {
+      id: "first_shot",
+      name: "First Shot",
+      description: "Submitted your first application",
+      unlocked: applied.length >= 1,
+      unlockedAt: firstApplied?.appliedDate ?? undefined,
+    },
+    {
+      id: "triple_threat",
+      name: "Triple Threat",
+      description: "Applied to 3 or more positions",
+      unlocked: applied.length >= 3,
+    },
+    {
+      id: "high_roller",
+      name: "High Roller",
+      description: "Applied to a job with 80%+ fit score",
+      unlocked: applied.some((a) => a.fitScore >= 80),
+    },
+    {
+      id: "resume_crafter",
+      name: "Resume Crafter",
+      description: "Generated your first tailored resume",
+      unlocked: documents.length >= 1,
+      unlockedAt: firstDoc?.generatedDate,
+    },
+    {
+      id: "keyword_ace",
+      name: "Keyword Ace",
+      description: "Generated a resume with 80%+ keyword coverage",
+      unlocked: documents.some((d) => d.keywordCoverage >= 80),
+    },
+    {
+      id: "story_teller",
+      name: "Story Teller",
+      description: "Added your first STAR story",
+      unlocked: stories.length >= 1,
+      unlockedAt: firstStory?.createdAt,
+    },
+    {
+      id: "story_vault",
+      name: "Story Vault",
+      description: "Built a story bank of 5 or more stories",
+      unlocked: stories.length >= 5,
+    },
+    {
+      id: "recruiter_magnet",
+      name: "Recruiter Magnet",
+      description: "Got a recruiter to respond",
+      unlocked: !!firstRecruiterApp,
+    },
+    {
+      id: "interviewer",
+      name: "Interview Ready",
+      description: "Landed your first interview",
+      unlocked: !!firstInterview,
+    },
+    {
+      id: "offer_on_table",
+      name: "Offer on the Table",
+      description: "Received a job offer",
+      unlocked: !!firstOffer,
+    },
+    {
+      id: "hot_streak",
+      name: "On a Roll",
+      description: "Applied in 2 or more consecutive weeks",
+      unlocked: streak.current >= 2,
+    },
+    {
+      id: "analyst",
+      name: "Pipeline Analyst",
+      description: "Evaluated 10 or more jobs with AI",
+      unlocked: jobEvalIds.size >= 10,
+    },
+  ];
+}
+
+export function getGamificationData(): GamificationData {
+  const applications = getApplications();
+  const documents = getGeneratedDocuments();
+  const stories = getStories();
+
+  const activityRows = getDatabase()
+    .prepare("select entity_type, entity_id, action, timestamp from activity_log order by timestamp desc")
+    .all() as ActivityRow[];
+
+  const xp = computeXP(applications, documents, stories, activityRows);
+  const levelData = xpToLevel(xp);
+  const streak = computeStreak(applications.map((a) => a.appliedDate));
+  const achievements = evaluateAchievements(applications, documents, stories, activityRows, streak);
+
+  return { xp, ...levelData, streak, achievements };
+}
+
+export function getDashboardActionQueue(): ActionQueueData {
+  const jobs = getJobs();
+  const applications = getApplications();
+
+  const toApply = jobs
+    .filter(
+      (j) =>
+        (j.recommendation === "Priority apply" || j.recommendation === "Strong apply") &&
+        j.status !== "Applied" &&
+        j.status !== "Skipped"
+    )
+    .slice(0, 7);
+
+  const activeStatuses = new Set(["Applied", "Follow-up needed", "Recruiter responded", "Interviewing", "Offer"]);
+  const recentlyApplied = applications
+    .filter((a) => activeStatuses.has(a.status))
+    .sort((a, b) => (b.appliedDate ?? "").localeCompare(a.appliedDate ?? ""))
+    .slice(0, 7);
+
+  return { toApply, recentlyApplied };
+}
+
+export function getJobSourceBreakdown(): { scanned: number; manual: number } {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const recentJobs = getJobs().filter((j) => j.firstSeenDate >= sevenDaysAgo);
+  return recentJobs.reduce(
+    (acc, j) => {
+      if (j.source === "manual") acc.manual++;
+      else acc.scanned++;
+      return acc;
+    },
+    { scanned: 0, manual: 0 }
+  );
 }

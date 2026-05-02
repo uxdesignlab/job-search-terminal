@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
-import { getAllEvaluations, getApplications, getFunnelStages, getJobs } from "@/lib/db/queries";
+import { GlobalGapAddressingPanel } from "@/components/global-gap-addressing-panel";
+import { getAllEvaluations, getApplications, getFunnelStages, getJobs, getProfileSupplements } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default function AnalyticsPage() {
   const evaluations = getAllEvaluations();
   const applications = getApplications();
   const funnelStages = getFunnelStages();
+  const supplements = getProfileSupplements();
 
   const appliedApps = applications.filter((a) =>
     ["Applied", "Follow-up needed", "Recruiter responded", "Interviewing", "Offer"].includes(a.status)
@@ -228,29 +230,10 @@ export default function AnalyticsPage() {
             )}
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Top gap patterns</CardTitle>
-              <CardDescription>Most common skill gaps across evaluated roles.</CardDescription>
-            </CardHeader>
-            {topGaps.length > 0 ? (
-              <ol className="grid gap-2">
-                {topGaps.map(({ gap, count }, i) => (
-                  <li key={i} className="flex items-start gap-3 rounded-control border border-border bg-surface px-3 py-2.5">
-                    <span className="mt-0.5 shrink-0 text-xs font-bold text-muted">{i + 1}</span>
-                    <p className="min-w-0 flex-1 text-sm leading-snug text-ink">{gap}</p>
-                    {count > 1 && (
-                      <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">
-                        ×{count}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyState description="Gap patterns are extracted from job evaluations." title="No gap data yet" />
-            )}
-          </Card>
+          <GlobalGapAddressingPanel
+            topGaps={topGaps}
+            initialSupplements={supplements.map((s) => ({ id: s.id, content: s.content, tags: s.tags }))}
+          />
         </section>
 
         {/* Recent evaluations */}

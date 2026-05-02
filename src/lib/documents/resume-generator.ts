@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getAISettings, getEvaluationByJobId, getGeneratedDocumentById, getJobById, getResumes, getSkills, getUserProfile, saveGeneratedDocument, updateDocumentDraft, updateDocumentPdf } from "../db/queries";
+import { getAISettings, getEvaluationByJobId, getGeneratedDocumentById, getJobById, getJobGapResponses, getProfileSupplements, getResumes, getSkills, getUserProfile, saveGeneratedDocument, updateDocumentDraft, updateDocumentPdf } from "../db/queries";
 import type { EvaluationRecord, GeneratedDocumentInput, JobRecord, ResumeRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
 import { renderHtmlToPdf } from "./pdf-renderer";
@@ -38,7 +38,9 @@ export async function generateTailoredResume(jobId: string): Promise<GeneratedRe
 
   if (hasAIKey) {
     try {
-      const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText);
+      const gapResponses = getJobGapResponses(jobId);
+      const supplements = getProfileSupplements();
+      const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, gapResponses, supplements);
       tailoredSummary = tailored.summary || null;
     } catch {
       // Fall through to source resume summary
@@ -116,7 +118,9 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
 
   if (hasAIKey) {
     try {
-      const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText);
+      const gapResponses = getJobGapResponses(jobId);
+      const supplements = getProfileSupplements();
+      const tailored = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, gapResponses, supplements);
       tailoredSummary = tailored.summary || null;
     } catch { /* fall through to source resume summary */ }
   }

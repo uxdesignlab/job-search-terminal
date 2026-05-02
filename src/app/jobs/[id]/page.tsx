@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { GapAddressingPanel } from "@/components/gap-addressing-panel";
 import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { AIProviderBadge } from "@/components/ai-provider-badge";
@@ -32,6 +33,7 @@ import {
   getEvaluationByJobId,
   getGeneratedDocumentById,
   getJobById,
+  getJobGapResponses,
   getResumes,
   saveEvaluationCorrection,
   saveJobLiveness,
@@ -69,6 +71,11 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
   const resumes = getResumes();
+  const gapResponses = getJobGapResponses(id);
+  const gapResponseMap = Object.fromEntries(
+    gapResponses.map((r) => [r.gapText, { rawResponse: r.rawResponse, polishedResponse: r.polishedResponse }])
+  );
+  const allGapItems = [...(evaluation?.gaps ?? job.gaps), ...(evaluation?.redFlags ?? job.redFlags)];
 
   const hasDraft = (() => {
     try {
@@ -368,7 +375,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             <section className="grid gap-4 md:grid-cols-3">
               <DetailList title="Requirement match" items={evaluation?.requirementMatch ?? job.requirementMatch} />
               <DetailList title="Resume evidence" items={evaluation?.resumeEvidence ?? job.resumeEvidence} />
-              <DetailList title="Gaps and red flags" items={[...(evaluation?.gaps ?? job.gaps), ...(evaluation?.redFlags ?? job.redFlags)]} />
+              <GapAddressingPanel jobId={id} items={allGapItems} initialResponses={gapResponseMap} />
             </section>
 
             {/* Job description — collapsed by default */}
