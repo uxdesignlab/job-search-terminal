@@ -1,15 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { ArchivedJobsTable } from "@/components/archived-jobs-table";
 import { Badge, EmptyState, PageHeader } from "@/components/ui";
-import {
-  dataTableClass,
-  dataTableStickyHeadClass,
-  dataTableStickySurfaceClass,
-} from "@/components/ui/table";
 import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
-import { cn } from "@/lib/utils";
 import { getArchivedJobs, unarchiveJob, deleteJob, purgeAllArchivedJobs } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
@@ -114,89 +109,11 @@ export default function ArchivedPage() {
               ))}
             </div>
 
-            {/* Desktop table */}
-            <div className="hidden w-full max-w-full rounded-panel border border-border lg:block">
-              <table
-                className={cn(
-                  dataTableClass,
-                  dataTableStickyHeadClass,
-                  dataTableStickySurfaceClass,
-                  "min-w-max",
-                )}
-              >
-                <thead>
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                      Role
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                      Company
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                      Score
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                      Posted
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                      Reason
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border bg-panel">
-                  {jobs.map((job) => (
-                    <tr className="hover:bg-surface/50" key={job.id}>
-                      <td className="px-4 py-3">
-                        <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
-                          {job.title}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-muted">{job.company}</td>
-                      <td className="px-4 py-3">
-                        <Badge tone={job.fitScore >= 80 ? "success" : job.fitScore >= 60 ? "neutral" : "warning"}>
-                          {job.fitScore}%
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        {job.livenessStatus === "expired"
-                          ? <Badge tone="danger">Expired</Badge>
-                          : <Badge tone="neutral">Manually archived</Badge>}
-                      </td>
-                      <td className="px-4 py-3 text-muted">{formatPostedDate(job)}</td>
-                      <td className="px-4 py-3 text-xs text-muted">{job.status}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <form action={unarchiveAction}>
-                            <input name="id" type="hidden" value={job.id} />
-                            <button
-                              className="rounded-control border border-border px-3 py-1 text-xs font-medium text-muted hover:text-ink"
-                              type="submit"
-                            >
-                              Restore
-                            </button>
-                          </form>
-                          <form action={deleteArchivedAction}>
-                            <input name="id" type="hidden" value={job.id} />
-                            <button
-                              className="rounded-control border border-danger/40 px-3 py-1 text-xs font-medium text-danger hover:bg-danger/8"
-                              type="submit"
-                            >
-                              Delete
-                            </button>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ArchivedJobsTable
+              deleteArchivedAction={deleteArchivedAction}
+              jobs={jobs}
+              unarchiveAction={unarchiveAction}
+            />
           </>
         )}
       </div>

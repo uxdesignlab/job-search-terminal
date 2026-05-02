@@ -49,7 +49,10 @@ type ScanError = {
 };
 
 type ScanOptions = {
+  /** Case-insensitive substring match on company name (multi-company runs). */
   company?: string;
+  /** Exact case-insensitive company name; bypasses enable/disable and scans only that source when found. */
+  companyExact?: string;
   configPath?: string;
   fetcher?: (url: string) => Promise<unknown>;
   persist?: boolean;
@@ -73,6 +76,8 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     : config.title_filter;
   const titleFilter = buildTitleFilter(effectiveFilter);
   const filterCompany = options.company?.toLowerCase();
+  const filterCompanyExact = options.companyExact?.trim();
+  const filterCompanyExactLower = filterCompanyExact?.toLowerCase();
 
   const sourceOverrides = persist ? getScanSourceOverrides() : {};
   const customSources = persist ? getCustomScanSources() : [];
@@ -90,16 +95,51 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     if (company.name in sourceOverrides) return sourceOverrides[company.name];
     return company.enabled !== false;
   });
-  const targets = enabledCompanies
-    .filter((company) => !filterCompany || company.name.toLowerCase().includes(filterCompany))
+
+  const preflightErrors: ScanError[] = [];
+  let companiesForTargets: PortalCompany[];
+  if (filterCompanyExactLower) {
+    const match = mergedCompanies.find((c) => c.name.toLowerCase() === filterCompanyExactLower);
+    if (!match) {
+      preflightErrors.push({
+        company: filterCompanyExact ?? filterCompanyExactLower,
+        error: "Company not found in scan sources.",
+      });
+      companiesForTargets = [];
+    } else {
+      companiesForTargets = [match];
+    }
+  } else {
+    companiesForTargets = enabledCompanies;
+  }
+
+  const substringOk = (company: PortalCompany) =>
+    !filterCompany || company.name.toLowerCase().includes(filterCompany);
+
+  const targets = companiesForTargets
+    .filter((company) => (filterCompanyExactLower ? true : substringOk(company)))
     .map((company) => ({ ...company, _api: detectApi(company) }))
     .filter((company): company is ScanTarget => company._api !== null);
 
-  const skippedCompanies = enabledCompanies.length - targets.length;
+  const skippedCompanies = filterCompanyExactLower
+    ? companiesForTargets.length - targets.length
+    : enabledCompanies.length - targets.length;
   const dedup = getJobDedupKeys();
   const date = startedAt.slice(0, 10);
   const newJobs: ScannedJobInput[] = [];
-  const errors: ScanError[] = [];
+  const errors: ScanError[] = [...preflightErrors];
+  if (
+    filterCompanyExactLower &&
+    companiesForTargets.length === 1 &&
+    targets.length === 0 &&
+    preflightErrors.length === 0
+  ) {
+    errors.push({
+      company: companiesForTargets[0].name,
+      error:
+        "Careers URL is missing or this portal is not a supported ATS (Greenhouse, Ashby, or Lever).",
+    });
+  }
   let totalJobsFound = 0;
   let filteredCount = 0;
   let duplicateCount = 0;

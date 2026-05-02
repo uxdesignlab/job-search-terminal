@@ -23,8 +23,8 @@ import { TitleFiltersEditor } from "@/components/title-filters-editor";
 import { ProfileSupplementsEditor } from "@/components/profile-supplements-editor";
 import { DiscoveredSourcesButton } from "@/components/discovered-sources-button";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
-import { ScanSourcesTable } from "@/components/scan-sources-table";
-import { detectApi, loadScanConfig } from "@/lib/scanner/careerops-scanner";
+import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
+import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 import { runSourceDiscovery } from "@/lib/scanner/source-discovery";
 import { cn } from "@/lib/utils";
 
@@ -185,6 +185,26 @@ export default async function SettingsPage({
     revalidatePath("/settings");
   }
 
+  async function scanCompanyJobsAction(companyName: string): Promise<CompanyScanResultSummary> {
+    "use server";
+    const result = await runCareerOpsScanner({ companyExact: companyName });
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
+    revalidatePath("/jobs");
+    return {
+      companyName,
+      status: result.status,
+      newJobsCount: result.newJobsCount,
+      totalJobsFound: result.totalJobsFound,
+      filteredCount: result.filteredCount,
+      duplicateCount: result.duplicateCount,
+      companiesScanned: result.companiesScanned,
+      skippedCompanies: result.skippedCompanies,
+      errors: result.errors,
+      jobs: result.jobs.map((j) => ({ title: j.title, url: j.url, company: j.company })),
+    };
+  }
+
   async function importDiscoveredAction(formData: FormData) {
     "use server";
     const discovered = loadDiscoveredSources();
@@ -274,6 +294,7 @@ export default async function SettingsPage({
                 onToggleAll={toggleAllSourcesAction}
                 onRemove={removeSourceAction}
                 onSaveIndustry={saveIndustryAction}
+                onScanCompany={scanCompanyJobsAction}
               />
             </Card>
 
