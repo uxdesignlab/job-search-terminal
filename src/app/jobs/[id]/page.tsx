@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
-import { ApplicationStatusForm } from "@/components/application-status-form";
 import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { AIProviderBadge } from "@/components/ai-provider-badge";
@@ -524,25 +523,54 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
               <Card>
                 <CardHeader>
                   <CardTitle>Application status</CardTitle>
-                  <CardDescription>Track where you are in the process. All actions are manual — the app never submits anything on your behalf.</CardDescription>
+                  <CardDescription>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>Track where you are in the process. All actions are manual — the app never submits anything on your behalf.</span>
+                      {application?.followUpDate && (
+                        <Badge>{`Follow-up ${application.followUpDate}`}</Badge>
+                      )}
+                    </span>
+                  </CardDescription>
                 </CardHeader>
                 <div className="grid gap-4">
                   <div className="flex flex-wrap gap-2">
-                    <Badge tone={application?.status === "Rejected" ? "danger" : application?.status === "Interviewing" ? "success" : "neutral"}>
-                      {application?.status ?? job.status}
-                    </Badge>
-                    {application?.followUpDate && (
-                      <Badge>{`Follow-up ${application.followUpDate}`}</Badge>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <ApplicationStatusForm action={updateStatusAction} label="Applied" status="Applied" />
-                    <ApplicationStatusForm action={updateStatusAction} label="Recruiter responded" status="Recruiter responded" />
-                    <ApplicationStatusForm action={updateStatusAction} label="Interviewing" status="Interviewing" />
-                    <ApplicationStatusForm action={updateStatusAction} label="Offer" status="Offer" />
-                    <ApplicationStatusForm action={updateStatusAction} label="Rejected" status="Rejected" />
-                    <ApplicationStatusForm action={updateStatusAction} label="Skip" status="Skipped" variant="quiet" />
-                    <ApplicationStatusForm action={updateStatusAction} label="Archive" status="Archived" variant="quiet" />
+                    {(["Applied", "Recruiter responded", "Interviewing", "Offer", "Rejected"] as const).map((s) => {
+                      const current = (application?.status ?? job.status) === s;
+                      return (
+                        <form action={updateStatusAction} key={s}>
+                          <input name="status" type="hidden" value={s} />
+                          <button
+                            className={`inline-flex h-9 items-center rounded-control border px-3 text-sm font-medium transition-colors ${
+                              current
+                                ? "border-accent bg-accent/10 text-accent shadow-inner"
+                                : "border-border bg-surface text-ink hover:bg-panel"
+                            }`}
+                            type="submit"
+                          >
+                            {s}
+                          </button>
+                        </form>
+                      );
+                    })}
+                    {(["Skipped", "Archived"] as const).map((s) => {
+                      const label = s === "Skipped" ? "Skip" : "Archive";
+                      const current = (application?.status ?? job.status) === s;
+                      return (
+                        <form action={updateStatusAction} key={s}>
+                          <input name="status" type="hidden" value={s} />
+                          <button
+                            className={`inline-flex h-9 items-center rounded-control border px-3 text-sm font-medium transition-colors ${
+                              current
+                                ? "border-accent bg-accent/10 text-accent shadow-inner"
+                                : "border-border bg-surface text-muted hover:text-ink hover:bg-panel"
+                            }`}
+                            type="submit"
+                          >
+                            {label}
+                          </button>
+                        </form>
+                      );
+                    })}
                   </div>
                   <form action={updateStatusAction} className="grid gap-3">
                     <input name="status" type="hidden" value="Follow-up needed" />

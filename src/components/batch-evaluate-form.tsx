@@ -233,7 +233,7 @@ const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "status", label: "Status" },
   { col: "recommendation", label: "Action" },
   { col: "posted", label: "Posted" },
-  { col: "scanned", label: "Scanned" },
+  { col: "scanned", label: "Added" },
 ];
 
 export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {

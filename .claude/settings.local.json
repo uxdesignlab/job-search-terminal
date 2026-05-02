@@ -110,7 +110,8 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "WebFetch(domain:santifer.io)"
+      "WebFetch(domain:santifer.io)",
+      "Bash(xargs ls *)"
     ]
   }
 }
