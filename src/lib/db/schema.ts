@@ -393,5 +393,17 @@ export const migrations = [
   {
     id: "0021_job_archived",
     sql: `alter table jobs add column archived integer not null default 0`
+  },
+  {
+    id: "0022_title_filters",
+    sql: `
+      create table if not exists title_filters (
+        id text primary key default 'singleton',
+        positive_json text not null default '[]',
+        negative_json text not null default '[]',
+        updated_at text not null default current_timestamp
+      );
+      insert or ignore into title_filters (id) values ('singleton');
+    `
   }
 ];

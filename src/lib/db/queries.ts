@@ -1822,3 +1822,32 @@ export function purgeAllArchivedJobs(): number {
   for (const job of jobs) deleteJob(job.id);
   return jobs.length;
 }
+
+// ─── Title filters ────────────────────────────────────────────────────────────
+
+type TitleFiltersRow = { positive_json: string; negative_json: string };
+
+export function getTitleFilters(): { positive: string[]; negative: string[] } {
+  const row = getDatabase()
+    .prepare("select positive_json, negative_json from title_filters where id = 'singleton'")
+    .get() as TitleFiltersRow | undefined;
+  return {
+    positive: parseJson<string[]>(row?.positive_json ?? "[]"),
+    negative: parseJson<string[]>(row?.negative_json ?? "[]"),
+  };
+}
+
+export function saveTitleFilters(positive: string[], negative: string[]) {
+  getDatabase()
+    .prepare(
+      `update title_filters set
+        positive_json = @positiveJson,
+        negative_json = @negativeJson,
+        updated_at = current_timestamp
+      where id = 'singleton'`
+    )
+    .run({
+      positiveJson: JSON.stringify(positive),
+      negativeJson: JSON.stringify(negative),
+    });
+}

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, insertScannedJobs, recordScanRun } from "../db/queries";
+import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, insertScannedJobs, recordScanRun } from "../db/queries";
 import type { ScannedJobInput, ScanRunRecord } from "../db/types";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
@@ -63,10 +63,15 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   const startedAt = (options.now ?? new Date()).toISOString();
   const config = loadScanConfig(options.configPath);
   const companies = config.tracked_companies ?? [];
-  const titleFilter = buildTitleFilter(config.title_filter);
-  const filterCompany = options.company?.toLowerCase();
-  const fetcher = options.fetcher ?? fetchJson;
   const persist = options.persist ?? true;
+  const fetcher = options.fetcher ?? fetchJson;
+  // DB filters take precedence over YAML when non-empty
+  const dbFilters = persist ? getTitleFilters() : { positive: [], negative: [] };
+  const effectiveFilter = (dbFilters.positive.length > 0 || dbFilters.negative.length > 0)
+    ? dbFilters
+    : config.title_filter;
+  const titleFilter = buildTitleFilter(effectiveFilter);
+  const filterCompany = options.company?.toLowerCase();
 
   const sourceOverrides = persist ? getScanSourceOverrides() : {};
   const customSources = persist ? getCustomScanSources() : [];
