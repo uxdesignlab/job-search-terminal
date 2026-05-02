@@ -405,5 +405,34 @@ export const migrations = [
       );
       insert or ignore into title_filters (id) values ('singleton');
     `
+  },
+  {
+    id: "0023_job_gap_responses",
+    sql: `
+      create table if not exists job_gap_responses (
+        id text primary key,
+        job_id text not null references jobs(id),
+        gap_text text not null,
+        raw_response text not null default '',
+        polished_response text not null default '',
+        source text not null default 'user-added',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+      create index if not exists idx_job_gap_responses_job_id on job_gap_responses(job_id);
+      create unique index if not exists idx_job_gap_responses_job_gap on job_gap_responses(job_id, gap_text);
+    `
+  },
+  {
+    id: "0024_profile_gap_supplements",
+    sql: `
+      create table if not exists profile_gap_supplements (
+        id text primary key,
+        content text not null,
+        tags_json text not null default '[]',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+    `
   }
 ];

@@ -425,3 +425,63 @@ export type WritingStyleRecord = {
   sampleCount: number;
   lastUpdated: string;
 };
+
+export type JobGapResponseRecord = {
+  id: string;
+  jobId: string;
+  gapText: string;
+  rawResponse: string;
+  polishedResponse: string;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type JobGapResponseInput = {
+  id: string;
+  jobId: string;
+  gapText: string;
+  rawResponse: string;
+  polishedResponse: string;
+};
+
+export type ProfileSupplementRecord = {
+  id: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProfileSupplementInput = {
+  id: string;
+  content: string;
+  tags: string[];
+};
+
+export type Achievement = {
+  id: string;
+  name: string;
+  description: string;
+  unlocked: boolean;
+  unlockedAt?: string;
+};
+
+export type GamificationData = {
+  xp: number;
+  level: number;
+  levelName: string;
+  xpToNextLevel: number;
+  xpProgress: number;
+  streak: {
+    current: number;
+    longest: number;
+    lastAppliedDate: string | null;
+  };
+  achievements: Achievement[];
+};
+
+export type ActionQueueData = {
+  toApply: JobRecord[];
+  recentlyApplied: ApplicationRecord[];
+};

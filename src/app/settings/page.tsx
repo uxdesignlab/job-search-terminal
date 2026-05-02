@@ -4,6 +4,7 @@ import {
   deleteCustomScanSource,
   getAISettings,
   getCustomScanSources,
+  getProfileSupplements,
   getScanSourceOverrides,
   getTitleFilters,
   saveTitleFilters,
@@ -13,6 +14,7 @@ import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader,
 import { Shell } from "@/components/ui/shell";
 import { AISettingsForm } from "@/components/ai-settings-form";
 import { TitleFiltersEditor } from "@/components/title-filters-editor";
+import { ProfileSupplementsEditor } from "@/components/profile-supplements-editor";
 import { detectApi, loadScanConfig } from "@/lib/scanner/careerops-scanner";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +44,7 @@ export default function SettingsPage() {
     : (scanConfig.title_filter?.negative ?? []);
   const overrides = getScanSourceOverrides();
   const customSources = getCustomScanSources();
+  const supplements = getProfileSupplements();
 
   const yamlNames = new Set(yamlCompanies.map((c) => c.name));
 
@@ -230,6 +233,19 @@ export default function SettingsPage() {
             initialNegative={negativeKeywords}
             initialPositive={positiveKeywords}
             onSave={saveTitleFiltersAction}
+          />
+        </Card>
+
+        {/* Profile supplements — global context for resume generation */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Profile supplements</CardTitle>
+            <CardDescription>
+              Add experience or context not captured in your resume — managing teams, domain expertise, certifications. These are injected into the AI when generating any tailored resume to help address identified skill gaps.
+            </CardDescription>
+          </CardHeader>
+          <ProfileSupplementsEditor
+            initialSupplements={supplements.map((s) => ({ id: s.id, content: s.content }))}
           />
         </Card>
       </div>
