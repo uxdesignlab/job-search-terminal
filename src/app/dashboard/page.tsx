@@ -122,32 +122,10 @@ export default function DashboardPage() {
             {metrics.map((metric) => (
               <StatCard key={metric.label} {...metric} />
             ))}
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent activity</CardTitle>
-              <CardDescription>Latest events from your search.</CardDescription>
-            </CardHeader>
-            <ol className="grid gap-3">
-              {activity.map((entry) => (
-                <li className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink" key={entry.id}>
-                  {entry.action}
-                </li>
-              ))}
-            </ol>
-            {activity.length === 0 && (
-              <EmptyState
-                description="Activity appears after scans, evaluations, resume generation, and tracker updates."
-                title="No activity yet"
-              />
-            )}
-          </Card>
-        </section>
 
         {/* Latest scan — detail at the bottom */}
         {latestScan ? (
-          <Card>
+          <Card className="sm:col-span-2 lg:col-span-2">
             <CardHeader>
               <CardTitle>Latest scan</CardTitle>
               <CardDescription>
@@ -219,6 +197,31 @@ export default function DashboardPage() {
             )}
           </Card>
         ) : null}
+
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent activity</CardTitle>
+              <CardDescription>Latest events from your search.</CardDescription>
+            </CardHeader>
+            <ol className="grid gap-3">
+              {activity.map((entry) => (
+                <li className="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink" key={entry.id}>
+                  {entry.action}
+                </li>
+              ))}
+            </ol>
+            {activity.length === 0 && (
+              <EmptyState
+                description="Activity appears after scans, evaluations, resume generation, and tracker updates."
+                title="No activity yet"
+              />
+            )}
+          </Card>
+        </section>
+
+
       </div>
     </Shell>
   );
