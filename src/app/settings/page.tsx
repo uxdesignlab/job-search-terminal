@@ -5,11 +5,14 @@ import {
   getAISettings,
   getCustomScanSources,
   getScanSourceOverrides,
+  getTitleFilters,
+  saveTitleFilters,
   setScanSourceEnabled
 } from "@/lib/db/queries";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { AISettingsForm } from "@/components/ai-settings-form";
+import { TitleFiltersEditor } from "@/components/title-filters-editor";
 import { detectApi, loadScanConfig } from "@/lib/scanner/careerops-scanner";
 
 export const dynamic = "force-dynamic";
@@ -29,8 +32,14 @@ export default function SettingsPage() {
   const settings = getAISettings();
   const scanConfig = loadScanConfig();
   const yamlCompanies = scanConfig.tracked_companies ?? [];
-  const positiveKeywords = scanConfig.title_filter?.positive ?? [];
-  const negativeKeywords = scanConfig.title_filter?.negative ?? [];
+  const dbFilters = getTitleFilters();
+  // Show DB filters when set; YAML filters as fallback for display
+  const positiveKeywords = dbFilters.positive.length > 0 || dbFilters.negative.length > 0
+    ? dbFilters.positive
+    : (scanConfig.title_filter?.positive ?? []);
+  const negativeKeywords = dbFilters.positive.length > 0 || dbFilters.negative.length > 0
+    ? dbFilters.negative
+    : (scanConfig.title_filter?.negative ?? []);
   const overrides = getScanSourceOverrides();
   const customSources = getCustomScanSources();
 
@@ -89,6 +98,13 @@ export default function SettingsPage() {
 
     const name = String(formData.get("name") ?? "");
     if (name) deleteCustomScanSource(name);
+    revalidatePath("/settings");
+  }
+
+  async function saveTitleFiltersAction(positive: string[], negative: string[]) {
+    "use server";
+
+    saveTitleFilters(positive, negative);
     revalidatePath("/settings");
   }
 
@@ -201,37 +217,20 @@ export default function SettingsPage() {
           </form>
         </Card>
 
-        {/* Title filters read-only display */}
+        {/* Title filters — interactive editor */}
         <Card>
           <CardHeader>
             <CardTitle>Title filters</CardTitle>
             <CardDescription>
-              Only jobs whose titles match a positive keyword (and no negative keyword) are imported. Edit{" "}
-              <code className="rounded bg-surface px-1 py-0.5 text-xs font-mono">config/portals.yml</code> to adjust.
+              Only jobs whose titles match a positive keyword (and no negative keyword) are imported.
+              Changes saved here override <code className="rounded bg-surface px-1 py-0.5 text-xs font-mono">config/portals.yml</code>.
             </CardDescription>
           </CardHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Include when title contains</p>
-              <div className="flex flex-wrap gap-2">
-                {positiveKeywords.length > 0 ? (
-                  positiveKeywords.map((kw) => <Badge key={kw} tone="success">{kw}</Badge>)
-                ) : (
-                  <span className="text-sm text-muted">All titles included</span>
-                )}
-              </div>
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Exclude when title contains</p>
-              <div className="flex flex-wrap gap-2">
-                {negativeKeywords.length > 0 ? (
-                  negativeKeywords.map((kw) => <Badge key={kw} tone="danger">{kw}</Badge>)
-                ) : (
-                  <span className="text-sm text-muted">No exclusions</span>
-                )}
-              </div>
-            </div>
-          </div>
+          <TitleFiltersEditor
+            initialNegative={negativeKeywords}
+            initialPositive={positiveKeywords}
+            onSave={saveTitleFiltersAction}
+          />
         </Card>
       </div>
     </Shell>
