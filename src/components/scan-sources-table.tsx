@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IndustryEditor } from "@/components/industry-editor";
+import { ScanRunSummaryBody } from "@/components/scan-run-summary-body";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
+import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -25,18 +27,7 @@ export type ScanSource = {
   industry: string;
 };
 
-export type CompanyScanResultSummary = {
-  companyName: string;
-  status: "completed" | "completed_with_errors" | "failed";
-  newJobsCount: number;
-  totalJobsFound: number;
-  filteredCount: number;
-  duplicateCount: number;
-  companiesScanned: number;
-  skippedCompanies: number;
-  errors: Array<{ company: string; error: string }>;
-  jobs: Array<{ title: string; url: string; company: string }>;
-};
+export type CompanyScanResultSummary = ScanJobResultSummary;
 
 type Props = {
   sources: ScanSource[];
@@ -105,7 +96,7 @@ export function ScanSourcesTable({
   const [enabledOverrides, setEnabledOverrides] = useState<Map<string, boolean>>(() => new Map());
   const [, startTransition] = useTransition();
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const [scanResult, setScanResult] = useState<CompanyScanResultSummary | null>(null);
+  const [scanResult, setScanResult] = useState<ScanJobResultSummary | null>(null);
   const [scanningName, setScanningName] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -355,71 +346,10 @@ export function ScanSourcesTable({
               </button>
             </div>
 
-            <div className="mb-4 flex flex-wrap gap-2">
-              <Badge
-                tone={
-                  scanResult.status === "completed"
-                    ? "success"
-                    : scanResult.status === "failed"
-                      ? "danger"
-                      : "warning"
-                }
-              >
-                {scanResult.status === "completed"
-                  ? "Completed"
-                  : scanResult.status === "failed"
-                    ? "Failed"
-                    : "Completed with issues"}
-              </Badge>
-              <Badge tone="neutral">{scanResult.newJobsCount} new in app</Badge>
-              <Badge tone="neutral">{scanResult.totalJobsFound} found at source</Badge>
-              {scanResult.filteredCount > 0 && (
-                <Badge tone="neutral">{scanResult.filteredCount} filtered by title rules</Badge>
-              )}
-              {scanResult.duplicateCount > 0 && (
-                <Badge tone="neutral">{scanResult.duplicateCount} duplicates skipped</Badge>
-              )}
-            </div>
-
-            {scanResult.errors.length > 0 && (
-              <ul className="mb-4 list-inside list-disc space-y-1 rounded-md border border-border bg-surface/50 p-3 text-sm text-danger">
-                {scanResult.errors.map((e, i) => (
-                  <li key={`${e.company}-${i}`}>
-                    <span className="font-medium text-ink">{e.company}:</span> {e.error}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {scanResult.jobs.length === 0 ? (
-                <p className="text-sm text-muted">No new listings were added. Existing jobs and filtered titles are unchanged.</p>
-              ) : (
-                <ul className="space-y-2 pr-1">
-                  {scanResult.jobs.map((job) => (
-                    <li className="text-sm" key={job.url}>
-                      <a
-                        className="font-medium text-accent hover:underline"
-                        href={job.url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {job.title}
-                      </a>
-                      {job.company !== scanResult.companyName && (
-                        <span className="text-muted"> — {job.company}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="mt-6 flex justify-end border-t border-border pt-4">
-              <Button onClick={() => setScanResult(null)} type="button" variant="secondary">
-                Close
-              </Button>
-            </div>
+            <ScanRunSummaryBody
+              summary={scanResult}
+              onClose={() => setScanResult(null)}
+            />
           </div>
         </div>
       )}

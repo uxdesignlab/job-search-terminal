@@ -135,6 +135,16 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
                 This tool is free to use, self-hosted, and runs entirely on your computer — your data never leaves your machine.
                 No subscriptions, no tracking, no cloud. Fork it, adapt it, share it.
               </p>
+              <p className="text-xs leading-5 text-muted max-w-prose"><a
+                className="hover:text-accent hover:underline transition-colors"
+                href="https://buymeacoffee.com/uxdesignlab"
+                rel="noreferrer"
+                target="_blank"
+              >
+                Buy me a coffee ↗
+              </a>
+              </p>
+
             </div>
 
             {/* Right: attribution */}
