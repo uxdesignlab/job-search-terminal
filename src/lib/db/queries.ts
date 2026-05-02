@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { activeApplicationStatuses } from "../applications/status";
 import { getDatabase } from "./client";
 import type {
   AIProviderName,
@@ -8,6 +9,7 @@ import type {
   ApplicationAnswerDraftInput,
   ApplicationAnswerDraftRecord,
   ApplicationRecord,
+  ApplicationStatus,
   ApplicationStatusUpdateInput,
   CompanyResearchInput,
   CompanyResearchRecord,
@@ -2226,16 +2228,26 @@ export function getDashboardActionQueue(): ActionQueueData {
   const jobs = getJobs();
   const applications = getApplications();
 
+  const activeStatuses = new Set<string>(activeApplicationStatuses);
+  const excludeFromApplyNext = new Set<ApplicationStatus>([
+    ...activeApplicationStatuses,
+    "Skipped",
+    "Rejected",
+  ]);
+
+  const activePipelineJobIds = new Set(
+    applications.filter((a) => activeStatuses.has(a.status)).map((a) => a.jobId),
+  );
+
   const toApply = jobs
     .filter(
       (j) =>
         (j.recommendation === "Priority apply" || j.recommendation === "Strong apply") &&
-        j.status !== "Applied" &&
-        j.status !== "Skipped"
+        !excludeFromApplyNext.has(j.status as ApplicationStatus) &&
+        !activePipelineJobIds.has(j.id),
     )
     .slice(0, 7);
 
-  const activeStatuses = new Set(["Applied", "Follow-up needed", "Recruiter responded", "Interviewing", "Offer"]);
   const recentlyApplied = applications
     .filter((a) => activeStatuses.has(a.status))
     .sort((a, b) => (b.appliedDate ?? "").localeCompare(a.appliedDate ?? ""))
