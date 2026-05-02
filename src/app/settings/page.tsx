@@ -24,6 +24,7 @@ import { ProfileSupplementsEditor } from "@/components/profile-supplements-edito
 import { DiscoveredSourcesButton } from "@/components/discovered-sources-button";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
+import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 import { runSourceDiscovery } from "@/lib/scanner/source-discovery";
 import { cn } from "@/lib/utils";
@@ -191,6 +192,8 @@ export default async function SettingsPage({
     revalidatePath("/settings");
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
+    const jobs = result.jobs;
+    const max = SCAN_RESULT_JOBS_PREVIEW_MAX;
     return {
       companyName,
       status: result.status,
@@ -201,7 +204,8 @@ export default async function SettingsPage({
       companiesScanned: result.companiesScanned,
       skippedCompanies: result.skippedCompanies,
       errors: result.errors,
-      jobs: result.jobs.map((j) => ({ title: j.title, url: j.url, company: j.company })),
+      jobs: jobs.slice(0, max).map((j) => ({ title: j.title, url: j.url, company: j.company })),
+      jobsTotal: jobs.length > max ? jobs.length : undefined,
     };
   }
 

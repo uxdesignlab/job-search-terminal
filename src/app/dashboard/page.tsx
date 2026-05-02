@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { ScanJobsForm } from "@/components/scan-jobs-form";
+import { ScanForNewJobsButton } from "@/components/scan-for-new-jobs-button";
 import { OnboardingBanner } from "@/components/onboarding-banner";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
@@ -13,6 +13,8 @@ import {
   getUserProfile,
   setScanSourceEnabled,
 } from "@/lib/db/queries";
+import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
+import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 import { isScanSourceEnabled, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 import { cn } from "@/lib/utils";
 import { XpLevelCard } from "@/components/xp-level-card";
@@ -21,12 +23,27 @@ import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 export const dynamic = "force-dynamic";
 
 export default function DashboardPage() {
-  async function scanForJobsAction() {
+  async function scanForJobsAction(): Promise<ScanJobResultSummary> {
     "use server";
 
-    await runCareerOpsScanner();
+    const result = await runCareerOpsScanner();
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
+    const jobs = result.jobs;
+    const max = SCAN_RESULT_JOBS_PREVIEW_MAX;
+    return {
+      companyName: "All enabled sources",
+      status: result.status,
+      newJobsCount: result.newJobsCount,
+      totalJobsFound: result.totalJobsFound,
+      filteredCount: result.filteredCount,
+      duplicateCount: result.duplicateCount,
+      companiesScanned: result.companiesScanned,
+      skippedCompanies: result.skippedCompanies,
+      errors: result.errors,
+      jobs: jobs.slice(0, max).map((j) => ({ title: j.title, url: j.url, company: j.company })),
+      jobsTotal: jobs.length > max ? jobs.length : undefined,
+    };
   }
 
   async function disableSourceAction(formData: FormData) {
@@ -50,7 +67,7 @@ export default function DashboardPage() {
     <Shell activeItem="Dashboard">
       <div className="grid gap-6">
         <PageHeader
-          actions={<ScanJobsForm action={scanForJobsAction} />}
+          actions={<ScanForNewJobsButton runScan={scanForJobsAction} />}
           description="Your job search command center — what to do next, progress, and recent wins."
           eyebrow="Search overview"
           title="Dashboard"
