@@ -4,6 +4,35 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /*
+   * Sticky header row (not per-th): avoids collapse/overlap bugs and tracks the viewport
+   * as long as no ancestor uses overflow: hidden | auto | scroll on the block axis.
+   */
+  .data-table-sticky-head > thead > tr {
+    position: sticky;
+    top: var(--shell-header-offset);
+    z-index: 35;
+    box-shadow: 0 1px 0 0 rgb(var(--color-border));
+  }
+
+  .data-table-sticky-head > thead > tr > th {
+    vertical-align: center;
+    background-color: rgb(var(--color-panel));
+    border-bottom: 1px solid rgb(var(--color-border));
+  }
+
+  .data-table-sticky-head.data-table-sticky-surface > thead > tr > th {
+    background-color: rgb(var(--color-surface));
+  }
+
+  /* Scroll region is a parent with overflow-y: auto (e.g. modal body). */
+  .data-table-sticky-head.data-table-sticky-modal > thead > tr {
+    top: 0;
+    z-index: 25;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

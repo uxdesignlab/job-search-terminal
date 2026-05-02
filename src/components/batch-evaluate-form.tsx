@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import type { JobRecord } from "@/lib/db/types";
 
 type JobRowStatus = "loading" | "done" | "error";
@@ -200,7 +203,7 @@ function ColHeader({
   const active = isFiltered || isSorted;
 
   return (
-    <th className={`pb-3 pr-4 text-left ${className ?? ""}`}>
+    <th className={cn("pb-3 pr-4 text-left", className)}>
       <button
         className={`inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider transition-colors hover:text-ink ${active ? "text-accent" : "text-muted"}`}
         onClick={(e) => onOpen(col, e.currentTarget)}
@@ -365,120 +368,121 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
 
   return (
     <div className="relative">
-      {/* Filter summary bar */}
-      {activeFilterCount > 0 && (
-        <div className="mb-3 flex items-center gap-3 text-xs">
-          <span className="text-muted">
-            {displayJobs.length} of {jobs.length} jobs
-          </span>
-          <button
-            className="text-accent underline underline-offset-2 hover:text-ink"
-            onClick={() => setFilters({})}
-            type="button"
-          >
-            Clear all filters
-          </button>
-        </div>
-      )}
+      <Card>
+        {activeFilterCount > 0 && (
+          <div className="mb-4 flex items-center gap-3 text-xs">
+            <span className="text-muted">
+              {displayJobs.length} of {jobs.length} jobs
+            </span>
+            <button
+              className="text-accent underline underline-offset-2 hover:text-ink"
+              onClick={() => setFilters({})}
+              type="button"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
 
-      <div className="overflow-x-auto" role="region" aria-label="Jobs table">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="pb-3 pr-3 text-left">
-                <input
-                  aria-label="Select all jobs"
-                  checked={selectedCount === displayJobs.length && displayJobs.length > 0}
-                  className="h-4 w-4 rounded border-border"
-                  onChange={toggleAll}
-                  type="checkbox"
-                />
-              </th>
-              {COL_DEFS.map(({ col, label }) => (
-                <ColHeader
-                  key={col}
-                  col={col}
-                  label={label}
-                  sort={sort}
-                  filter={filters[col]}
-                  isOpen={openFilterCol === col}
-                  onOpen={openFilter}
-                />
-              ))}
-              <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                Link
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {displayJobs.map((job) => {
-              const rowStatus = jobStatus[job.id];
-              return (
-                <tr
-                  key={job.id}
-                  className={
-                    selected.has(job.id)
-                      ? "bg-accent/5"
-                      : rowStatus === "done"
-                        ? "bg-success/5"
-                        : rowStatus === "error"
-                          ? "bg-danger/5"
-                          : undefined
-                  }
-                >
-                  <td className="py-3 pr-3">
-                    <input
-                      aria-label={`Select ${job.title} at ${job.company}`}
-                      checked={selected.has(job.id)}
-                      className="h-4 w-4 rounded border-border"
-                      disabled={isRunning}
-                      onChange={() => toggle(job.id)}
-                      type="checkbox"
-                    />
-                  </td>
-                  <td className="py-3 pr-4">
-                    <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
-                      {job.title}
-                    </Link>
-                    {rowStatus === "loading" && (
-                      <span className="ml-2 animate-pulse text-xs text-muted">Evaluating…</span>
-                    )}
-                    {rowStatus === "done" && (
-                      <span className="ml-2 text-xs text-success">✓ Done</span>
-                    )}
-                    {rowStatus === "error" && (
-                      <span className="ml-2 text-xs text-danger">Error</span>
-                    )}
-                  </td>
-                  <td className="py-3 pr-4 text-muted">{job.company}</td>
-                  <td className="py-3 pr-4 text-muted">{job.location}</td>
-                  <td className="py-3 pr-4 font-medium">{job.fitScore}%</td>
-                  <td className="py-3 pr-4 text-muted">{job.status}</td>
-                  <td className="py-3 pr-4">
-                    <Badge tone={toneForRecommendation(job.recommendation)}>
-                      {job.recommendation}
-                    </Badge>
-                  </td>
-                  <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.datePosted)}</td>
-                  <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.firstSeenDate)}</td>
-                  <td className="py-3">
-                    {job.url && (
-                      <a
-                        className="text-xs font-medium text-accent hover:underline"
-                        href={job.url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        ↗
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+        <div className="w-full max-w-full" role="region" aria-label="Jobs table">
+          <table className={cn(dataTableClass, dataTableStickyHeadClass)}>
+            <thead>
+              <tr>
+                <th className="pb-3 pr-3 text-left">
+                  <input
+                    aria-label="Select all jobs"
+                    checked={selectedCount === displayJobs.length && displayJobs.length > 0}
+                    className="h-4 w-4 rounded border-border"
+                    onChange={toggleAll}
+                    type="checkbox"
+                  />
+                </th>
+                {COL_DEFS.map(({ col, label }) => (
+                  <ColHeader
+                    key={col}
+                    col={col}
+                    label={label}
+                    sort={sort}
+                    filter={filters[col]}
+                    isOpen={openFilterCol === col}
+                    onOpen={openFilter}
+                  />
+                ))}
+                <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                  Link
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {displayJobs.map((job) => {
+                const rowStatus = jobStatus[job.id];
+                return (
+                  <tr
+                    key={job.id}
+                    className={
+                      selected.has(job.id)
+                        ? "bg-accent/5"
+                        : rowStatus === "done"
+                          ? "bg-success/5"
+                          : rowStatus === "error"
+                            ? "bg-danger/5"
+                            : undefined
+                    }
+                  >
+                    <td className="py-3 pr-3">
+                      <input
+                        aria-label={`Select ${job.title} at ${job.company}`}
+                        checked={selected.has(job.id)}
+                        className="h-4 w-4 rounded border-border"
+                        disabled={isRunning}
+                        onChange={() => toggle(job.id)}
+                        type="checkbox"
+                      />
+                    </td>
+                    <td className="py-3 pr-4">
+                      <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
+                        {job.title}
+                      </Link>
+                      {rowStatus === "loading" && (
+                        <span className="ml-2 animate-pulse text-xs text-muted">Evaluating…</span>
+                      )}
+                      {rowStatus === "done" && (
+                        <span className="ml-2 text-xs text-success">✓ Done</span>
+                      )}
+                      {rowStatus === "error" && (
+                        <span className="ml-2 text-xs text-danger">Error</span>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4 text-muted">{job.company}</td>
+                    <td className="py-3 pr-4 text-muted">{job.location}</td>
+                    <td className="py-3 pr-4 font-medium">{job.fitScore}%</td>
+                    <td className="py-3 pr-4 text-muted">{job.status}</td>
+                    <td className="py-3 pr-4">
+                      <Badge tone={toneForRecommendation(job.recommendation)}>
+                        {job.recommendation}
+                      </Badge>
+                    </td>
+                    <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.datePosted)}</td>
+                    <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.firstSeenDate)}</td>
+                    <td className="py-3">
+                      {job.url && (
+                        <a
+                          className="text-xs font-medium text-accent hover:underline"
+                          href={job.url}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          ↗
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       {/* Filter dropdown — rendered outside overflow wrapper so it isn't clipped */}
       {openFilterCol && (

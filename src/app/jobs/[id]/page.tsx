@@ -677,7 +677,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                 <Card>
                   <CardHeader>
                     <CardTitle>Save a story from Block F</CardTitle>
-                    <CardDescription>Pre-fill a STAR story from this job's interview plan. Complete it in Interview Prep.</CardDescription>
+                    <CardDescription>Pre-fill a STAR story from this job&apos;s interview plan. Complete it in Interview Prep.</CardDescription>
                   </CardHeader>
                   <form action={saveStoryAction} className="grid gap-3">
                     <input name="jobId" type="hidden" value={id} />
