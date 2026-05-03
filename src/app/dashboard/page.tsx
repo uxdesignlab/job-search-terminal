@@ -5,19 +5,17 @@ import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHe
 import { Shell } from "@/components/ui/shell";
 import {
   getActivity,
+  getApplications,
   getDashboardMetrics,
-  getGamificationData,
   getDashboardActionQueue,
   getJobSourceBreakdown,
   getLatestScanRun,
-  getUserProfile,
   setScanSourceEnabled,
 } from "@/lib/db/queries";
 import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 import { isScanSourceEnabled, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 import { cn } from "@/lib/utils";
-import { XpLevelCard } from "@/components/xp-level-card";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 
 export const dynamic = "force-dynamic";
@@ -55,13 +53,22 @@ export default function DashboardPage() {
     revalidatePath("/settings");
   }
 
-  const gamification = getGamificationData();
   const actionQueue = getDashboardActionQueue();
   const jobSources = getJobSourceBreakdown();
   const metrics = getDashboardMetrics();
+  const priorityMatchesMetric = metrics.find((m) => m.label === "Priority matches");
+  const applicationsSentMetric = metrics.find((m) => m.label === "Applications sent");
+  const supportingMetrics = metrics.filter(
+    (m) => m.label !== "Priority matches" && m.label !== "Applications sent",
+  );
+  const applications = getApplications();
+  const lastApplicationDate = applications
+    .map((a) => a.appliedDate)
+    .filter((d): d is string => Boolean(d))
+    .sort()
+    .at(-1);
   const activity = getActivity();
   const latestScan = getLatestScanRun();
-  const profile = getUserProfile();
 
   return (
     <Shell activeItem="Dashboard">
@@ -75,9 +82,11 @@ export default function DashboardPage() {
 
         <OnboardingBanner />
 
-        {/* Motivation anchor: XP + streak */}
         <div className="grid gap-4 lg:grid-cols-2">
-          <XpLevelCard data={gamification} userName={profile.name || undefined} />
+          <div className="grid grid-cols-2 gap-4">
+            {priorityMatchesMetric ? <StatCard {...priorityMatchesMetric} /> : null}
+            {applicationsSentMetric ? <StatCard {...applicationsSentMetric} /> : null}
+          </div>
 
           <Card className="space-y-4">
             <CardHeader className="mb-0">
@@ -94,12 +103,12 @@ export default function DashboardPage() {
                 <p className="mt-0.5 text-xs text-muted">added manually</p>
               </div>
             </div>
-            {gamification.streak.lastAppliedDate && (
+            {lastApplicationDate && (
               <div className="border-t border-border pt-3">
                 <p className="text-xs text-muted">
                   Last application:{" "}
                   <span className="font-medium text-ink">
-                    {new Date(gamification.streak.lastAppliedDate).toLocaleDateString("en-US", {
+                    {new Date(lastApplicationDate).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                     })}
@@ -119,7 +128,7 @@ export default function DashboardPage() {
         {/* Supporting stats + activity */}
         <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {metrics.map((metric) => (
+            {supportingMetrics.map((metric) => (
               <StatCard key={metric.label} {...metric} />
             ))}
 
