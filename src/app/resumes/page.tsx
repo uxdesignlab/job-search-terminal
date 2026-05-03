@@ -1,14 +1,45 @@
-import Link from "next/link";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, Table, Td, Th } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
+import {
+  GeneratedDocumentsTable,
+  type GeneratedDocumentTableRow,
+} from "@/components/generated-documents-table";
 import { formatPostedDate } from "@/lib/dates";
 import { getGeneratedDocuments, getJobById, getResumes } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
+function documentHasDraft(draftJson: string): boolean {
+  try {
+    const p = JSON.parse(draftJson) as Record<string, unknown>;
+    return typeof p === "object" && p !== null && !!(p.name || p.summary);
+  } catch {
+    return false;
+  }
+}
+
 export default function ResumesPage() {
   const resumes = getResumes();
   const generatedDocuments = getGeneratedDocuments();
+  const documentRows: GeneratedDocumentTableRow[] = generatedDocuments.map((document) => {
+    const job = getJobById(document.jobId);
+    return {
+      id: document.id,
+      company: document.company,
+      role: document.role,
+      postedLabel: job ? formatPostedDate(job) : "Date unavailable",
+      baseResume: document.baseResume,
+      generatedDate: document.generatedDate,
+      keywordCoverage: document.keywordCoverage,
+      status: document.status,
+      hasContent: Boolean(document.content),
+      hasPdf: Boolean(document.pdfUrl),
+      jobUrl: job?.url ?? null,
+      editHref: `/generated-documents/${document.id}/edit`,
+      jobHref: job ? `/jobs/${job.id}` : null,
+      hasDraft: documentHasDraft(document.draftJson),
+    };
+  });
 
   return (
     <Shell activeItem="Resumes">
@@ -43,77 +74,7 @@ export default function ResumesPage() {
             <CardDescription>Tailored documents prepared for target roles.</CardDescription>
           </CardHeader>
           {generatedDocuments.length > 0 ? (
-            <Table>
-              <thead>
-                <tr>
-                  <Th scope="col">Target</Th>
-                  <Th scope="col">Posted</Th>
-                  <Th scope="col">Base resume</Th>
-                  <Th scope="col">Generated</Th>
-                  <Th scope="col">Coverage</Th>
-                  <Th scope="col">Status</Th>
-                  <Th scope="col">Output</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {generatedDocuments.map((document) => {
-                  const job = getJobById(document.jobId);
-                  const hasDraft = (() => {
-                    try {
-                      const p = JSON.parse(document.draftJson) as Record<string, unknown>;
-                      return typeof p === "object" && p !== null && !!(p.name || p.summary);
-                    } catch { return false; }
-                  })();
-
-                  return (
-                    <tr key={document.id}>
-                      <Td>
-                        {hasDraft ? (
-                          <Link className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/edit`}>
-                            {document.role}
-                          </Link>
-                        ) : job ? (
-                          <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
-                            {document.role}
-                          </Link>
-                        ) : (
-                          document.role
-                        )}
-                        <p className="text-xs text-muted">{document.company}</p>
-                      </Td>
-                      <Td>{job ? formatPostedDate(job) : "Date unavailable"}</Td>
-                      <Td>{document.baseResume}</Td>
-                      <Td>{document.generatedDate}</Td>
-                      <Td>{document.keywordCoverage}%</Td>
-                      <Td>
-                        <Badge>{document.status}</Badge>
-                      </Td>
-                      <Td>
-                        <div className="flex flex-wrap gap-2">
-                          {document.content ? (
-                            <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/preview`} rel="noreferrer" target="_blank">
-                              Preview
-                            </a>
-                          ) : (
-                            <span className="text-xs text-muted">Preview pending</span>
-                          )}
-                          {document.pdfUrl ? (
-                            <a className="font-medium text-accent hover:underline" href={`/generated-documents/${document.id}/pdf`} rel="noreferrer" target="_blank">
-                              PDF
-                            </a>
-                          ) : null}
-                          {job?.url ? (
-                            <a className="font-medium text-accent hover:underline" href={job.url} rel="noreferrer" target="_blank">
-                              Job posting ↗
-                            </a>
-                          ) : null}
-                        </div>
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Table>
+            <GeneratedDocumentsTable rows={documentRows} />
           ) : (
             <EmptyState
               description="Generate, a tailored, resume from a job detail page to populate this table."
