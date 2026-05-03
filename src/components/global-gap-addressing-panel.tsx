@@ -34,7 +34,7 @@ function findSupplementForGap(supplements: Supplement[], gapText: string): Suppl
 }
 
 export function GlobalGapAddressingPanel({ topGaps, initialSupplements }: Props) {
-  const [supplements, setSupplements] = useState<Supplement[]>(initialSupplements);
+  const [, setSupplements] = useState<Supplement[]>(initialSupplements);
   const [states, setStates] = useState<Record<string, GapState>>(() =>
     Object.fromEntries(
       topGaps.map(({ gap }) => {

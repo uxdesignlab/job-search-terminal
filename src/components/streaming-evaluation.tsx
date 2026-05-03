@@ -38,7 +38,6 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<"running" | "done" | "error">("running");
   const [done, setDone] = useState<BlockName[]>([]);
-  const [currentLabel, setCurrentLabel] = useState("Connecting…");
   const [summary, setSummary] = useState<CompleteEvent | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const esRef = useRef<EventSource | null>(null);
@@ -47,7 +46,6 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
     setOpen(true);
     setStatus("running");
     setDone([]);
-    setCurrentLabel("Connecting…");
     setSummary(null);
     setErrorMsg("");
 
@@ -85,7 +83,6 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
         return;
       }
 
-      setCurrentLabel(data.label ?? BLOCK_LABELS[data.block as BlockName] ?? data.block);
       setDone((prev) => [...prev, data.block as BlockName]);
     };
 

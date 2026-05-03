@@ -3,17 +3,14 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import {
   DataTableActiveFiltersSummary,
   DataTableColHeader,
   DataTableSortFilterDropdown,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
-import {
-  dataTableClass,
-  dataTableStickyHeadClass,
-  dataTableStickySurfaceClass,
-} from "@/components/ui/table";
+import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatPostedDate } from "@/lib/dates";
 import type { JobRecord } from "@/lib/db/types";
@@ -26,7 +23,7 @@ import {
 const COL_DEFS: Array<{ col: ArchivedJobsSortCol; label: string }> = [
   { col: "title", label: "Role" },
   { col: "company", label: "Company" },
-  { col: "score", label: "Score" },
+  { col: "score", label: "Fit" },
   { col: "archiveStatus", label: "Status" },
   { col: "posted", label: "Posted" },
   { col: "reason", label: "Reason" },
@@ -95,93 +92,83 @@ export function ArchivedJobsTable({ jobs, unarchiveAction, deleteArchivedAction 
 
   return (
     <div className="relative">
-      {activeFilterCount > 0 && (
-        <DataTableActiveFiltersSummary
-          entityLabel="archived jobs"
-          onClearAll={clearAllFilters}
-          shown={displayJobs.length}
-          total={jobs.length}
-        />
-      )}
+      <Card className="hidden lg:block">
+        {activeFilterCount > 0 && (
+          <DataTableActiveFiltersSummary
+            entityLabel="archived jobs"
+            onClearAll={clearAllFilters}
+            shown={displayJobs.length}
+            total={jobs.length}
+          />
+        )}
 
-      <div className="hidden w-full max-w-full rounded-panel border border-border lg:block">
-        <table
-          className={cn(
-            dataTableClass,
-            dataTableStickyHeadClass,
-            dataTableStickySurfaceClass,
-            "min-w-max",
-          )}
-        >
-          <thead>
-            <tr>
-              {COL_DEFS.map(({ col, label }) => (
-                <DataTableColHeader
-                  key={col}
-                  className="px-4 py-3"
-                  col={col}
-                  filter={filters[col]}
-                  isOpen={openFilterCol === col}
-                  label={label}
-                  onOpen={openFilter}
-                  sort={sort}
-                />
-              ))}
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {displayJobs.map((job) => (
-              <tr className="hover:bg-surface/50" key={job.id}>
-                <td className="px-4 py-3">
-                  <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
-                    {job.title}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-muted">{job.company}</td>
-                <td className="px-4 py-3">
-                  <Badge tone={job.fitScore >= 80 ? "success" : job.fitScore >= 60 ? "neutral" : "warning"}>
-                    {job.fitScore}%
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  {job.livenessStatus === "expired" ? (
-                    <Badge tone="danger">Expired</Badge>
-                  ) : (
-                    <Badge tone="neutral">Manually archived</Badge>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-muted">{formatPostedDate(job)}</td>
-                <td className="px-4 py-3 text-xs text-muted">{job.status}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2">
-                    <form action={unarchiveAction}>
-                      <input name="id" type="hidden" value={job.id} />
-                      <button
-                        className="rounded-control border border-border px-3 py-1 text-xs font-medium text-muted hover:text-ink"
-                        type="submit"
-                      >
-                        Restore
-                      </button>
-                    </form>
-                    <form action={deleteArchivedAction}>
-                      <input name="id" type="hidden" value={job.id} />
-                      <button
-                        className="rounded-control border border-danger/40 px-3 py-1 text-xs font-medium text-danger hover:bg-danger/8"
-                        type="submit"
-                      >
-                        Delete
-                      </button>
-                    </form>
-                  </div>
-                </td>
+        <div className="w-full max-w-full" role="region" aria-label="Archived jobs table">
+          <table className={cn(dataTableClass, dataTableStickyHeadClass, "min-w-max")}>
+            <thead>
+              <tr>
+                {COL_DEFS.map(({ col, label }) => (
+                  <DataTableColHeader
+                    key={col}
+                    col={col}
+                    filter={filters[col]}
+                    isOpen={openFilterCol === col}
+                    label={label}
+                    onOpen={openFilter}
+                    sort={sort}
+                  />
+                ))}
+                <th className="pb-3 text-right text-xs font-semibold uppercase tracking-wider text-muted">
+                  Actions
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {displayJobs.map((job) => (
+                <tr className="hover:bg-surface/50" key={job.id}>
+                  <td className="py-3 pr-4">
+                    <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
+                      {job.title}
+                    </Link>
+                  </td>
+                  <td className="py-3 pr-4 text-muted">{job.company}</td>
+                  <td className="py-3 pr-4 font-medium">{job.fitScore}%</td>
+                  <td className="py-3 pr-4">
+                    {job.livenessStatus === "expired" ? (
+                      <Badge tone="danger">Expired</Badge>
+                    ) : (
+                      <Badge tone="neutral">Manually archived</Badge>
+                    )}
+                  </td>
+                  <td className="py-3 pr-4 text-muted">{formatPostedDate(job)}</td>
+                  <td className="py-3 pr-4 text-xs text-muted">{job.status}</td>
+                  <td className="py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <form action={unarchiveAction}>
+                        <input name="id" type="hidden" value={job.id} />
+                        <button
+                          className="rounded-control border border-border px-3 py-1 text-xs font-medium text-muted hover:text-ink"
+                          type="submit"
+                        >
+                          Restore
+                        </button>
+                      </form>
+                      <form action={deleteArchivedAction}>
+                        <input name="id" type="hidden" value={job.id} />
+                        <button
+                          className="rounded-control border border-danger/40 px-3 py-1 text-xs font-medium text-danger hover:bg-danger/8"
+                          type="submit"
+                        >
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       {openFilterCol && (
         <DataTableSortFilterDropdown
