@@ -455,6 +455,13 @@ export function getApplicationByJobId(jobId: string): ApplicationRecord | undefi
   };
 }
 
+export function updateApplicationNotes(jobId: string, notes: string) {
+  getDatabase()
+    .prepare("update applications set notes = @notes, updated_at = current_timestamp where job_id = @jobId")
+    .run({ jobId, notes });
+  logActivity("application", jobId, "Application close notes recorded", { notes });
+}
+
 export function getApplicationAnswerDrafts(jobId: string): ApplicationAnswerDraftRecord[] {
   const rows = getDatabase()
     .prepare(
