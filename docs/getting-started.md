@@ -31,7 +31,7 @@ a job or generate content.
 | **Computer** | Mac, Windows (WSL), or Linux |
 | **Node.js** | Version 18 or later — download from [nodejs.org](https://nodejs.org) |
 | **Git** | Download from [git-scm.com](https://git-scm.com) |
-| **An AI API key** | At least one of: OpenAI, Anthropic, or Google Gemini |
+| **An AI API key** | At least one of: OpenAI, Anthropic, or Google Gemini (free tier available) |
 | **Google Chrome** | Required for PDF generation — most computers already have it |
 
 You do not need to know how to code. You just need to be comfortable opening a
@@ -111,26 +111,14 @@ normal.
 The app needs at least one AI provider key to evaluate jobs and generate
 content. You can use whichever service you have access to:
 
+- **Google Gemini** (free tier): [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 - **OpenAI:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-- **Anthropic:** [console.anthropic.com](https://console.anthropic.com)
-- **Google Gemini:** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
+- **Anthropic:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
 
 Once you have a key, you configure it inside the app itself (Settings → AI
 Providers). You do not need to create any configuration files manually.
 
-### 6. Add your resume files (optional but recommended)
-
-The app works best when it can read your resume. Place your resume PDF files in
-the `assets/` folder inside the project. You can add up to five different
-resume versions for different role types.
-
-After placing the files, extract them:
-
-```bash
-npm run profile:extract
-```
-
-### 7. Start the app
+### 6. Start the app
 
 ```bash
 npm run dev
@@ -146,13 +134,37 @@ The terminal will print something like:
 Open [http://localhost:3000](http://localhost:3000) in your browser. The app
 will be running.
 
-### 8. First-time setup in the app
+### 7. First-time setup in the app
 
-1. Go to **Account → Settings → AI Providers** and enter your API key.
-2. Go to **Account → Profile** and fill in your career profile (target roles,
-   skills, location, urgency).
-3. Go to **Account → Strategy** to see which role types are the best fit.
-4. Return to **Dashboard** and click **Scan for new jobs**.
+When you first open the app at http://localhost:3000, the dashboard shows a
+3-step setup guide:
+
+**Step 1: Add an AI API key**
+Click the provider you want to use to expand the instructions. Pick one — you
+only need one:
+- **Google Gemini** (free tier): go to aistudio.google.com/apikey, sign in with
+  Google, click Create API key. Copy the key.
+- **OpenAI**: go to platform.openai.com/api-keys, sign in, click Create new
+  secret key. Copy the key.
+- **Anthropic (Claude)**: go to console.anthropic.com/settings/keys, sign in,
+  click Create Key. Copy the key.
+
+Then click "Go to Settings → AI Providers", select your provider, paste the key,
+and save. Return to the Dashboard — Step 1 shows ✓.
+
+**Step 2: Upload your resume**
+Click "Go to Profile → Resumes". On the Resumes tab, each lane represents a
+different resume version. For any lane, click the blue "Upload PDF" button and
+select your resume file. The app extracts the text automatically.
+
+After uploading, go to Profile → Overview and click "Extract with AI". The AI
+reads your resume and populates your skills, target roles, preferences, and
+experience. Review each tab (Skills & Roles, Preferences, Constraints) and make
+any corrections.
+
+**Step 3: Scan for jobs**
+Return to the Dashboard. The setup wizard is gone — you're ready. Click "Scan
+for new jobs" to start discovering opportunities.
 
 ---
 
@@ -161,6 +173,7 @@ will be running.
 | What you want to do | Where to go |
 |---|---|
 | Find new jobs | Dashboard → Scan for new jobs |
+| Add a job from anywhere | Jobs → Add Job button |
 | See all your jobs | Jobs |
 | Evaluate a job | Jobs → click a job → Evaluation tab |
 | Generate a tailored resume | Jobs → click a job → Resume tab |
@@ -170,8 +183,42 @@ will be running.
 | Track your applications | Applications |
 | Practice for interviews | Interview Prep |
 | Update your profile | Account → Profile |
+| Upload or replace a resume | Account → Profile → Resumes tab |
+| Add an AI key | Account → Settings → AI Providers |
 | See role fit strategy | Account → Strategy |
 | Change AI provider or add sources | Account → Settings |
+
+---
+
+## Adding jobs from anywhere
+
+You are not limited to the jobs the scanner finds. Any job you see on LinkedIn,
+a company careers page, a job board, or hear about through a referral can be
+added and evaluated with AI.
+
+**How to add a job manually:**
+
+1. Go to **Jobs** in the top navigation.
+2. Click the **Add Job** button.
+3. Fill in the details:
+   - **Company** — the employer name.
+   - **Job Title** — the exact title from the posting.
+   - **Job URL** — the link to the posting, so you can return to it later.
+   - **Job Description** — paste the full text of the job description. The more
+     detail you include, the better the AI fit score.
+4. Click **Submit Job**. The app creates the job and opens it immediately.
+
+Manual jobs go through the same pipeline as scanned jobs — fit scoring, resume
+tailoring, application tracking, company research, and outreach drafting all work
+exactly the same way. The fit score tells you whether it is worth applying before
+you invest time in a cover letter or tailored resume.
+
+**Good sources to add jobs from manually:**
+- LinkedIn job postings
+- Company careers pages
+- Referrals and warm introductions (add what you know about the role)
+- Jobs emailed to you by recruiters
+- Any board the scanner doesn't cover (Wellfound, Dice, Handshake, etc.)
 
 ---
 
@@ -278,19 +325,21 @@ Here is what I need you to do:
 4. Install dependencies:
    npm install
 
-5. Check whether there is an assets/ folder with any PDF resume files. If it
-   exists and has PDFs, run:
-   npm run profile:extract
-
-6. Start the development server:
+5. Start the development server:
    npm run dev
 
-7. Tell me to open http://localhost:3000 in my browser.
+6. Tell me to open http://localhost:3000 in my browser.
 
-8. Walk me through the first-time setup steps in plain language:
-   a. Go to Account → Settings → AI Providers and enter my API key.
-   b. Go to Account → Profile and fill in my career information.
-   c. Go to Dashboard and click "Scan for new jobs".
+7. Walk me through the first-time setup steps in plain language:
+   a. The dashboard shows a 3-step setup wizard. Start with Step 1: Add an AI API key.
+      - Click the provider you want (Gemini has a free tier) to expand the instructions.
+      - Get a key from the provider's website (the app shows the direct link).
+      - Click "Go to Settings → AI Providers", paste the key, and save.
+   b. Return to the Dashboard. Step 1 should show ✓. Click "Go to Profile → Resumes".
+   c. On the Resumes tab, click "Upload PDF" on any lane and select your resume file.
+   d. Go to Profile → Overview and click "Extract with AI" to populate your profile.
+   e. Review the Skills & Roles, Preferences, and Constraints tabs — edit anything the AI got wrong.
+   f. Return to the Dashboard and click "Scan for new jobs".
 
 If any step fails, read the error message carefully, explain what went wrong in
 plain language, and suggest the fix before continuing.

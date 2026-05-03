@@ -4,7 +4,12 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui";
 import { extractProfileWithAIAction } from "@/app/profile/actions";
 
-export function ExtractProfileButton() {
+type Props = {
+  /** Disable the button when no resume has been uploaded yet. */
+  disabled?: boolean;
+};
+
+export function ExtractProfileButton({ disabled = false }: Props) {
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<{ skillCount: number } | null>(null);
   const [error, setError] = useState("");
@@ -24,8 +29,8 @@ export function ExtractProfileButton() {
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <Button disabled={isPending} onClick={handle} variant="secondary">
-        {isPending ? "Extracting…" : "Re-extract with AI"}
+      <Button disabled={disabled || isPending} onClick={handle} variant="secondary">
+        {isPending ? "Extracting…" : "Extract with AI"}
       </Button>
       {result && (
         <span className="text-xs text-[var(--color-success)]">

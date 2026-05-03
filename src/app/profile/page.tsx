@@ -4,7 +4,7 @@ import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select
 import { Shell } from "@/components/ui/shell";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { ResumeManageCard } from "@/components/resume-manage-card";
-import { getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
+import { createResumeLane, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -132,6 +132,12 @@ async function updateConstraintsAction(formData: FormData) {
   revalidatePath("/strategy");
 }
 
+async function addResumeLaneAction() {
+  "use server";
+  createResumeLane("New Resume");
+  revalidatePath("/profile");
+}
+
 async function extractWritingStyleAction(formData: FormData) {
   "use server";
   const samples = String(formData.get("writingSamples") ?? "").trim();
@@ -227,23 +233,64 @@ export default async function ProfilePage({
                 <CardHeader>
                   <CardTitle>AI profile extraction</CardTitle>
                   <CardDescription>
-                    Reads your uploaded resumes and populates skills, role directions, and experience automatically.
+                    Upload a resume PDF, then run extraction — the AI reads your resume
+                    and populates skills, target roles, and experience automatically.
                   </CardDescription>
                 </CardHeader>
-                {!hasExtractedResumes ? (
-                  <div className="rounded-control border border-warning/40 bg-warning/5 p-3">
-                    <p className="text-sm font-medium text-warning">Resume required</p>
-                    <p className="mt-1 text-sm text-muted">
-                      Upload at least one resume PDF on the{" "}
-                      <Link className="font-medium text-accent underline underline-offset-2 hover:text-ink" href="/profile?tab=resumes">
-                        Resumes tab
-                      </Link>{" "}
-                      before running AI extraction. The AI reads your resume text to populate your profile.
-                    </p>
+
+                {/* Step 1 — upload */}
+                <div className={`mb-3 flex gap-3 rounded-control border p-3 ${
+                  !hasExtractedResumes
+                    ? "border-accent/40 bg-accent/5"
+                    : "border-border bg-surface"
+                }`}>
+                  <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                    hasExtractedResumes ? "bg-success text-white" : "bg-accent text-white"
+                  }`}>
+                    {hasExtractedResumes ? "✓" : "1"}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-ink">Upload a resume PDF</p>
+                    {!hasExtractedResumes ? (
+                      <p className="mt-0.5 text-sm text-muted">
+                        Go to the{" "}
+                        <Link
+                          className="font-medium text-accent underline underline-offset-2 hover:text-ink"
+                          href="/profile?tab=resumes"
+                        >
+                          Resumes tab
+                        </Link>{" "}
+                        and click <strong>Re-upload PDF</strong> on any lane.
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-sm text-success">
+                        {resumes.filter((r) => r.wordCount > 0).length}{" "}
+                        resume{resumes.filter((r) => r.wordCount > 0).length !== 1 ? "s" : ""} ready
+                      </p>
+                    )}
                   </div>
-                ) : (
-                  <ExtractProfileButton />
-                )}
+                </div>
+
+                {/* Step 2 — extract */}
+                <div className={`flex gap-3 rounded-control border p-3 ${
+                  hasExtractedResumes
+                    ? "border-accent/40 bg-accent/5"
+                    : "border-border bg-surface opacity-50"
+                }`}>
+                  <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                    hasExtractedResumes ? "bg-accent text-white" : "bg-muted/30 text-muted"
+                  }`}>
+                    2
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-ink">Extract with AI</p>
+                    <p className="mt-0.5 mb-3 text-sm text-muted">
+                      AI reads all uploaded resumes and populates your profile fields.
+                      Review each tab after extraction.
+                    </p>
+                    <ExtractProfileButton disabled={!hasExtractedResumes} />
+                  </div>
+                </div>
               </Card>
             </section>
 
@@ -311,6 +358,21 @@ export default async function ProfilePage({
                     wordCount={resume.wordCount}
                   />
                 ))}
+              </div>
+
+              {/* Add new lane */}
+              <div className="mt-4 border-t border-border pt-4">
+                <form action={addResumeLaneAction}>
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+                    type="submit"
+                  >
+                    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Add resume
+                  </button>
+                </form>
               </div>
             </Card>
 

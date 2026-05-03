@@ -317,6 +317,22 @@ export function updateResumeSource(id: string, sourceFile: string, extractedText
     .run({ id, sourceFile, extractedText, wordCount });
 }
 
+export function clearResumeSource(id: string) {
+  getDatabase()
+    .prepare("update resumes set source_file = '', extracted_text = '', word_count = 0, extracted_at = null where id = @id")
+    .run({ id });
+}
+
+export function createResumeLane(name: string): string {
+  const id = crypto.randomUUID();
+  getDatabase()
+    .prepare(
+      "insert into resumes (id, name, source_file, status, active_status) values (@id, @name, '', 'active', 1)"
+    )
+    .run({ id, name });
+  return id;
+}
+
 export function getJobById(id: string): JobRecord | undefined {
   const row = getDatabase().prepare("select * from jobs where id = ?").get(id) as JobRow | undefined;
   return row ? mapJob(row) : undefined;
