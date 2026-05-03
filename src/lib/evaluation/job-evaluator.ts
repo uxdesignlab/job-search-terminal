@@ -8,47 +8,58 @@ type RoleSignal = {
   keywords: string[];
 };
 
+// Starter heuristics — generic signals that work across professions.
+// The resume lane names here ("Leadership", "IC / Individual Contributor", etc.) are
+// defaults. They match whatever lane the user has named similarly in their profile.
+// The AI evaluator (llm-evaluator.ts) produces a more precise archetype; these
+// signals are used for the rule-based fallback scoring path.
 const roleSignals: RoleSignal[] = [
   {
     // Must come first — management titles share many IC keywords
-    archetype: "Design Leadership",
-    resumeBase: "Principal / Product Design Leadership",
+    archetype: "Leadership / Management",
+    resumeBase: "Leadership",
     keywords: [
-      "chief experience officer", "chief design officer", "vp of design", "vp design",
-      "vice president", "director of design", "director of ux", "head of design",
-      "head of product design", "head of ux", "design manager", "design director",
-      "people manager", "managing director", "design leadership"
+      "chief", "vp", "vice president", "director", "head of",
+      "people manager", "managing director", "engineering manager",
+      "product manager", "program manager", "team lead"
     ]
   },
   {
-    archetype: "Principal Product Design",
-    resumeBase: "Principal / Product Design Leadership",
-    keywords: ["principal", "product designer", "product design", "ux", "workflow", "strategy", "senior ic"]
+    archetype: "Operations / Program Management",
+    resumeBase: "Operations",
+    keywords: [
+      "operations", "ops", "program management", "project management",
+      "planning", "governance", "enablement", "coordinator", "chief of staff"
+    ]
   },
   {
-    archetype: "Design Operations",
-    resumeBase: "Design Operations",
-    keywords: ["design operations", "designops", "operations", "governance", "planning", "rituals", "enablement"]
+    archetype: "Technical Specialist",
+    resumeBase: "Specialist",
+    keywords: [
+      "accessibility", "security", "data", "machine learning", "ml", "ai",
+      "devops", "platform", "infrastructure", "systems", "architect"
+    ]
   },
   {
-    archetype: "Accessibility / Design Systems",
-    resumeBase: "Accessibility / Design Systems",
-    keywords: ["accessibility", "wcag", "design systems", "design system", "governance", "component"]
+    archetype: "Education / Training",
+    resumeBase: "Education",
+    keywords: [
+      "instructor", "teacher", "teaching", "education", "curriculum",
+      "trainer", "mentor", "coach", "academy", "bootcamp"
+    ]
   },
   {
-    archetype: "UX Education",
-    resumeBase: "Teaching / UX Education",
-    keywords: ["instructor", "teaching", "education", "curriculum", "mentor", "coach", "academy"]
-  },
-  {
-    archetype: "AI Product Strategy",
-    resumeBase: "Principal / Product Design Leadership",
-    keywords: ["ai product", "ai", "agent", "workflow", "automation", "product manager", "product strategy"]
+    archetype: "IC / Individual Contributor",
+    resumeBase: "IC / Individual Contributor",
+    keywords: [
+      "engineer", "developer", "designer", "analyst", "scientist",
+      "researcher", "specialist", "consultant", "senior", "principal", "staff"
+    ]
   },
   {
     archetype: "Avoid",
     resumeBase: "No resume recommended",
-    keywords: ["brand designer", "graphic designer", "visual designer", "onsite only", "junior", "intern"]
+    keywords: ["intern", "internship", "junior", "entry level", "entry-level"]
   }
 ];
 
@@ -183,8 +194,8 @@ function buildGaps(jobText: string, profile: UserProfileRecord, roleMatch: RoleS
     gaps.add("Job text has limited direct overlap with the current skill inventory.");
   }
 
-  if (roleMatch.archetype === "AI Product Strategy" && !jobText.includes("design")) {
-    gaps.add("AI strategy signal exists, but product/design leadership scope needs confirmation.");
+  if (skills.length < 4 && roleMatch.archetype !== "Avoid") {
+    gaps.add("Limited skill-signal overlap with job text — review the posting manually before investing time.");
   }
 
   if (remoteLabel) {

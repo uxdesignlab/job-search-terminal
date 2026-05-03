@@ -1,8 +1,8 @@
 export const mockProfile = {
-  name: "Jane Doe",
+  name: "Alex Jordan",
   location: "United States",
-  portfolio: "example.com",
-  currentSearchGoal: "Find senior UX/product design leadership roles with strong strategic scope.",
+  portfolio: "",
+  currentSearchGoal: "Find senior product design leadership roles with strong strategic scope.",
   urgency: "Active search",
   direction: "Prioritize principal design, head of design, design operations, and accessibility/design-system leadership roles.",
   constraints: ["Remote or selective hybrid", "Strategic product scope", "Avoid brand-only roles", "Avoid junior IC scope"],

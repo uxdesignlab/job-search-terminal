@@ -26,7 +26,7 @@ export type ScanSource = {
   careersUrl: string;
   apiType: "greenhouse" | "ashby" | "lever" | null;
   enabled: boolean;
-  isCustom: boolean;
+  removable: boolean;
   industry: string;
 };
 
@@ -280,10 +280,7 @@ export function ScanSourcesTable({
                     />
                   </td>
                   <td className="py-3 pr-4">
-                    <span className="flex items-center gap-2">
-                      <span className="font-medium text-ink">{source.name}</span>
-                      {source.isCustom && <Badge tone="warning">Custom</Badge>}
-                    </span>
+                    <span className="font-medium text-ink">{source.name}</span>
                   </td>
                   <td className="py-3 pr-4">
                     <IndustryEditor
@@ -329,7 +326,7 @@ export function ScanSourcesTable({
                     ) : null}
                   </td>
                   <td className="py-3">
-                    {source.isCustom ? (
+                    {source.removable ? (
                       <button
                         className="text-xs text-muted hover:text-danger"
                         onClick={() => handleRemove(source.name)}

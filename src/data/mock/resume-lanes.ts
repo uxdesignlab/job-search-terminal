@@ -9,7 +9,7 @@ export const resumeLanes: ResumeLane[] = [
   {
     id: "principal-product-design",
     label: "Principal / Product Design Leadership",
-    sourceFile: "assets/resume-principal-product-design.pdf",
+    sourceFile: "assets/resume-leadership.pdf",
     status: "source-ready"
   },
   {
@@ -27,13 +27,13 @@ export const resumeLanes: ResumeLane[] = [
   {
     id: "design-operations",
     label: "Design Operations",
-    sourceFile: "assets/resume-operations.pdf",
+    sourceFile: "assets/resume-design-ops.pdf",
     status: "source-ready"
   },
   {
     id: "teaching-ux-education",
     label: "Teaching / UX Education",
-    sourceFile: "assets/resume-teaching.pdf",
+    sourceFile: "assets/resume-education.pdf",
     status: "source-ready"
   }
 ];

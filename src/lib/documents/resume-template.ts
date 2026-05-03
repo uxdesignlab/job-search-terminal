@@ -30,9 +30,8 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="author" content="${escapeHtml(input.name)}" />
-    <meta name="description" content="Principal Product Designer resume focused on accessibility, design systems, and AI-enabled product design" />
-    <meta name="keywords" content="Principal Product Designer, Product Design, Accessibility, WCAG 2.2, Design Systems, Human-Centered AI, Figma, Storybook, AEM" />
-    <title>${escapeHtml(input.name)} - Principal Product Designer Resume</title>
+    <meta name="description" content="${escapeHtml(input.name)} — tailored resume" />
+    <title>${escapeHtml(input.name)} — Resume</title>
     <style>
       :root {
         color-scheme: light;
@@ -201,19 +200,25 @@ function renderEducation(items: ResumeTemplateInput["education"]) {
       </section>`;
 }
 
+function safeHref(url: string): string {
+  // Only allow http/https/mailto schemes in href attributes.
+  if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) return url;
+  return "#";
+}
+
 function renderContact(items: string[]) {
   return items.map((item) => {
     // Basic link inference for contact items
     if (item.includes("@")) {
-      return `<a href="mailto:${item}">${escapeHtml(item)}</a>`;
+      return `<a href="${safeHref(`mailto:${item}`)}">${escapeHtml(item)}</a>`;
     }
     if (item.includes("linkedin.com")) {
       const url = item.startsWith("http") ? item : `https://${item}`;
-      return `<a href="${url}">${escapeHtml(item)}</a>`;
+      return `<a href="${safeHref(url)}">${escapeHtml(item)}</a>`;
     }
     if (item.match(/^(http|www\.)/)) {
       const url = item.startsWith("http") ? item : `https://${item}`;
-      return `<a href="${url}">${escapeHtml(item)}</a>`;
+      return `<a href="${safeHref(url)}">${escapeHtml(item)}</a>`;
     }
     return escapeHtml(item);
   }).join(" | ");

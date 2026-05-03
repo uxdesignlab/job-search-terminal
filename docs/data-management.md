@@ -37,8 +37,7 @@ Exports are written to `output/exports/` and include:
 
 ## Restore
 
-Restore is intentionally manual in Phase 9 because it replaces the active local
-database.
+Restore is intentionally manual because it replaces the active local database.
 
 1. Stop the dev server.
 2. Create one more backup of the current database if it still opens.

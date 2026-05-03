@@ -26,19 +26,14 @@ Open [http://localhost:3000](http://localhost:3000).
 - [Features](docs/features.md) — everything the app does, page by page
 
 ### For developers
-- [PRD](docs/PRD.md) — product requirements and design decisions
 - [Design system](docs/design-system.md) — tokens, components, usage rules
-- [Data model](docs/data-model.md) — full SQLite schema with all 25 migrations
+- [Data model](docs/data-model.md) — full SQLite schema with all 26 migrations
 - [Accessibility checklist](docs/accessibility-checklist.md) — WCAG 2.2 AA requirements
-- [Development workflow](docs/development-workflow.md) — phase rules and contribution guidelines
+- [Development workflow](docs/development-workflow.md) — contribution guidelines
 - [Data management](docs/data-management.md) — backup, export, and restore
 - [Troubleshooting](docs/troubleshooting.md) — common issues and fixes
 - [Quality hardening](docs/quality-hardening.md) — automated accessibility and screenshot checks
-- [Project implementation todo](docs/project-implementation-todo.md) — phase status tracker
-- [Lessons](docs/lessons.md) — durable project rules and corrections
-
-### Archive
-Historical phase implementation notes are in [docs/archive/](docs/archive/).
+- [Lessons](docs/lessons.md) — durable project rules and decisions
 
 ---
 
@@ -55,9 +50,6 @@ npm run db:migrate       # apply pending migrations
 npm run db:seed          # seed demo data
 npm run db:reset         # drop + re-migrate + re-seed
 npm run db:check         # verify database
-
-npm run profile:extract  # extract resume PDFs into the database
-npm run profile:check    # verify extracted profile
 
 npm run data:backup      # SQLite backup → output/backups/
 npm run data:export      # JSON export → output/exports/

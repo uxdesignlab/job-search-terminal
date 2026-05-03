@@ -1,66 +1,32 @@
 # Job Search Terminal — Agent Instructions
 
 Job Search Terminal is a local-first, dashboard-first job-search command center.
-The product reuses proven CareerOps concepts behind the scenes, but the user
-experience must feel like a minimal professional SaaS dashboard.
+It discovers jobs from ATS APIs, scores them against a career profile using AI,
+generates tailored resumes, drafts application answers, and tracks applications —
+all running locally on the user's machine with no cloud storage.
 
 ## Project Direction
 
-- Codex is the primary development and orchestration tool.
+- Claude Code is the primary development and orchestration tool.
 - `AGENTS.md` is the authoritative agent contract for this repo.
 - Detailed project documentation belongs in `docs/`.
 - Keep `README.md` short and link to docs instead of duplicating detail.
-- Work one implementation phase at a time. Do not start tasks from later phases
-  until the current phase has been reviewed, tested, and explicitly approved.
-- After each phase: stop, report what changed, share verification results, and
-  wait for the user to test. Commit only when the user explicitly directs it.
-- After completing a build or phase, provide a concise QA checklist with the
-  exact screens, flows, content, and regressions the user should inspect before
-  approving the phase.
-- Phase 1 is scaffolding and mapping only. Do not implement scanner, PDF,
-  SQLite, evaluation, or application-tracking functionality in this phase.
 
-## Architecture Defaults
+## Architecture
 
-- App: Next.js, TypeScript, Tailwind.
-- Runtime: local-first Node app.
-- Future data store: SQLite.
-- Future PDF path: Playwright-based HTML-to-PDF adapted from CareerOps.
-- Future AI path: backend-mediated OpenAI calls.
-
-## CareerOps Rule
-
-Before building a scanner, PDF generator, tracker, evaluation mode, application
-assistant, or dashboard metric from scratch, check the CareerOps reuse map in
-`docs/careerops-reuse-map.md`.
-
-Default to reusing CareerOps code and functionality as much as possible. If a
-CareerOps component already performs the needed engine behavior, copy, vendor,
-or port that code into Job Search Terminal and wrap it with the dashboard/backend interface. Do
-not reinvent equivalent logic unless the reuse map documents a concrete reason.
-
-Use this policy:
-
-- Reuse proven CareerOps engine behavior and implementation code where it fits.
-- Copy or port CareerOps code when that is the fastest reliable path.
-- Adapt file/CLI-first workflows into dashboard-triggered services.
-- Replace user-facing terminal or slash-command flows with dashboard actions.
-- Document any replacement decision before implementing new equivalent logic.
-- Defer optional external adapters until the dashboard workflow needs them.
+- **Framework:** Next.js 15, React 19, TypeScript, Tailwind CSS
+- **Runtime:** local Node.js process — all data stays on the user's machine
+- **Data store:** SQLite via `better-sqlite3` at `data/job-search-terminal.sqlite`
+- **PDF generation:** Playwright-based HTML-to-PDF (requires Chrome)
+- **AI:** provider-mediated calls via `src/lib/ai/` — supports OpenAI, Anthropic, Google Gemini
+- **Job scanning:** Greenhouse / Ashby / Lever ATS APIs configured via `config/portals.example.yml`
 
 ## Resume Lanes
 
-The repo currently contains multiple resume source PDFs in `assets/`. Preserve
-that multi-resume model. Do not collapse the workflow into a single universal
-resume.
-
-Initial lanes:
-
-- Principal / Product Design Leadership
-- UX Design
-- Accessibility / Design Systems
-- Design Operations
-- Teaching / UX Education
+Resumes are uploaded through the in-app UI (Profile → Resumes tab). The app
+supports multiple resume lanes — one per career angle or role type (e.g.,
+"Leadership", "IC / Individual Contributor", "Operations"). Do not collapse the
+workflow into a single universal resume. Preserve the multi-lane model.
 
 ## UX And Accessibility
 
@@ -83,7 +49,7 @@ Initial lanes:
 
 ## Verification
 
-For scaffold changes, run:
+After any change, run:
 
 ```bash
 npm run lint
@@ -91,4 +57,4 @@ npm run typecheck
 npm run build
 ```
 
-For future feature work, add focused tests and verify the actual dashboard flow.
+For feature work, also verify the actual dashboard flow in the browser.

@@ -1803,6 +1803,18 @@ export function deleteCustomScanSource(name: string) {
   getDatabase().prepare("delete from scan_source_overrides where name = @name").run({ name });
 }
 
+export function deleteAllCustomScanSources() {
+  const db = getDatabase();
+  const names = (db.prepare("select name from scan_sources_custom").all() as Array<{ name: string }>).map((r) => r.name);
+  db.prepare("delete from scan_sources_custom").run();
+  if (names.length > 0) {
+    // Remove overrides only for sources that were custom (not yaml)
+    for (const name of names) {
+      db.prepare("delete from scan_source_overrides where name = @name").run({ name });
+    }
+  }
+}
+
 export type CompanyProfile = {
   name: string;
   industry: string;
