@@ -1,7 +1,7 @@
-import { writeFileSync } from "node:fs";
+import { writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-import { updateResumeSource } from "@/lib/db/queries";
+import { clearResumeSource, getResumes, updateResumeSource } from "@/lib/db/queries";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -38,4 +38,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   updateResumeSource(id, relPath, extractedText, wordCount);
   return NextResponse.json({ ok: true, wordCount });
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  // Try to remove the PDF file from disk (best-effort)
+  const resumes = getResumes();
+  const resume = resumes.find((r) => r.id === id);
+  if (resume?.sourceFile) {
+    try {
+      unlinkSync(path.join(process.cwd(), resume.sourceFile));
+    } catch {
+      // File may already be gone — ignore
+    }
+  }
+
+  clearResumeSource(id);
+  return NextResponse.json({ ok: true });
 }

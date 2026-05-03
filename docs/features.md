@@ -24,23 +24,37 @@ The app redirects `/` to `/dashboard` on load.
 
 ## Dashboard `/dashboard`
 
-The command center. Shows where the job search stands at a glance.
+The command center. Has two states depending on setup progress.
 
-**Sections:**
+**New user state** (shown when no resume PDF has been uploaded yet): Replaces the
+normal dashboard body with a 3-step onboarding wizard:
 
-- **XP and level card** — gamified progress tracker showing experience points,
-  current level, active streak, and recent achievements.
+1. **Add an AI API key** — expandable step-by-step instructions for Google Gemini
+   (free tier available), OpenAI, and Anthropic. Each provider's instructions
+   expand inline (using HTML details/summary). CTA links to Settings → AI
+   Providers. Once a key is saved this step shows green ✓ and collapses.
+2. **Upload your resume** — active once step 1 is done (dimmed/locked before).
+   CTA links to Profile → Resumes. The scan button in the page header is hidden
+   in new user state.
+3. **Scan for jobs and get AI fit scores** — always shown as a future pending step.
+
+The wizard disappears once the first resume PDF is successfully uploaded.
+
+**Returning user state** (shown when resume exists but no AI key configured): A
+dismissible banner appears above the normal dashboard content, prompting the user
+to add an API key in Settings.
+
+**Normal dashboard** (after full setup):
+
+- **Stat cards** — priority matches, applications sent, new jobs this week (from
+  scans vs. manually added).
 - **Action queue** — two lists: "Apply next" (high-score jobs not yet applied to)
-  and "In flight" (applications in active states like interviewing or follow-up
-  needed). Each card shows company, title, score, and recommended next action.
-- **Job sources status** — summary of enabled scanning sources with scan history.
-- **Scan results** — most recent scan run summary: companies scanned, new jobs
-  found, duplicates skipped.
-- **Recent activity log** — timestamped list of recent user actions.
-
-**Actions from Dashboard:**
-- Scan for new jobs (triggers a scan run)
-- Batch evaluate jobs (evaluate multiple un-evaluated jobs at once)
+  and "In flight" (active applications: interviewing, follow-up needed). Each card
+  shows company, title, fit score, and recommended next action.
+- **Latest scan card** — companies scanned, new jobs found, duplicates skipped,
+  status badge. Per-source error list with inline "Disable source" button.
+- **Recent activity log** — timestamped list of user actions.
+- **Scan for new jobs** button in page header (hidden for new users).
 
 ---
 
@@ -206,27 +220,36 @@ Career profile editor. The profile is the foundation for all evaluations and
 resume tailoring. The page is split into **six tabs**, navigated via URL
 (`?tab=<id>`), each with its own save action.
 
-**Resume gate:** At least one resume PDF must be uploaded and extracted
-(`wordCount > 0`) before AI profile extraction is available. If no extracted
-resume exists, the Overview tab shows a warning card with a link to the Resumes
-tab, and the Resumes tab shows a prominent upload instruction banner.
+The AI extraction card is always visible on the Overview tab as a 2-step flow.
+Step 1 shows active (blue) when no PDF has been uploaded, and green ✓ once a PDF
+is ready. Step 2 (Extract button) is disabled until Step 1 is complete. The
+Resumes tab shows an upload banner when no extracted resumes exist.
 
 ### Tab: Overview (`?tab=overview`)
 - Summary card: name, current search goal, location, portfolio, urgency, direction.
-- **AI profile extraction card** — runs AI extraction on all uploaded resumes and
-  populates skills, role directions, and experience automatically. Only shown when
-  at least one resume has been extracted; otherwise shows the resume gate warning.
+- **AI profile extraction card** — 2-step flow: Step 1 (upload) shows active/✓
+  state; Step 2 (Extract with AI button) is disabled until at least one resume
+  PDF is uploaded. Runs AI extraction on all uploaded resumes and populates
+  skills, role directions, and experience automatically.
 - Edit form: current search goal, search direction, urgency (select), career
   intent, career change interest, confidence level.
 
 ### Tab: Resumes (`?tab=resumes`)
-- Upload banner (shown when no extracted resumes exist): instructs the user to
-  re-upload a PDF on any lane, then return to Overview to run AI extraction.
-- **Resume lanes** — each lane is a different resume version (e.g. Principal /
-  Product Design Leadership, UX Design, Accessibility, etc.). Upload a PDF to
-  extract text for AI evaluation and tailoring. Rename lanes to match their focus.
-- **Skill inventory** — list of skills extracted from resume lanes (shown only
-  after at least one extraction). Re-run AI extraction from Overview to refresh.
+- **Upload banner** (shown when no extracted resumes exist): instructs the user to
+  upload a PDF, then go to Overview to run extraction.
+- **Resume lanes card** — each lane is a different resume version. Per-lane actions:
+  - **Upload PDF** (blue solid button): shown when the lane has no PDF; opens file
+    picker, uploads and auto-extracts text.
+  - **Replace PDF** (outlined button): shown when the lane already has a PDF;
+    replaces the file and re-extracts.
+  - **Remove** (text link): shown when the lane has a PDF; clears the file and
+    text after inline confirm ("Remove this resume? / Yes, remove / Cancel").
+  - **Rename** (✎ pencil icon): inline rename with keyboard support (Enter saves,
+    Escape cancels).
+- **Add resume** button at the bottom of the lanes list: creates a new empty lane
+  named "New Resume". User then renames it and uploads a PDF.
+- **Skill inventory card** (shown only after at least one AI extraction): lists
+  extracted skills with category and evidence source.
 
 ### Tab: Skills & Roles (`?tab=skills`)
 - Read-only badge displays for: strongest skills (from AI extraction), skills to
