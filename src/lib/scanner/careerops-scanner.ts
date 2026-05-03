@@ -4,6 +4,7 @@ import path from "node:path";
 import yaml from "js-yaml";
 import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, insertScannedJobs, recordScanRun } from "../db/queries";
 import type { ScannedJobInput, ScanRunRecord } from "../db/types";
+import { safeFetch } from "../safe-fetch";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
 const FALLBACK_CONFIG_PATH = "config/portals.example.yml";
@@ -353,7 +354,7 @@ async function fetchJson(url: string) {
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await safeFetch(url, { signal: controller.signal });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }

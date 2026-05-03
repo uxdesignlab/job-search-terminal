@@ -2,6 +2,8 @@
 // Returns "active" | "expired" | "uncertain".
 // No browser — just HTTP + text heuristics (fast, no Playwright dependency).
 
+import { safeFetch } from "../safe-fetch";
+
 const EXPIRED_PATTERNS = [
   /no longer accepting applications/i,
   /this (job|position|role|posting) (is )?(no longer |has been )?(available|active|open|accepting)/i,
@@ -42,7 +44,7 @@ export async function checkJobLiveness(url: string): Promise<LivenessResult> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12_000);
-    res = await fetch(url, {
+    res = await safeFetch(url, {
       signal: controller.signal,
       headers: { "User-Agent": "Mozilla/5.0 (compatible; job-search-bot/1.0)" },
       redirect: "follow",

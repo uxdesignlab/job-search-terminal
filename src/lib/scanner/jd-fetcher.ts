@@ -1,4 +1,5 @@
 import type { JobRecord } from "../db/types";
+import { safeFetch } from "../safe-fetch";
 
 const FETCH_TIMEOUT_MS = 12_000;
 
@@ -6,7 +7,7 @@ async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await safeFetch(url, { signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } finally {
@@ -53,7 +54,7 @@ async function fetchAshby(jobUrl: string): Promise<string | null> {
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let html: string;
   try {
-    const res = await fetch(jobUrl, {
+    const res = await safeFetch(jobUrl, {
       signal: controller.signal,
       headers: { "User-Agent": "Mozilla/5.0 (compatible; JobSearchApp/1.0)" }
     });

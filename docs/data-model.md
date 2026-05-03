@@ -113,7 +113,7 @@ Source resume PDF lanes uploaded by the user.
 | Column | Purpose |
 |---|---|
 | `id` | Row identifier |
-| `name` | Lane label (e.g., "Principal / Product Design Leadership") |
+| `name` | Lane label (e.g., "Leadership", "IC / Individual Contributor") |
 | `source_file` | Path to source PDF |
 | `status` | Processing status |
 | `active_status` | 1 = active, 0 = inactive |

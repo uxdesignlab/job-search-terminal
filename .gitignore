@@ -25,5 +25,20 @@ reports/*
 assets/*
 !assets/.gitkeep
 
+# Personal portals config — your curated company list and title filters.
+# portals.example.yml ships with the repo as the public default.
+config/portals.yml
+
+# Internal planning docs — historical notes, personal references, archived phases.
+# These stay local; they are not part of the public repo.
+docs/archive/
+
+# Claude Code local config
+.claude/
+
+# Personal notes / resume text dumps
+*.txt
+docs/links.txt
+
 # System files
 .DS_Store

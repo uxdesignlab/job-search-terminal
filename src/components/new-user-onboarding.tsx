@@ -236,8 +236,7 @@ export function NewUserOnboarding() {
                     </ProviderSteps>
                     <p className="mt-3 text-xs text-muted">
                       OpenAI requires a paid account with credits. New accounts may receive a
-                      small free credit. The default model is GPT-4o mini which is cost-effective
-                      for job search tasks.
+                      small free credit. The default model is cost-effective for job search tasks.
                     </p>
                   </ProviderAccordion>
 

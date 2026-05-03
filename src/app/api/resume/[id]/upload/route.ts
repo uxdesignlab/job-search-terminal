@@ -12,6 +12,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "A PDF file is required" }, { status: 400 });
   }
 
+  const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json({ error: "File too large. Maximum size is 20 MB." }, { status: 413 });
+  }
+
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
 

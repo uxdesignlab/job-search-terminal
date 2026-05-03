@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
+import { safeFetch } from "@/lib/safe-fetch";
 import type { AIMessage } from "@/lib/ai/provider";
 
 export const OUTPUT_PATH = path.join(process.cwd(), "data", "discovered-sources.json");
@@ -62,7 +63,7 @@ const CC_PATTERNS: CcQueryPattern[] = [
 
 async function queryCcIndex(urlPattern: string): Promise<Array<{ url: string; timestamp: string }>> {
   const query = new URLSearchParams({ url: urlPattern, output: "json", limit: "1000" });
-  const res = await fetch(`${CC_INDEX}?${query}`);
+  const res = await safeFetch(`${CC_INDEX}?${query}`);
   if (res.status === 404) return [];
   if (!res.ok) throw new Error(`CC index returned HTTP ${res.status} for ${urlPattern}`);
   const text = await res.text();
@@ -300,7 +301,7 @@ async function validateEntry(entry: DiscoveredEntry): Promise<DiscoveredEntry> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
   try {
-    const res = await fetch(entry.apiUrl, { signal: controller.signal });
+    const res = await safeFetch(entry.apiUrl, { signal: controller.signal });
     const text = await res.text();
     const status: ValidationStatus = res.ok ? "valid" : res.status === 404 ? "dead" : "unknown";
     let companyDisplayName: string | null = entry.companyDisplayName;

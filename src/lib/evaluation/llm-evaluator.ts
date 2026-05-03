@@ -35,7 +35,7 @@ async function runBlockA(provider: AIProvider, systemPrompt: string, jobCtx: str
       content: `${jobCtx}
 
 Analyze this job posting and return a JSON object with:
-- "archetype": the best-fit role archetype from: "Principal Product Design", "DesignOps", "AI Product Strategy", "UX Education", "Accessibility / Design Systems", "Other"
+- "archetype": the best-fit role archetype from: "IC / Individual Contributor", "Leadership / Management", "Operations / Program Management", "Technical Specialist", "Education / Training", "Other"
 - "domain": what the company/product does (1 sentence)
 - "seniority": IC / Senior IC / Lead / Principal / Director / VP / Unknown
 - "teamContext": likely team structure and reporting (1 sentence)

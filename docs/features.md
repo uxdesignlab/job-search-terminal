@@ -93,7 +93,7 @@ Tabbed view for a single job. Four tabs:
 - Gap list: requirements not yet addressed.
 - Red flags list.
 
-### Evaluation tab
+### Analysis tab
 - Run evaluation: triggers AI streaming evaluation with real-time output.
 - Evaluation sections: strengths, gaps, red flags, resume recommendation,
   keyword list, legitimacy signal.
@@ -132,12 +132,11 @@ user profile. Shows character count. User copies the message manually.
 
 ## Applications `/applications`
 
-Application funnel tracker with three view modes:
+Application funnel tracker with two view modes:
 
 - **Table view** — sortable list of all active applications with status, company,
   role, score, follow-up date, and overdue indicator.
 - **Kanban view** — drag-and-drop board organized by status column.
-- **List view** — compact single-column list.
 
 **Features:**
 - Follow-up overdue alerts (highlighted when past the follow-up date).
@@ -170,12 +169,10 @@ Resume studio showing all resume lanes and generated documents.
 
 **Two sections:**
 
-**Base resumes** — the source PDF lanes uploaded by the user:
-- Principal / Product Design Leadership
-- UX Design
-- Accessibility / Design Systems
-- Design Operations
-- Teaching / UX Education
+**Base resumes** — the source PDF lanes uploaded by the user. Each lane
+represents a different career angle (e.g., "Leadership", "IC / Individual
+Contributor", "Domain Specialist"). The app ships with five default lane names
+that can be renamed; new lanes can be added at any time.
 
 Each lane shows extraction status, word count, and a link to view.
 
@@ -318,12 +315,16 @@ Three configuration tabs:
 - Test connection to verify the key and model work.
 
 ### Job Sources
-- View all built-in ATS sources (Greenhouse / Ashby / Lever companies).
-- Enable or disable individual sources.
-- Column filters and saved filter presets on both the sources table and the
-  discovered sources table.
-- Add custom job board URLs.
-- Set positive and negative title filters to control what the scanner picks up.
+- All configured sources appear in a unified table — companies from
+  `portals.example.yml` and any manually added sources are treated equally.
+- Enable or disable individual sources (disabled sources are skipped on the
+  next scan).
+- Column filters and saved filter presets on the sources table.
+- Sources from `portals.example.yml` cannot be removed (they reload from the
+  config file); manually added sources have a Remove button.
+- Add any company by pasting its careers page URL — Greenhouse, Ashby, and
+  Lever are auto-detected.
+- "Scan for new sources" discovers additional Greenhouse boards automatically.
 
 ### Preferences
 - Edit title include / exclude filters.

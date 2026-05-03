@@ -1,7 +1,6 @@
 # Quality Hardening
 
-Phase 9 adds repeatable checks for the local MVP without changing the product
-workflow.
+These repeatable checks verify the local app without changing the product workflow.
 
 ## Automated Checks
 

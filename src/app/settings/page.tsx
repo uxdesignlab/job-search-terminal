@@ -75,6 +75,15 @@ export default async function SettingsPage({
   const activeTab = (TABS.some((t) => t.id === rawTab) ? rawTab : "ai") as TabId;
 
   const settings = getAISettings();
+  // Mask keys before they reach the client component — the full value is never
+  // serialised into the RSC payload. The form detects the mask sentinel and
+  // skips re-saving unchanged fields.
+  const maskedSettings = {
+    ...settings,
+    anthropicApiKey: settings.anthropicApiKey ? `••••${settings.anthropicApiKey.slice(-4)}` : "",
+    openaiApiKey: settings.openaiApiKey ? `••••${settings.openaiApiKey.slice(-4)}` : "",
+    geminiApiKey: settings.geminiApiKey ? `••••${settings.geminiApiKey.slice(-4)}` : "",
+  };
   const scanConfig = loadScanConfig();
   const yamlCompanies = scanConfig.tracked_companies ?? [];
   syncCompanyProfilesFromYaml(yamlCompanies);
@@ -105,7 +114,7 @@ export default async function SettingsPage({
         careersUrl: c.careers_url ?? "",
         apiType: api?.type ?? null,
         enabled,
-        isCustom: false as const,
+        removable: false as const,
         industry,
       };
     }),
@@ -119,7 +128,7 @@ export default async function SettingsPage({
           careersUrl: c.careersUrl,
           apiType: atsTypeFromUrl(c.careersUrl, c.api),
           enabled,
-          isCustom: true as const,
+          removable: true as const,
           industry,
         };
       }),
@@ -268,7 +277,7 @@ export default async function SettingsPage({
                 API keys are stored locally in your SQLite database and never sent anywhere except the selected provider.
               </CardDescription>
             </CardHeader>
-            <AISettingsForm settings={settings} />
+            <AISettingsForm settings={maskedSettings} />
           </Card>
         )}
 
