@@ -191,12 +191,12 @@ export function DataTableColHeader<T extends string>({
   );
 }
 
-export function useDataTableSortFilterState<T extends string>(initialSort: {
-  col: T;
-  dir: DataTableSortDir;
-}) {
+export function useDataTableSortFilterState<T extends string>(
+  initialSort: { col: T; dir: DataTableSortDir },
+  initialFilters?: Partial<Record<T, Set<string>>>,
+) {
   const [sort, setSort] = useState(initialSort);
-  const [filters, setFilters] = useState<Partial<Record<T, Set<string>>>>({});
+  const [filters, setFilters] = useState<Partial<Record<T, Set<string>>>>(initialFilters ?? {});
   const [openFilterCol, setOpenFilterCol] = useState<T | null>(null);
   const [filterPos, setFilterPos] = useState({ top: 0, left: 0 });
 

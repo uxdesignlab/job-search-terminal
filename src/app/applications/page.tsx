@@ -1,4 +1,5 @@
-import { ApplicationsTable, type ApplicationTableRow } from "@/components/applications-table";
+import type { ApplicationTableRow } from "@/components/applications-table";
+import { ApplicationsView } from "@/components/applications-view";
 import { Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { getApplications, getFunnelStages, getJobById } from "@/lib/db/queries";
@@ -51,17 +52,19 @@ export default function ApplicationsPage() {
         </section>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Tracked applications</CardTitle>
-            <CardDescription>Current status, follow-up timing, and fit for active opportunities.</CardDescription>
-          </CardHeader>
           {applications.length > 0 ? (
-            <ApplicationsTable rows={applicationRows} todayIso={today} />
+            <ApplicationsView rows={applicationRows} todayIso={today} />
           ) : (
-            <EmptyState
-              description="Mark, a job, as, applied, or, add, a follow-up from a job detail page to start the tracker."
-              title="No tracked applications yet"
-            />
+            <>
+              <CardHeader>
+                <CardTitle>Tracked applications</CardTitle>
+                <CardDescription>Current status, follow-up timing, and fit for active opportunities.</CardDescription>
+              </CardHeader>
+              <EmptyState
+                description="Mark a job as applied or add a follow-up from a job detail page to start the tracker."
+                title="No tracked applications yet"
+              />
+            </>
           )}
         </Card>
       </div>

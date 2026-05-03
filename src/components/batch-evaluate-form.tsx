@@ -59,6 +59,12 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
   const [jobStatus, setJobStatus] = useState<Record<string, JobRowStatus>>({});
   const [running, setRunning] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
+  // Build default filter: exclude "Applied" jobs unless the user clears it
+  const statusOptions = getMainJobColOptions(jobs, "status");
+  const defaultFilters = statusOptions.includes("Applied")
+    ? ({ status: new Set(statusOptions.filter((s) => s !== "Applied")) } as Partial<Record<SortCol, Set<string>>>)
+    : undefined;
+
   const {
     sort,
     filters,
@@ -70,7 +76,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     clearAllFilters,
     setOpenFilterCol,
     activeFilterCount,
-  } = useDataTableSortFilterState<SortCol>({ col: "fit", dir: "desc" });
+  } = useDataTableSortFilterState<SortCol>({ col: "fit", dir: "desc" }, defaultFilters);
 
   const isRunning = running || bulkRunning;
 

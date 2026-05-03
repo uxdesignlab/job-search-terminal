@@ -112,7 +112,13 @@
       "Bash(git push *)",
       "WebFetch(domain:santifer.io)",
       "Bash(xargs ls *)",
-      "Bash(node -e \"const p=require\\('/Users/dedpak/Work/js/package.json'\\); console.log\\(p.dependencies?.next || p.devDependencies?.next\\)\")"
+      "Bash(node -e \"const p=require\\('/Users/dedpak/Work/js/package.json'\\); console.log\\(p.dependencies?.next || p.devDependencies?.next\\)\")",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(npx next *)",
+      "Bash(ps -p 89913 -o command=)",
+      "Bash(ps -p 91046 -o command=)",
+      "Bash(kill 89913)"
     ]
   }
 }
