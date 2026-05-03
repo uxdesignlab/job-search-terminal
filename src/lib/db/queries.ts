@@ -2041,3 +2041,24 @@ export function getJobSourceBreakdown(): { scanned: number; manual: number } {
     { scanned: 0, manual: 0 }
   );
 }
+
+// ─── Table saved filter presets (dashboard column filters) ─────────────────
+
+export function getTableSavedFiltersPayload(tableKey: string): string | null {
+  const row = getDatabase()
+    .prepare("select payload_json from table_saved_filters where table_key = @tableKey")
+    .get({ tableKey }) as { payload_json: string } | undefined;
+  return row?.payload_json ?? null;
+}
+
+export function upsertTableSavedFiltersPayload(tableKey: string, payloadJson: string): void {
+  getDatabase()
+    .prepare(
+      `insert into table_saved_filters (table_key, payload_json, updated_at)
+       values (@tableKey, @payloadJson, current_timestamp)
+       on conflict(table_key) do update set
+         payload_json = excluded.payload_json,
+         updated_at = current_timestamp`,
+    )
+    .run({ tableKey, payloadJson });
+}

@@ -9,7 +9,9 @@ import { Card } from "@/components/ui/card";
 import {
   DataTableActiveFiltersSummary,
   DataTableColHeader,
+  DataTableSavedFiltersBar,
   DataTableSortFilterDropdown,
+  useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
@@ -20,6 +22,7 @@ import {
   getMainJobColOptions,
   getMainJobColValue,
 } from "@/lib/job-table-helpers";
+import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
 
 type JobRowStatus = "loading" | "done" | "error";
 type SortCol = MainJobsSortCol;
@@ -74,9 +77,16 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     handleSort,
     handleFilter,
     clearAllFilters,
+    applySortAndFilters,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "fit", dir: "desc" }, defaultFilters);
+
+  const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.mainJobs);
+  const columnLabels = useMemo(
+    () => Object.fromEntries(COL_DEFS.map(({ col, label }) => [col, label])) as Record<SortCol, string>,
+    [],
+  );
 
   const isRunning = running || bulkRunning;
 
@@ -182,12 +192,27 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
   return (
     <div className="relative">
       <Card>
-        {activeFilterCount > 0 && (
+        {(activeFilterCount > 0 ||
+          (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
           <DataTableActiveFiltersSummary
             entityLabel="jobs"
+            hasActiveFilters={activeFilterCount > 0}
             onClearAll={clearAllFilters}
             shown={displayJobs.length}
             total={jobs.length}
+            trailing={
+              <DataTableSavedFiltersBar
+                activeFilterCount={activeFilterCount}
+                columnLabels={columnLabels}
+                deleteById={savedFiltersState.deleteById}
+                filters={filters}
+                items={savedFiltersState.items}
+                onApply={applySortAndFilters}
+                ready={savedFiltersState.ready}
+                saveSnapshot={savedFiltersState.saveSnapshot}
+                sort={sort}
+              />
+            }
           />
         )}
 

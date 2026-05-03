@@ -9,11 +9,14 @@ import { Button } from "@/components/ui/button";
 import {
   DataTableActiveFiltersSummary,
   DataTableColHeader,
+  DataTableSavedFiltersBar,
   DataTableSortFilterDropdown,
+  useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
+import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
 import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -88,9 +91,15 @@ export function ScanSourcesTable({
     handleSort,
     handleFilter,
     clearAllFilters,
+    applySortAndFilters,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "company", dir: "asc" });
+  const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.scanSources);
+  const columnLabels = useMemo(
+    () => Object.fromEntries(COL_DEFS.map(({ col, label }) => [col, label])) as Record<SortCol, string>,
+    [],
+  );
   const [pendingToggles, setPendingToggles] = useState<Set<string>>(new Set());
   const [pendingRemoves, setPendingRemoves] = useState<Set<string>>(new Set());
   const [enabledOverrides, setEnabledOverrides] = useState<Map<string, boolean>>(() => new Map());
@@ -192,12 +201,27 @@ export function ScanSourcesTable({
 
   return (
     <div className="relative">
-      {activeFilterCount > 0 && (
+      {(activeFilterCount > 0 ||
+        (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
         <DataTableActiveFiltersSummary
           entityLabel="sources"
+          hasActiveFilters={activeFilterCount > 0}
           onClearAll={clearAllFilters}
           shown={displaySources.length}
           total={sources.length}
+          trailing={
+            <DataTableSavedFiltersBar
+              activeFilterCount={activeFilterCount}
+              columnLabels={columnLabels}
+              deleteById={savedFiltersState.deleteById}
+              filters={filters}
+              items={savedFiltersState.items}
+              onApply={applySortAndFilters}
+              ready={savedFiltersState.ready}
+              saveSnapshot={savedFiltersState.saveSnapshot}
+              sort={sort}
+            />
+          }
         />
       )}
 

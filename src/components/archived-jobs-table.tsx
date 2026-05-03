@@ -7,7 +7,9 @@ import { Card } from "@/components/ui/card";
 import {
   DataTableActiveFiltersSummary,
   DataTableColHeader,
+  DataTableSavedFiltersBar,
   DataTableSortFilterDropdown,
+  useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
@@ -19,6 +21,7 @@ import {
   getArchivedJobColOptions,
   getArchivedJobColValue,
 } from "@/lib/job-table-helpers";
+import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
 
 const COL_DEFS: Array<{ col: ArchivedJobsSortCol; label: string }> = [
   { col: "title", label: "Role" },
@@ -45,9 +48,22 @@ export function ArchivedJobsTable({ jobs, unarchiveAction, deleteArchivedAction 
     handleSort,
     handleFilter,
     clearAllFilters,
+    applySortAndFilters,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<ArchivedJobsSortCol>({ col: "score", dir: "desc" });
+
+  const savedFiltersState = useDataTableSavedFilters<ArchivedJobsSortCol>(
+    TABLE_SAVED_FILTER_STORAGE_KEYS.archivedJobs,
+  );
+  const columnLabels = useMemo(
+    () =>
+      Object.fromEntries(COL_DEFS.map(({ col, label }) => [col, label])) as Record<
+        ArchivedJobsSortCol,
+        string
+      >,
+    [],
+  );
 
   const colOptions = useMemo(
     () =>
@@ -93,12 +109,27 @@ export function ArchivedJobsTable({ jobs, unarchiveAction, deleteArchivedAction 
   return (
     <div className="relative">
       <Card className="hidden lg:block">
-        {activeFilterCount > 0 && (
+        {(activeFilterCount > 0 ||
+          (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
           <DataTableActiveFiltersSummary
             entityLabel="archived jobs"
+            hasActiveFilters={activeFilterCount > 0}
             onClearAll={clearAllFilters}
             shown={displayJobs.length}
             total={jobs.length}
+            trailing={
+              <DataTableSavedFiltersBar
+                activeFilterCount={activeFilterCount}
+                columnLabels={columnLabels}
+                deleteById={savedFiltersState.deleteById}
+                filters={filters}
+                items={savedFiltersState.items}
+                onApply={applySortAndFilters}
+                ready={savedFiltersState.ready}
+                saveSnapshot={savedFiltersState.saveSnapshot}
+                sort={sort}
+              />
+            }
           />
         )}
 

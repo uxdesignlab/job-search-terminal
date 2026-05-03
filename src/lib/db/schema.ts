@@ -445,5 +445,15 @@ export const migrations = [
         updated_at text not null default current_timestamp
       );
     `
+  },
+  {
+    id: "0026_table_saved_filters",
+    sql: `
+      create table if not exists table_saved_filters (
+        table_key text primary key,
+        payload_json text not null,
+        updated_at text not null default current_timestamp
+      );
+    `
   }
 ];
