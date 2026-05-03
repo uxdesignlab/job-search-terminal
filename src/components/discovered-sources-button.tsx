@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   DataTableActiveFiltersSummary,
   DataTableColHeader,
+  DataTableSavedFiltersBar,
   DataTableSortFilterDropdown,
+  useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,7 @@ import {
   dataTableStickyHeadClass,
   dataTableStickyModalClass,
 } from "@/components/ui/table";
+import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
 
 type DiscoveredEntry = {
   slug: string;
@@ -69,9 +72,17 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
     handleSort,
     handleFilter,
     clearAllFilters,
+    applySortAndFilters,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "slug", dir: "asc" });
+  const savedFiltersState = useDataTableSavedFilters<SortCol>(
+    TABLE_SAVED_FILTER_STORAGE_KEYS.discoveredSources,
+  );
+  const columnLabels = useMemo(
+    () => Object.fromEntries(COL_DEFS.map(({ col, label }) => [col, label])) as Record<SortCol, string>,
+    [],
+  );
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
     () => new Set(entries.map(entryKey))
   );
@@ -198,12 +209,27 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
             {/* Table */}
             <form onSubmit={handleImport} className="flex flex-1 flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto px-5 pt-4">
-                {activeFilterCount > 0 && (
+                {(activeFilterCount > 0 ||
+                  (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
                   <DataTableActiveFiltersSummary
                     entityLabel="sources"
+                    hasActiveFilters={activeFilterCount > 0}
                     onClearAll={clearAllFilters}
                     shown={displayEntries.length}
                     total={count}
+                    trailing={
+                      <DataTableSavedFiltersBar
+                        activeFilterCount={activeFilterCount}
+                        columnLabels={columnLabels}
+                        deleteById={savedFiltersState.deleteById}
+                        filters={filters}
+                        items={savedFiltersState.items}
+                        onApply={applySortAndFilters}
+                        ready={savedFiltersState.ready}
+                        saveSnapshot={savedFiltersState.saveSnapshot}
+                        sort={sort}
+                      />
+                    }
                   />
                 )}
                 <table

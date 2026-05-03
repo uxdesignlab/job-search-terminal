@@ -1,16 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-
-const STATUS_OPTIONS = [
-  "Applied",
-  "Follow-up needed",
-  "Recruiter responded",
-  "Interviewing",
-  "Offer",
-  "Rejected",
-  "Skipped",
-] as const;
+import { applicationStatuses, isApplicationStatus } from "@/lib/applications/status";
 
 type Props = {
   action: (formData: FormData) => void | Promise<void>;
@@ -19,7 +10,7 @@ type Props = {
 
 export function ApplicationStatusSelect({ action, currentStatus }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
-  const isKnown = (STATUS_OPTIONS as readonly string[]).includes(currentStatus);
+  const isKnown = isApplicationStatus(currentStatus);
 
   return (
     <form ref={formRef} action={action}>
@@ -34,7 +25,7 @@ export function ApplicationStatusSelect({ action, currentStatus }: Props) {
             {currentStatus}
           </option>
         )}
-        {STATUS_OPTIONS.map((s) => (
+        {applicationStatuses.map((s) => (
           <option key={s} value={s}>
             {s}
           </option>

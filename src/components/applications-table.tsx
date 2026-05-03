@@ -6,12 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import {
   DataTableActiveFiltersSummary,
   DataTableColHeader,
+  DataTableSavedFiltersBar,
   DataTableSortFilterDropdown,
+  useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { ApplicationRecord } from "@/lib/db/types";
+import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
 
 const TERMINAL_STATUSES = new Set(["Rejected", "Archived", "Skipped", "Offer"]);
 
@@ -81,9 +84,16 @@ export function ApplicationsTable({ rows, todayIso }: Props) {
     handleSort,
     handleFilter,
     clearAllFilters,
+    applySortAndFilters,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "company", dir: "asc" });
+
+  const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.applications);
+  const columnLabels = useMemo(
+    () => Object.fromEntries(COL_DEFS.map(({ col, label }) => [col, label])) as Record<SortCol, string>,
+    [],
+  );
 
   const colOptions = useMemo(
     () =>
@@ -125,12 +135,27 @@ export function ApplicationsTable({ rows, todayIso }: Props) {
 
   return (
     <div className="relative">
-      {activeFilterCount > 0 && (
+      {(activeFilterCount > 0 ||
+        (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
         <DataTableActiveFiltersSummary
           entityLabel="applications"
+          hasActiveFilters={activeFilterCount > 0}
           onClearAll={clearAllFilters}
           shown={displayRows.length}
           total={rows.length}
+          trailing={
+            <DataTableSavedFiltersBar
+              activeFilterCount={activeFilterCount}
+              columnLabels={columnLabels}
+              deleteById={savedFiltersState.deleteById}
+              filters={filters}
+              items={savedFiltersState.items}
+              onApply={applySortAndFilters}
+              ready={savedFiltersState.ready}
+              saveSnapshot={savedFiltersState.saveSnapshot}
+              sort={sort}
+            />
+          }
         />
       )}
 
