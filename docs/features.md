@@ -203,29 +203,56 @@ Tools to prepare for interviews using stored experience.
 ## Profile `/profile`
 
 Career profile editor. The profile is the foundation for all evaluations and
-resume tailoring.
+resume tailoring. The page is split into **six tabs**, navigated via URL
+(`?tab=<id>`), each with its own save action.
 
-**Sections:**
+**Resume gate:** At least one resume PDF must be uploaded and extracted
+(`wordCount > 0`) before AI profile extraction is available. If no extracted
+resume exists, the Overview tab shows a warning card with a link to the Resumes
+tab, and the Resumes tab shows a prominent upload instruction banner.
 
-- **Search goal** — what the user is looking for next.
-- **Urgency** — how actively the user needs to find a role.
-- **Target roles** — desired job titles.
-- **Skills** — strongest skills, skills to use more, skills to use less.
-- **Constraints** — hard deal breakers.
-- **Industries** — target industries.
-- **Compensation** — salary and comp requirements.
-- **Work preferences** — schedule, team size, etc.
-- **Location and remote** — preferred locations and remote preference.
-- **Career intent** — stay on current path vs. explore a shift.
+### Tab: Overview (`?tab=overview`)
+- Summary card: name, current search goal, location, portfolio, urgency, direction.
+- **AI profile extraction card** — runs AI extraction on all uploaded resumes and
+  populates skills, role directions, and experience automatically. Only shown when
+  at least one resume has been extracted; otherwise shows the resume gate warning.
+- Edit form: current search goal, search direction, urgency (select), career
+  intent, career change interest, confidence level.
 
-**Actions:**
-- Extract profile from resume PDF (runs AI extraction on uploaded resume).
-- Discover sources (finds job posting URLs for target companies).
-- Edit any field inline and save.
+### Tab: Resumes (`?tab=resumes`)
+- Upload banner (shown when no extracted resumes exist): instructs the user to
+  re-upload a PDF on any lane, then return to Overview to run AI extraction.
+- **Resume lanes** — each lane is a different resume version (e.g. Principal /
+  Product Design Leadership, UX Design, Accessibility, etc.). Upload a PDF to
+  extract text for AI evaluation and tailoring. Rename lanes to match their focus.
+- **Skill inventory** — list of skills extracted from resume lanes (shown only
+  after at least one extraction). Re-run AI extraction from Overview to refresh.
 
-**Profile supplements:**
-- Add supplemental context to fill known gaps (certifications, volunteer work,
-  side projects). Used during evaluation and resume tailoring.
+### Tab: Skills & Roles (`?tab=skills`)
+- Read-only badge displays for: strongest skills (from AI extraction), skills to
+  use more, skills to use less, target roles.
+- Edit form: target roles (one per line), skills to use more (one per line),
+  skills to use less (one per line).
+
+### Tab: Preferences (`?tab=preferences`)
+- Summary cards: remote preference, compensation, desired industries, preferred
+  locations.
+- Edit form: remote preference (select: remote-only / local-or-remote / all),
+  preferred locations (one per line), desired industries (one per line),
+  compensation needs (free text), work preferences (one per line).
+
+### Tab: Constraints (`?tab=constraints`)
+- Read-only list of current constraints and deal breakers.
+- Edit form: constraints (soft limits, one per line), deal breakers (hard-no
+  conditions flagged as red flags in evaluations, one per line), career change
+  interest.
+
+### Tab: Writing Voice (`?tab=voice`)
+- Displays the current tone profile if already extracted (tone, formality,
+  sentence style, style guide).
+- Form to paste 2–5 writing samples (emails, cover letters, LinkedIn posts)
+  separated by `---`. Submitting runs AI style extraction and saves the tone
+  profile. Used to match AI-generated content to the user's authentic voice.
 
 ---
 
