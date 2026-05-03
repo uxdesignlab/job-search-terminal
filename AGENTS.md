@@ -1,8 +1,8 @@
-# JS Agent Instructions
+# Job Search Terminal — Agent Instructions
 
-JS is a local-first, dashboard-first job-search command center. The product
-reuses proven CareerOps concepts behind the scenes, but the user experience must
-feel like a minimal professional SaaS dashboard.
+Job Search Terminal is a local-first, dashboard-first job-search command center.
+The product reuses proven CareerOps concepts behind the scenes, but the user
+experience must feel like a minimal professional SaaS dashboard.
 
 ## Project Direction
 
@@ -36,7 +36,7 @@ assistant, or dashboard metric from scratch, check the CareerOps reuse map in
 
 Default to reusing CareerOps code and functionality as much as possible. If a
 CareerOps component already performs the needed engine behavior, copy, vendor,
-or port that code into JS and wrap it with the dashboard/backend interface. Do
+or port that code into Job Search Terminal and wrap it with the dashboard/backend interface. Do
 not reinvent equivalent logic unless the reuse map documents a concrete reason.
 
 Use this policy:

@@ -1,6 +1,6 @@
 # Design System
 
-The JS interface is a focused work dashboard: compact, calm, professional, and
+The Job Search Terminal interface is a focused work dashboard: compact, calm, professional, and
 built for repeated scanning. Every visual decision should reduce cognitive load,
 not add it.
 

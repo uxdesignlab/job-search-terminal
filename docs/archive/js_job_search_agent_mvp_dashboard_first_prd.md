@@ -1,18 +1,18 @@
-# JS Job Search Agent MVP — Dashboard-First PRD
+# Job Search Terminal MVP — Dashboard-First PRD
 
 ## Product position
 
-JS is a job-search command center built on top of the existing CareerOps open-source project.
+Job Search Terminal is a job-search command center built on top of the existing CareerOps open-source project.
 
 CareerOps repository: https://github.com/santifer/career-ops
 
 Reference case study / product write-up: https://santifer.io/career-ops-system
 
-JS should reuse as much proven CareerOps functionality as possible, then wrap it in a cleaner, dashboard-first user experience.
+Job Search Terminal should reuse as much proven CareerOps functionality as possible, then wrap it in a cleaner, dashboard-first user experience.
 
 CareerOps is not just inspiration. It is the implementation foundation.
 
-JS is a job-search command center that uses CareerOps automation under the hood, but presents the experience as a clean dashboard.
+Job Search Terminal is a job-search command center that uses CareerOps automation under the hood, but presents the experience as a clean dashboard.
 
 The user should not feel like they are running scripts, editing files, or managing a developer tool. They should feel like they are using a focused SaaS product built to help them find, evaluate, tailor, and apply to the right jobs faster.
 
@@ -30,7 +30,7 @@ Everything in the product should reduce friction, decision fatigue, and manual r
 
 The product must be built around the user first, not around the job listing, the resume, or the automation.
 
-Before JS searches for jobs, it needs to understand the user:
+Before Job Search Terminal searches for jobs, it needs to understand the user:
 
 - Who they are
 - What they have done
@@ -65,7 +65,7 @@ The product should feel like a simple SaaS app, even if the backend initially re
 
 ## CareerOps foundation
 
-This PRD assumes JS starts from CareerOps, not from scratch.
+This PRD assumes Job Search Terminal starts from CareerOps, not from scratch.
 
 Source repository:
 
@@ -73,7 +73,7 @@ https://github.com/santifer/career-ops
 
 CareerOps already proves the core job-search automation model works. It includes scanning, pipeline management, evaluation modes, resume tailoring, PDF generation, application help, tracking, dashboard metrics, and Codex routing.
 
-Important implementation note: CareerOps was originally built with Claude Code, OpenCode, and Gemini CLI-style workflows in mind. JS will use CareerOps as the foundation, but Codex is the primary development and agent orchestration tool for this project. Any reused CareerOps logic must be adapted so Codex can operate it cleanly through `AGENTS.md`, structured project instructions, and dashboard-triggered workflows.
+Important implementation note: CareerOps was originally built with Claude Code, OpenCode, and Gemini CLI-style workflows in mind. Job Search Terminal will use CareerOps as the foundation, but Codex is the primary development and agent orchestration tool for this project. Any reused CareerOps logic must be adapted so Codex can operate it cleanly through `AGENTS.md`, structured project instructions, and dashboard-triggered workflows.
 
 Codex is the default operating path. Gemini CLI, Google/Gemini-based search workflows, or other external search clients may be added later as optional adapters when they provide useful job discovery, research, or indexing capabilities. They should not become the primary product workflow unless there is a clear advantage.
 
@@ -81,13 +81,13 @@ The development strategy is:
 
 1. Study CareerOps repository structure.
 2. Reuse working scripts, prompts, modes, templates, and data flow wherever possible.
-3. Replace only the parts that conflict with the JS product direction.
+3. Replace only the parts that conflict with the Job Search Terminal product direction.
 4. Build a dashboard interface on top of the proven engine.
 5. Avoid rebuilding functionality CareerOps already handles well.
 
 The product mistake to avoid: treating this as a greenfield app.
 
-JS should be a user-centered product layer over CareerOps, not a rewrite for the sake of rewriting.
+Job Search Terminal should be a user-centered product layer over CareerOps, not a rewrite for the sake of rewriting.
 
 ---
 
@@ -109,7 +109,7 @@ CareerOps gives us working logic for:
 - Codex routing through `AGENTS.md`
 - Optional Gemini CLI / search workflow patterns where useful
 
-CareerOps may include references to Claude Code, OpenCode, Gemini CLI, or slash-command workflows. For JS, these should be treated as implementation references, not the final operating model. The JS implementation must prioritize Codex-compatible workflows.
+CareerOps may include references to Claude Code, OpenCode, Gemini CLI, or slash-command workflows. For Job Search Terminal, these should be treated as implementation references, not the final operating model. The Job Search Terminal implementation must prioritize Codex-compatible workflows.
 
 If Gemini CLI or other search clients help with discovery, research, or broader job-source coverage, they may be integrated as secondary adapters. The dashboard should hide which underlying tool performed the search.
 
@@ -141,9 +141,9 @@ CareerOps should remain the foundation, but the user experience must change.
 
 CareerOps is mostly local, file-based, and CLI-driven.
 
-JS should be dashboard-first.
+Job Search Terminal should be dashboard-first.
 
-| CareerOps | JS MVP |
+| CareerOps | Job Search Terminal MVP |
 |---|---|
 | User runs scripts | User clicks buttons |
 | Markdown tracker | Dashboard pipeline |
@@ -693,7 +693,7 @@ Those may exist internally, but the dashboard should translate them into plain a
 
 ### Primary tool
 
-Codex is the primary development and agent orchestration tool for JS.
+Codex is the primary development and agent orchestration tool for Job Search Terminal.
 
 Codex should own:
 
@@ -1081,9 +1081,9 @@ Required outputs:
 
 This prevents wheel reinvention.
 
-CareerOps should be treated as the working engine. JS should become the user-centered dashboard and product layer around it.
+CareerOps should be treated as the working engine. Job Search Terminal should become the user-centered dashboard and product layer around it.
 
-Codex should be treated as the primary implementation partner for JS. Any inherited CareerOps instructions should be rewritten so Codex has clear ownership of project structure, routing, coding tasks, testing, and dashboard-triggered agent workflows.
+Codex should be treated as the primary implementation partner for Job Search Terminal. Any inherited CareerOps instructions should be rewritten so Codex has clear ownership of project structure, routing, coding tasks, testing, and dashboard-triggered agent workflows.
 
 Gemini/search workflows should remain available as future plug-in adapters where they improve job discovery or research. They should not force the user back into command-line behavior.
 
@@ -1185,9 +1185,9 @@ Buttons:
 
 Development should start by pulling apart CareerOps and reusing what already works.
 
-However, do not copy CareerOps’ Claude Code-oriented interaction model blindly. JS is Codex-first. CareerOps logic should be adapted into Codex-readable project instructions, backend services, and dashboard actions.
+However, do not copy CareerOps’ Claude Code-oriented interaction model blindly. Job Search Terminal is Codex-first. CareerOps logic should be adapted into Codex-readable project instructions, backend services, and dashboard actions.
 
-The JS repo should include clear references back to:
+The Job Search Terminal repo should include clear references back to:
 
 - CareerOps source: https://github.com/santifer/career-ops
 - CareerOps write-up: https://santifer.io/career-ops-system
@@ -1200,7 +1200,7 @@ If CareerOps has a working version, adapt it.
 
 If CareerOps has a weak user experience, wrap it.
 
-If CareerOps has a wrong assumption for JS, replace only that assumption.
+If CareerOps has a wrong assumption for Job Search Terminal, replace only that assumption.
 
 If CareerOps assumes Claude Code, OpenCode, Gemini CLI, or slash commands, translate the workflow into Codex-first implementation using `AGENTS.md`, structured prompts, scripts, services, and dashboard actions.
 
@@ -1260,7 +1260,7 @@ The first development task is not coding new features. It is mapping what can be
 
 Deliverables:
 
-- New `JS` repo structure
+- New `Job Search Terminal` repo structure
 - `AGENTS.md`
 - `README.md`
 - `PRD.md`

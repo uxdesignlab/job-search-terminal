@@ -54,6 +54,8 @@ The full job pipeline. Lists every discovered job with filtering and bulk tools.
 - Filter by status, score range, remote type, archetype.
 - Text search across company and title.
 - Bulk operations: change status on multiple jobs, archive, or delete in bulk.
+- Marking a job **Skipped** (individually or in bulk) removes it from this list
+  immediately — it is auto-archived and moves to the Archived page.
 - Sweep / cleanup tool to archive or delete expired or low-score jobs.
 - Add job manually via modal (paste URL or fill in details).
 - **Column filters** — click any column header to open a sort + multi-value
@@ -134,12 +136,17 @@ Application funnel tracker with three view modes:
 
 ## Archived `/archived`
 
-Jobs that have been manually archived or marked as expired.
+Jobs that have been manually archived, marked as expired, or skipped.
 
 - Table of archived jobs with original score and archival date.
 - Column filters and saved filter presets on the archived jobs table.
 - Restore action: move a job back to active.
 - Delete action: permanently remove the job and all associated records.
+
+**Auto-archive on skip:** marking a job as **Skipped** automatically moves it to
+the archive. The job leaves the active pipeline immediately — it will no longer
+appear on the Jobs page or the Dashboard action queue. It remains visible on the
+Archived page and can be restored at any time.
 
 ---
 
@@ -325,7 +332,7 @@ custom URLs configured in Settings.
 
 ## Data and Privacy
 
-- All data is stored locally in `data/js.sqlite` on the user's machine.
+- All data is stored locally in `data/job-search-terminal.sqlite` on the user's machine.
 - No data is sent to any server except AI provider API calls (evaluation,
   generation, etc.).
 - The database file is excluded from git.

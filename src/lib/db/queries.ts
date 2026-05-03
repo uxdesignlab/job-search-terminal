@@ -286,7 +286,15 @@ export function unarchiveJob(id: string) {
 }
 
 export function updateJobStatus(id: string, status: string) {
-  getDatabase().prepare("update jobs set status = @status where id = @id").run({ id, status });
+  if (status === "Skipped") {
+    // Skipped jobs are auto-archived so they leave the active pipeline immediately.
+    getDatabase()
+      .prepare("update jobs set status = @status, archived = 1, updated_at = current_timestamp where id = @id")
+      .run({ id, status });
+    logActivity("job", id, "Job skipped and archived", {});
+  } else {
+    getDatabase().prepare("update jobs set status = @status where id = @id").run({ id, status });
+  }
 }
 
 export function saveJobDescription(id: string, rawDescription: string) {

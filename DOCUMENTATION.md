@@ -405,7 +405,7 @@ Or edit `config/portals.yml` directly for full control.
 
 ## Database
 
-All data is stored in `data/js.sqlite`. The database uses WAL mode for reliability.
+All data is stored in `data/job-search-terminal.sqlite`. The database uses WAL mode for reliability.
 
 ### Tables
 
@@ -451,13 +451,13 @@ Creates a timestamped copy in `output/backups/`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JS_DATABASE_PATH` | `data/js.sqlite` (relative to project root) | Override the database file location |
+| `JST_DATABASE_PATH` | `data/job-search-terminal.sqlite` (relative to project root) | Override the database file location |
 | `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` | Auto-detected | Override Chromium path for PDF rendering |
 
 Create a `.env.local` file in the project root to set these:
 
 ```
-JS_DATABASE_PATH=/absolute/path/to/your/database.sqlite
+JST_DATABASE_PATH=/absolute/path/to/your/database.sqlite
 ```
 
 ### AI Keys
@@ -584,7 +584,7 @@ Run all scripts from the project root with `npm run <script>`.
 ```
 project root/
 ├── data/
-│   └── js.sqlite           # Primary database (all your data)
+│   └── job-search-terminal.sqlite    # Primary database (all your data)
 ├── assets/
 │   └── *.pdf               # Your uploaded base resume PDFs
 ├── output/
@@ -597,7 +597,7 @@ project root/
     └── portals.example.yml # Reference template
 ```
 
-**Important**: `data/js.sqlite` is your entire dataset. Back it up before making schema changes or running `db:reset`.
+**Important**: `data/job-search-terminal.sqlite` is your entire dataset. Back it up before making schema changes or running `db:reset`.
 
 ---
 

@@ -57,7 +57,7 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
           {/* Logo */}
           <Link className="flex items-center gap-2.5 py-3 shrink-0" href="/dashboard">
             <Image alt="UX Design Lab" height={28} src="/images/UXDL-logo.svg" width={28} />
-            <span className="text-sm font-bold tracking-tight text-ink">Job Search</span>
+            <span className="text-sm font-bold tracking-tight text-ink">Job Search Terminal</span>
           </Link>
 
           {/* Primary nav */}

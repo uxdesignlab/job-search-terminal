@@ -1,6 +1,6 @@
 # Data Model
 
-JS stores all runtime data in a local SQLite database at `data/js.sqlite`.
+Job Search Terminal stores all runtime data in a local SQLite database at `data/job-search-terminal.sqlite`.
 The file is excluded from git. All schema changes are applied through a
 sequential migration system defined in `src/lib/db/schema.ts`.
 
@@ -137,7 +137,7 @@ Every job discovered by scanning or added manually.
 | `location` | Job location text |
 | `remote_type` | `remote` / `hybrid` / `onsite` / `unknown` |
 | `date_posted` | Date from ATS if available |
-| `first_seen_date` | Date JS first discovered this job |
+| `first_seen_date` | Date Job Search Terminal first discovered this job |
 | `freshness_label` | Human-readable freshness (e.g., "3 days ago") |
 | `raw_description` | Full raw job description text |
 | `parsed_description` | Cleaned description for display |
@@ -460,10 +460,10 @@ via `src/lib/table-saved-filters-actions.ts` (Next.js server actions).
 | `payload_json` | Versioned JSON blob containing the array of saved filter entries |
 | `updated_at` | ISO timestamp of last save |
 
-**Registered table keys:** `js.dt.savedFilters.mainJobs` ·
-`js.dt.savedFilters.archivedJobs` · `js.dt.savedFilters.applications` ·
-`js.dt.savedFilters.generatedDocs` · `js.dt.savedFilters.scanSources` ·
-`js.dt.savedFilters.discoveredSources`
+**Registered table keys:** `jst.dt.savedFilters.mainJobs` ·
+`jst.dt.savedFilters.archivedJobs` · `jst.dt.savedFilters.applications` ·
+`jst.dt.savedFilters.generatedDocs` · `jst.dt.savedFilters.scanSources` ·
+`jst.dt.savedFilters.discoveredSources`
 
 ---
 
@@ -493,7 +493,7 @@ npm run discover:sources  # discover new job posting sources
 - `getDatabase()` runs migrations and seeds only if the database is empty.
 - Server-rendered pages read through `src/lib/db/queries.ts`.
 - `db:reset` deletes the SQLite file, re-runs all migrations, and re-seeds.
-- The database file is `data/js.sqlite` by default. Override with
-  `JS_DATABASE_PATH` environment variable.
-- Do not delete or move `data/js.sqlite` while the dev server is running.
+- The database file is `data/job-search-terminal.sqlite` by default. Override with
+  `JST_DATABASE_PATH` environment variable.
+- Do not delete or move `data/job-search-terminal.sqlite` while the dev server is running.
 - Create a backup with `npm run data:backup` before any risky local changes.

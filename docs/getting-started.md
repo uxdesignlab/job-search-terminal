@@ -7,7 +7,7 @@ running on your computer — even if you have no development background.
 
 ## What is this app?
 
-**JS Job Search Agent** is a local job-search dashboard that runs entirely on
+**Job Search Terminal** is a local job-search dashboard that runs entirely on
 your computer. It helps you:
 
 - Discover new job postings automatically from company career pages.
@@ -85,14 +85,14 @@ cd ~/Desktop
 Then download the app:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/js-job-search-agent.git
+git clone https://github.com/YOUR_USERNAME/job-search-terminal.git
 ```
 
-Replace `YOUR_USERNAME/js-job-search-agent` with the actual GitHub repository
+Replace `YOUR_USERNAME/job-search-terminal` with the actual GitHub repository
 path. Once cloned, move into the project folder:
 
 ```bash
-cd js-job-search-agent
+cd job-search-terminal
 ```
 
 ### 4. Install dependencies
@@ -200,7 +200,7 @@ npm run dev
 
 ## Backing up your data
 
-All your data is in `data/js.sqlite`. Back it up at any time:
+All your data is in `data/job-search-terminal.sqlite`. Back it up at any time:
 
 ```bash
 npm run data:backup
@@ -258,7 +258,7 @@ automatically, paste the following prompt into **Claude Code** or **Codex**:
 ---
 
 ```
-I want you to set up and run the JS Job Search Agent app on my computer.
+I want you to set up and run the Job Search Terminal app on my computer.
 
 Here is what I need you to do:
 
@@ -267,13 +267,13 @@ Here is what I need you to do:
    to install it before continuing.
 
 2. Clone the repository from GitHub:
-   git clone https://github.com/YOUR_USERNAME/js-job-search-agent.git
+   git clone https://github.com/YOUR_USERNAME/job-search-terminal.git
 
-   Replace YOUR_USERNAME/js-job-search-agent with the actual repo path I give
+   Replace YOUR_USERNAME/job-search-terminal with the actual repo path I give
    you. If I haven't given you a repo path yet, ask me for it.
 
 3. Change into the project directory:
-   cd js-job-search-agent
+   cd job-search-terminal
 
 4. Install dependencies:
    npm install
@@ -301,5 +301,5 @@ verified it. Ask me if you are unsure about anything.
 
 ---
 
-Replace `YOUR_USERNAME/js-job-search-agent` in the prompt with the actual
+Replace `YOUR_USERNAME/job-search-terminal` in the prompt with the actual
 GitHub URL before pasting it.
