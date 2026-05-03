@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { ApplicationStatusSelect } from "@/components/application-status-select";
 import { GapAddressingPanel } from "@/components/gap-addressing-panel";
 import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
@@ -246,20 +247,9 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             <p className="text-xs text-muted">Job detail</p>
             <h1 className="text-xl font-semibold text-ink">{job.title}</h1>
             <p className="mt-0.5 text-sm text-muted">{job.company} · {job.location} · {job.remoteType}</p>
-            {/* Score strip */}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge tone={scoreTone}>{fitScore}% · {scoreLabel}</Badge>
-              <Badge tone={recommendation === "Skip" ? "danger" : "success"}>{recommendation}</Badge>
-              {evaluation?.legitimacyLabel ? <Badge>{evaluation.legitimacyLabel}</Badge> : null}
-              {job.livenessStatus === "active" && <Badge tone="success">Live ✓</Badge>}
-              {job.livenessStatus === "expired" && <Badge tone="danger">Expired</Badge>}
-              {job.livenessStatus === "uncertain" && <Badge tone="warning">Status uncertain</Badge>}
-              <span className="text-xs text-muted">{formatPostedDate(job)}</span>
-              <span className="text-xs text-muted">· {job.status}</span>
-            </div>
           </div>
 
-          {/* Header actions — only universal ones */}
+          {/* Header actions — evaluate, liveness, posting link */}
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {!job.archived && <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />}
             {!job.archived && (
@@ -268,10 +258,22 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
               </form>
             )}
             <ExternalLinkButton href={job.url}>Job posting ↗</ExternalLinkButton>
+          </div>
+        </div>
+
+        {/* ── Status & score bar ───────────────────────────────────── */}
+        <div className="mb-4 flex items-center justify-between gap-4 rounded-panel border border-border bg-panel px-4 py-2.5">
+          {/* Left: status dropdown + job actions */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Status</span>
+            <ApplicationStatusSelect
+              action={updateStatusAction}
+              currentStatus={application?.status ?? job.status}
+            />
             {job.archived ? (
               <form action={unarchiveJobAction}>
                 <button
-                  className="inline-flex min-h-9 items-center justify-center rounded-control border border-border px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
+                  className="inline-flex min-h-8 items-center justify-center rounded-control border border-border px-3 py-1 text-sm font-medium text-muted hover:text-ink"
                   type="submit"
                 >
                   Unarchive
@@ -280,7 +282,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             ) : (
               <form action={archiveJobAction}>
                 <button
-                  className="inline-flex min-h-9 items-center justify-center rounded-control border border-border px-3 py-1.5 text-sm font-medium text-muted hover:text-ink"
+                  className="inline-flex min-h-8 items-center justify-center rounded-control border border-border px-3 py-1 text-sm font-medium text-muted hover:text-ink"
                   type="submit"
                 >
                   Archive
@@ -289,12 +291,23 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             )}
             <form action={deleteJobAction}>
               <button
-                className="inline-flex min-h-9 items-center justify-center rounded-control border border-danger/40 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/8"
+                className="inline-flex min-h-8 items-center justify-center rounded-control border border-danger/40 px-3 py-1 text-sm font-medium text-danger hover:bg-danger/8"
                 type="submit"
               >
                 Delete
               </button>
             </form>
+          </div>
+          {/* Right: score strip */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge tone={scoreTone}>{fitScore}% · {scoreLabel}</Badge>
+            <Badge tone={recommendation === "Skip" ? "danger" : "success"}>{recommendation}</Badge>
+            {evaluation?.legitimacyLabel ? <Badge>{evaluation.legitimacyLabel}</Badge> : null}
+            {job.livenessStatus === "active" && <Badge tone="success">Live ✓</Badge>}
+            {job.livenessStatus === "expired" && <Badge tone="danger">Expired</Badge>}
+            {job.livenessStatus === "uncertain" && <Badge tone="warning">Status uncertain</Badge>}
+            <span className="text-xs text-muted">{formatPostedDate(job)}</span>
+            <span className="text-xs text-muted">· {job.status}</span>
           </div>
         </div>
 
@@ -540,45 +553,6 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                   </CardDescription>
                 </CardHeader>
                 <div className="grid gap-4">
-                  <div className="flex flex-wrap gap-2">
-                    {(["Applied", "Recruiter responded", "Interviewing", "Offer", "Rejected"] as const).map((s) => {
-                      const current = (application?.status ?? job.status) === s;
-                      return (
-                        <form action={updateStatusAction} key={s}>
-                          <input name="status" type="hidden" value={s} />
-                          <button
-                            className={`inline-flex h-9 items-center rounded-control border px-3 text-sm font-medium transition-colors ${
-                              current
-                                ? "border-accent bg-accent/10 text-accent shadow-inner"
-                                : "border-border bg-surface text-ink hover:bg-panel"
-                            }`}
-                            type="submit"
-                          >
-                            {s}
-                          </button>
-                        </form>
-                      );
-                    })}
-                    {(["Skipped", "Archived"] as const).map((s) => {
-                      const label = s === "Skipped" ? "Skip" : "Archive";
-                      const current = (application?.status ?? job.status) === s;
-                      return (
-                        <form action={updateStatusAction} key={s}>
-                          <input name="status" type="hidden" value={s} />
-                          <button
-                            className={`inline-flex h-9 items-center rounded-control border px-3 text-sm font-medium transition-colors ${
-                              current
-                                ? "border-accent bg-accent/10 text-accent shadow-inner"
-                                : "border-border bg-surface text-muted hover:text-ink hover:bg-panel"
-                            }`}
-                            type="submit"
-                          >
-                            {label}
-                          </button>
-                        </form>
-                      );
-                    })}
-                  </div>
                   <form action={updateStatusAction} className="grid gap-3">
                     <input name="status" type="hidden" value="Follow-up needed" />
                     <Input
