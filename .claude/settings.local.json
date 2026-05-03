@@ -118,7 +118,14 @@
       "Bash(npx next *)",
       "Bash(ps -p 89913 -o command=)",
       "Bash(ps -p 91046 -o command=)",
-      "Bash(kill 89913)"
+      "Bash(kill 89913)",
+      "Bash(sed -i '' 's/data\\\\/js\\\\.sqlite/data\\\\/job-search-terminal.sqlite/g' /Users/dedpak/Work/js/GETTING_STARTED.md)",
+      "Bash(sed -i '' s/js-backup-YYYY/jst-backup-YYYY/g /Users/dedpak/Work/js/GETTING_STARTED.md)",
+      "Bash(sed -i '' 's/data\\\\/js\\\\.sqlite/data\\\\/job-search-terminal.sqlite/g' /Users/dedpak/Work/js/DOCUMENTATION.md)",
+      "Bash(sed -i '' s/JS_DATABASE_PATH/JST_DATABASE_PATH/g /Users/dedpak/Work/js/DOCUMENTATION.md)",
+      "Bash(perl -i '' -pe 's/\\\\bJS is\\\\b/Job Search Terminal is/g; s/\\\\bJS should\\\\b/Job Search Terminal should/g; s/\\\\bJS uses\\\\b/Job Search Terminal uses/g; s/\\\\bJS becomes\\\\b/Job Search Terminal becomes/g' /Users/dedpak/Work/js/docs/PRD.md)",
+      "Bash(perl -i '' -pe ' *)",
+      "Bash(python3 -)"
     ]
   }
 }

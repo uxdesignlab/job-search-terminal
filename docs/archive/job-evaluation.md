@@ -1,6 +1,6 @@
 # Job Evaluation
 
-Phase 6 adapts the CareerOps evaluation mode into a dashboard-triggered JS
+Phase 6 adapts the CareerOps evaluation mode into a dashboard-triggered Job Search Terminal
 service.
 
 ## CareerOps Structure Reused
@@ -15,10 +15,10 @@ CareerOps `modes/oferta.md` defines a full evaluation with reusable sections:
 - interview plan
 - posting legitimacy
 
-JS preserves that structure in SQLite-backed evaluation sections and replaces
+Job Search Terminal preserves that structure in SQLite-backed evaluation sections and replaces
 the AI/engineering archetypes with Pavel's UX/product/design leadership lanes.
 
-## JS Adaptation
+## Job Search Terminal Adaptation
 
 - Evaluation runs from the Job Detail dashboard action.
 - Results write to `evaluations` and update the related `jobs` row.

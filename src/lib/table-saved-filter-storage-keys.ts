@@ -1,11 +1,11 @@
 /** Stable keys for persisted table filter presets (SQLite `table_saved_filters`). */
 export const TABLE_SAVED_FILTER_STORAGE_KEYS = {
-  mainJobs: "js.dt.savedFilters.mainJobs",
-  archivedJobs: "js.dt.savedFilters.archivedJobs",
-  applications: "js.dt.savedFilters.applications",
-  generatedDocs: "js.dt.savedFilters.generatedDocs",
-  scanSources: "js.dt.savedFilters.scanSources",
-  discoveredSources: "js.dt.savedFilters.discoveredSources",
+  mainJobs: "jst.dt.savedFilters.mainJobs",
+  archivedJobs: "jst.dt.savedFilters.archivedJobs",
+  applications: "jst.dt.savedFilters.applications",
+  generatedDocs: "jst.dt.savedFilters.generatedDocs",
+  scanSources: "jst.dt.savedFilters.scanSources",
+  discoveredSources: "jst.dt.savedFilters.discoveredSources",
 } as const;
 
 export type TableSavedFilterStorageKey =

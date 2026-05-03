@@ -1,11 +1,11 @@
 # CareerOps Reuse Map
 
-JS uses CareerOps as an implementation foundation, not as the user experience.
+Job Search Terminal uses CareerOps as an implementation foundation, not as the user experience.
 The dashboard owns the workflow. CareerOps patterns and engine components are
 adapted behind dashboard actions.
 
 The project rule is reuse first. If CareerOps already has working code for a
-needed engine behavior, JS should copy, vendor, or port that code and adapt its
+needed engine behavior, Job Search Terminal should copy, vendor, or port that code and adapt its
 interfaces instead of rebuilding the behavior from scratch. Replacing CareerOps
 logic requires a documented reason in this map or in the implementation notes
 for that phase.
@@ -21,9 +21,9 @@ for that phase.
 
 These pieces should be reused with minimal behavioral change once feature work
 starts. The expected implementation path is to import, copy, vendor, or port the
-CareerOps code, then wrap it for JS dashboard/API use:
+CareerOps code, then wrap it for Job Search Terminal dashboard/API use:
 
-| CareerOps component | JS use |
+| CareerOps component | Job Search Terminal use |
 |---|---|
 | `scan.mjs` API detection | Greenhouse, Ashby, and Lever detection/parsing |
 | `scan.mjs` title filters | Initial job relevance filtering |
@@ -36,7 +36,7 @@ CareerOps code, then wrap it for JS dashboard/API use:
 
 ## Adapt
 
-These are valuable, but must be translated into JS product architecture:
+These are valuable, but must be translated into Job Search Terminal product architecture:
 
 | CareerOps component | Adaptation |
 |---|---|
@@ -52,7 +52,7 @@ These are valuable, but must be translated into JS product architecture:
 
 ## Replace
 
-These CareerOps assumptions conflict with JS:
+These CareerOps assumptions conflict with Job Search Terminal:
 
 - CLI and slash-command primary interaction.
 - Markdown tracker as the primary data store.
@@ -63,7 +63,7 @@ These CareerOps assumptions conflict with JS:
 - User-facing script names and file paths.
 
 Replacement applies to the product surface and architecture assumptions, not to
-engine behavior that can be reused. For example, JS should replace the
+engine behavior that can be reused. For example, Job Search Terminal should replace the
 slash-command interface, but still reuse the scanner/PDF/tracker logic behind a
 dashboard action where practical.
 
@@ -81,7 +81,7 @@ These are useful after the dashboard foundation works:
 
 ## Phase 8 Application And Tracker Reuse
 
-CareerOps `modes/apply.md` was adapted into the JS application assistant:
+CareerOps `modes/apply.md` was adapted into the Job Search Terminal application assistant:
 
 - load the evaluated job context before generating answers
 - support pasted application questions
@@ -89,7 +89,7 @@ CareerOps `modes/apply.md` was adapted into the JS application assistant:
 - update tracker state only after manual user action
 
 CareerOps `modes/tracker.md` and `templates/states.yml` were adapted into the
-SQLite tracker. JS keeps the CareerOps applied/responded/interview/offer/rejected
+SQLite tracker. Job Search Terminal keeps the CareerOps applied/responded/interview/offer/rejected
 shape, adds dashboard pre-application states, and records every meaningful status
 change in `activity_log`.
 
@@ -110,4 +110,4 @@ Current source assets:
 Do not copy or adapt CareerOps code during Phase 1. The output of this phase is
 the scaffold, docs, and implementation map. Feature work begins after this map
 is reviewed. After Phase 1, implementation phases should prefer direct
-CareerOps code reuse before writing equivalent JS-native logic.
+CareerOps code reuse before writing equivalent Job Search Terminal-native logic.

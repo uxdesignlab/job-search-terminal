@@ -1,6 +1,6 @@
 # Project Implementation Todo
 
-This document tracks the phased implementation of JS from scaffold to working
+This document tracks the phased implementation of Job Search Terminal from scaffold to working
 local MVP. Keep task status current as work lands.
 
 Project rule: reuse CareerOps code and functionality as much as possible. For
@@ -101,7 +101,7 @@ Review status:
 
 ## Phase 4 — User Profile And Resume Intelligence
 
-Goal: make JS understand Pavel before ranking jobs.
+Goal: make Job Search Terminal understand Pavel before ranking jobs.
 
 - [x] Extract text from the five source resume PDFs.
 - [x] Create structured resume-lane records.
@@ -131,7 +131,7 @@ Goal: discover jobs through dashboard action, using CareerOps scanner patterns.
 - [x] Copy or port CareerOps scanner code where practical instead of rewriting it.
 - [x] Preserve Greenhouse, Ashby, and Lever detection/parsing behavior from CareerOps.
 - [x] Preserve title filters and source config patterns from CareerOps.
-- [x] Document any scanner logic that must be changed for JS storage/API boundaries.
+- [x] Document any scanner logic that must be changed for Job Search Terminal storage/API boundaries.
 - [x] Write scan results to SQLite instead of Markdown.
 - [x] Add URL and company/role deduplication.
 - [x] Add freshness metadata and first-seen dates.
@@ -156,7 +156,7 @@ Review status:
 Goal: evaluate fit with evidence, recommendations, and role strategy.
 
 - [x] Port CareerOps evaluation mode structure into a dashboard-triggered service.
-- [x] Preserve reusable scoring/report sections unless they conflict with JS role lanes.
+- [x] Preserve reusable scoring/report sections unless they conflict with Job Search Terminal role lanes.
 - [x] Replace AI/engineering archetypes with UX/product/design leadership archetypes.
 - [x] Score fit using profile, resume lanes, constraints, and job requirements.
 - [x] Store evaluation summary, strengths, gaps, red flags, evidence mapping, and recommended action.
@@ -181,7 +181,7 @@ Goal: generate truthful tailored resumes from the dashboard.
 
 - [x] Copy or port CareerOps ATS HTML template approach where practical.
 - [x] Copy or port CareerOps Playwright PDF generation and ATS text normalization where practical.
-- [x] Document any template or renderer changes required for JS resume lanes.
+- [x] Document any template or renderer changes required for Job Search Terminal resume lanes.
 - [x] Select or recommend the best resume base for a job.
 - [x] Generate tailoring plan before PDF creation.
 - [x] Tailor summary and proof-point ordering without inventing claims.

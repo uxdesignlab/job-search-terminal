@@ -289,7 +289,7 @@ npm run dev
 
 ## Keeping Your Data Safe
 
-All your data is in one file: `data/js.sqlite` inside the project folder.
+All your data is in one file: `data/job-search-terminal.sqlite` inside the project folder.
 
 **Back it up regularly:**
 
@@ -297,7 +297,7 @@ All your data is in one file: `data/js.sqlite` inside the project folder.
 npm run data:backup
 ```
 
-This copies the database to `output/backups/` with a timestamp. You can also manually copy `data/js.sqlite` to an external drive, Dropbox, or iCloud at any time.
+This copies the database to `output/backups/` with a timestamp. You can also manually copy `data/job-search-terminal.sqlite` to an external drive, Dropbox, or iCloud at any time.
 
 **Never delete this file.** If it is lost, all your jobs, evaluations, applications, and resumes are gone.
 
@@ -350,7 +350,7 @@ npx playwright install chromium
 Restore from your backup:
 
 ```
-cp output/backups/js-backup-YYYY-MM-DD.sqlite data/js.sqlite
+cp output/backups/jst-backup-YYYY-MM-DD.sqlite data/job-search-terminal.sqlite
 ```
 
 Replace `YYYY-MM-DD` with the date of your most recent backup.
@@ -391,7 +391,7 @@ job-search-dashboard/
 ├── config/
 │   └── portals.yml  ← Companies to scan
 ├── data/
-│   └── js.sqlite    ← YOUR DATABASE — back this up!
+│   └── job-search-terminal.sqlite    ← YOUR DATABASE — back this up!
 ├── output/
 │   ├── *.pdf        ← Generated tailored resumes
 │   └── backups/     ← Database backups

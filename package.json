@@ -1,8 +1,8 @@
 {
-  "name": "js-job-search-agent",
+  "name": "job-search-terminal",
   "version": "0.1.0",
   "private": true,
-  "description": "Dashboard-first local job-search command center built on reusable CareerOps patterns.",
+  "description": "Job Search Terminal — local-first job-search dashboard with AI evaluation, resume tailoring, and application tracking.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

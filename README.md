@@ -1,4 +1,4 @@
-# JS Job Search Agent
+# Job Search Terminal
 
 A local-first job-search dashboard. Discovers jobs, scores them against your
 profile with AI, generates tailored resumes, drafts application answers, and
@@ -10,7 +10,7 @@ tracks every application — all on your computer with no accounts and no cloud.
 
 ```bash
 git clone <repo-url>
-cd js-job-search-agent
+cd job-search-terminal
 npm install
 npm run dev
 ```

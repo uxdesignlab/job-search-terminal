@@ -4,7 +4,7 @@ import path from "node:path";
 import { migrations } from "./schema";
 import { seedDatabaseIfEmpty } from "./seed";
 
-const databasePath = process.env.JS_DATABASE_PATH ?? path.join(process.cwd(), "data", "js.sqlite");
+const databasePath = process.env.JST_DATABASE_PATH ?? path.join(process.cwd(), "data", "job-search-terminal.sqlite");
 
 let db: Database.Database | undefined;
 

@@ -11,9 +11,9 @@ goal is copy-paste assistance and tracker updates, not browser automation.
 - `modes/tracker.md`: maintain application status, show funnel statistics, and
   keep PDF/report readiness visible.
 - `templates/states.yml`: preserve canonical tracker states and aliases where
-  practical while expanding JS-specific pre-application states.
+  practical while expanding Job Search Terminal-specific pre-application states.
 
-## JS Adaptation
+## Job Search Terminal Adaptation
 
 - Application answers are generated from saved profile, job, evaluation, resume
   evidence, and generated-resume metadata.
@@ -29,7 +29,7 @@ goal is copy-paste assistance and tracker updates, not browser automation.
 
 ## Tracker Statuses
 
-JS supports the following manual tracker states:
+Job Search Terminal supports the following manual tracker states:
 
 - Found
 - Reviewed

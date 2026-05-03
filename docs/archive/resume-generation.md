@@ -1,6 +1,6 @@
 # Resume Generation
 
-Phase 7 ports the CareerOps HTML-to-PDF resume generation path into the JS
+Phase 7 ports the CareerOps HTML-to-PDF resume generation path into the Job Search Terminal
 dashboard.
 
 ## CareerOps Behavior Reused
@@ -16,7 +16,7 @@ The implementation follows these CareerOps patterns:
 - ATS text normalization for smart punctuation, zero-width characters, and
   non-breaking spaces before PDF creation.
 
-## JS Adaptation
+## Job Search Terminal Adaptation
 
 - The source of truth is SQLite plus the extracted local resume-lane text.
 - Output files are written under `output/`.

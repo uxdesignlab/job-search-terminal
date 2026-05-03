@@ -1,6 +1,6 @@
 # Accessibility Checklist
 
-JS targets WCAG 2.2 AA defaults.
+Job Search Terminal targets WCAG 2.2 AA defaults.
 
 ## Global Requirements
 

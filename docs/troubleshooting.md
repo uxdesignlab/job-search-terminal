@@ -12,7 +12,7 @@ If pages render stale data:
 
 - Restart the dev server.
 - Run `npm run db:check` to verify the database is readable.
-- Confirm the expected local database is being used if `JS_DATABASE_PATH` is set.
+- Confirm the expected local database is being used if `JST_DATABASE_PATH` is set.
 
 ## Local Database
 

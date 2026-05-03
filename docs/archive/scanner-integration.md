@@ -1,6 +1,6 @@
 # Scanner Integration
 
-Phase 5 ports the CareerOps zero-token scanner pattern into JS as a
+Phase 5 ports the CareerOps zero-token scanner pattern into Job Search Terminal as a
 dashboard-triggered service.
 
 ## Reused CareerOps Behavior
@@ -15,9 +15,9 @@ The scanner keeps these CareerOps behaviors:
 - Fetch with a timeout and bounded concurrency.
 - Deduplicate by URL and by company/title.
 
-## JS Adaptation
+## Job Search Terminal Adaptation
 
-CareerOps writes scan output to Markdown files. JS adapts that boundary:
+CareerOps writes scan output to Markdown files. Job Search Terminal adapts that boundary:
 
 - Source config stays YAML-based at `config/portals.yml`, with
   `config/portals.example.yml` as the tracked fallback.
