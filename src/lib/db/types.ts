@@ -459,28 +459,6 @@ export type ProfileSupplementInput = {
   tags: string[];
 };
 
-export type Achievement = {
-  id: string;
-  name: string;
-  description: string;
-  unlocked: boolean;
-  unlockedAt?: string;
-};
-
-export type GamificationData = {
-  xp: number;
-  level: number;
-  levelName: string;
-  xpToNextLevel: number;
-  xpProgress: number;
-  streak: {
-    current: number;
-    longest: number;
-    lastAppliedDate: string | null;
-  };
-  achievements: Achievement[];
-};
-
 export type ActionQueueData = {
   toApply: JobRecord[];
   recentlyApplied: ApplicationRecord[];
