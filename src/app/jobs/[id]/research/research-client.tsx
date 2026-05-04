@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, EmptyState } from "@/components/ui";
 import type { CompanyResearchRecord } from "@/lib/db/types";
 
@@ -22,6 +24,55 @@ const AXIS_LABELS: Record<AxisKey, string> = {
   competitivePosition: "Competitive position",
   candidateAngle: "Your angle for this company"
 };
+
+function ResearchContent({ content }: { content: string }) {
+  if (!content.trim()) {
+    return <p className="text-sm leading-relaxed text-muted">No content available.</p>;
+  }
+
+  return (
+    <div className="text-sm leading-7 text-ink">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ children }) => <h3 className="mt-5 text-base font-semibold first:mt-0">{children}</h3>,
+          h2: ({ children }) => <h4 className="mt-4 text-sm font-semibold first:mt-0">{children}</h4>,
+          h3: ({ children }) => <h5 className="mt-4 text-sm font-medium text-ink/90 first:mt-0">{children}</h5>,
+          p: ({ children }) => <p className="mt-3 text-sm leading-7 text-ink/95 first:mt-0">{children}</p>,
+          ul: ({ children }) => <ul className="mt-3 ml-5 list-disc space-y-1.5 first:mt-0">{children}</ul>,
+          ol: ({ children }) => <ol className="mt-3 ml-5 list-decimal space-y-1.5 first:mt-0">{children}</ol>,
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          blockquote: ({ children }) => (
+            <blockquote className="mt-4 border-l-2 border-border pl-4 text-muted first:mt-0">{children}</blockquote>
+          ),
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              className="text-accent underline underline-offset-2 hover:opacity-90"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {children}
+            </a>
+          ),
+          code: ({ children }) => (
+            <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-ink">{children}</code>
+          ),
+          table: ({ children }) => (
+            <div className="mt-4 overflow-x-auto first:mt-0">
+              <table className="w-full min-w-[480px] border-collapse text-left text-xs">{children}</table>
+            </div>
+          ),
+          thead: ({ children }) => <thead className="bg-surface">{children}</thead>,
+          th: ({ children }) => <th className="border border-border px-2 py-1.5 font-semibold">{children}</th>,
+          td: ({ children }) => <td className="border border-border px-2 py-1.5 align-top">{children}</td>
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function savedToAxes(saved: CompanyResearchRecord): Partial<Record<AxisKey, AxisResult>> {
   const result: Partial<Record<AxisKey, AxisResult>> = {};
@@ -144,7 +195,7 @@ export function ResearchClient({ jobId, saved }: Props) {
               </CardTitle>
             </CardHeader>
             {result ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{result.content}</p>
+              <ResearchContent content={result.content} />
             ) : !isLoading ? (
               <EmptyState description="Click 'Start research' to generate this section." title="Not yet generated" />
             ) : null}
