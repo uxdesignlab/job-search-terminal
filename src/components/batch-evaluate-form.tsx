@@ -78,6 +78,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     handleFilter,
     clearAllFilters,
     applySortAndFilters,
+    resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "fit", dir: "desc" }, defaultFilters);
@@ -208,6 +209,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                 filters={filters}
                 items={savedFiltersState.items}
                 onApply={applySortAndFilters}
+                onResetToDefault={resetToDefault}
                 ready={savedFiltersState.ready}
                 saveSnapshot={savedFiltersState.saveSnapshot}
                 sort={sort}

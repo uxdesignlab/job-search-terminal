@@ -268,8 +268,15 @@ export function useDataTableSortFilterState<T extends string>(
   initialSort: { col: T; dir: DataTableSortDir },
   initialFilters?: Partial<Record<T, Set<string>>>,
 ) {
+  const cloneFilters = useCallback((source?: Partial<Record<T, Set<string>>>) => {
+    const next: Partial<Record<T, Set<string>>> = {};
+    for (const [key, values] of Object.entries(source ?? {}) as [T, Set<string> | undefined][]) {
+      if (values?.size) next[key] = new Set(values);
+    }
+    return next;
+  }, []);
   const [sort, setSort] = useState(initialSort);
-  const [filters, setFilters] = useState<Partial<Record<T, Set<string>>>>(initialFilters ?? {});
+  const [filters, setFilters] = useState<Partial<Record<T, Set<string>>>>(() => cloneFilters(initialFilters));
   const [openFilterCol, setOpenFilterCol] = useState<T | null>(null);
   const [filterPos, setFilterPos] = useState({ top: 0, left: 0 });
 
@@ -306,6 +313,12 @@ export function useDataTableSortFilterState<T extends string>(
     setFilters(snapshotToFilterSets(snapshot));
   }, []);
 
+  const resetToDefault = useCallback(() => {
+    setSort(initialSort);
+    setFilters(cloneFilters(initialFilters));
+    setOpenFilterCol(null);
+  }, [cloneFilters, initialFilters, initialSort]);
+
   const activeFilterCount = Object.keys(filters).length;
 
   return {
@@ -318,6 +331,7 @@ export function useDataTableSortFilterState<T extends string>(
     handleFilter,
     clearAllFilters,
     applySortAndFilters,
+    resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
   };
@@ -402,6 +416,11 @@ function parseSavedFiltersPayload<T extends string>(
 export function useDataTableSavedFilters<T extends string>(storageKey: string) {
   const [items, setItems] = useState<DataTableSavedFilterEntry<T>[]>([]);
   const [ready, setReady] = useState(false);
+  const itemsRef = useRef<DataTableSavedFilterEntry<T>[]>([]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const persistItems = useCallback(
     async (next: DataTableSavedFilterEntry<T>[]) => {
@@ -470,32 +489,33 @@ export function useDataTableSavedFilters<T extends string>(storageKey: string) {
   const saveSnapshot = useCallback(
     (snapshot: DataTableSortFilterSnapshot<T>, label: string) => {
       if (Object.keys(snapshot.filters).length === 0) return;
-      setItems((prev) => {
-        if (prev.some((p) => snapshotsEqual(p.snapshot, snapshot))) return prev;
-        if (prev.length >= MAX_SAVED_TABLE_FILTERS) return prev;
-        const entry: DataTableSavedFilterEntry<T> = {
-          id:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `sf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          label,
-          snapshot,
-        };
-        const next = [...prev, entry];
-        void persistItems(next);
-        return next;
-      });
+      const prev = itemsRef.current;
+      if (prev.some((p) => snapshotsEqual(p.snapshot, snapshot))) return;
+      if (prev.length >= MAX_SAVED_TABLE_FILTERS) return;
+      const entry: DataTableSavedFilterEntry<T> = {
+        id:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `sf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        label,
+        snapshot,
+      };
+      const next = [...prev, entry];
+      itemsRef.current = next;
+      setItems(next);
+      void persistItems(next);
     },
     [persistItems],
   );
 
   const deleteById = useCallback(
     (id: string) => {
-      setItems((prev) => {
-        const next = prev.filter((p) => p.id !== id);
-        void persistItems(next);
-        return next;
-      });
+      const prev = itemsRef.current;
+      const next = prev.filter((p) => p.id !== id);
+      if (next.length === prev.length) return;
+      itemsRef.current = next;
+      setItems(next);
+      void persistItems(next);
     },
     [persistItems],
   );
@@ -512,6 +532,7 @@ export type DataTableSavedFiltersBarProps<T extends string> = {
   filters: Partial<Record<T, Set<string>>>;
   activeFilterCount: number;
   onApply: (snapshot: DataTableSortFilterSnapshot<T>) => void;
+  onResetToDefault?: () => void;
   columnLabels: Partial<Record<T, string>>;
 };
 
@@ -525,6 +546,7 @@ export function DataTableSavedFiltersBar<T extends string>({
   filters,
   activeFilterCount,
   onApply,
+  onResetToDefault,
   columnLabels,
 }: DataTableSavedFiltersBarProps<T>) {
   const nameFieldId = useId();
@@ -600,6 +622,9 @@ export function DataTableSavedFiltersBar<T extends string>({
             className="shrink-0 border-l border-border px-1.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
             onClick={(e) => {
               e.stopPropagation();
+              if (snapshotsEqual(entry.snapshot, snapshotNow)) {
+                onResetToDefault?.();
+              }
               deleteById(entry.id);
             }}
             type="button"

@@ -73,6 +73,7 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
     handleFilter,
     clearAllFilters,
     applySortAndFilters,
+    resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "slug", dir: "asc" });
@@ -225,6 +226,7 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
                         filters={filters}
                         items={savedFiltersState.items}
                         onApply={applySortAndFilters}
+                        onResetToDefault={resetToDefault}
                         ready={savedFiltersState.ready}
                         saveSnapshot={savedFiltersState.saveSnapshot}
                         sort={sort}

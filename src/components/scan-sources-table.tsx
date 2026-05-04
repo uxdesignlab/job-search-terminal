@@ -92,6 +92,7 @@ export function ScanSourcesTable({
     handleFilter,
     clearAllFilters,
     applySortAndFilters,
+    resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "company", dir: "asc" });
@@ -217,6 +218,7 @@ export function ScanSourcesTable({
               filters={filters}
               items={savedFiltersState.items}
               onApply={applySortAndFilters}
+              onResetToDefault={resetToDefault}
               ready={savedFiltersState.ready}
               saveSnapshot={savedFiltersState.saveSnapshot}
               sort={sort}

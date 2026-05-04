@@ -49,6 +49,7 @@ export function ArchivedJobsTable({ jobs, unarchiveAction, deleteArchivedAction 
     handleFilter,
     clearAllFilters,
     applySortAndFilters,
+    resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<ArchivedJobsSortCol>({ col: "score", dir: "desc" });
@@ -125,6 +126,7 @@ export function ArchivedJobsTable({ jobs, unarchiveAction, deleteArchivedAction 
                 filters={filters}
                 items={savedFiltersState.items}
                 onApply={applySortAndFilters}
+                onResetToDefault={resetToDefault}
                 ready={savedFiltersState.ready}
                 saveSnapshot={savedFiltersState.saveSnapshot}
                 sort={sort}
