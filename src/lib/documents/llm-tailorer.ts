@@ -19,6 +19,8 @@ type SupplementContext = {
   content: string;
 };
 
+const MAX_RESUME_PROMPT_CHARS = 5000;
+
 function buildGapContext(
   gapResponses?: GapResponseContext[],
   supplements?: SupplementContext[]
@@ -44,35 +46,83 @@ function buildGapContext(
   return parts.length > 0 ? `\n\n${parts.join("\n")}` : "";
 }
 
+function buildKeywordsBlock(keywords: string[]): string {
+  if (keywords.length === 0) {
+    return "(None listed — rely on the source resume only.)";
+  }
+  return keywords.map((k) => `- ${k}`).join("\n");
+}
+
+function buildStrengthsBlock(strengths: string[]): string {
+  if (strengths.length === 0) {
+    return "(None listed.)";
+  }
+  return strengths.map((s) => `- ${s}`).join("\n");
+}
+
+function buildStyleContextBlock(): string {
+  const writingStyle = getWritingStyle();
+  if (!writingStyle.toneProfile) {
+    return "";
+  }
+  const formatted = formatStyleForPrompt(writingStyle.toneProfile).trim();
+  if (!formatted) {
+    return "";
+  }
+  return `
+
+STYLE CONTEXT:
+The following style guidance may influence tone only. It must never override factual accuracy, source grounding, or the strict rules above:
+${formatted}`;
+}
+
 export async function tailorResumeWithAI(
   job: JobRecord,
   evaluation: EvaluationRecord,
-  profile: UserProfileRecord,
+  _profile: UserProfileRecord,
   sourceResumeText: string,
   gapResponses?: GapResponseContext[],
   supplements?: SupplementContext[]
 ): Promise<TailoredSummary> {
   const provider = getActiveProvider();
-  const keywords = evaluation.keywords.slice(0, 12).join(", ");
-  const strengths = evaluation.strengths.slice(0, 4).join("; ");
+  const keywordLines = buildKeywordsBlock(evaluation.keywords.slice(0, 12));
+  const strengthLines = buildStrengthsBlock(evaluation.strengths.slice(0, 4));
   const archetype = evaluation.roleArchetype;
-  const writingStyle = getWritingStyle();
-  const styleContext = writingStyle.toneProfile
-    ? `\n\n${formatStyleForPrompt(writingStyle.toneProfile)}`
-    : "";
+  const styleContextBlock = buildStyleContextBlock();
   const gapContext = buildGapContext(gapResponses, supplements);
+
+  const resumeExcerpt =
+    sourceResumeText.length > MAX_RESUME_PROMPT_CHARS
+      ? `${sourceResumeText.slice(0, MAX_RESUME_PROMPT_CHARS)}\n\n[Resume excerpt truncated; only use claims supported by the text above.]`
+      : sourceResumeText;
 
   const messages: AIMessage[] = [
     {
       role: "system",
-      content: `You are a professional resume writer specializing in ATS-optimized tailoring.
+      content: `You are a professional resume writer specializing in truthful, ATS-aware resume tailoring.
 
-STRICT RULES — violating any of these is a failure:
-1. You may ONLY rewrite the Professional Summary section.
-2. Do NOT touch, move, reorder, or rewrite any experience bullet points.
-3. Do NOT invent, fabricate, or imply any achievement, metric, skill, company, title, or date that is not explicitly stated in the source resume text or candidate's gap responses below.
-4. Do NOT move content from one job role to another.
-5. The summary must be grounded solely in the candidate's actual background as written in the source resume.${styleContext}`
+PRIMARY TASK:
+Rewrite ONLY the Professional Summary section.
+
+STRICT RULES — violating any rule is a failure:
+1. Rewrite ONLY the Professional Summary section.
+2. Do NOT touch, move, reorder, rewrite, summarize, or reinterpret any experience bullet points.
+3. Do NOT invent, fabricate, exaggerate, or imply any achievement, metric, skill, company, title, industry, credential, degree, tool, certification, responsibility, date, or seniority that is not explicitly supported by the candidate source data.
+4. Do NOT move content from one job role, project, company, or time period to another.
+5. Do NOT describe the candidate as having held the target job title unless that title or equivalent seniority/domain is clearly supported by the resume.
+6. Do NOT use vague hype such as "visionary," "world-class," "rockstar," "guru," "unparalleled," "proven track record," or "results-driven" unless the phrase is directly supported and still necessary.
+7. ATS keywords, candidate strengths, archetype, and gap responses are suggestions only. You must verify each one against the source resume or user-confirmed gap responses before using it.
+8. If fewer than 3 ATS keywords are genuinely supported, use fewer than 3. Truth beats keyword stuffing.
+9. If the source evidence is thin, write a conservative summary rather than stretching the candidate's background.
+10. The summary must be grounded solely in the candidate's actual background from the source resume and user-confirmed gap responses.
+
+STYLE RULES:
+- Use 2–4 sentences.
+- Lead with the candidate's actual seniority, discipline, and domain.
+- Write in third person or implied third person; do not start with "I."
+- Keep it specific, plain, and recruiter-readable.
+- Prefer concrete domains, tools, methods, outcomes, and scope when supported.
+- Use natural ATS language, not keyword dumping.${styleContextBlock}`
     },
     {
       role: "user",
@@ -82,21 +132,22 @@ STRICT RULES — violating any of these is a failure:
 Title: ${job.title}
 Company: ${job.company}
 Archetype: ${archetype}
-ATS keywords to weave in naturally (only where they already fit the candidate's background): ${keywords}
-Candidate's relevant strengths for this role: ${strengths}
 
-## Candidate's Source Resume
-${sourceResumeText.slice(0, 5000)}${gapContext}
+## Candidate Signals to Verify Before Use
+ATS keywords to consider (use only if supported by the source resume or gap responses):
+${keywordLines}
 
-## Instructions
-- Write 2–4 sentences.
-- Lead with the candidate's actual seniority and domain.
-- Incorporate 3–5 of the ATS keywords naturally only if they are supported by the source resume.
-- Do not start with "I".
-- Do not make up or imply any experience that is not in the source resume or candidate's gap responses above.
-- If gap responses or additional profile context above are relevant, you MAY weave the most applicable one into the summary — only where genuinely supported.
+Candidate strengths to consider (use only if supported):
+${strengthLines}
 
-Return a JSON object: { "summary": "..." }`
+## Candidate Source Resume
+${resumeExcerpt}${gapContext}
+
+## Output Requirements
+Return valid JSON only.
+
+JSON shape:
+{ "summary": "2–4 sentence tailored professional summary." }`
     }
   ];
 

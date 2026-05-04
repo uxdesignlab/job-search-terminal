@@ -43,6 +43,7 @@ import {
   updateApplicationStatus,
   updateJobRecommendedResume,
 } from "@/lib/db/queries";
+import { coerceResumeBaseToLane } from "@/lib/evaluation/resume-lane-picker";
 import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,16 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
   const resumes = getResumes();
+  const resumeLaneNames = resumes.map((r) => r.name);
+  const resolvedRecommendedResume = resumeLaneNames.includes(job.recommendedResume)
+    ? job.recommendedResume
+    : evaluation
+      ? coerceResumeBaseToLane(
+          evaluation.resumeBaseRecommendation,
+          evaluation.roleArchetype,
+          resumeLaneNames
+        )
+      : "";
   const gapResponses = getJobGapResponses(id);
   const gapResponseMap = Object.fromEntries(
     gapResponses.map((r) => [r.gapText, { rawResponse: r.rawResponse, polishedResponse: r.polishedResponse }])
@@ -434,18 +445,21 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                 <CardHeader>
                   <CardTitle>Base resume</CardTitle>
                   <CardDescription>
-                    {evaluation?.resumeBaseRecommendation
-                      ? `AI suggests: ${evaluation.resumeBaseRecommendation}`
+                    {evaluation
+                      ? `AI suggests: ${coerceResumeBaseToLane(
+                          evaluation.resumeBaseRecommendation,
+                          evaluation.roleArchetype,
+                          resumeLaneNames
+                        )}`
                       : "Pick which resume to tailor from"}
                   </CardDescription>
                 </CardHeader>
                 {resumes.length > 0 ? (
-                  <form action={setResumeBaseAction} className="grid gap-3">
+                  <form action={setResumeBaseAction} className="grid gap-3" key={`${id}-resume-base-${resolvedRecommendedResume}`}>
                     <div className="grid gap-2">
                       {resumes.map((r) => {
-                        // job.recommendedResume is the user's saved choice (or AI default on first eval).
-                        // evaluation.resumeBaseRecommendation is only shown as a hint, never drives selection.
-                        const isRec = r.name === job.recommendedResume;
+                        // Prefer a valid saved job.recommendedResume; otherwise fall back to a coerced lane from evaluation.
+                        const isRec = r.name === resolvedRecommendedResume;
                         return (
                           <label
                             key={r.id}
@@ -493,7 +507,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <ResumeGeneratorModal
                       hasExistingDocument={!!generatedDocument}
                       jobId={id}
-                      recommendedResume={job.recommendedResume}
+                      recommendedResume={resolvedRecommendedResume}
                       resumes={resumes}
                     />
                     {hasDraft && generatedDocument && (
