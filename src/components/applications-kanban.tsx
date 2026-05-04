@@ -13,9 +13,17 @@ import {
 } from "@dnd-kit/core";
 import { Archive, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { closeApplicationAction, moveApplicationAction } from "@/app/applications/actions";
 import { Badge } from "@/components/ui/badge";
+import {
+  DataTableActiveFiltersSummary,
+  DataTableSavedFiltersBar,
+  DataTableSortFilterDropdown,
+  useDataTableSavedFilters,
+  useDataTableSortFilterState,
+} from "@/components/ui/data-table-sort-filter";
+import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
 import { cn } from "@/lib/utils";
 import type { ApplicationTableRow } from "./applications-table";
 
@@ -29,6 +37,15 @@ const ACTIVE_COLUMNS = [
 
 type ActiveColumnId = (typeof ACTIVE_COLUMNS)[number]["id"];
 type ColumnId = ActiveColumnId | "Rejected";
+type SortCol = "company" | "role" | "status" | "followUp" | "fit";
+
+const COL_DEFS: Array<{ col: SortCol; label: string }> = [
+  { col: "company", label: "Company" },
+  { col: "role", label: "Role" },
+  { col: "status", label: "Status" },
+  { col: "followUp", label: "Follow-up" },
+  { col: "fit", label: "Fit" },
+];
 
 const STATUS_TO_COLUMN: Record<string, ColumnId> = {
   Applied: "Applied",
@@ -58,6 +75,27 @@ function statusTone(status: string) {
   if (status === "Interviewing" || status === "Offer") return "success" as const;
   if (status === "Follow-up needed") return "warning" as const;
   return "neutral" as const;
+}
+
+function getColValue(row: ApplicationTableRow, col: SortCol): string {
+  switch (col) {
+    case "company":
+      return row.company;
+    case "role":
+      return row.role;
+    case "status":
+      return row.status;
+    case "followUp":
+      return row.followUpDate || "Not set";
+    case "fit":
+      return String(row.fitScore);
+    default:
+      return "";
+  }
+}
+
+function getColOptions(rows: ApplicationTableRow[], col: SortCol): string[] {
+  return [...new Set(rows.map((r) => getColValue(r, col)))].sort();
 }
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
@@ -327,14 +365,72 @@ export function ApplicationsKanban({ rows, todayIso }: Props) {
   const [activeCard, setActiveCard] = useState<ApplicationTableRow | null>(null);
   const [overColumnId, setOverColumnId] = useState<ColumnId | null>(null);
   const [closingCard, setClosingCard] = useState<ClosingCard | null>(null);
+  const {
+    sort,
+    filters,
+    openFilterCol,
+    filterPos,
+    openFilter,
+    handleSort,
+    handleFilter,
+    clearAllFilters,
+    applySortAndFilters,
+    resetToDefault,
+    setOpenFilterCol,
+    activeFilterCount,
+  } = useDataTableSortFilterState<SortCol>({ col: "company", dir: "asc" });
+
+  const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.applications);
+  const columnLabels = useMemo(
+    () => Object.fromEntries(COL_DEFS.map(({ col, label }) => [col, label])) as Record<SortCol, string>,
+    [],
+  );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  const colOptions = useMemo(
+    () =>
+      Object.fromEntries(COL_DEFS.map(({ col }) => [col, getColOptions(cards, col)])) as Record<
+        SortCol,
+        string[]
+      >,
+    [cards],
+  );
+
+  const displayCards = useMemo(() => {
+    let result = cards;
+    for (const [col, allowed] of Object.entries(filters) as [SortCol, Set<string>][]) {
+      if (!allowed) continue;
+      result = result.filter((r) => allowed.has(getColValue(r, col)));
+    }
+    return [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sort.col) {
+        case "company":
+          cmp = a.company.localeCompare(b.company);
+          break;
+        case "role":
+          cmp = a.role.localeCompare(b.role);
+          break;
+        case "status":
+          cmp = a.status.localeCompare(b.status);
+          break;
+        case "followUp":
+          cmp = (a.followUpDate || "").localeCompare(b.followUpDate || "");
+          break;
+        case "fit":
+          cmp = a.fitScore - b.fitScore;
+          break;
+      }
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+  }, [cards, sort, filters]);
+
   const activeColumns = ACTIVE_COLUMNS.map((col) => ({
     ...col,
-    cards: cards.filter((r) => STATUS_TO_COLUMN[r.status] === col.id),
+    cards: displayCards.filter((r) => STATUS_TO_COLUMN[r.status] === col.id),
   }));
-  const closedCount = cards.filter((r) => STATUS_TO_COLUMN[r.status] === "Rejected").length;
+  const closedCount = displayCards.filter((r) => STATUS_TO_COLUMN[r.status] === "Rejected").length;
   const isDragging = activeCard !== null;
 
   const handleDragStart = useCallback(
@@ -381,6 +477,63 @@ export function ApplicationsKanban({ rows, todayIso }: Props) {
 
   return (
     <div className="relative">
+      {(activeFilterCount > 0 ||
+        (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
+        <DataTableActiveFiltersSummary
+          entityLabel="applications"
+          hasActiveFilters={activeFilterCount > 0}
+          onClearAll={clearAllFilters}
+          shown={displayCards.length}
+          total={cards.length}
+          trailing={
+            <DataTableSavedFiltersBar
+              activeFilterCount={activeFilterCount}
+              columnLabels={columnLabels}
+              deleteById={savedFiltersState.deleteById}
+              filters={filters}
+              items={savedFiltersState.items}
+              onApply={applySortAndFilters}
+              onResetToDefault={resetToDefault}
+              ready={savedFiltersState.ready}
+              saveSnapshot={savedFiltersState.saveSnapshot}
+              sort={sort}
+            />
+          }
+        />
+      )}
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {COL_DEFS.map(({ col, label }) => {
+          const isFiltered = filters[col] !== undefined;
+          const isSorted = sort.col === col;
+          const isOpen = openFilterCol === col;
+          const active = isFiltered || isSorted;
+
+          return (
+            <button
+              key={col}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-control border px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors",
+                active
+                  ? "border-accent/40 bg-accent/5 text-accent"
+                  : "border-border bg-panel text-muted hover:text-ink",
+              )}
+              onClick={(e) => openFilter(col, e.currentTarget)}
+              type="button"
+            >
+              {label}
+              {isFiltered && <span className="text-[9px] leading-none text-accent">●</span>}
+              {isSorted && <span className="text-[10px]">{sort.dir === "asc" ? "↑" : "↓"}</span>}
+              <span
+                className={`text-[10px] transition-transform duration-150 ${isOpen ? "rotate-180" : ""} ${active ? "opacity-70" : "opacity-40"}`}
+              >
+                ▾
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
@@ -417,6 +570,21 @@ export function ApplicationsKanban({ rows, todayIso }: Props) {
 
       {closingCard && (
         <CloseApplicationSheet card={closingCard} onDismiss={() => setClosingCard(null)} />
+      )}
+
+      {openFilterCol && (
+        <DataTableSortFilterDropdown
+          filterByLabel={COL_DEFS.find((d) => d.col === openFilterCol)?.label.toLowerCase() ?? openFilterCol}
+          options={colOptions[openFilterCol]}
+          filter={filters[openFilterCol]}
+          isSortedAsc={sort.col === openFilterCol && sort.dir === "asc"}
+          isSortedDesc={sort.col === openFilterCol && sort.dir === "desc"}
+          pos={filterPos}
+          onSortAsc={() => handleSort(openFilterCol, "asc")}
+          onSortDesc={() => handleSort(openFilterCol, "desc")}
+          onFilter={(vals) => handleFilter(openFilterCol, vals)}
+          onClose={() => setOpenFilterCol(null)}
+        />
       )}
     </div>
   );

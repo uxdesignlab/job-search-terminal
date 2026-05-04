@@ -62,11 +62,14 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
   const [jobStatus, setJobStatus] = useState<Record<string, JobRowStatus>>({});
   const [running, setRunning] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
-  // Build default filter: exclude "Applied" jobs unless the user clears it
+  // Build default filter: exclude non-actionable statuses unless the user clears it
   const statusOptions = getMainJobColOptions(jobs, "status");
-  const defaultFilters = statusOptions.includes("Applied")
-    ? ({ status: new Set(statusOptions.filter((s) => s !== "Applied")) } as Partial<Record<SortCol, Set<string>>>)
-    : undefined;
+  const hiddenStatuses = new Set(["Applied", "Rejected", "Skipped"]);
+  const visibleStatuses = statusOptions.filter((status) => !hiddenStatuses.has(status));
+  const defaultFilters =
+    visibleStatuses.length !== statusOptions.length
+      ? ({ status: new Set(visibleStatuses) } as Partial<Record<SortCol, Set<string>>>)
+      : undefined;
 
   const {
     sort,
