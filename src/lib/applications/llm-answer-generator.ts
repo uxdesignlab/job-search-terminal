@@ -92,7 +92,7 @@ One answer per question in the same order. Each answer should be 2-4 sentences, 
     jobId,
     question,
     answer: answers[index] ?? fallbackAnswer(question, job.company, job.title, profile.name),
-    source: `AI-generated · ${provider.name} / ${provider.defaultModel}`,
+    source: `AI-generated · ${provider.name} / ${provider.effectiveModel}`,
     sortOrder: index
   }));
 
