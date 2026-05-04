@@ -1,8 +1,26 @@
 {
   "name": "job-search-terminal",
   "version": "0.1.0",
-  "private": true,
-  "description": "Job Search Terminal — local-first job-search dashboard with AI evaluation, resume tailoring, and application tracking.",
+  "description": "A free, source-available, local-first job-search dashboard that helps job seekers scan roles, score fit with AI, generate tailored resumes, track applications, and prepare for interviews without accounts, subscriptions, or cloud storage.",
+  "license": "CC-BY-NC-4.0",
+  "author": "UX Design Lab",
+  "homepage": "https://pavel.ux.business/job-search-terminal/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uxdesignlab/job-search-terminal.git"
+  },
+  "keywords": [
+    "job-search",
+    "career",
+    "source-available",
+    "non-commercial",
+    "local-first",
+    "ai",
+    "resume",
+    "applications",
+    "nextjs",
+    "sqlite"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",

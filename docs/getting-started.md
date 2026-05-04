@@ -85,11 +85,10 @@ cd ~/Desktop
 Then download the app:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/job-search-terminal.git
+git clone https://github.com/uxdesignlab/job-search-terminal.git
 ```
 
-Replace `YOUR_USERNAME/job-search-terminal` with the actual GitHub repository
-path. Once cloned, move into the project folder:
+Once cloned, move into the project folder:
 
 ```bash
 cd job-search-terminal
@@ -314,10 +313,7 @@ Here is what I need you to do:
    to install it before continuing.
 
 2. Clone the repository from GitHub:
-   git clone https://github.com/YOUR_USERNAME/job-search-terminal.git
-
-   Replace YOUR_USERNAME/job-search-terminal with the actual repo path I give
-   you. If I haven't given you a repo path yet, ask me for it.
+   git clone https://github.com/uxdesignlab/job-search-terminal.git
 
 3. Change into the project directory:
    cd job-search-terminal
@@ -352,3 +348,19 @@ verified it. Ask me if you are unsure about anything.
 
 Replace `YOUR_USERNAME/job-search-terminal` in the prompt with the actual
 GitHub URL before pasting it.
+
+---
+
+## Is this the same as Career-Ops?
+
+No. Job Search Terminal was inspired by Career-Ops, but it is a separate project with a different product direction.
+
+Career-Ops is a powerful CLI-first, agentic job-search system. Job Search Terminal is a browser-based, local-first dashboard designed to make the workflow more approachable for people who do not want to manage everything through AI coding tools and config files.
+
+---
+
+## License note
+
+Job Search Terminal is free for non-commercial use under CC BY-NC 4.0.
+
+Commercial use requires written permission from the copyright holder.
