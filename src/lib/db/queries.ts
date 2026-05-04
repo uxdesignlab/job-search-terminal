@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses } from "../applications/status";
+import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
 import { getDatabase } from "./client";
 import type {
   AIProviderName,
@@ -834,6 +835,21 @@ export function updateRoleDirection(input: RoleDirectionUpdateInput) {
 
 export function saveJobEvaluation(input: JobEvaluationResultInput) {
   const database = getDatabase();
+  const resumeNames = getResumes().map((r) => r.name);
+  const normalized = {
+    ...input,
+    resumeBaseRecommendation: coerceResumeBaseToLane(
+      input.resumeBaseRecommendation,
+      input.roleArchetype,
+      resumeNames
+    )
+  };
+  const job = getJobById(input.jobId);
+  const syncRecommended =
+    !job ||
+    job.recommendedResume === "To be selected" ||
+    !resumeNames.includes(job.recommendedResume);
+
   const save = database.transaction(() => {
     database
       .prepare(
@@ -876,15 +892,15 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
         )`
       )
       .run({
-        ...input,
-        strengthsJson: JSON.stringify(input.strengths),
-        gapsJson: JSON.stringify(input.gaps),
-        redFlagsJson: JSON.stringify(input.redFlags),
-        requirementMatchJson: JSON.stringify(input.requirementMatch),
-        resumeEvidenceJson: JSON.stringify(input.resumeEvidence),
-        sectionsJson: JSON.stringify(input.sections),
-        keywordsJson: JSON.stringify(input.keywords),
-        userCorrectionJson: JSON.stringify(input.userCorrection)
+        ...normalized,
+        strengthsJson: JSON.stringify(normalized.strengths),
+        gapsJson: JSON.stringify(normalized.gaps),
+        redFlagsJson: JSON.stringify(normalized.redFlags),
+        requirementMatchJson: JSON.stringify(normalized.requirementMatch),
+        resumeEvidenceJson: JSON.stringify(normalized.resumeEvidence),
+        sectionsJson: JSON.stringify(normalized.sections),
+        keywordsJson: JSON.stringify(normalized.keywords),
+        userCorrectionJson: JSON.stringify(normalized.userCorrection)
       });
 
     database
@@ -896,7 +912,7 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
           summary = @summary,
           why_it_matches = @whyItMatches,
           main_concern = @mainConcern,
-          recommended_resume = case when recommended_resume = 'To be selected' then @resumeBaseRecommendation else recommended_resume end,
+          recommended_resume = case when @syncRecommended = 1 then @resumeBaseRecommendation else recommended_resume end,
           salary_notes = @salaryNotes,
           requirement_match_json = @requirementMatchJson,
           resume_evidence_json = @resumeEvidenceJson,
@@ -907,11 +923,12 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
         where id = @jobId`
       )
       .run({
-        ...input,
-        requirementMatchJson: JSON.stringify(input.requirementMatch),
-        resumeEvidenceJson: JSON.stringify(input.resumeEvidence),
-        gapsJson: JSON.stringify(input.gaps),
-        redFlagsJson: JSON.stringify(input.redFlags)
+        ...normalized,
+        syncRecommended: syncRecommended ? 1 : 0,
+        requirementMatchJson: JSON.stringify(normalized.requirementMatch),
+        resumeEvidenceJson: JSON.stringify(normalized.resumeEvidence),
+        gapsJson: JSON.stringify(normalized.gaps),
+        redFlagsJson: JSON.stringify(normalized.redFlags)
       });
   });
 

@@ -1,6 +1,7 @@
 import { getJobById, getResumes, getRoleDirections, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
 import type { EvaluationSections, JobEvaluationResultInput, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { formatPostedDate } from "../dates";
+import { pickResumeBase } from "./resume-lane-picker";
 
 type RoleSignal = {
   archetype: string;
@@ -143,7 +144,7 @@ export function buildEvaluation(
     gaps,
     redFlags,
     recommendation,
-    resumeBaseRecommendation: roleMatch.resumeBase,
+    resumeBaseRecommendation: pickResumeBase(roleMatch.archetype, resumes.map((r) => r.name)),
     requirementMatch: strengths,
     resumeEvidence: evidence,
     sections,

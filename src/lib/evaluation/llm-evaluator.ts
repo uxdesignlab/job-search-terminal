@@ -4,6 +4,7 @@ import { withRetry } from "../ai/retry";
 import type { AIMessage, AIProvider } from "../ai/provider";
 import { getJobById, getRoleDirections, getResumes, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
 import type { EvaluationSections, JobEvaluationResultInput, JobRecord } from "../db/types";
+import { coerceResumeBaseToLane, pickResumeBase } from "./resume-lane-picker";
 import { buildJobContext, buildSystemPrompt } from "./prompts";
 
 export type BlockName = "a" | "b" | "c" | "d" | "e" | "f" | "g";
@@ -306,7 +307,15 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
 export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCallback): Promise<JobEvaluationResultInput> {
   const result = await evaluateJobWithAI(jobId, onBlock);
   saveJobEvaluation(result);
-  return result;
+  const resumeNames = getResumes().map((r) => r.name);
+  return {
+    ...result,
+    resumeBaseRecommendation: coerceResumeBaseToLane(
+      result.resumeBaseRecommendation,
+      result.roleArchetype,
+      resumeNames
+    )
+  };
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -316,20 +325,6 @@ function scoreLabelFor(score: number) {
   if (score >= 70) return "Review";
   if (score >= 55) return "Selective";
   return "Weak fit";
-}
-
-function pickResumeBase(archetype: string, resumeNames: string[]) {
-  const lower = archetype.toLowerCase();
-  const find = (substr: string) => resumeNames.find((n) => n.toLowerCase().includes(substr));
-  if (lower.includes("leadership") || lower.includes("management") || lower.includes("director") || lower.includes("chief") || lower.includes("vp"))
-    return find("leadership") ?? find("principal") ?? resumeNames[0] ?? "To be selected";
-  if (lower.includes("operations"))
-    return find("operations") ?? resumeNames[0] ?? "To be selected";
-  if (lower.includes("accessibility") || lower.includes("a11y"))
-    return find("a11y") ?? find("accessibility") ?? resumeNames[0] ?? "To be selected";
-  if (lower.includes("education") || lower.includes("teach"))
-    return find("teach") ?? find("education") ?? resumeNames[0] ?? "To be selected";
-  return find("principal") ?? find("leadership") ?? resumeNames[0] ?? "To be selected";
 }
 
 // Keeps the randomUUID import used (for future batch IDs)
