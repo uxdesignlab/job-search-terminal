@@ -81,6 +81,7 @@ export function GeneratedDocumentsTable({ rows }: Props) {
     handleFilter,
     clearAllFilters,
     applySortAndFilters,
+    resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>({ col: "generated", dir: "desc" });
@@ -150,6 +151,7 @@ export function GeneratedDocumentsTable({ rows }: Props) {
               filters={filters}
               items={savedFiltersState.items}
               onApply={applySortAndFilters}
+              onResetToDefault={resetToDefault}
               ready={savedFiltersState.ready}
               saveSnapshot={savedFiltersState.saveSnapshot}
               sort={sort}
