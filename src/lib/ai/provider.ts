@@ -25,6 +25,8 @@ export type ConnectionTestResult = {
 export interface AIProvider {
   readonly name: string;
   readonly defaultModel: string;
+  /** Resolved model id from settings (`config.model` when set, otherwise {@link defaultModel}). */
+  readonly effectiveModel: string;
   generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string>;
   generateJSON<T>(messages: AIMessage[], hint: string, config?: Partial<AIProviderConfig>): Promise<T>;
   stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk>;

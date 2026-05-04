@@ -294,7 +294,7 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
     keywords: blockE.keywords,
     userCorrection: {},
     providerUsed: provider.name,
-    modelUsed: provider.defaultModel,
+    modelUsed: provider.effectiveModel,
     tokensUsed: 0,
     generationMs: Date.now() - start,
     whyItMatches: blockB.strengths.slice(0, 3).join("; ") || "Pending review.",

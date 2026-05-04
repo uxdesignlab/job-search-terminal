@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Card, CardHeader, CardTitle } from "@/components/ui";
 
 type GapResponse = {
@@ -23,6 +23,17 @@ type Props = {
   initialResponses: Record<string, GapResponse>;
 };
 
+function buildGapState(item: string, initialResponses: Record<string, GapResponse>): GapState {
+  return {
+    open: false,
+    draft: initialResponses[item]?.rawResponse ?? "",
+    saving: false,
+    polishing: false,
+    polishedText: initialResponses[item]?.polishedResponse ?? "",
+    savedResponse: initialResponses[item]?.rawResponse ?? "",
+  };
+}
+
 function suggestedPromptFor(gapText: string): string {
   const cleaned = gapText
     .replace(/^(no\s+explicit\s+(evidence|proof)\s+of|no\s+direct\s+evidence\s+of|no\s+evidence\s+of|no\s+|lacks?\s+|missing\s+|limited\s+|lack\s+of\s+)/i, "")
@@ -33,31 +44,37 @@ function suggestedPromptFor(gapText: string): string {
 
 export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
   const [states, setStates] = useState<Record<string, GapState>>(() =>
-    Object.fromEntries(
-      items.map((item) => [
-        item,
-        {
-          open: false,
-          draft: initialResponses[item]?.rawResponse ?? "",
-          saving: false,
-          polishing: false,
-          polishedText: initialResponses[item]?.polishedResponse ?? "",
-          savedResponse: initialResponses[item]?.rawResponse ?? "",
-        },
-      ])
-    )
+    Object.fromEntries(items.map((item) => [item, buildGapState(item, initialResponses)]))
   );
 
+  useEffect(() => {
+    setStates((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const item of items) {
+        if (!next[item]) {
+          next[item] = buildGapState(item, initialResponses);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [items, initialResponses]);
+
   function update(gapText: string, patch: Partial<GapState>) {
-    setStates((prev) => ({ ...prev, [gapText]: { ...prev[gapText], ...patch } }));
+    setStates((prev) => ({
+      ...prev,
+      [gapText]: { ...(prev[gapText] ?? buildGapState(gapText, initialResponses)), ...patch },
+    }));
   }
 
   function toggleOpen(gapText: string) {
-    update(gapText, { open: !states[gapText].open });
+    const current = states[gapText] ?? buildGapState(gapText, initialResponses);
+    update(gapText, { open: !current.open });
   }
 
   async function handleSave(gapText: string) {
-    const s = states[gapText];
+    const s = states[gapText] ?? buildGapState(gapText, initialResponses);
     if (!s.draft.trim()) return;
     update(gapText, { saving: true });
     try {
@@ -73,7 +90,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
   }
 
   async function handlePolishAndSave(gapText: string) {
-    const s = states[gapText];
+    const s = states[gapText] ?? buildGapState(gapText, initialResponses);
     if (!s.draft.trim()) return;
     update(gapText, { polishing: true });
     try {
@@ -120,7 +137,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
       </CardHeader>
       <ul className="grid gap-2">
         {items.map((item) => {
-          const s = states[item];
+          const s = states[item] ?? buildGapState(item, initialResponses);
           const isAddressed = !!s.savedResponse;
           return (
             <li key={item} className="rounded-control border border-border bg-surface overflow-hidden">

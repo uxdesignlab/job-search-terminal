@@ -80,7 +80,7 @@ export async function researchCompanyStreaming(
     competitivePosition: results.competitivePosition ?? "",
     candidateAngle: results.candidateAngle ?? "",
     providerUsed: provider.name,
-    modelUsed: provider.defaultModel
+    modelUsed: provider.effectiveModel
   };
 
   saveCompanyResearch(research);

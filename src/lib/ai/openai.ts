@@ -45,6 +45,10 @@ export class OpenAIProvider implements AIProvider {
     return this.config.model ?? this.defaultModel;
   }
 
+  get effectiveModel() {
+    return this.model;
+  }
+
   private toOpenAIMessages(messages: AIMessage[]): OpenAI.Chat.ChatCompletionMessageParam[] {
     return messages.map((m) => ({
       role: m.role,

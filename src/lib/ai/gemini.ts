@@ -17,6 +17,10 @@ export class GeminiProvider implements AIProvider {
     return this.config.model ?? this.defaultModel;
   }
 
+  get effectiveModel() {
+    return this.model;
+  }
+
   private buildContents(messages: AIMessage[]) {
     return messages
       .filter((m) => m.role !== "system")
