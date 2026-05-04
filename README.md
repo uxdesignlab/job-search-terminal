@@ -48,20 +48,14 @@ The app never submits applications for you. You stay in control.
 
 ## Screenshots
 
-> Add screenshots before the next public push.
-
-Suggested screenshots:
-
-1. Dashboard onboarding wizard
-2. Jobs table with fit scores
-3. Job detail / AI evaluation
-4. Resume generation tab
-5. Applications Kanban board
-6. Interview Prep / STAR story bank
-7. Settings / AI Providers
-8. Job Sources configuration
-
-See [docs/screenshot-checklist.md](docs/screenshot-checklist.md) for guidance.
+![Dashboard](public/images/job-search-terminal/job-search-terminal-dashboard.png)
+![Jobs Table](public/images/job-search-terminal/job-search-terminal-jobs-table.png)
+![Job Evaluation](public/images/job-search-terminal/job-search-terminal-job-evaluation.png)
+![Resume Tailoring](public/images/job-search-terminal/job-search-terminal-resume-tailoring.png)
+![Applications Kanban](public/images/job-search-terminal/job-search-terminal-applications-kanban.png)
+![Interview Prep](public/images/job-search-terminal/job-search-terminal-interview-prep.png)
+![Profile Setup](public/images/job-search-terminal/job-search-terminal-profile-setup.png)
+![AI Provider Settings](public/images/job-search-terminal/job-search-terminal-ai-provider-settings.png)
 
 ---
 
