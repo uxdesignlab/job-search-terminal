@@ -67,7 +67,24 @@ export class GeminiProvider implements AIProvider {
       }
     });
 
-    return JSON.parse(result.response.text()) as T;
+    const raw = result.response.text()?.trim() ?? "";
+    if (!raw) {
+      throw new Error(
+        "Gemini returned empty output for JSON mode (check safety blocks or retry). If this persists, try another model or shorten the resume text."
+      );
+    }
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const jsonText = (fenced?.[1] ?? raw).trim();
+    try {
+      return JSON.parse(jsonText) as T;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const preview =
+        jsonText.length > 500 ? `${jsonText.slice(0, 500)}…` : jsonText;
+      throw new Error(
+        `Gemini returned invalid JSON (${msg}). Length ${jsonText.length} chars. Often caused by output truncation — increase max tokens or reduce extraction size. Preview: ${preview}`
+      );
+    }
   }
 
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {
