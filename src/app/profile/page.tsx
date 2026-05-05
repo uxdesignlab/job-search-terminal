@@ -166,6 +166,10 @@ export default async function ProfilePage({
 
   // Resume gate: at least one PDF must be uploaded and extracted before AI extraction works
   const hasExtractedResumes = resumes.some((r) => r.wordCount > 0);
+  const firstResumeSlot = resumes[0];
+  const visibleResumes = hasExtractedResumes
+    ? resumes.filter((resume) => resume.wordCount > 0 || resume.sourceFile === "")
+    : resumes.slice(0, 1);
 
   return (
     <Shell activeItem="Profile">
@@ -260,7 +264,7 @@ export default async function ProfilePage({
                         >
                           Resumes tab
                         </Link>{" "}
-                        and click <strong>Upload PDF</strong> on any lane.
+                        and click <strong>Upload resume</strong>.
                       </p>
                     ) : (
                       <p className="mt-0.5 text-sm text-success">
@@ -328,53 +332,51 @@ export default async function ProfilePage({
         {tab === "resumes" && (
           <div className="grid gap-6">
 
-            {!hasExtractedResumes && (
-              <div className="rounded-control border border-accent/30 bg-accent/5 p-4">
-                <p className="text-sm font-semibold text-ink">Upload your resume to get started</p>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Click <strong>Upload PDF</strong> on any lane below to add your resume file. Once uploaded,
-                  go to the <Link className="font-medium text-accent underline underline-offset-2 hover:text-ink" href="/profile?tab=overview">Overview tab</Link> and
-                  run <strong>AI profile extraction</strong> — the AI will read your resume and populate your skills,
-                  role directions, and experience automatically.
-                </p>
-              </div>
+            {!hasExtractedResumes && firstResumeSlot ? (
+              <ResumeManageCard
+                evidence={firstResumeSlot.evidence}
+                id={firstResumeSlot.id}
+                initialUploadOnly
+                name={firstResumeSlot.name}
+                wordCount={firstResumeSlot.wordCount}
+              />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Resume lanes</CardTitle>
+                  <CardDescription>
+                    Each lane is a different resume version. Upload a PDF to extract text for AI evaluation and tailoring.
+                    Rename lanes to match their focus.
+                  </CardDescription>
+                </CardHeader>
+                <div className="grid gap-3">
+                  {visibleResumes.map((resume) => (
+                    <ResumeManageCard
+                      evidence={resume.evidence}
+                      id={resume.id}
+                      key={resume.id}
+                      name={resume.name}
+                      wordCount={resume.wordCount}
+                    />
+                  ))}
+                </div>
+
+                {/* Add new lane */}
+                <div className="mt-4 border-t border-border pt-4">
+                  <form action={addResumeLaneAction}>
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
+                      type="submit"
+                    >
+                      <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                        <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      Add resume
+                    </button>
+                  </form>
+                </div>
+              </Card>
             )}
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Resume lanes</CardTitle>
-                <CardDescription>
-                  Each lane is a different resume version. Upload a PDF to extract text for AI evaluation and tailoring.
-                  Rename lanes to match their focus.
-                </CardDescription>
-              </CardHeader>
-              <div className="grid gap-3">
-                {resumes.map((resume) => (
-                  <ResumeManageCard
-                    evidence={resume.evidence}
-                    id={resume.id}
-                    key={resume.id}
-                    name={resume.name}
-                    wordCount={resume.wordCount}
-                  />
-                ))}
-              </div>
-
-              {/* Add new lane */}
-              <div className="mt-4 border-t border-border pt-4">
-                <form action={addResumeLaneAction}>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
-                    type="submit"
-                  >
-                    <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                      <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    Add resume
-                  </button>
-                </form>
-              </div>
-            </Card>
 
             {hasExtractedResumes && (
               <Card>
