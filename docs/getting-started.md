@@ -296,58 +296,81 @@ Use with caution — this cannot be undone unless you have a backup.
 
 ---
 
-## Prompt for Claude Code or Codex (no-dev setup)
+## Prompt for Claude Code or Codex (self-service setup)
 
-If you want an AI coding assistant to set up and run this app for you
-automatically, paste the following prompt into **Claude Code** or **Codex**:
+If you want an AI coding assistant to set up and run this app with minimal
+manual work, paste the following prompt into **Claude Code** or **Codex**:
 
 ---
 
 ```
-I want you to set up and run the Job Search Terminal app on my computer.
+Set up and run Job Search Terminal for me as a self-service local app.
 
-Here is what I need you to do:
+Repository:
+https://github.com/uxdesignlab/job-search-terminal.git
 
-1. Check whether Node.js (v18+) and Git are installed. If either is missing,
-   tell me what to install and where to download it, then stop and wait for me
-   to install it before continuing.
+Goal:
+Do the setup yourself end to end. Do not give me a list of terminal commands to
+run. Use the terminal and browser tools available to you, verify each step, and
+only ask me for information you cannot safely obtain or create yourself, such as
+an AI API key or the local path to my resume PDF.
 
-2. Clone the repository from GitHub:
-   git clone https://github.com/uxdesignlab/job-search-terminal.git
+What to do:
 
-3. Change into the project directory:
-   cd job-search-terminal
+1. Inspect the computer for required tools:
+   - Node.js 18 or newer
+   - npm
+   - Git
+   - Google Chrome or another Chromium browser for PDF generation
 
-4. Install dependencies:
-   npm install
+2. If a required tool is missing, try to install it using the normal package
+   manager for this computer, such as Homebrew on macOS, winget on Windows, or
+   apt/dnf/pacman on Linux. If installation requires administrator permission or
+   an approval prompt, ask me for that approval once, then continue after it is
+   granted. Do not stop at "please install this" unless there is no safe
+   automated installation path.
 
-5. Start the development server:
-   npm run dev
+3. Create or reuse a local project folder:
+   - If the repository is already cloned, use the existing checkout.
+   - If it is not cloned, clone it from the repository URL above.
+   - Avoid overwriting or deleting existing user data.
 
-6. Tell me to open http://localhost:3000 in my browser.
+4. Install project dependencies with npm.
 
-7. Walk me through the first-time setup steps in plain language:
-   a. The dashboard shows a 3-step setup wizard. Start with Step 1: Add an AI API key.
-      - Click the provider you want (Gemini has a free tier) to expand the instructions.
-      - Get a key from the provider's website (the app shows the direct link).
-      - Click "Go to Settings → AI Providers", paste the key, and save.
-   b. Return to the Dashboard. Step 1 should show ✓. Click "Go to Profile → Resumes".
-   c. On the Resumes tab, click "Upload PDF" on any lane and select your resume file.
-   d. Go to Profile → Overview and click "Extract with AI" to populate your profile.
-   e. Review the Skills & Roles, Preferences, and Constraints tabs — edit anything the AI got wrong.
-   f. Return to the Dashboard and click "Scan for new jobs".
+5. Run the project's verification checks:
+   - npm run lint
+   - npm run typecheck
+   - npm run build
 
-If any step fails, read the error message carefully, explain what went wrong in
-plain language, and suggest the fix before continuing.
+6. Start the development server. If port 3000 is busy, use the next available
+   local port and tell me which URL is running.
 
-Do not skip steps. Do not assume anything is already set up unless you have
-verified it. Ask me if you are unsure about anything.
+7. Open the app in a browser yourself and verify the dashboard loads. Do not
+   simply tell me to open the URL.
+
+8. Complete as much first-time setup as the app allows:
+   - If no AI provider is configured, ask me for one API key, then enter it in
+     Settings -> AI Providers and use the app's connection test if available.
+   - If a resume is needed, ask me for the local PDF path or use the browser file
+     picker if your tools support it. Upload it through Profile -> Resumes.
+   - Preserve multiple resume lanes. Do not merge everything into one universal
+     resume.
+   - Run profile extraction from Profile -> Overview after a resume is uploaded.
+   - Return to the dashboard and scan for jobs when setup is complete.
+
+9. Safety rules:
+   - Never submit job applications, send emails, or message recruiters for me.
+   - Never delete resumes, generated documents, reports, backups, or tracked
+     application data unless I explicitly ask.
+   - Keep all data local.
+
+10. If anything fails, read the actual error, fix what you can, retry once, and
+    then explain the blocker in plain language with the exact next approval or
+    input needed from me.
+
+Finish by giving me the running local URL, what you verified, and anything still
+needed from me.
 ```
-
----
-
-Replace `YOUR_USERNAME/job-search-terminal` in the prompt with the actual
-GitHub URL before pasting it.
 
 ---
 
