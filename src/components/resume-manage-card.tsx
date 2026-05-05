@@ -8,12 +8,13 @@ type Props = {
   name: string;
   wordCount: number;
   evidence: string[];
+  initialUploadOnly?: boolean;
 };
 
 const inputCls =
   "w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent";
 
-export function ResumeManageCard({ id, name, wordCount, evidence }: Props) {
+export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadOnly = false }: Props) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +92,53 @@ export function ResumeManageCard({ id, name, wordCount, evidence }: Props) {
 
   const hasFile = currentWords > 0;
 
+  const uploadButton = (
+    <button
+      className="inline-flex items-center gap-1.5 rounded-control border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[rgb(var(--color-accent-strong))] disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={uploadStatus === "uploading"}
+      onClick={() => fileRef.current?.click()}
+      type="button"
+    >
+      {uploadStatus === "uploading" ? (
+        <>
+          <svg aria-hidden="true" className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+          </svg>
+          Uploading…
+        </>
+      ) : (
+        <>
+          <svg aria-hidden="true" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Upload resume
+        </>
+      )}
+    </button>
+  );
+
+  if (initialUploadOnly) {
+    return (
+      <div>
+        {uploadButton}
+        <input
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ""; }}
+          ref={fileRef}
+          type="file"
+        />
+        {uploadStatus === "error" && (
+          <p className="mt-2 text-xs text-danger">{uploadError}</p>
+        )}
+        {uploadStatus === "done" && (
+          <p className="mt-2 text-xs text-success">PDF uploaded and text extracted — {currentWords} words.</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-control border border-border bg-surface p-4">
       {/* Header row: name + status badge */}
@@ -155,29 +203,7 @@ export function ResumeManageCard({ id, name, wordCount, evidence }: Props) {
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {!hasFile ? (
           /* Prominent upload button for empty lanes */
-          <button
-            className="inline-flex items-center gap-1.5 rounded-control border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[rgb(var(--color-accent-strong))] disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={uploadStatus === "uploading"}
-            onClick={() => fileRef.current?.click()}
-            type="button"
-          >
-            {uploadStatus === "uploading" ? (
-              <>
-                <svg aria-hidden="true" className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-                </svg>
-                Uploading…
-              </>
-            ) : (
-              <>
-                <svg aria-hidden="true" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                  <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Upload PDF
-              </>
-            )}
-          </button>
+          uploadButton
         ) : (
           /* Re-upload (outlined button) + remove for filled lanes */
           <>

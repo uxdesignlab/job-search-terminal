@@ -3,7 +3,6 @@ import { mockActivity } from "@/data/mock/dashboard";
 import { mockGeneratedDocuments } from "@/data/mock/generated-documents";
 import { mockJobs } from "@/data/mock/jobs";
 import { mockProfile, mockRoleDirections } from "@/data/mock/profile";
-import { resumeLanes } from "@/data/mock/resume-lanes";
 
 export const seedUserProfile = {
   id: "pavel",
@@ -40,13 +39,15 @@ export const seedRoleDirections = mockRoleDirections.map((direction) => ({
   recommendationType: direction.fit.toLowerCase()
 }));
 
-export const seedResumes = resumeLanes.map((lane) => ({
-  id: lane.id,
-  name: lane.label,
-  sourceFile: lane.sourceFile,
-  status: lane.status,
-  activeStatus: true
-}));
+export const seedResumes = [
+  {
+    id: "primary-resume",
+    name: "Resume",
+    sourceFile: "",
+    status: "active",
+    activeStatus: true
+  }
+];
 
 export const seedJobs = mockJobs.map((job) => ({
   ...job,
