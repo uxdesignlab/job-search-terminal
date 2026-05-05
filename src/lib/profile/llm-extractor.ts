@@ -58,7 +58,9 @@ export async function extractProfileWithAI(): Promise<{ profileSaved: boolean; s
     },
     {
       role: "user",
-      content: `Extract a career profile from these resume(s). Return a JSON object with two top-level keys:
+      content: `Extract a career profile from these resume(s). Return a JSON object with two top-level keys.
+
+Keep each skills[].evidenceSource concise (under ~200 characters). Include at most 60 skills so the response stays complete.
 
 "profile": {
   "currentSearchGoal": "one sentence describing what this person is looking for",
@@ -94,7 +96,10 @@ ${resumeText}`
   ];
 
   const result = await withRetry(() =>
-    provider.generateJSON<ExtractionResult>(messages, '{"profile":{},"skills":[]}')
+    provider.generateJSON<ExtractionResult>(messages, '{"profile":{},"skills":[]}', {
+      // Profile + many skills can exceed 4k output tokens; truncation yields invalid JSON from Gemini.
+      maxTokens: 8192
+    })
   );
 
   const profileUpdate: ProfileUpdateInput = {
@@ -105,6 +110,7 @@ ${resumeText}`
     desiredIndustries: result.profile.desiredIndustries || [],
     compensationNeeds: result.profile.compensationNeeds || "",
     workPreferences: result.profile.workPreferences || [],
+    workModes: [],
     constraints: result.profile.constraints || [],
     dealBreakers: result.profile.dealBreakers || [],
     careerIntent: result.profile.careerIntent || "",
