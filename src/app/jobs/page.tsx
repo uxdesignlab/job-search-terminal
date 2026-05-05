@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
-import { getJobs, getUserProfile, purgeJobs } from "@/lib/db/queries";
+import { getJobs, getUserProfile } from "@/lib/db/queries";
+import { OUTSIDE_PREFERENCES_LABEL, buildJobPreferenceFilter } from "@/lib/jobs/preference-fit";
+import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import { AddJobModal } from "@/components/AddJobModal";
 import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
+import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -18,31 +19,15 @@ function toneForRecommendation(recommendation: string) {
 
 export default async function JobsPage() {
   const profile = getUserProfile();
-  const jobs = getJobs();
-
-  async function purgeJobsAction(formData: FormData) {
-    "use server";
-
-    const mode = String(formData.get("purgeMode") ?? "");
-    const pref = getUserProfile();
-
-    if (mode === "skipped-archived") {
-      purgeJobs({ statuses: ["Skipped"], includeArchived: true });
-    } else if (mode === "below50") {
-      purgeJobs({ belowScore: 50, statuses: ["Found", "Reviewed"] });
-    } else if (mode === "location-mismatch") {
-      purgeJobs({
-        belowScore: 100,
-        statuses: ["Found", "Reviewed"],
-        locationKeywords: pref.preferredLocations,
-      });
-    } else if (mode === "all") {
-      purgeJobs({ belowScore: 100 });
-    }
-    revalidatePath("/jobs");
-    revalidatePath("/dashboard");
-    redirect("/jobs");
-  }
+  const preferenceFilter = buildJobPreferenceFilter(profile);
+  const jobs = getJobs().map((job) => {
+    const preferenceDecision = preferenceFilter(job);
+    return {
+      ...job,
+      preferenceLabel: preferenceDecision.accepted ? undefined : OUTSIDE_PREFERENCES_LABEL,
+      removalProtected: isJobProtectedFromAutomaticRemoval(job),
+    };
+  });
 
   return (
     <Shell activeItem="Jobs">
@@ -64,40 +49,7 @@ export default async function JobsPage() {
           }
         />
 
-        {/* Sweep / cleanup panel */}
-        {jobs.length > 0 ? (
-          <details className="rounded-panel border border-border bg-panel">
-            <summary className="cursor-pointer select-none px-5 py-3 text-sm font-medium text-muted hover:text-ink">
-              Sweep irrelevant jobs ({jobs.length} total)
-            </summary>
-            <div className="border-t border-border px-5 pb-4 pt-4">
-              <p className="mb-4 text-xs text-muted">
-                Permanently deletes jobs and all associated evaluations, documents, and drafts. This cannot be undone.
-              </p>
-              <form action={purgeJobsAction} className="flex flex-wrap gap-2">
-                <select
-                  className="rounded-control border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
-                  name="purgeMode"
-                >
-                  <option value="skipped-archived">Skipped + Archived jobs</option>
-                  <option value="below50">Below 50% fit — unreviewed only</option>
-                  {profile.preferredLocations.length > 0 ? (
-                    <option value="location-mismatch">
-                      Outside {profile.preferredLocations[0]} + not remote — unreviewed only
-                    </option>
-                  ) : null}
-                  <option value="all">⚠ Delete all jobs</option>
-                </select>
-                <button
-                  className="inline-flex items-center rounded-control border border-danger/40 bg-danger/8 px-4 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/15"
-                  type="submit"
-                >
-                  Delete matching
-                </button>
-              </form>
-            </div>
-          </details>
-        ) : null}
+        {jobs.length > 0 ? <JobMaintenancePanel jobCount={jobs.length} /> : null}
 
         {jobs.length === 0 ? (
           <EmptyState
@@ -120,6 +72,8 @@ export default async function JobsPage() {
                 <Badge>{job.fitScore}% fit</Badge>
                 <Badge>{formatPostedDate(job)}</Badge>
                 <Badge tone={toneForRecommendation(job.recommendation)}>{job.recommendation}</Badge>
+                {job.preferenceLabel ? <Badge tone="warning">{job.preferenceLabel}</Badge> : null}
+                {job.livenessStatus === "expired" ? <Badge tone="danger">Posting expired</Badge> : null}
                 {job.url ? (
                   <a
                     className="text-xs font-medium text-accent hover:underline"

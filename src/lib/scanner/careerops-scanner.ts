@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, insertScannedJobs, recordScanRun } from "../db/queries";
+import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, getUserProfile, insertScannedJobs, recordScanRun } from "../db/queries";
 import type { ScannedJobInput, ScanRunRecord } from "../db/types";
+import { buildJobPreferenceFilter, type JobPreferenceProfile } from "../jobs/preference-fit";
 import { safeFetch } from "../safe-fetch";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
@@ -58,6 +59,7 @@ type ScanOptions = {
   fetcher?: (url: string) => Promise<unknown>;
   persist?: boolean;
   now?: Date;
+  profile?: JobPreferenceProfile;
 };
 
 export type ScanResult = ScanRunRecord & {
@@ -76,6 +78,7 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     ? dbFilters
     : config.title_filter;
   const titleFilter = buildTitleFilter(effectiveFilter);
+  const preferenceFilter = buildJobPreferenceFilter(options.profile ?? (persist ? getUserProfile() : undefined));
   const filterCompany = options.company?.toLowerCase();
   const filterCompanyExact = options.companyExact?.trim();
   const filterCompanyExactLower = filterCompanyExact?.toLowerCase();
@@ -158,6 +161,11 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
         }
 
         if (!titleFilter(job.title)) {
+          filteredCount++;
+          continue;
+        }
+
+        if (!preferenceFilter(job).accepted) {
           filteredCount++;
           continue;
         }

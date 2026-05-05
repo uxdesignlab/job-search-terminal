@@ -45,7 +45,7 @@ export default function ArchivedPage() {
     <Shell activeItem="Archived">
       <div className="grid gap-6">
         <PageHeader
-          description="Jobs hidden from the main pipeline — expired postings and jobs you've manually archived."
+          description="Jobs hidden from the main pipeline after manual archive or skip actions."
           eyebrow="Archived jobs"
           title="Archived"
           actions={
@@ -64,7 +64,7 @@ export default function ArchivedPage() {
 
         {jobs.length === 0 ? (
           <EmptyState
-            description="Expired postings and jobs you archive manually will appear here. Nothing is deleted — you can restore any job."
+            description="Jobs you archive or skip will appear here. Nothing is deleted — you can restore any job."
             title="No archived jobs"
           />
         ) : (

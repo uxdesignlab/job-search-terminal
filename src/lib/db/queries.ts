@@ -1770,9 +1770,6 @@ export function saveJobLiveness(id: string, status: string, reason: string) {
       liveness_checked_at = current_timestamp
     where id = @id`
   ).run({ id, status });
-  if (status === "expired") {
-    db.prepare("update jobs set archived = 1, updated_at = current_timestamp where id = @id").run({ id });
-  }
   logActivity("job", id, `Liveness check: ${status}`, { reason });
 }
 
@@ -1883,13 +1880,38 @@ export function deleteJob(jobId: string) {
   })();
 }
 
-export function purgeJobs(criteria: {
+export type PurgeJobsCriteria = {
   belowScore?: number;
   statuses?: string[];
   locationKeywords?: string[];
   excludeLocationKeywords?: string[];
   includeArchived?: boolean;
-}): number {
+};
+
+type PurgeCandidateJob = {
+  fit_score: number;
+  status: string;
+  location: string;
+  archived: number;
+};
+
+export function shouldPurgeJob(job: PurgeCandidateJob, criteria: PurgeJobsCriteria): boolean {
+  if (criteria.belowScore !== undefined && job.fit_score >= criteria.belowScore) return false;
+  if (criteria.statuses?.length) {
+    const statusMatch = criteria.statuses.includes(job.status);
+    const archivedMatch = criteria.includeArchived && job.archived === 1;
+    if (!statusMatch && !archivedMatch) return false;
+  }
+  if (criteria.locationKeywords?.length) {
+    const loc = job.location.toLowerCase();
+    const isRemote = loc.includes("remote");
+    const isLocal = criteria.locationKeywords.some((kw) => loc.includes(kw.toLowerCase()));
+    if (isRemote || isLocal) return false;
+  }
+  return true;
+}
+
+export function purgeJobs(criteria: PurgeJobsCriteria): number {
   const db = getDatabase();
   let jobs = db.prepare("select id, fit_score, status, location, archived from jobs").all() as Array<{
     id: string;
@@ -1899,21 +1921,7 @@ export function purgeJobs(criteria: {
     archived: number;
   }>;
 
-  jobs = jobs.filter((j) => {
-    if (criteria.belowScore !== undefined && j.fit_score >= criteria.belowScore) return false;
-    if (criteria.statuses?.length) {
-      const statusMatch = criteria.statuses.includes(j.status);
-      const archivedMatch = criteria.includeArchived && j.archived === 1;
-      if (!statusMatch && !archivedMatch) return false;
-    }
-    if (criteria.locationKeywords?.length) {
-      const loc = j.location.toLowerCase();
-      const isRemote = loc.includes("remote");
-      const isLocal = criteria.locationKeywords.some((kw) => loc.includes(kw.toLowerCase()));
-      if (!isRemote && !isLocal) return false;
-    }
-    return true;
-  });
+  jobs = jobs.filter((j) => shouldPurgeJob(j, criteria));
 
   for (const job of jobs) deleteJob(job.id);
   return jobs.length;

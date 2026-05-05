@@ -16,8 +16,9 @@ import {
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { JobRecord } from "@/lib/db/types";
 import {
+  MATCHES_PREFERENCES_LABEL,
+  type MainJobTableRecord,
   type MainJobsSortCol,
   getMainJobColOptions,
   getMainJobColValue,
@@ -42,13 +43,14 @@ function fmtDate(iso: string | null | undefined): string {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export type BatchEvaluateFormProps = {
-  jobs: JobRecord[];
+  jobs: MainJobTableRecord[];
 };
 
 const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "title", label: "Role" },
   { col: "company", label: "Company" },
   { col: "location", label: "Location" },
+  { col: "preference", label: "Preference" },
   { col: "fit", label: "Fit" },
   { col: "status", label: "Status" },
   { col: "recommendation", label: "Action" },
@@ -115,6 +117,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
         case "title": cmp = a.title.localeCompare(b.title); break;
         case "company": cmp = a.company.localeCompare(b.company); break;
         case "location": cmp = a.location.localeCompare(b.location); break;
+        case "preference": cmp = getMainJobColValue(a, "preference").localeCompare(getMainJobColValue(b, "preference")); break;
         case "fit": cmp = a.fitScore - b.fitScore; break;
         case "status": cmp = a.status.localeCompare(b.status); break;
         case "recommendation": cmp = a.recommendation.localeCompare(b.recommendation); break;
@@ -169,6 +172,13 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
   const bulkAction = useCallback(async (action: "skip" | "archive" | "delete") => {
     const ids = [...selected];
     if (!ids.length) return;
+    if (action === "delete") {
+      const protectedCount = jobs.filter((job) => selected.has(job.id) && job.removalProtected).length;
+      const message = protectedCount > 0
+        ? `${protectedCount} selected job${protectedCount !== 1 ? "s have" : " has"} user activity. Delete selected jobs anyway?`
+        : `Delete ${ids.length} selected job${ids.length !== 1 ? "s" : ""}?`;
+      if (!window.confirm(message)) return;
+    }
     setBulkRunning(true);
     try {
       if (action === "delete") {
@@ -189,7 +199,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     } finally {
       setBulkRunning(false);
     }
-  }, [selected, router]);
+  }, [jobs, selected, router]);
 
   const selectedCount = selected.size;
 
@@ -292,8 +302,20 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                     </td>
                     <td className="py-3 pr-4 text-muted">{job.company}</td>
                     <td className="py-3 pr-4 text-muted">{job.location}</td>
+                    <td className="py-3 pr-4">
+                      {job.preferenceLabel ? (
+                        <Badge tone="warning">{job.preferenceLabel}</Badge>
+                      ) : (
+                        <Badge tone="success">{MATCHES_PREFERENCES_LABEL}</Badge>
+                      )}
+                    </td>
                     <td className="py-3 pr-4 font-medium">{job.fitScore}%</td>
-                    <td className="py-3 pr-4 text-muted">{job.status}</td>
+                    <td className="py-3 pr-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-muted">{job.status}</span>
+                        {job.livenessStatus === "expired" ? <Badge tone="danger">Posting expired</Badge> : null}
+                      </div>
+                    </td>
                     <td className="py-3 pr-4">
                       <Badge tone={toneForRecommendation(job.recommendation)}>
                         {job.recommendation}

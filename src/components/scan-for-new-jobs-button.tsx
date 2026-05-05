@@ -82,8 +82,8 @@ export function ScanForNewJobsButton({ runScan }: Props) {
                 <div className="text-center">
                   <p className="text-sm font-medium text-ink">Scanning enabled career sources…</p>
                   <p className="mt-2 max-w-sm text-xs leading-relaxed text-muted">
-                    Fetching job boards, applying your title filters, and saving new listings. This can take a
-                    minute if you track many companies.
+                    Fetching job boards, applying your title and profile filters, and saving new listings. This can
+                    take a minute if you track many companies.
                   </p>
                 </div>
               </div>

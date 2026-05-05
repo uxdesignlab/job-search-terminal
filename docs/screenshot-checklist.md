@@ -16,7 +16,7 @@ Before taking screenshots:
 
 1. Dashboard onboarding wizard
 2. Normal dashboard with action queue
-3. Jobs table with filters
+3. Jobs table with filters, including the Preference column
 4. Job detail overview
 5. AI evaluation running or completed
 6. Resume generation tab
