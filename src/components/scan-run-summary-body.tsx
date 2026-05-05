@@ -50,7 +50,7 @@ export function ScanRunSummaryBody({
           <Badge tone="neutral">{summary.skippedCompanies} skipped</Badge>
         )}
         {summary.filteredCount > 0 && (
-          <Badge tone="neutral">{summary.filteredCount} filtered by title rules</Badge>
+          <Badge tone="neutral">{summary.filteredCount} filtered by profile rules</Badge>
         )}
         {summary.duplicateCount > 0 && (
           <Badge tone="neutral">{summary.duplicateCount} duplicates skipped</Badge>
@@ -75,7 +75,7 @@ export function ScanRunSummaryBody({
         )}
         {summary.jobs.length === 0 ? (
           <p className="text-sm text-muted">
-            No new listings were added. Existing jobs and filtered titles are unchanged.
+            No new listings were added. Existing jobs and filtered listings are unchanged.
           </p>
         ) : (
           <ul className="space-y-2 pr-1">

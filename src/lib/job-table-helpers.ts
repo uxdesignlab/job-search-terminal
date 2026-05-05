@@ -1,7 +1,14 @@
 import type { JobRecord } from "@/lib/db/types";
+import { OUTSIDE_PREFERENCES_LABEL } from "@/lib/jobs/preference-fit";
+
+export type MainJobTableRecord = JobRecord & {
+  preferenceLabel?: string;
+  removalProtected?: boolean;
+};
 
 /** Fit buckets for filter options and display (matches main jobs table). */
 export const JOB_FIT_BUCKETS = ["80–100%", "60–79%", "40–59%", "20–39%", "0–19%"] as const;
+export const MATCHES_PREFERENCES_LABEL = "Match";
 
 export function jobFitBucket(score: number): string {
   if (score >= 80) return "80–100%";
@@ -15,13 +22,14 @@ export type MainJobsSortCol =
   | "title"
   | "company"
   | "location"
+  | "preference"
   | "fit"
   | "status"
   | "recommendation"
   | "posted"
   | "scanned";
 
-export function getMainJobColValue(job: JobRecord, col: MainJobsSortCol): string {
+export function getMainJobColValue(job: MainJobTableRecord, col: MainJobsSortCol): string {
   switch (col) {
     case "title":
       return job.title;
@@ -29,6 +37,8 @@ export function getMainJobColValue(job: JobRecord, col: MainJobsSortCol): string
       return job.company;
     case "location":
       return job.location;
+    case "preference":
+      return job.preferenceLabel ?? MATCHES_PREFERENCES_LABEL;
     case "fit":
       return jobFitBucket(job.fitScore);
     case "status":
@@ -42,8 +52,9 @@ export function getMainJobColValue(job: JobRecord, col: MainJobsSortCol): string
   }
 }
 
-export function getMainJobColOptions(jobs: JobRecord[], col: MainJobsSortCol): string[] {
+export function getMainJobColOptions(jobs: MainJobTableRecord[], col: MainJobsSortCol): string[] {
   if (col === "fit") return [...JOB_FIT_BUCKETS];
+  if (col === "preference") return [MATCHES_PREFERENCES_LABEL, OUTSIDE_PREFERENCES_LABEL];
   if (col === "posted" || col === "scanned") return ["Has date", "No date"];
   return [...new Set(jobs.map((j) => getMainJobColValue(j, col)))].sort();
 }

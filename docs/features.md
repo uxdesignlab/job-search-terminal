@@ -60,17 +60,26 @@ to add an API key in Settings.
 
 ## Jobs `/jobs`
 
-The full job pipeline. Lists every discovered job with filtering and bulk tools.
+The full job pipeline. Lists every discovered job with filtering, preference
+status, posting maintenance, and bulk tools.
 
 **Features:**
 - Fit score badge, status badge, freshness label, and role archetype per row.
-- Sort by fit score, date, company, or status.
-- Filter by status, score range, remote type, archetype.
+- Sort by fit score, date, company, preference, or workflow status.
+- Filter by workflow status, preference status, score range, location, company,
+  recommendation, posted date availability, and added date availability.
+- **Preference column** — shows `Match` when a job still fits the current
+  profile preferences and constraints, or `Out of scope` when saved preferences
+  have changed and the job no longer fits. This is a derived display/filter
+  value, not a separate stored job status.
 - Text search across company and title.
 - Bulk operations: change status on multiple jobs, archive, or delete in bulk.
 - Marking a job **Skipped** (individually or in bulk) removes it from this list
   immediately — it is auto-archived and moves to the Archived page.
-- Sweep / cleanup tool to archive or delete expired or low-score jobs.
+- Bulk delete asks for confirmation. If selected jobs have user activity, the
+  confirmation warns before deleting.
+- Maintenance tool to verify posting liveness and confirm deletion for expired
+  untouched jobs.
 - Add job manually via modal (paste URL or fill in details).
 - **Column filters** — click any column header to open a sort + multi-value
   checkbox filter dropdown. Active filters show a count summary ("X of Y jobs")
@@ -149,7 +158,7 @@ Application funnel tracker with two view modes:
 
 ## Archived `/archived`
 
-Jobs that have been manually archived, marked as expired, or skipped.
+Jobs that have been manually archived or skipped.
 
 - Table of archived jobs with original score and archival date.
 - Column filters and saved filter presets on the archived jobs table.
@@ -369,15 +378,27 @@ custom URLs configured in Settings.
 1. User clicks "Scan for new jobs" on the Dashboard.
 2. The scanner queries each enabled source for open roles.
 3. Title filters remove irrelevant roles.
-4. Duplicate URLs are skipped.
-5. New jobs are written to the `jobs` table with `status = found`.
-6. A `scan_runs` record is created with metrics.
-7. The Dashboard updates with the scan summary.
+4. Profile location and remote preferences remove listings outside the user's constraints.
+5. Duplicate URLs are skipped.
+6. New jobs are written to the `jobs` table with `status = found`.
+7. A `scan_runs` record is created with metrics.
+8. The Dashboard updates with the scan summary.
+
+The Jobs page can also verify whether saved postings still exist. The liveness
+check updates `liveness_status` but does not automatically archive or delete
+anything. Expired jobs with no user activity are shown for confirmation before
+deletion. Jobs with activity, such as reviewed, skipped, resume-generated, or
+applied jobs, are kept unless the user explicitly selects and deletes them.
+
+The Jobs table also re-checks current profile preferences at render time. Jobs
+that still fit show `Match` in the Preference column; jobs that no longer fit
+show `Out of scope`.
 
 **Configuration:**
 - Built-in sources: enable/disable per company in Settings → Job Sources.
 - Custom sources: add any careers page URL.
 - Title filters: positive list (must match) and negative list (exclude if matched).
+- Profile filters: saved preferred locations and remote preference constrain scan inserts.
 
 ---
 

@@ -154,11 +154,15 @@ Every job discovered by scanning or added manually.
 | `resume_evidence_json` | JSON array of resume evidence mappings |
 | `gaps_json` | JSON array of gap items |
 | `red_flags_json` | JSON array of red flags |
-| `liveness_status` | `live` / `expired` / `unknown` |
+| `liveness_status` | `active` / `expired` / `uncertain` |
 | `liveness_checked_at` | ISO timestamp of last liveness check |
 | `archived` | 0 = active, 1 = archived |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
+
+The Jobs table Preference column is derived at render time from the current
+profile preferences and constraints. It is not persisted on `jobs`; displayed
+values are `Match` and `Out of scope`.
 
 **Job status values:** `found` → `reviewed` → `resume_generated` → `applied`
 → `follow_up_needed` → `recruiter_responded` → `interviewing` → `offer` →
@@ -276,7 +280,7 @@ History of job scan executions.
 | `companies_scanned` | Count of companies checked |
 | `skipped_companies` | Count of skipped companies |
 | `total_jobs_found` | Raw jobs found before filtering |
-| `filtered_count` | Jobs removed by title filters |
+| `filtered_count` | Jobs removed by title filters or profile preference filters |
 | `duplicate_count` | Duplicate jobs skipped |
 | `new_jobs_count` | Net new jobs added |
 | `errors_json` | Array of per-company error objects |
