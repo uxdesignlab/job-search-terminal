@@ -2,7 +2,7 @@ import type { UserProfileRecord } from "../db/types";
 
 export type JobPreferenceProfile = Pick<
   UserProfileRecord,
-  "location" | "preferredLocations" | "remotePreference" | "workPreferences" | "constraints" | "dealBreakers"
+  "location" | "preferredLocations" | "remotePreference" | "workPreferences" | "workModes" | "constraints" | "dealBreakers"
 >;
 
 export type PreferenceCheckJob = {
@@ -28,6 +28,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
   const hardLocalOrRemote = profile.remotePreference === "local-or-remote";
   const avoidsOnsiteOnly = profile.dealBreakers.some((item) => normalizeText(item).includes("onsite only") || normalizeText(item).includes("on site only"));
   const hasRemotePreferenceText = [...profile.workPreferences, ...profile.constraints].some((item) => normalizeText(item).includes("remote"));
+  const selectedWorkModes = profile.workModes.length > 0 ? new Set(profile.workModes) : null;
 
   return (job: PreferenceCheckJob): JobPreferenceDecision => {
     const title = normalizeText(job.title);
@@ -39,6 +40,31 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
 
     if (hasJuniorDealBreaker(profile.dealBreakers) && isJuniorTitle(title)) {
       return { accepted: false, reason: "junior deal breaker" };
+    }
+
+    if (selectedWorkModes) {
+      if (isRemote) {
+        if (!selectedWorkModes.has("remote")) {
+          return { accepted: false, reason: "remote not selected" };
+        }
+        return { accepted: true };
+      }
+
+      if (isHybrid) {
+        if (!selectedWorkModes.has("hybrid")) {
+          return { accepted: false, reason: "hybrid not selected" };
+        }
+        return hasLocationPreferences && !matchesPreferredLocation
+          ? { accepted: false, reason: "hybrid location outside preferences" }
+          : { accepted: true };
+      }
+
+      if (!selectedWorkModes.has("onsite")) {
+        return { accepted: false, reason: "on-site not selected" };
+      }
+      return hasLocationPreferences && !matchesPreferredLocation
+        ? { accepted: false, reason: "on-site location outside preferences" }
+        : { accepted: true };
     }
 
     if (hardRemoteOnly) {

@@ -2,10 +2,16 @@ import { randomUUID } from "node:crypto";
 import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
-import { getResumes, saveSkills, updateUserProfile } from "../db/queries";
+import { getResumes, getUserProfile, saveSkills, updateUserProfile } from "../db/queries";
 import type { ProfileUpdateInput, SkillRecord } from "../db/types";
 
 type ExtractedProfile = {
+  /** Full name as written at the top of the resume. */
+  name: string;
+  location: string;
+  portfolio: string;
+  /** 5–10 headline strengths for the overview; use evidence from the resume. */
+  strongestSkills: string[];
   currentSearchGoal: string;
   urgency: string;
   direction: string;
@@ -37,7 +43,20 @@ type ExtractionResult = {
   skills: ExtractedSkill[];
 };
 
+/** Matches Overview tab urgency `<Select>` values so the dropdown stays in sync after extraction. */
+function normalizeUrgency(raw: string): string {
+  const allowed = new Set(["actively searching", "open to opportunities", "passively looking", "not searching"]);
+  const t = raw.trim().toLowerCase();
+  if (allowed.has(t)) return t;
+  if (t.includes("not search")) return "not searching";
+  if (t.includes("passive")) return "passively looking";
+  if (t.includes("explor") || t.includes("open to opport")) return "open to opportunities";
+  if (t.includes("active")) return "actively searching";
+  return "actively searching";
+}
+
 export async function extractProfileWithAI(): Promise<{ profileSaved: boolean; skillCount: number }> {
+  const previous = getUserProfile();
   const resumes = getResumes().filter((r) => r.extractedText && r.extractedText.length > 100);
 
   if (resumes.length === 0) {
@@ -63,8 +82,12 @@ export async function extractProfileWithAI(): Promise<{ profileSaved: boolean; s
 Keep each skills[].evidenceSource concise (under ~200 characters). Include at most 60 skills so the response stays complete.
 
 "profile": {
+  "name": "full name exactly as shown at the top of the resume (required if present in text)",
+  "location": "city/region/country from resume header or contact section; empty string if unknown",
+  "portfolio": "personal site or portfolio URL if listed; empty string if none",
+  "strongestSkills": ["5-10 concise strengths that headline this candidate; taken from resume"],
   "currentSearchGoal": "one sentence describing what this person is looking for",
-  "urgency": "Active search / Passive / Exploratory",
+  "urgency": "exactly one of: actively searching | open to opportunities | passively looking | not searching — infer from tone if needed",
   "direction": "one phrase describing career direction",
   "targetRoles": ["role 1", "role 2", ...],
   "desiredIndustries": ["industry 1", ...],
@@ -102,9 +125,23 @@ ${resumeText}`
     })
   );
 
+  const topSkillNames = (result.skills ?? [])
+    .map((s) => s.skillName?.trim())
+    .filter((s): s is string => Boolean(s))
+    .slice(0, 10);
+
+  const extractedStrongest =
+    Array.isArray(result.profile.strongestSkills) && result.profile.strongestSkills.length > 0
+      ? result.profile.strongestSkills.map((s) => String(s).trim()).filter(Boolean)
+      : topSkillNames;
+
   const profileUpdate: ProfileUpdateInput = {
+    name: (result.profile.name ?? "").trim() || previous.name,
+    location: (result.profile.location ?? "").trim() || previous.location,
+    portfolio: (result.profile.portfolio ?? "").trim() || previous.portfolio,
+    strongestSkills: extractedStrongest.length > 0 ? extractedStrongest : previous.strongestSkills,
     currentSearchGoal: result.profile.currentSearchGoal || "",
-    urgency: result.profile.urgency || "Active search",
+    urgency: normalizeUrgency(result.profile.urgency || "actively searching"),
     direction: result.profile.direction || "",
     targetRoles: result.profile.targetRoles || [],
     desiredIndustries: result.profile.desiredIndustries || [],

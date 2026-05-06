@@ -264,11 +264,18 @@ Resumes tab shows an upload banner when no extracted resumes exist.
   skills to use less (one per line).
 
 ### Tab: Preferences (`?tab=preferences`)
-- Summary cards: remote preference, compensation, desired industries, preferred
+- Summary cards: location mode, compensation, desired industries, preferred
   locations.
-- Edit form: remote preference (select: remote-only / local-or-remote / all),
-  preferred locations (one per line), desired industries (one per line),
-  compensation needs (free text), work preferences (one per line).
+- Edit form: location mode checkboxes (`Remote`, `Hybrid`, `On-site`),
+  preferred locations, desired industries, compensation needs, and free-form
+  work preferences.
+- Preferred locations use a city lookup field backed by OpenStreetMap
+  Nominatim. The selected saved value should include city, state/region when
+  available, and country, for example `Nashville, Tennessee, United States` or
+  `Minsk, Belarus`.
+- Work preferences are reserved for non-location preferences such as `small
+  team`, `async-first`, or `mission-driven`; location modes are stored
+  separately.
 
 ### Tab: Constraints (`?tab=constraints`)
 - Read-only list of current constraints and deal breakers.
@@ -394,11 +401,20 @@ The Jobs table also re-checks current profile preferences at render time. Jobs
 that still fit show `Match` in the Preference column; jobs that no longer fit
 show `Out of scope`.
 
+Location matching uses the selected Location mode checkboxes:
+- `Remote` includes all remote opportunities, even if the posting mentions a
+  region outside the preferred locations.
+- `Hybrid` includes hybrid opportunities only when the posting location matches
+  one of the preferred locations.
+- `On-site` includes on-site opportunities only when the posting location
+  matches one of the preferred locations.
+
 **Configuration:**
 - Built-in sources: enable/disable per company in Settings → Job Sources.
 - Custom sources: add any careers page URL.
 - Title filters: positive list (must match) and negative list (exclude if matched).
-- Profile filters: saved preferred locations and remote preference constrain scan inserts.
+- Profile filters: selected location modes and preferred locations constrain
+  scan inserts.
 
 ---
 

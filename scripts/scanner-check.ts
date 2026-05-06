@@ -36,14 +36,30 @@ const preferenceFilter = buildJobPreferenceFilter({
   preferredLocations: ["United States"],
   remotePreference: "local-or-remote",
   workPreferences: ["Remote first"],
+  workModes: ["remote", "hybrid", "onsite"],
   constraints: ["Remote or selective hybrid"],
   dealBreakers: ["Onsite-only roles", "Junior IC scope"]
 });
 assert.equal(preferenceFilter({ title: "Principal Product Designer", location: "Remote US" }).accepted, true);
-assert.equal(preferenceFilter({ title: "Principal Product Designer", location: "Remote Canada" }).accepted, false);
+assert.equal(preferenceFilter({ title: "Principal Product Designer", location: "Remote Canada" }).accepted, true);
 assert.equal(preferenceFilter({ title: "Product Design Lead", location: "Berlin, Germany" }).accepted, false);
 assert.equal(preferenceFilter({ title: "Product Design Lead", location: "Chicago, IL" }).accepted, true);
 assert.equal(preferenceFilter({ title: "Junior Product Designer", location: "Remote US" }).accepted, false);
+
+const multiLocationPreferenceFilter = buildJobPreferenceFilter({
+  location: "",
+  preferredLocations: ["Nashville, Tennessee, United States", "Minsk, Belarus", "San Francisco, California, United States", "Melbourne, Victoria, Australia"],
+  remotePreference: "all",
+  workPreferences: [],
+  workModes: ["remote", "hybrid", "onsite"],
+  constraints: [],
+  dealBreakers: []
+});
+assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "Remote Europe" }).accepted, true);
+assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "Hybrid - San Francisco, CA" }).accepted, true);
+assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "On-site - Melbourne, Australia" }).accepted, true);
+assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "Hybrid - Berlin, Germany" }).accepted, false);
+assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "On-site - London, United Kingdom" }).accepted, false);
 assert.equal(
   shouldPurgeJob(
     { fit_score: 0, status: "Found", location: "London, United Kingdom", archived: 0 },
@@ -130,6 +146,7 @@ async function main() {
       preferredLocations: ["United States"],
       remotePreference: "local-or-remote",
       workPreferences: ["Remote first"],
+      workModes: ["remote", "hybrid", "onsite"],
       constraints: ["Remote or selective hybrid"],
       dealBreakers: ["Onsite-only roles", "Junior IC scope"]
     }
@@ -140,7 +157,7 @@ async function main() {
   assert.ok(result.filteredCount > 0);
   assert.ok(result.newJobsCount > 0);
   assert.equal(result.errors.length, 0);
-  assert.equal(result.jobs.some((job) => job.location === "Remote Canada"), false);
+  assert.equal(result.jobs.some((job) => job.location === "Remote Canada"), true);
   assert.equal(result.jobs.some((job) => job.location === "Berlin, Germany"), false);
 
   console.log("Scanner check passed");
