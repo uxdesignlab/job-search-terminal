@@ -19,12 +19,16 @@ type LivenessSummary = {
   uncertain: number;
   expiredUntouched: LivenessJobSummary[];
   expiredProtected: LivenessJobSummary[];
+  outOfScope: LivenessJobSummary[];
 };
+
+const UNTOUCHED_STATUS = "Found";
 
 export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingOutOfScope, setDeletingOutOfScope] = useState(false);
   const [summary, setSummary] = useState<LivenessSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +48,40 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
       setRunning(false);
     }
   }
+
+  async function deleteOutOfScope() {
+    const deletable = summary?.outOfScope.filter((job) => job.status === UNTOUCHED_STATUS) ?? [];
+    if (deletable.length === 0) return;
+    setDeletingOutOfScope(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/jobs/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: deletable.map((job) => job.id) }),
+      });
+      const payload = await response.json() as { deleted?: number; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Deletion failed");
+      setSummary((current) => current
+        ? {
+          ...current,
+          outOfScope: current.outOfScope.filter((job) => job.status !== UNTOUCHED_STATUS),
+        }
+        : current);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Deletion failed");
+    } finally {
+      setDeletingOutOfScope(false);
+    }
+  }
+
+  function dismissOutOfScope() {
+    setSummary((current) => current ? { ...current, outOfScope: [] } : current);
+  }
+
+  const outOfScopeUntouched = summary?.outOfScope.filter((job) => job.status === UNTOUCHED_STATUS) ?? [];
+  const outOfScopeProtected = summary?.outOfScope.filter((job) => job.status !== UNTOUCHED_STATUS) ?? [];
 
   async function deleteExpiredUntouched() {
     if (!summary?.expiredUntouched.length) return;
@@ -100,6 +138,9 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
             <Badge tone={summary.expiredProtected.length > 0 ? "warning" : "neutral"}>
               {summary.expiredProtected.length} expired with activity
             </Badge>
+            <Badge tone={summary.outOfScope.length > 0 ? "warning" : "neutral"}>
+              {summary.outOfScope.length} out of scope
+            </Badge>
           </div>
 
           {summary.expiredUntouched.length > 0 && (
@@ -137,6 +178,51 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
               <p className="mt-1 text-xs text-muted">
                 These can only be removed through an explicit selected-job delete action.
               </p>
+            </div>
+          )}
+
+          {summary.outOfScope.length > 0 && (
+            <div className="mt-4 rounded-control border border-warning/30 bg-warning/8 p-3">
+              <p className="text-sm font-medium text-ink">
+                {summary.outOfScope.length} job{summary.outOfScope.length !== 1 ? "s" : ""} labeled &ldquo;Out of scope&rdquo; — title doesn&apos;t match your title filters.
+              </p>
+              {outOfScopeUntouched.length > 0 && (
+                <>
+                  <p className="mt-2 text-xs font-medium text-muted">
+                    Untouched jobs can be deleted here.
+                  </p>
+                  <ul className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-2 text-sm text-muted">
+                    {outOfScopeUntouched.slice(0, 12).map((job) => (
+                      <li key={job.id}>
+                        <span className="font-medium text-ink">{job.title}</span> — {job.company} · {job.location}
+                      </li>
+                    ))}
+                    {outOfScopeUntouched.length > 12 && (
+                      <li>+{outOfScopeUntouched.length - 12} more</li>
+                    )}
+                  </ul>
+                </>
+              )}
+              {outOfScopeProtected.length > 0 && (
+                <p className="mt-2 text-xs leading-5 text-muted">
+                  Kept {outOfScopeProtected.length} out-of-scope job{outOfScopeProtected.length !== 1 ? "s" : ""} with user activity.
+                  Remove them from the Jobs table if you decide they should be deleted.
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  className="border-danger/40 bg-danger/10 text-danger hover:bg-danger/15"
+                  disabled={deletingOutOfScope || outOfScopeUntouched.length === 0}
+                  onClick={deleteOutOfScope}
+                  type="button"
+                  variant="secondary"
+                >
+                  {deletingOutOfScope ? "Deleting..." : `Delete ${outOfScopeUntouched.length} untouched`}
+                </Button>
+                <Button disabled={deletingOutOfScope} onClick={dismissOutOfScope} type="button" variant="secondary">
+                  Keep &amp; dismiss
+                </Button>
+              </div>
             </div>
           )}
         </div>

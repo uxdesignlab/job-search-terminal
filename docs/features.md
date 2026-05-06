@@ -26,23 +26,27 @@ The app redirects `/` to `/dashboard` on load.
 
 The command center. Has two states depending on setup progress.
 
-**New user state** (shown when no resume PDF has been uploaded yet): Replaces the
-normal dashboard body with a 3-step onboarding wizard:
+**First-run onboarding** (shown until setup is complete and dismissed): Opens as
+an isolated dashboard modal so the user can finish setup without leaving the
+flow. Closing before completion shows a warning that the app will fail to
+generate useful matches, resumes, and answer drafts until setup is finished.
 
-1. **Add an AI API key** — expandable step-by-step instructions for Google Gemini
-   (free tier available), OpenAI, and Anthropic. Each provider's instructions
-   expand inline (using HTML details/summary). CTA links to Settings → AI
-   Providers. Once a key is saved this step shows green ✓ and collapses.
-2. **Upload your resume** — active once step 1 is done (dimmed/locked before).
-   CTA links to Profile → Resumes. The scan button in the page header is hidden
-   in new user state.
-3. **Scan for jobs and get AI fit scores** — always shown as a future pending step.
+The modal has 4 gated steps:
 
-The wizard disappears once the first resume PDF is successfully uploaded.
+1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key inline.
+2. **Resume lanes** — uses the normal multi-lane resume upload cards. Uploading a
+   PDF seeds desired positions and positive title filters from extracted resume
+   titles, and AI extraction can enrich the full profile.
+3. **Job preferences** — requires the user to review and explicitly save desired
+   positions, include/exclude title filters, and location work modes. Resume
+   upload or extraction may prefill these values, but the step does not become
+   complete until the user confirms them.
+4. **Ready** — explains the next operational steps: review scan sources in
+   Settings, run Scan for new jobs on the Dashboard, then review and evaluate
+   imported matches.
 
-**Returning user state** (shown when resume exists but no AI key configured): A
-dismissible banner appears above the normal dashboard content, prompting the user
-to add an API key in Settings.
+The normal dashboard and scan button are gated until an AI key exists, at least
+one resume lane has extracted text, and job preferences have been confirmed.
 
 **Normal dashboard** (after full setup):
 
@@ -78,8 +82,10 @@ status, posting maintenance, and bulk tools.
   immediately — it is auto-archived and moves to the Archived page.
 - Bulk delete asks for confirmation. If selected jobs have user activity, the
   confirmation warns before deleting.
-- Maintenance tool to verify posting liveness and confirm deletion for expired
-  untouched jobs.
+- Maintenance tool to verify posting liveness, confirm deletion for expired
+  untouched jobs, and identify active jobs whose titles no longer match saved
+  title filters. Out-of-scope cleanup only bulk-deletes untouched jobs; jobs with
+  user activity must be removed through explicit selected-job actions.
 - Add job manually via modal (paste URL or fill in details).
 - **Column filters** — click any column header to open a sort + multi-value
   checkbox filter dropdown. Active filters show a count summary ("X of Y jobs")

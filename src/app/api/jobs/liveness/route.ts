@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkJobLiveness } from "@/lib/scanner/liveness-checker";
-import { deleteJob, getJobById, getJobs, saveJobLiveness } from "@/lib/db/queries";
+import { deleteJob, getJobById, getJobs, saveJobLiveness, saveJobScopeStatus, getTitleFilters } from "@/lib/db/queries";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import type { JobRecord } from "@/lib/db/types";
 
@@ -18,7 +18,8 @@ type LivenessJobSummary = {
 export async function POST() {
   try {
     const jobs = getJobs();
-    const checked = await checkJobs(jobs);
+    const titleFilters = getTitleFilters();
+    const checked = await checkJobs(jobs, titleFilters);
 
     return NextResponse.json({
       ok: true,
@@ -27,6 +28,7 @@ export async function POST() {
       uncertain: checked.uncertain,
       expiredUntouched: checked.expiredUntouched,
       expiredProtected: checked.expiredProtected,
+      outOfScope: checked.outOfScope,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -60,9 +62,17 @@ export async function DELETE(req: Request) {
   }
 }
 
-async function checkJobs(jobs: JobRecord[]) {
+function matchesTitleFilters(title: string, filters: { positive: string[]; negative: string[] }): boolean {
+  const normalized = title.toLowerCase();
+  if (filters.negative.some((kw) => normalized.includes(kw.toLowerCase()))) return false;
+  if (filters.positive.length > 0 && !filters.positive.some((kw) => normalized.includes(kw.toLowerCase()))) return false;
+  return true;
+}
+
+async function checkJobs(jobs: JobRecord[], titleFilters: { positive: string[]; negative: string[] }) {
   const expiredUntouched: LivenessJobSummary[] = [];
   const expiredProtected: LivenessJobSummary[] = [];
+  const outOfScope: LivenessJobSummary[] = [];
   let active = 0;
   let uncertain = 0;
   let index = 0;
@@ -78,27 +88,35 @@ async function checkJobs(jobs: JobRecord[]) {
       const result = await checkJobLiveness(job.url);
       saveJobLiveness(job.id, result.status, result.reason);
 
-      if (result.status === "active") {
-        active++;
-        continue;
-      }
-      if (result.status === "uncertain") {
-        uncertain++;
+      if (result.status === "expired") {
+        const summary = summarizeJob(job, result.reason);
+        if (isJobProtectedFromAutomaticRemoval(job)) {
+          expiredProtected.push(summary);
+        } else {
+          expiredUntouched.push(summary);
+        }
         continue;
       }
 
-      const summary = summarizeJob(job, result.reason);
-      if (isJobProtectedFromAutomaticRemoval(job)) {
-        expiredProtected.push(summary);
+      const hasFilters = titleFilters.positive.length > 0 || titleFilters.negative.length > 0;
+      if (hasFilters && !matchesTitleFilters(job.title, titleFilters)) {
+        saveJobScopeStatus(job.id, "out_of_scope");
+        outOfScope.push(summarizeJob(job, "title does not match filters"));
       } else {
-        expiredUntouched.push(summary);
+        saveJobScopeStatus(job.id, "");
+      }
+
+      if (result.status === "active") {
+        active++;
+      } else {
+        uncertain++;
       }
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, () => next()));
 
-  return { active, uncertain, expiredUntouched, expiredProtected };
+  return { active, uncertain, expiredUntouched, expiredProtected, outOfScope };
 }
 
 function summarizeJob(job: JobRecord, reason: string): LivenessJobSummary {

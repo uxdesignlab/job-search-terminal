@@ -65,7 +65,8 @@ export default function DashboardPage() {
   const hasKey = Boolean(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
   const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
   const hasLocationPreferences = profile.workModes.length > 0;
-  const onboardingComplete = hasKey && hasResume && hasRolePreferences && hasLocationPreferences;
+  const preferencesConfirmed = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
+  const onboardingComplete = hasKey && hasResume && preferencesConfirmed;
   const showOnboarding = !onboardingComplete || !settings.onboardingDismissed;
 
   const actionQueue = getDashboardActionQueue();

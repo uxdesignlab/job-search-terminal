@@ -41,6 +41,8 @@ and seeds demo data if the database is empty.
 | `0025_company_profiles` | Adds `company_profiles` table |
 | `0026_table_saved_filters` | Adds `table_saved_filters` table for persisted column-filter presets |
 | `0027_work_modes` | Adds `work_modes_json` to `user_profile` |
+| `0028_onboarding_preferences_confirmation` | Adds explicit first-run job-preference confirmation to `ai_settings` |
+| `0029_job_scope_status` | Adds `scope_status` to `jobs` for maintenance labeling |
 
 ---
 
@@ -158,6 +160,7 @@ Every job discovered by scanning or added manually.
 | `red_flags_json` | JSON array of red flags |
 | `liveness_status` | `active` / `expired` / `uncertain` |
 | `liveness_checked_at` | ISO timestamp of last liveness check |
+| `scope_status` | Maintenance label such as `out_of_scope` when a verified active posting no longer matches saved title filters |
 | `archived` | 0 = active, 1 = archived |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
@@ -319,6 +322,7 @@ Singleton row holding AI provider configuration.
 | `openai_model` | Default OpenAI model slug |
 | `fallback_provider` | Optional fallback provider |
 | `onboarding_dismissed` | 0 = show onboarding, 1 = dismissed |
+| `onboarding_preferences_confirmed` | 0 = first-run job preferences still need user confirmation, 1 = confirmed |
 | `updated_at` | ISO timestamp |
 
 ### story_bank

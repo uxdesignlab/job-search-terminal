@@ -76,6 +76,7 @@ export type JobRecord = {
   redFlags: string[];
   livenessStatus: string;
   livenessCheckedAt: string;
+  scopeStatus: string;
   archived: boolean;
 };
 
@@ -336,6 +337,7 @@ export type AISettingsRecord = {
   openaiModel: string;
   fallbackProvider: string;
   onboardingDismissed: boolean;
+  onboardingPreferencesConfirmed: boolean;
   updatedAt: string;
 };
 
@@ -349,6 +351,7 @@ export type AISettingsUpdateInput = {
   openaiModel: string;
   fallbackProvider: string;
   onboardingDismissed?: boolean;
+  onboardingPreferencesConfirmed?: boolean;
 };
 
 export type StoryRecord = {

@@ -19,11 +19,13 @@ export function NewUserOnboarding() {
   const hasResume = resumes.some((resume) => resume.wordCount > 0);
   const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
   const hasLocationPreferences = profile.workModes.length > 0;
+  const hasConfirmedPreferences = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
 
   return (
     <OnboardingWizardModal
       hasKey={hasKey}
       hasLocationPreferences={hasLocationPreferences}
+      hasConfirmedPreferences={hasConfirmedPreferences}
       hasResume={hasResume}
       hasRolePreferences={hasRolePreferences}
       profile={profile}

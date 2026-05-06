@@ -41,6 +41,7 @@ export async function saveAISettingsAction(formData: FormData) {
     openaiModel,
     fallbackProvider,
     onboardingDismissed: stored.onboardingDismissed,
+    onboardingPreferencesConfirmed: stored.onboardingPreferencesConfirmed,
   });
 
   revalidatePath("/settings");

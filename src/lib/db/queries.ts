@@ -103,6 +103,7 @@ type JobRow = {
   red_flags_json: string;
   liveness_status: string;
   liveness_checked_at: string;
+  scope_status: string;
   archived: number;
 };
 
@@ -1369,6 +1370,7 @@ function mapJob(row: JobRow): JobRecord {
     redFlags: parseJson<string[]>(row.red_flags_json),
     livenessStatus: row.liveness_status ?? "",
     livenessCheckedAt: row.liveness_checked_at ?? "",
+    scopeStatus: row.scope_status ?? "",
     archived: (row.archived ?? 0) === 1
   };
 }
@@ -1521,6 +1523,7 @@ type AISettingsRow = {
   openai_model: string;
   fallback_provider: string;
   onboarding_dismissed: number;
+  onboarding_preferences_confirmed: number;
   updated_at: string;
 };
 
@@ -1538,6 +1541,7 @@ export function getAISettings(): AISettingsRecord {
       openaiModel: "gpt-5.4-mini",
       fallbackProvider: "",
       onboardingDismissed: false,
+      onboardingPreferencesConfirmed: false,
       updatedAt: new Date().toISOString()
     };
   }
@@ -1552,6 +1556,7 @@ export function getAISettings(): AISettingsRecord {
     openaiModel: row.openai_model,
     fallbackProvider: row.fallback_provider,
     onboardingDismissed: Boolean(row.onboarding_dismissed),
+    onboardingPreferencesConfirmed: Boolean(row.onboarding_preferences_confirmed),
     updatedAt: row.updated_at
   };
 }
@@ -1569,13 +1574,27 @@ export function saveAISettings(input: AISettingsUpdateInput) {
         openai_model = @openaiModel,
         fallback_provider = @fallbackProvider,
         onboarding_dismissed = @onboardingDismissed,
+        onboarding_preferences_confirmed = @onboardingPreferencesConfirmed,
         updated_at = current_timestamp
       where id = 'singleton'`
     )
     .run({
       ...input,
-      onboardingDismissed: input.onboardingDismissed ? 1 : 0
+      onboardingDismissed: input.onboardingDismissed ? 1 : 0,
+      onboardingPreferencesConfirmed: input.onboardingPreferencesConfirmed ? 1 : 0
     });
+}
+
+export function setOnboardingPreferencesConfirmed(confirmed: boolean) {
+  getDatabase()
+    .prepare(
+      `update ai_settings set
+        onboarding_preferences_confirmed = @confirmed,
+        onboarding_dismissed = 0,
+        updated_at = current_timestamp
+      where id = 'singleton'`
+    )
+    .run({ confirmed: confirmed ? 1 : 0 });
 }
 
 // ─── Story Bank ───────────────────────────────────────────────────────────────
@@ -1798,6 +1817,12 @@ export function saveJobLiveness(id: string, status: string, reason: string) {
     where id = @id`
   ).run({ id, status });
   logActivity("job", id, `Liveness check: ${status}`, { reason });
+}
+
+export function saveJobScopeStatus(id: string, scopeStatus: string) {
+  getDatabase()
+    .prepare("update jobs set scope_status = @scopeStatus where id = @id")
+    .run({ id, scopeStatus });
 }
 
 export function getScanSourceOverrides(): Record<string, boolean> {
