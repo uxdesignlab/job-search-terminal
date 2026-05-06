@@ -7,6 +7,7 @@ import {
   getTitleFilters,
   getUserProfile,
   saveTitleFilters,
+  setOnboardingPreferencesConfirmed,
   updateResumeSource,
   updateUserProfile,
 } from "@/lib/db/queries";
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     extractedPositions.map((position) => position.toLowerCase()),
     getTitleFilters().negative
   );
+  setOnboardingPreferencesConfirmed(false);
 
   return NextResponse.json({
     ok: true,

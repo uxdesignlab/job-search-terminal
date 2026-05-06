@@ -461,5 +461,15 @@ export const migrations = [
     sql: `
       alter table user_profile add column work_modes_json text not null default '[]';
     `
+  },
+  {
+    id: "0028_onboarding_preferences_confirmation",
+    sql: `
+      alter table ai_settings add column onboarding_preferences_confirmed integer not null default 0;
+    `
+  },
+  {
+    id: "0029_job_scope_status",
+    sql: `alter table jobs add column scope_status text not null default '';`
   }
 ];

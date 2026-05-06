@@ -7,6 +7,7 @@ import {
   getUserProfile,
   saveAISettings,
   saveTitleFilters,
+  setOnboardingPreferencesConfirmed,
   updateUserProfile,
 } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
@@ -59,6 +60,7 @@ export async function saveOnboardingPreferencesAction(formData: FormData) {
     remotePreference: remotePreferenceFromWorkModes(workModes),
   });
   saveTitleFilters(positive, negative);
+  setOnboardingPreferencesConfirmed(true);
 
   revalidateOnboardingSurfaces();
 }
@@ -80,6 +82,7 @@ export async function dismissOnboardingAction() {
     openaiModel: settings.openaiModel,
     fallbackProvider: settings.fallbackProvider,
     onboardingDismissed: true,
+    onboardingPreferencesConfirmed: settings.onboardingPreferencesConfirmed,
   });
   revalidatePath("/dashboard");
 }

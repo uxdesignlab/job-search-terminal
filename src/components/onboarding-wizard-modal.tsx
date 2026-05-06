@@ -28,6 +28,7 @@ type OnboardingWizardModalProps = {
   hasResume: boolean;
   hasRolePreferences: boolean;
   hasLocationPreferences: boolean;
+  hasConfirmedPreferences: boolean;
 };
 
 const WORK_MODES: WorkMode[] = ["remote", "hybrid", "onsite"];
@@ -55,6 +56,7 @@ export function OnboardingWizardModal({
   hasResume,
   hasRolePreferences,
   hasLocationPreferences,
+  hasConfirmedPreferences,
 }: OnboardingWizardModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(true);
@@ -63,9 +65,9 @@ export function OnboardingWizardModal({
   const statuses = useMemo<Record<StepId, boolean>>(() => ({
     ai: hasKey,
     resume: hasResume,
-    preferences: hasRolePreferences && hasLocationPreferences,
-    ready: hasKey && hasResume && hasRolePreferences && hasLocationPreferences,
-  }), [hasKey, hasLocationPreferences, hasResume, hasRolePreferences]);
+    preferences: hasConfirmedPreferences,
+    ready: hasKey && hasResume && hasConfirmedPreferences,
+  }), [hasConfirmedPreferences, hasKey, hasResume]);
 
   const firstIncompleteStep = (Object.keys(statuses) as StepId[]).find((step) => !statuses[step]) ?? "ready";
   const [activeStep, setActiveStep] = useState<StepId>(firstIncompleteStep);
@@ -94,7 +96,7 @@ export function OnboardingWizardModal({
     {
       id: "ready",
       title: "Ready",
-      description: "Start scanning once setup is complete.",
+      description: "Review sources, scan for jobs, then start evaluating matches.",
     },
   ];
 
@@ -108,7 +110,13 @@ export function OnboardingWizardModal({
   }
 
   async function savePreferences(formData: FormData) {
+    const canContinue = Boolean(
+      String(formData.get("targetRoles") ?? "").trim() &&
+      String(formData.get("titlePositive") ?? "").trim() &&
+      formData.getAll("workModes").length > 0
+    );
     await saveOnboardingPreferencesAction(formData);
+    if (canContinue) setActiveStep("ready");
     router.refresh();
   }
 
@@ -292,8 +300,13 @@ export function OnboardingWizardModal({
                     <div>
                       <h3 className="text-lg font-semibold text-ink">Set job preferences</h3>
                       <p className="mt-1 text-sm leading-6 text-muted">
-                        These values drive import filtering and fit scoring. Extracted resume roles are prefilled when available.
+                        Review the resume-derived values, adjust them, then save to confirm before continuing.
                       </p>
+                      {(hasRolePreferences || hasLocationPreferences) && !hasConfirmedPreferences ? (
+                        <p className="mt-3 rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-sm leading-6 text-muted">
+                          Resume upload filled some values. Confirm they match your search before moving to Ready.
+                        </p>
+                      ) : null}
                     </div>
                     <form action={savePreferences} className="grid gap-4">
                       <Textarea
@@ -353,6 +366,14 @@ export function OnboardingWizardModal({
                       <p className="mt-1 text-sm leading-6 text-muted">
                         The dashboard is ready for scanning, scoring, resume generation, and answer drafting.
                       </p>
+                    </div>
+                    <div className="rounded-panel border border-border bg-surface p-5">
+                      <p className="text-sm font-semibold text-ink">Next steps</p>
+                      <ol className="mt-3 grid gap-2 text-sm leading-6 text-muted">
+                        <li>1. Open Settings and review scan sources. Disable sources you do not want to scan.</li>
+                        <li>2. Return to Dashboard and run Scan for new jobs.</li>
+                        <li>3. Review imported jobs, evaluate promising matches, and generate tailored resumes only for roles you want to pursue.</li>
+                      </ol>
                     </div>
                     <Button onClick={() => void dismissOnboarding()} variant="primary">Open dashboard</Button>
                   </section>
