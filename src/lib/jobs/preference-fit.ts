@@ -22,7 +22,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
     return (): JobPreferenceDecision => ({ accepted: true });
   }
 
-  const locationMatchers = buildLocationMatchers([profile.location, ...profile.preferredLocations]);
+  const locationMatchers = buildLocationMatchers(profile.preferredLocations);
   const hasLocationPreferences = locationMatchers.length > 0;
   const hardRemoteOnly = profile.remotePreference === "remote-only";
   const hardLocalOrRemote = profile.remotePreference === "local-or-remote";
@@ -126,20 +126,56 @@ function buildLocationMatchers(preferences: string[]) {
   for (const preference of preferences) {
     const normalized = normalizeText(preference);
     if (!normalized) continue;
-    aliases.add(normalized);
+    addLocationAlias(aliases, normalized);
+    const broadPreference = isBroadLocationPreference(normalized);
 
     for (const group of Object.values(LOCATION_ALIAS_GROUPS)) {
       if (group.includes(normalized)) {
-        group.forEach((alias) => aliases.add(alias));
+        group.forEach((alias) => addLocationAlias(aliases, alias));
       }
     }
 
-    if (US_STATE_ALIASES.includes(normalized)) {
-      LOCATION_ALIAS_GROUPS["united states"].forEach((alias) => aliases.add(alias));
+    if (!broadPreference) {
+      const parts = locationLabelParts(preference);
+      for (let index = 0; index < parts.length; index += 1) {
+        const part = parts[index];
+        const normalizedPart = normalizeText(part);
+        const isFinalCompositePart = parts.length > 1 && index === parts.length - 1;
+        if (!isFinalCompositePart) {
+          addLocationAlias(aliases, normalizedPart);
+        }
+      }
     }
   }
 
   return [...aliases].map((alias) => (location: string) => containsLocationToken(location, alias));
+}
+
+function locationLabelParts(preference: string) {
+  return preference.split(",").map((part) => part.trim()).filter(Boolean);
+}
+
+function isBroadLocationPreference(value: string) {
+  return Object.values(LOCATION_ALIAS_GROUPS).some((group) => group.includes(value));
+}
+
+function addLocationAlias(aliases: Set<string>, value: string) {
+  if (!value) return;
+  aliases.add(value);
+  for (const stateAlias of stateAliasesFor(value)) {
+    aliases.add(stateAlias);
+  }
+}
+
+function stateAliasesFor(value: string) {
+  for (let index = 0; index < US_STATE_ALIASES.length; index += 2) {
+    const state = US_STATE_ALIASES[index];
+    const abbreviation = US_STATE_ALIASES[index + 1];
+    if (value === state || value === abbreviation) {
+      return [state, abbreviation];
+    }
+  }
+  return value === "district of columbia" || value === "dc" ? ["district of columbia", "dc"] : [];
 }
 
 function containsLocationToken(location: string, alias: string) {

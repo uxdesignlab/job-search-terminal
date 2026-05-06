@@ -272,7 +272,9 @@ Resumes tab shows an upload banner when no extracted resumes exist.
 - Preferred locations use a city lookup field backed by OpenStreetMap
   Nominatim. The selected saved value should include city, state/region when
   available, and country, for example `Nashville, Tennessee, United States` or
-  `Minsk, Belarus`.
+  `Minsk, Belarus`. Each saved place displays as one label; legacy split values
+  such as `Nashville`, `Tennessee`, `United States` are normalized back into one
+  preferred-location label.
 - Work preferences are reserved for non-location preferences such as `small
   team`, `async-first`, or `mission-driven`; location modes are stored
   separately.
@@ -397,9 +399,9 @@ anything. Expired jobs with no user activity are shown for confirmation before
 deletion. Jobs with activity, such as reviewed, skipped, resume-generated, or
 applied jobs, are kept unless the user explicitly selects and deletes them.
 
-The Jobs table also re-checks current profile preferences at render time. Jobs
-that still fit show `Match` in the Preference column; jobs that no longer fit
-show `Out of scope`.
+The Jobs table also re-checks current profile preferences at render time and is
+refreshed after Preferences or Constraints are saved. Jobs that still fit show
+`Match` in the Preference column; jobs that no longer fit show `Out of scope`.
 
 Location matching uses the selected Location mode checkboxes:
 - `Remote` includes all remote opportunities, even if the posting mentions a

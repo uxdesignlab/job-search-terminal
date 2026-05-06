@@ -164,7 +164,9 @@ Every job discovered by scanning or added manually.
 
 The Jobs table Preference column is derived at render time from the current
 profile preferences and constraints. It is not persisted on `jobs`; displayed
-values are `Match` and `Out of scope`.
+values are `Match` and `Out of scope`. Saving profile Preferences or
+Constraints revalidates the Jobs page so this column reflects the latest profile
+rules.
 
 **Job status values:** `found` → `reviewed` → `resume_generated` → `applied`
 → `follow_up_needed` → `recruiter_responded` → `interviewing` → `offer` →

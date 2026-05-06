@@ -9,6 +9,7 @@ import {
 } from "../src/lib/scanner/careerops-scanner";
 import { shouldPurgeJob } from "../src/lib/db/queries";
 import { buildJobPreferenceFilter } from "../src/lib/jobs/preference-fit";
+import { normalizePreferredLocations } from "../src/lib/profile/locations";
 
 assert.deepEqual(detectApi({ name: "Airtable", api: "https://boards-api.greenhouse.io/v1/boards/airtable/jobs" }), {
   type: "greenhouse",
@@ -60,6 +61,22 @@ assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location
 assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "On-site - Melbourne, Australia" }).accepted, true);
 assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "Hybrid - Berlin, Germany" }).accepted, false);
 assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "On-site - London, United Kingdom" }).accepted, false);
+assert.deepEqual(normalizePreferredLocations(["Nashville", "Tennessee", "United States"]), ["Nashville, Tennessee, United States"]);
+assert.deepEqual(normalizePreferredLocations(["Nashville", "TN", "Minsk", "Belarus"]), ["Nashville, TN", "Minsk, Belarus"]);
+assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "Hybrid - Nashville, TN" }).accepted, true);
+assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location: "Hybrid - Chicago, Illinois, United States" }).accepted, false);
+
+const internationalCityPreferenceFilter = buildJobPreferenceFilter({
+  location: "",
+  preferredLocations: ["Berlin, Germany"],
+  remotePreference: "all",
+  workPreferences: [],
+  workModes: ["hybrid", "onsite"],
+  constraints: [],
+  dealBreakers: []
+});
+assert.equal(internationalCityPreferenceFilter({ title: "Product Designer", location: "Hybrid - Berlin, Germany" }).accepted, true);
+assert.equal(internationalCityPreferenceFilter({ title: "Product Designer", location: "Hybrid - Munich, Germany" }).accepted, false);
 assert.equal(
   shouldPurgeJob(
     { fit_score: 0, status: "Found", location: "London, United Kingdom", archived: 0 },
