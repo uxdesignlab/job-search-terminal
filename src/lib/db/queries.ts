@@ -36,6 +36,7 @@ import type {
   StoryInput,
   StoryRecord,
   UserProfileRecord,
+  WorkMode,
   WritingStyleRecord,
   JobGapResponseRecord,
   JobGapResponseInput,
@@ -45,6 +46,8 @@ import type {
 } from "./types";
 
 const parseJson = <T>(value: string): T => JSON.parse(value) as T;
+
+const WORK_MODE_VALUES = new Set<WorkMode>(["remote", "hybrid", "onsite"]);
 
 type ProfileRow = {
   id: string;
@@ -57,6 +60,7 @@ type ProfileRow = {
   desired_industries_json: string;
   compensation_needs: string;
   work_preferences_json: string;
+  work_modes_json: string;
   deal_breakers_json: string;
   career_intent: string;
   career_change_interest: string;
@@ -183,6 +187,7 @@ export function getUserProfile(): UserProfileRecord {
     desiredIndustries: parseJson<string[]>(row.desired_industries_json),
     compensationNeeds: row.compensation_needs,
     workPreferences: parseJson<string[]>(row.work_preferences_json),
+    workModes: normalizeWorkModes(parseJson<string[]>(row.work_modes_json ?? "[]"), parseJson<string[]>(row.work_preferences_json), row.remote_preference),
     dealBreakers: parseJson<string[]>(row.deal_breakers_json),
     careerIntent: row.career_intent,
     careerChangeInterest: row.career_change_interest,
@@ -780,6 +785,10 @@ export function updateUserProfile(input: ProfileUpdateInput) {
   getDatabase()
     .prepare(
       `update user_profile set
+        name = @name,
+        location = @location,
+        portfolio = @portfolio,
+        strongest_skills_json = @strongestSkillsJson,
         current_search_goal = @currentSearchGoal,
         urgency = @urgency,
         direction = @direction,
@@ -787,6 +796,7 @@ export function updateUserProfile(input: ProfileUpdateInput) {
         desired_industries_json = @desiredIndustriesJson,
         compensation_needs = @compensationNeeds,
         work_preferences_json = @workPreferencesJson,
+        work_modes_json = @workModesJson,
         constraints_json = @constraintsJson,
         deal_breakers_json = @dealBreakersJson,
         career_intent = @careerIntent,
@@ -801,9 +811,11 @@ export function updateUserProfile(input: ProfileUpdateInput) {
     )
     .run({
       ...input,
+      strongestSkillsJson: JSON.stringify(input.strongestSkills),
       targetRolesJson: JSON.stringify(input.targetRoles),
       desiredIndustriesJson: JSON.stringify(input.desiredIndustries),
       workPreferencesJson: JSON.stringify(input.workPreferences),
+      workModesJson: JSON.stringify(input.workModes),
       constraintsJson: JSON.stringify(input.constraints),
       dealBreakersJson: JSON.stringify(input.dealBreakers),
       skillsToUseMoreJson: JSON.stringify(input.skillsToUseMore),
@@ -1358,6 +1370,20 @@ function mapJob(row: JobRow): JobRecord {
     livenessCheckedAt: row.liveness_checked_at ?? "",
     archived: (row.archived ?? 0) === 1
   };
+}
+
+function normalizeWorkModes(values: string[], workPreferences: string[], remotePreference: string): WorkMode[] {
+  const explicit = values.filter((value): value is WorkMode => WORK_MODE_VALUES.has(value as WorkMode));
+  if (explicit.length > 0) {
+    return [...new Set(explicit)];
+  }
+
+  const inferred = new Set<WorkMode>();
+  const normalizedPreferences = workPreferences.map((item) => item.toLowerCase());
+  if (remotePreference === "remote-only" || normalizedPreferences.some((item) => item.includes("remote"))) inferred.add("remote");
+  if (remotePreference === "local-or-remote" || normalizedPreferences.some((item) => item.includes("hybrid"))) inferred.add("hybrid");
+  if (remotePreference === "all" || normalizedPreferences.some((item) => item.includes("on-site") || item.includes("onsite"))) inferred.add("onsite");
+  return [...inferred];
 }
 
 function mapScanRun(row: ScanRunRow): ScanRunRecord {

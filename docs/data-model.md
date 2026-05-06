@@ -40,6 +40,7 @@ and seeds demo data if the database is empty.
 | `0024_profile_gap_supplements` | Adds `profile_gap_supplements` table |
 | `0025_company_profiles` | Adds `company_profiles` table |
 | `0026_table_saved_filters` | Adds `table_saved_filters` table for persisted column-filter presets |
+| `0027_work_modes` | Adds `work_modes_json` to `user_profile` |
 
 ---
 
@@ -66,12 +67,13 @@ Career profile for the job seeker. Singleton in practice — one row.
 | `desired_industries_json` | text | Target industries |
 | `compensation_needs` | text | Salary / comp requirements |
 | `work_preferences_json` | text | Work style preferences |
+| `work_modes_json` | text | Selected location work modes: `remote`, `hybrid`, `onsite` |
 | `deal_breakers_json` | text | Hard no conditions |
 | `career_intent` | text | Stay on path vs. shift intent |
 | `career_change_interest` | text | Specific change interest |
 | `confidence_level` | text | Self-reported confidence |
 | `preferred_locations_json` | text | Acceptable cities / regions |
-| `remote_preference` | text | `remote` / `hybrid` / `onsite` / `all` |
+| `remote_preference` | text | Legacy compatibility value derived from work modes |
 | `created_at` | text | ISO timestamp |
 | `updated_at` | text | ISO timestamp |
 

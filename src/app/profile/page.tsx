@@ -3,9 +3,11 @@ import { revalidatePath } from "next/cache";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, PageHeader, Select, SubmitButton, Textarea } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
+import { PreferredLocationsInput } from "@/components/preferred-locations-input";
 import { ResumeManageCard } from "@/components/resume-manage-card";
 import { createResumeLane, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
+import type { WorkMode } from "@/lib/db/types";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +26,44 @@ function isValidTab(t: string): t is TabId {
   return TABS.some((tab) => tab.id === t);
 }
 
+const WORK_MODE_VALUES = new Set<WorkMode>(["remote", "hybrid", "onsite"]);
+
+function splitWorkModes(formData: FormData): WorkMode[] {
+  return formData.getAll("workModes").filter((value): value is WorkMode => WORK_MODE_VALUES.has(value as WorkMode));
+}
+
+function remotePreferenceFromWorkModes(workModes: WorkMode[]): "remote-only" | "local-or-remote" | "all" {
+  if (workModes.length === 1 && workModes[0] === "remote") return "remote-only";
+  if (workModes.includes("remote") && workModes.length < 3) return "local-or-remote";
+  return "all";
+}
+
+function workModeLabel(mode: WorkMode) {
+  if (mode === "remote") return "Remote";
+  if (mode === "hybrid") return "Hybrid";
+  return "On-site";
+}
+
+function freeFormWorkPreferences(preferences: string[]) {
+  return preferences.filter((preference) => {
+    const normalized = preference.toLowerCase();
+    return !normalized.includes("remote") &&
+      !normalized.includes("hybrid") &&
+      !normalized.includes("on-site") &&
+      !normalized.includes("onsite");
+  });
+}
+
 // ─── Server actions (each reads current profile to preserve untouched fields) ──
 
 async function updateOverviewAction(formData: FormData) {
   "use server";
   const p = getUserProfile();
   updateUserProfile({
+    name:                 p.name,
+    location:             p.location,
+    portfolio:            p.portfolio,
+    strongestSkills:      p.strongestSkills,
     currentSearchGoal: String(formData.get("currentSearchGoal") ?? ""),
     urgency:           String(formData.get("urgency") ?? ""),
     direction:         String(formData.get("direction") ?? ""),
@@ -41,6 +75,7 @@ async function updateOverviewAction(formData: FormData) {
     desiredIndustries:  p.desiredIndustries,
     compensationNeeds:  p.compensationNeeds,
     workPreferences:    p.workPreferences,
+    workModes:          p.workModes,
     constraints:        p.constraints,
     dealBreakers:       p.dealBreakers,
     skillsToUseMore:    p.skillsToUseMore,
@@ -57,6 +92,10 @@ async function updateSkillsAction(formData: FormData) {
   "use server";
   const p = getUserProfile();
   updateUserProfile({
+    name:            p.name,
+    location:        p.location,
+    portfolio:       p.portfolio,
+    strongestSkills: p.strongestSkills,
     targetRoles:     splitListValue(formData.get("targetRoles")),
     skillsToUseMore: splitListValue(formData.get("skillsToUseMore")),
     skillsToUseLess: splitListValue(formData.get("skillsToUseLess")),
@@ -70,6 +109,7 @@ async function updateSkillsAction(formData: FormData) {
     desiredIndustries:    p.desiredIndustries,
     compensationNeeds:    p.compensationNeeds,
     workPreferences:      p.workPreferences,
+    workModes:            p.workModes,
     constraints:          p.constraints,
     dealBreakers:         p.dealBreakers,
     preferredLocations:   p.preferredLocations,
@@ -82,12 +122,18 @@ async function updateSkillsAction(formData: FormData) {
 async function updatePreferencesAction(formData: FormData) {
   "use server";
   const p = getUserProfile();
+  const workModes = splitWorkModes(formData);
   updateUserProfile({
+    name:               p.name,
+    location:           p.location,
+    portfolio:          p.portfolio,
+    strongestSkills:    p.strongestSkills,
     desiredIndustries:  splitListValue(formData.get("desiredIndustries")),
     workPreferences:    splitListValue(formData.get("workPreferences")),
+    workModes,
     compensationNeeds:  String(formData.get("compensationNeeds") ?? ""),
     preferredLocations: splitListValue(formData.get("preferredLocations")),
-    remotePreference:   (String(formData.get("remotePreference") ?? "all")) as "remote-only" | "local-or-remote" | "all",
+    remotePreference:   remotePreferenceFromWorkModes(workModes),
     // Preserve other tabs' fields
     currentSearchGoal:    p.currentSearchGoal,
     urgency:              p.urgency,
@@ -110,6 +156,10 @@ async function updateConstraintsAction(formData: FormData) {
   "use server";
   const p = getUserProfile();
   updateUserProfile({
+    name:                 p.name,
+    location:             p.location,
+    portfolio:            p.portfolio,
+    strongestSkills:      p.strongestSkills,
     constraints:          splitListValue(formData.get("constraints")),
     dealBreakers:         splitListValue(formData.get("dealBreakers")),
     careerChangeInterest: String(formData.get("careerChangeInterest") ?? ""),
@@ -123,6 +173,7 @@ async function updateConstraintsAction(formData: FormData) {
     desiredIndustries:  p.desiredIndustries,
     compensationNeeds:  p.compensationNeeds,
     workPreferences:    p.workPreferences,
+    workModes:          p.workModes,
     skillsToUseMore:    p.skillsToUseMore,
     skillsToUseLess:    p.skillsToUseLess,
     preferredLocations: p.preferredLocations,
@@ -163,6 +214,7 @@ export default async function ProfilePage({
   const skills       = getSkills();
   const resumes      = getResumes();
   const writingStyle = getWritingStyle();
+  const workPreferenceText = freeFormWorkPreferences(profile.workPreferences).join("\n");
 
   // Resume gate: at least one PDF must be uploaded and extracted before AI extraction works
   const hasExtractedResumes = resumes.some((r) => r.wordCount > 0);
@@ -503,9 +555,14 @@ export default async function ProfilePage({
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Remote preference</CardTitle>
+                  <CardTitle>Location mode</CardTitle>
                 </CardHeader>
-                <p className="text-sm text-ink capitalize">{profile.remotePreference.replace(/-/g, " ") || "—"}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.workModes.length > 0
+                    ? profile.workModes.map((mode) => <Badge key={mode}>{workModeLabel(mode)}</Badge>)
+                    : <p className="text-sm text-muted">None set.</p>
+                  }
+                </div>
               </Card>
               <Card>
                 <CardHeader>
@@ -544,17 +601,30 @@ export default async function ProfilePage({
                 <CardDescription>Job search preferences used for filtering and fit scoring.</CardDescription>
               </CardHeader>
               <form action={updatePreferencesAction} className="grid gap-4">
-                <Select defaultValue={profile.remotePreference} label="Remote preference" name="remotePreference">
-                  <option value="remote-only">Remote only — hide on-site and hybrid jobs</option>
-                  <option value="local-or-remote">My area or remote — hide other cities</option>
-                  <option value="all">All locations — show everything</option>
-                </Select>
-                <Textarea
-                  defaultValue={profile.preferredLocations.join("\n")}
-                  hint="One city or metro per line. Example: City, State"
-                  label="Preferred locations"
-                  name="preferredLocations"
-                />
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium text-ink">Location mode</legend>
+                  <div className="flex flex-wrap gap-3">
+                    {(["remote", "hybrid", "onsite"] as WorkMode[]).map((mode) => (
+                      <label
+                        className="inline-flex min-h-10 items-center gap-2 rounded-control border border-border bg-panel px-3 text-sm text-ink"
+                        key={mode}
+                      >
+                        <input
+                          className="h-4 w-4 rounded border-border"
+                          defaultChecked={profile.workModes.includes(mode)}
+                          name="workModes"
+                          type="checkbox"
+                          value={mode}
+                        />
+                        {workModeLabel(mode)}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs leading-5 text-muted">
+                    Select the work arrangements this search should include.
+                  </p>
+                </fieldset>
+                <PreferredLocationsInput defaultLocations={profile.preferredLocations} />
                 <Textarea
                   defaultValue={profile.desiredIndustries.join("\n")}
                   hint="One industry per line."
@@ -568,7 +638,7 @@ export default async function ProfilePage({
                   name="compensationNeeds"
                 />
                 <Textarea
-                  defaultValue={profile.workPreferences.join("\n")}
+                  defaultValue={workPreferenceText}
                   hint="One preference per line. Example: small team, async-first, mission-driven"
                   label="Work preferences"
                   name="workPreferences"

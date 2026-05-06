@@ -455,5 +455,11 @@ export const migrations = [
         updated_at text not null default current_timestamp
       );
     `
+  },
+  {
+    id: "0027_work_modes",
+    sql: `
+      alter table user_profile add column work_modes_json text not null default '[]';
+    `
   }
 ];

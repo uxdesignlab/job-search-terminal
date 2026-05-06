@@ -1,5 +1,7 @@
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
+export type WorkMode = "remote" | "hybrid" | "onsite";
+
 export type UserProfileRecord = {
   id: string;
   name: string;
@@ -11,6 +13,7 @@ export type UserProfileRecord = {
   desiredIndustries: string[];
   compensationNeeds: string;
   workPreferences: string[];
+  workModes: WorkMode[];
   dealBreakers: string[];
   careerIntent: string;
   careerChangeInterest: string;
@@ -289,6 +292,10 @@ export type FunnelStage = {
 };
 
 export type ProfileUpdateInput = {
+  name: string;
+  location: string;
+  portfolio: string;
+  strongestSkills: string[];
   currentSearchGoal: string;
   urgency: string;
   direction: string;
@@ -296,6 +303,7 @@ export type ProfileUpdateInput = {
   desiredIndustries: string[];
   compensationNeeds: string;
   workPreferences: string[];
+  workModes: WorkMode[];
   constraints: string[];
   dealBreakers: string[];
   careerIntent: string;
