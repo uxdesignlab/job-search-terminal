@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import {
   createResumeLane,
+  getAISettings,
   getUserProfile,
+  saveAISettings,
   saveTitleFilters,
   updateUserProfile,
 } from "@/lib/db/queries";
@@ -64,4 +66,20 @@ export async function saveOnboardingPreferencesAction(formData: FormData) {
 export async function createOnboardingResumeLaneAction() {
   createResumeLane("New Resume");
   revalidateOnboardingSurfaces();
+}
+
+export async function dismissOnboardingAction() {
+  const settings = getAISettings();
+  saveAISettings({
+    activeProvider: settings.activeProvider,
+    anthropicApiKey: settings.anthropicApiKey,
+    geminiApiKey: settings.geminiApiKey,
+    openaiApiKey: settings.openaiApiKey,
+    anthropicModel: settings.anthropicModel,
+    geminiModel: settings.geminiModel,
+    openaiModel: settings.openaiModel,
+    fallbackProvider: settings.fallbackProvider,
+    onboardingDismissed: true,
+  });
+  revalidatePath("/dashboard");
 }

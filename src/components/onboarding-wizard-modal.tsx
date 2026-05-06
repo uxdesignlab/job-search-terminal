@@ -8,6 +8,7 @@ import { ResumeManageCard } from "@/components/resume-manage-card";
 import { Button, SubmitButton, Textarea } from "@/components/ui";
 import {
   createOnboardingResumeLaneAction,
+  dismissOnboardingAction,
   saveOnboardingPreferencesAction,
 } from "@/app/dashboard/onboarding-actions";
 import { cn } from "@/lib/utils";
@@ -111,9 +112,15 @@ export function OnboardingWizardModal({
     router.refresh();
   }
 
+  async function dismissOnboarding() {
+    await dismissOnboardingAction();
+    setOpen(false);
+    router.refresh();
+  }
+
   function requestClose() {
     if (statuses.ready) {
-      setOpen(false);
+      void dismissOnboarding();
       return;
     }
     setConfirmClose(true);
@@ -347,7 +354,7 @@ export function OnboardingWizardModal({
                         The dashboard is ready for scanning, scoring, resume generation, and answer drafting.
                       </p>
                     </div>
-                    <Button onClick={() => setOpen(false)} variant="primary">Open dashboard</Button>
+                    <Button onClick={() => void dismissOnboarding()} variant="primary">Open dashboard</Button>
                   </section>
                 )}
               </main>
