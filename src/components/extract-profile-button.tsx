@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import { extractProfileWithAIAction } from "@/app/profile/actions";
 
 type Props = {
   /** Disable the button when no resume has been uploaded yet. */
   disabled?: boolean;
+  onExtracted?: () => void;
 };
 
-export function ExtractProfileButton({ disabled = false }: Props) {
+export function ExtractProfileButton({ disabled = false, onExtracted }: Props) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<{ skillCount: number } | null>(null);
   const [error, setError] = useState("");
@@ -21,6 +24,8 @@ export function ExtractProfileButton({ disabled = false }: Props) {
       try {
         const r = await extractProfileWithAIAction();
         setResult(r);
+        router.refresh();
+        onExtracted?.();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Extraction failed");
       }
