@@ -1,5 +1,16 @@
 import Link from "next/link";
-import { getAISettings } from "@/lib/db/queries";
+import { revalidatePath } from "next/cache";
+import { SubmitButton, Textarea } from "@/components/ui";
+import {
+  getAISettings,
+  getResumes,
+  getTitleFilters,
+  getUserProfile,
+  saveTitleFilters,
+  updateUserProfile,
+} from "@/lib/db/queries";
+import { splitListValue } from "@/lib/profile/intelligence";
+import type { WorkMode } from "@/lib/db/types";
 
 /* ── tiny helpers ────────────────────────────────────────────────────────── */
 
@@ -91,22 +102,84 @@ function ProviderAccordion({
   );
 }
 
+const WORK_MODE_VALUES = new Set<WorkMode>(["remote", "hybrid", "onsite"]);
+
+function splitWorkModes(formData: FormData): WorkMode[] {
+  return formData.getAll("workModes").filter((value): value is WorkMode => WORK_MODE_VALUES.has(value as WorkMode));
+}
+
+function remotePreferenceFromWorkModes(workModes: WorkMode[]): "remote-only" | "local-or-remote" | "all" {
+  if (workModes.length === 1 && workModes[0] === "remote") return "remote-only";
+  if (workModes.includes("remote") && workModes.length < 3) return "local-or-remote";
+  return "all";
+}
+
+function workModeLabel(mode: WorkMode) {
+  if (mode === "remote") return "Remote";
+  if (mode === "hybrid") return "Hybrid";
+  return "On-site";
+}
+
+function normalizeTitleKeywords(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean)));
+}
+
+function mergeUnique(values: string[]) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /* ── main component ──────────────────────────────────────────────────────── */
 
 /**
- * Shown on the dashboard when no resume has been uploaded yet.
- * Replaces normal dashboard content with a focused 3-step setup guide.
- * Step 1: Add AI API key (instructions for all three providers).
- * Step 2: Upload resume.
- * Step 3: Extract profile and start scanning.
+ * Replaces normal dashboard content until the required setup records exist:
+ * AI credentials, at least one extracted resume lane, title filters, target roles,
+ * and selected location modes.
  */
 export function NewUserOnboarding() {
   const settings = getAISettings();
+  const resumes = getResumes();
+  const profile = getUserProfile();
+  const titleFilters = getTitleFilters();
   const hasKey = !!(
     settings.openaiApiKey ||
     settings.anthropicApiKey ||
     settings.geminiApiKey
   );
+  const hasResume = resumes.some((r) => r.wordCount > 0);
+  const positiveTitleFilters = titleFilters.positive.length > 0
+    ? titleFilters.positive
+    : normalizeTitleKeywords(profile.targetRoles);
+  const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
+  const hasLocationPreferences = profile.workModes.length > 0;
+
+  async function saveOnboardingPreferencesAction(formData: FormData) {
+    "use server";
+
+    const previous = getUserProfile();
+    const targetRoles = mergeUnique(splitListValue(formData.get("targetRoles")));
+    const positive = normalizeTitleKeywords(splitListValue(formData.get("titlePositive")));
+    const negative = normalizeTitleKeywords(splitListValue(formData.get("titleNegative")));
+    const workModes = splitWorkModes(formData);
+
+    updateUserProfile({
+      ...previous,
+      targetRoles,
+      workModes,
+      remotePreference: remotePreferenceFromWorkModes(workModes),
+    });
+    saveTitleFilters(positive, negative);
+
+    revalidatePath("/dashboard");
+    revalidatePath("/profile");
+    revalidatePath("/settings");
+    revalidatePath("/jobs");
+  }
 
   return (
     <div className="grid gap-8">
@@ -115,7 +188,7 @@ export function NewUserOnboarding() {
         <p className="text-xs font-semibold uppercase tracking-widest text-muted">Welcome</p>
         <h2 className="mt-2 text-2xl font-semibold text-ink">Job Search Terminal</h2>
         <p className="mx-auto mt-3 max-w-prose text-sm leading-7 text-muted">
-          Your personal, AI-powered job search command center. Complete the three steps below
+          Your personal, AI-powered job search command center. Complete the setup steps below
           and you&apos;ll be ready to scan jobs, get fit scores, and generate tailored resumes.
         </p>
       </div>
@@ -296,24 +369,32 @@ export function NewUserOnboarding() {
         {/* ── Step 2: Upload resume ── */}
         <li
           className={`flex gap-4 rounded-panel border p-5 ${
-            hasKey
-              ? "border-accent/40 bg-accent/5"
-              : "border-border bg-panel opacity-60"
+            hasResume
+              ? "border-success/30 bg-success/5"
+              : hasKey
+                ? "border-accent/40 bg-accent/5"
+                : "border-border bg-panel opacity-60"
           }`}
         >
-          {hasKey ? <StepCircleActive n={2} /> : <StepCirclePending n={2} />}
+          {hasResume ? <StepCircleDone /> : hasKey ? <StepCircleActive n={2} /> : <StepCirclePending n={2} />}
 
           <div className="flex-1">
-            <p className="text-sm font-semibold text-ink">Upload your resume</p>
-            <p className="mt-1 text-sm leading-6 text-muted">
-              Your resume is the foundation — AI fit scores, tailored resumes, and application
-              answers all start here. Upload a PDF and the text is extracted automatically.
-              Then go to <span className="font-medium text-ink">Profile → Overview</span> and
-              click <span className="font-medium text-ink">Extract with AI</span> to populate
-              your skills, target roles, and preferences. Review each tab before starting
-              your search.
+            <p className="text-sm font-semibold text-ink">
+              {hasResume ? "Resume lane ready ✓" : "Upload at least one resume"}
             </p>
-            {hasKey && (
+            {hasResume ? (
+              <p className="mt-1 text-sm text-success">
+                {resumes.filter((r) => r.wordCount > 0).length} resume lane
+                {resumes.filter((r) => r.wordCount > 0).length !== 1 ? "s" : ""} uploaded. You can add more lanes any time.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm leading-6 text-muted">
+                Upload a PDF through the resume-lane workflow. Each lane can represent a different career angle.
+                Then open <span className="font-medium text-ink">Profile → Overview</span> and run extraction to populate
+                skills and target roles from the resume.
+              </p>
+            )}
+            {(hasKey || hasResume) && (
               <div className="mt-4">
                 <Link
                   className="inline-flex min-h-9 items-center justify-center rounded-control border border-accent bg-accent px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[rgb(var(--color-accent-strong))]"
@@ -326,16 +407,114 @@ export function NewUserOnboarding() {
           </div>
         </li>
 
-        {/* ── Step 3: Scan for jobs ── */}
-        <li className="flex gap-4 rounded-panel border border-border bg-panel p-5 opacity-60">
-          <StepCirclePending n={3} />
+        {/* ── Step 3: Role and location preferences ── */}
+        <li
+          className={`flex gap-4 rounded-panel border p-5 ${
+            hasRolePreferences && hasLocationPreferences
+              ? "border-success/30 bg-success/5"
+              : hasResume
+                ? "border-accent/40 bg-accent/5"
+                : "border-border bg-panel opacity-60"
+          }`}
+        >
+          {hasRolePreferences && hasLocationPreferences
+            ? <StepCircleDone />
+            : hasResume
+              ? <StepCircleActive n={3} />
+              : <StepCirclePending n={3} />}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink">
+              {hasRolePreferences && hasLocationPreferences ? "Preferences saved ✓" : "Add job preferences"}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              These preferences control which jobs are imported and how matches are scored. Resume-extracted roles are
+              used as the starting point; adjust them before scanning.
+            </p>
+
+            <form action={saveOnboardingPreferencesAction} className="mt-4 grid gap-4">
+              <Textarea
+                defaultValue={profile.targetRoles.join("\n")}
+                disabled={!hasResume}
+                hint="One desired role title per line."
+                label="Desired positions"
+                name="targetRoles"
+                placeholder="Principal Product Designer"
+              />
+              <div className="grid gap-4 md:grid-cols-2">
+                <Textarea
+                  defaultValue={positiveTitleFilters.join("\n")}
+                  disabled={!hasResume}
+                  hint="One title keyword per line. Jobs must match at least one when this list is not empty."
+                  label="Include when title contains"
+                  name="titlePositive"
+                  placeholder="principal product designer"
+                />
+                <Textarea
+                  defaultValue={titleFilters.negative.join("\n")}
+                  disabled={!hasResume}
+                  hint="One title keyword per line."
+                  label="Exclude when title contains"
+                  name="titleNegative"
+                  placeholder="intern"
+                />
+              </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-ink">Location mode</legend>
+                <div className="flex flex-wrap gap-3">
+                  {(["remote", "hybrid", "onsite"] as WorkMode[]).map((mode) => (
+                    <label
+                      className="inline-flex min-h-10 items-center gap-2 rounded-control border border-border bg-panel px-3 text-sm text-ink has-[:disabled]:opacity-55"
+                      key={mode}
+                    >
+                      <input
+                        className="h-4 w-4 rounded border-border"
+                        defaultChecked={profile.workModes.includes(mode)}
+                        disabled={!hasResume}
+                        name="workModes"
+                        type="checkbox"
+                        value={mode}
+                      />
+                      {workModeLabel(mode)}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs leading-5 text-muted">
+                  Select every work arrangement this search should include.
+                </p>
+              </fieldset>
+              <div>
+                {hasResume ? (
+                  <SubmitButton
+                    className="min-h-9 px-4 py-1.5"
+                    label="Save preferences"
+                    pendingLabel="Saving…"
+                    savedLabel="Preferences saved ✓"
+                  />
+                ) : (
+                  <button
+                    className="inline-flex min-h-9 cursor-not-allowed items-center justify-center rounded-control border border-accent bg-accent px-4 py-1.5 text-sm font-medium text-white opacity-55"
+                    disabled
+                    type="button"
+                  >
+                    Save preferences
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </li>
+
+        {/* ── Step 4: Scan for jobs ── */}
+        <li className={`flex gap-4 rounded-panel border p-5 ${
+          hasKey && hasResume && hasRolePreferences && hasLocationPreferences
+            ? "border-accent/40 bg-accent/5"
+            : "border-border bg-panel opacity-60"
+        }`}>
+          {hasKey && hasResume && hasRolePreferences && hasLocationPreferences ? <StepCircleActive n={4} /> : <StepCirclePending n={4} />}
           <div>
             <p className="text-sm font-semibold text-ink">Scan for jobs and get AI fit scores</p>
             <p className="mt-1 text-sm leading-6 text-muted">
-              Come back to this dashboard and click{" "}
-              <span className="font-medium text-ink">Scan for new jobs</span>. Jobs are pulled
-              from hundreds of companies and scored against your profile — you&apos;ll know instantly
-              what to prioritize and what to skip.
+              Once setup is complete, the dashboard will show your metrics and the scan action.
             </p>
           </div>
         </li>

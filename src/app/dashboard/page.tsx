@@ -1,6 +1,5 @@
 import { revalidatePath } from "next/cache";
 import { ScanForNewJobsButton } from "@/components/scan-for-new-jobs-button";
-import { OnboardingBanner } from "@/components/onboarding-banner";
 import { NewUserOnboarding } from "@/components/new-user-onboarding";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
@@ -9,9 +8,12 @@ import {
   getApplications,
   getDashboardMetrics,
   getDashboardActionQueue,
+  getAISettings,
   getJobSourceBreakdown,
   getLatestScanRun,
   getResumes,
+  getTitleFilters,
+  getUserProfile,
   setScanSourceEnabled,
 } from "@/lib/db/queries";
 import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
@@ -56,7 +58,14 @@ export default function DashboardPage() {
   }
 
   const resumes = getResumes();
-  const isNewUser = !resumes.some((r) => r.wordCount > 0);
+  const settings = getAISettings();
+  const profile = getUserProfile();
+  const titleFilters = getTitleFilters();
+  const hasResume = resumes.some((r) => r.wordCount > 0);
+  const hasKey = Boolean(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
+  const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
+  const hasLocationPreferences = profile.workModes.length > 0;
+  const onboardingComplete = hasKey && hasResume && hasRolePreferences && hasLocationPreferences;
 
   const actionQueue = getDashboardActionQueue();
   const jobSources = getJobSourceBreakdown();
@@ -79,22 +88,18 @@ export default function DashboardPage() {
     <Shell activeItem="Dashboard">
       <div className="grid gap-6">
         <PageHeader
-          actions={isNewUser ? undefined : <ScanForNewJobsButton runScan={scanForJobsAction} />}
-          description={isNewUser
+          actions={onboardingComplete ? <ScanForNewJobsButton runScan={scanForJobsAction} /> : undefined}
+          description={!onboardingComplete
             ? "Set up your profile to get started."
             : "Your job search command center — what to do next, progress, and recent wins."}
           eyebrow="Search overview"
           title="Dashboard"
         />
 
-        {/* New user: show onboarding wizard instead of empty metrics */}
-        {isNewUser && <NewUserOnboarding />}
-
-        {/* Returning user: AI key banner + normal dashboard */}
-        {!isNewUser && <OnboardingBanner />}
+        {!onboardingComplete && <NewUserOnboarding />}
 
         {/* Returning user: full dashboard */}
-        {!isNewUser && (
+        {onboardingComplete && (
           <>
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="grid grid-cols-2 gap-4">

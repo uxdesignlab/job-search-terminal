@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
-import { getResumes, getUserProfile, saveSkills, updateUserProfile } from "../db/queries";
+import { getResumes, getTitleFilters, getUserProfile, saveSkills, saveTitleFilters, updateUserProfile } from "../db/queries";
 import type { ProfileUpdateInput, SkillRecord } from "../db/types";
 
 type ExtractedProfile = {
@@ -53,6 +53,14 @@ function normalizeUrgency(raw: string): string {
   if (t.includes("explor") || t.includes("open to opport")) return "open to opportunities";
   if (t.includes("active")) return "actively searching";
   return "actively searching";
+}
+
+function normalizeTitleKeywords(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean)));
+}
+
+function mergeTitleKeywords(existing: string[], additions: string[]) {
+  return normalizeTitleKeywords([...existing, ...additions]);
 }
 
 export async function extractProfileWithAI(): Promise<{ profileSaved: boolean; skillCount: number }> {
@@ -160,6 +168,15 @@ ${resumeText}`
   };
 
   updateUserProfile(profileUpdate);
+
+  const roleTitleFilters = normalizeTitleKeywords(profileUpdate.targetRoles);
+  if (roleTitleFilters.length > 0) {
+    const currentTitleFilters = getTitleFilters();
+    saveTitleFilters(
+      mergeTitleKeywords(currentTitleFilters.positive, roleTitleFilters),
+      currentTitleFilters.negative
+    );
+  }
 
   const skills: SkillRecord[] = (result.skills || []).map((s) => ({
     id: `skill-${randomUUID().slice(0, 8)}`,
