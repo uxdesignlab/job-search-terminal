@@ -15,7 +15,7 @@ import type { ApplicationAnswerDraftInput } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 
-export async function prepareApplicationAnswersWithAI(jobId: string, customQuestion?: string) {
+export async function prepareApplicationAnswersWithAI(jobId: string, customQuestions: string[] = []) {
   const job = getJobById(jobId);
   if (!job) throw new Error(`Job not found: ${jobId}`);
 
@@ -40,7 +40,17 @@ export async function prepareApplicationAnswersWithAI(jobId: string, customQuest
     ? `\n\n${formatStyleForPrompt(writingStyle.toneProfile)}`
     : "";
 
-  const systemPrompt = `You are a job application coach writing copy-paste ready answers for a job seeker. Write in first person, professional but natural tone. Be specific — reference the actual company name and role. Draw only from the candidate context provided. Never start answers with "I am" or "I'm". Keep answers under 150 words each.
+  const systemPrompt = `You are an experienced career coach helping a candidate write authentic, compelling job application answers. Your goal is to craft responses that sound genuinely human — not AI-generated — and are specific enough to earn an interview callback.
+
+Rules:
+- Write in first person with a natural, conversational-yet-professional voice
+- Never open with "I am", "I'm", "As a", or "With X years of experience"
+- Vary sentence length; mix short punchy statements with longer elaborations
+- Be concrete: name the company and role, cite real evidence from the candidate's background
+- Avoid corporate buzzwords (leverage, synergize, passionate about, etc.)
+- Each answer should feel like it came from a thoughtful human who has done their research
+- Keep answers 2–5 sentences; under 150 words
+- Draw only from the candidate context provided — never fabricate credentials
 
 Candidate: ${profile.name}
 Goal: ${profile.currentSearchGoal}
@@ -59,25 +69,25 @@ Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyConte
     "Do you have any location or work authorization constraints?"
   ];
 
-  if (customQuestion?.trim()) {
-    commonQuestions.push(customQuestion.trim());
+  for (const q of customQuestions) {
+    if (q.trim()) commonQuestions.push(q.trim());
   }
 
   const messages: AIMessage[] = [
     { role: "system", content: systemPrompt },
     {
       role: "user",
-      content: `Write copy-paste ready answers for these job application questions.
+      content: `Write copy-paste ready answers for these job application questions. Each answer must sound like a real human wrote it — natural, specific, and interview-worthy.
 
-Job: ${job.title} at ${job.company}
+Role: ${job.title} at ${job.company}
 Location: ${job.location} / ${job.remoteType}
-Salary: ${job.salaryNotes}
+Salary context: ${job.salaryNotes}
 
-Questions:
+Questions to answer:
 ${commonQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}
 
 Return a JSON object: { "answers": ["answer 1", "answer 2", ...] }
-One answer per question in the same order. Each answer should be 2-4 sentences, specific to ${job.company} and ${job.title}.`
+Exactly one answer per question, in the same order. Vary the opening words across answers. Make each one feel distinct and authentic to this specific role at ${job.company}.`
     }
   ];
 

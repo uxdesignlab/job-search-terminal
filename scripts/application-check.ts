@@ -11,7 +11,7 @@ import { prepareApplicationAnswers } from "../src/lib/applications/application-a
 const jobId = "northstar-principal-product-designer";
 const customQuestion = "Describe a product decision you influenced with research.";
 
-prepareApplicationAnswers(jobId, customQuestion);
+prepareApplicationAnswers(jobId, [customQuestion]);
 const drafts = getApplicationAnswerDrafts(jobId);
 
 assert.ok(drafts.length >= 6);

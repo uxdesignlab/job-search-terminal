@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { ApplicationStatusSelect } from "@/components/application-status-select";
+import { ApplicationQuestionsForm } from "@/components/application-questions-form";
+import { CopyAnswerButton } from "@/components/copy-answer-button";
 import { GapAddressingPanel } from "@/components/gap-addressing-panel";
 import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
@@ -124,13 +126,13 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
 
   async function prepareAnswersAction(formData: FormData) {
     "use server";
-    const customQuestion = String(formData.get("customQuestion") ?? "");
+    const customQuestions = formData.getAll("question").map(String).filter((q) => q.trim());
     const aiSettings = getAISettings();
     const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
     if (hasAIKey) {
-      await prepareApplicationAnswersWithAI(id, customQuestion);
+      await prepareApplicationAnswersWithAI(id, customQuestions);
     } else {
-      prepareApplicationAnswers(id, customQuestion);
+      prepareApplicationAnswers(id, customQuestions);
     }
     revalidatePath(`/jobs/${id}`);
     revalidatePath("/applications");
@@ -608,30 +610,25 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             <Card>
               <CardHeader>
                 <CardTitle>Application assistant</CardTitle>
-                <CardDescription>Generate copy-paste answers for the application form using your evaluation and resume evidence.</CardDescription>
+                <CardDescription>Paste the questions from the application form and get AI-generated answers grounded in your resume and evaluation.</CardDescription>
               </CardHeader>
               <div className="grid gap-4">
-                <form action={prepareAnswersAction} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                  <Textarea
-                    hint="Add a custom question from the application. Standard questions are generated automatically."
-                    label="Custom question (optional)"
-                    name="customQuestion"
-                    placeholder="Describe a product decision you influenced with research."
-                  />
-                  <SubmitButton label="Prepare answers" pendingLabel="Preparing…" savedLabel="Done ✓" variant="secondary" />
-                </form>
+                <ApplicationQuestionsForm action={prepareAnswersAction} />
                 {answerDrafts.length > 0 ? (
                   <ol className="grid gap-3">
                     {answerDrafts.map((draft) => (
                       <li className="rounded-control border border-border bg-surface px-3 py-3" key={draft.id}>
                         <p className="text-sm font-semibold text-ink">{draft.question}</p>
                         <p className="mt-2 text-sm leading-6 text-ink whitespace-pre-wrap">{draft.answer}</p>
-                        <p className="mt-2 text-xs text-muted">{draft.source}</p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <p className="text-xs text-muted">{draft.source}</p>
+                          <CopyAnswerButton answer={draft.answer} />
+                        </div>
                       </li>
                     ))}
                   </ol>
                 ) : (
-                  <p className="text-sm text-muted">No drafts yet. Click Prepare drafts to generate answers.</p>
+                  <p className="text-sm text-muted">No drafts yet. Add your questions and click Prepare answers.</p>
                 )}
               </div>
             </Card>
