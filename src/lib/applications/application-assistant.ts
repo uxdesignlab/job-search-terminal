@@ -25,7 +25,7 @@ const commonQuestions = [
   "Do you have any location or work authorization constraints?"
 ];
 
-export function prepareApplicationAnswers(jobId: string, customQuestion?: string) {
+export function prepareApplicationAnswers(jobId: string, customQuestions: string[] = []) {
   const job = getJobById(jobId);
   if (!job) {
     throw new Error(`Job not found: ${jobId}`);
@@ -49,7 +49,10 @@ export function prepareApplicationAnswers(jobId: string, customQuestion?: string
     profile,
     generatedResumeTitle: generatedDocument?.title ?? "No generated resume is attached yet"
   };
-  const questions = [...commonQuestions, cleanQuestion(customQuestion)].filter(Boolean) as string[];
+  const questions = [
+    ...commonQuestions,
+    ...customQuestions.map(cleanQuestion).filter(Boolean) as string[]
+  ];
   const drafts = questions.map((question, index) => buildDraft(context, question, index));
 
   saveApplicationAnswerDrafts(drafts);
