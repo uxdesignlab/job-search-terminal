@@ -1,7 +1,15 @@
 import { writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-import { clearResumeSource, getResumes, getUserProfile, updateResumeSource } from "@/lib/db/queries";
+import {
+  clearResumeSource,
+  getResumes,
+  getTitleFilters,
+  getUserProfile,
+  saveTitleFilters,
+  updateResumeSource,
+  updateUserProfile,
+} from "@/lib/db/queries";
 import { parseSourceResume, validateResumeExtraction } from "@/lib/documents/resume-generator";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -37,7 +45,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const parsedResume = parseSourceResume(extractedText, getUserProfile());
+  const profile = getUserProfile();
+  const parsedResume = parseSourceResume(extractedText, profile);
   const extractionIssues = validateResumeExtraction(parsedResume, extractedText);
   if (extractionIssues.length > 0) {
     return NextResponse.json(
@@ -54,9 +63,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   writeFileSync(absPath, buffer);
 
   updateResumeSource(id, relPath, extractedText, wordCount);
+  const extractedPositions = extractResumePositions(parsedResume);
+  updateUserProfile({
+    ...profile,
+    targetRoles: extractedPositions,
+  });
+  saveTitleFilters(
+    extractedPositions.map((position) => position.toLowerCase()),
+    getTitleFilters().negative
+  );
+
   return NextResponse.json({
     ok: true,
     wordCount,
+    positions: extractedPositions,
     sections: {
       summary: Boolean(parsedResume.summary),
       experience: parsedResume.experience.length,
@@ -82,6 +102,64 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   clearResumeSource(id);
   return NextResponse.json({ ok: true });
+}
+
+function extractResumePositions(parsedResume: ReturnType<typeof parseSourceResume>) {
+  const positionTerms = [
+    "architect",
+    "consultant",
+    "designer",
+    "director",
+    "engineer",
+    "founder",
+    "head",
+    "lead",
+    "manager",
+    "officer",
+    "operator",
+    "principal",
+    "producer",
+    "product",
+    "program",
+    "researcher",
+    "specialist",
+    "strategist",
+    "ux",
+    "ui",
+    "vice president",
+    "vp",
+  ];
+
+  const titles = [parsedResume.headline, ...parsedResume.experience.map((entry) => entry.title)]
+    .map((title) => normalizePositionTitle(title))
+    .filter((title) => {
+      const normalized = title.toLowerCase();
+      return title.length >= 3 &&
+        title.length <= 80 &&
+        positionTerms.some((term) => normalized.includes(term)) &&
+        !/^(experience|professional experience|work experience|employment history)$/i.test(title);
+    });
+
+  return uniqueByLowercase(titles).slice(0, 8);
+}
+
+function normalizePositionTitle(value: string) {
+  return value
+    .replace(/\s+\|\s+.*$/, "")
+    .replace(/\s+[-–—]\s+.*$/, "")
+    .replace(/\s+at\s+.+$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueByLowercase(values: string[]) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizePdfText(text: string) {
