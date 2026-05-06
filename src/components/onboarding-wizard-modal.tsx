@@ -37,10 +37,6 @@ function workModeLabel(mode: WorkMode) {
   return "On-site";
 }
 
-function normalizeTitleKeywords(values: string[]) {
-  return Array.from(new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean)));
-}
-
 function setupWarning(statuses: Record<StepId, boolean>) {
   const missing = [];
   if (!statuses.ai) missing.push("AI provider key");
@@ -101,9 +97,7 @@ export function OnboardingWizardModal({
     },
   ];
 
-  const positiveTitleFilters = titleFilters.positive.length > 0
-    ? titleFilters.positive
-    : normalizeTitleKeywords(profile.targetRoles);
+  const positiveTitleFilters = titleFilters.positive;
   const missingItems = setupWarning(statuses);
   const visibleResumes = resumes.length > 0 ? resumes : [];
 
@@ -272,9 +266,9 @@ export function OnboardingWizardModal({
                       ))}
                     </div>
                     <div className="rounded-control border border-border bg-surface p-4">
-                      <p className="text-sm font-semibold text-ink">Extract profile details</p>
+                      <p className="text-sm font-semibold text-ink">Extract full profile details</p>
                       <p className="mt-1 text-sm leading-6 text-muted">
-                        After upload, run extraction here to prefill desired positions and title filters from the resume.
+                        Uploading a resume seeds positions and title filters. Run AI extraction to fill skills and richer profile details.
                       </p>
                       <div className="mt-3">
                         <ExtractProfileButton disabled={!hasResume || !hasKey} onExtracted={() => router.refresh()} />
@@ -300,7 +294,6 @@ export function OnboardingWizardModal({
                         hint="One desired role title per line."
                         label="Desired positions"
                         name="targetRoles"
-                        placeholder="Principal Product Designer"
                       />
                       <div className="grid gap-4 md:grid-cols-2">
                         <Textarea
@@ -308,14 +301,12 @@ export function OnboardingWizardModal({
                           hint="One title keyword per line. Jobs must match at least one when this list is not empty."
                           label="Include when title contains"
                           name="titlePositive"
-                          placeholder="principal product designer"
                         />
                         <Textarea
                           defaultValue={titleFilters.negative.join("\n")}
                           hint="One title keyword per line."
                           label="Exclude when title contains"
                           name="titleNegative"
-                          placeholder="intern"
                         />
                       </div>
                       <fieldset className="space-y-2">
