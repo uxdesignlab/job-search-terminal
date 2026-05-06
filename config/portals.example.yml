@@ -55,11 +55,6 @@ tracked_companies:
     api: https://boards-api.greenhouse.io/v1/boards/anthropic/jobs
     enabled: true
 
-  - name: OpenAI
-    industry: AI Labs
-    careers_url: https://jobs.ashbyhq.com/OpenAI
-    enabled: true
-
   - name: Mistral
     industry: AI Labs
     careers_url: https://jobs.lever.co/mistral
@@ -79,11 +74,6 @@ tracked_companies:
     industry: AI Labs
     careers_url: https://job-boards.greenhouse.io/gleanwork
     api: https://boards-api.greenhouse.io/v1/boards/gleanwork/jobs
-    enabled: true
-
-  - name: Perplexity
-    industry: AI Labs
-    careers_url: https://jobs.lever.co/perplexity
     enabled: true
 
   # ── Voice & Conversational AI ─────────────────────────────────────────────────
@@ -134,17 +124,6 @@ tracked_companies:
     api: https://boards-api.greenhouse.io/v1/boards/figma/jobs
     enabled: true
 
-  - name: Miro
-    industry: Design Tools
-    careers_url: https://job-boards.greenhouse.io/miro
-    api: https://boards-api.greenhouse.io/v1/boards/miro/jobs
-    enabled: true
-
-  - name: Canva
-    industry: Design Tools
-    careers_url: https://jobs.ashbyhq.com/canva
-    enabled: true
-
   # ── Developer Tools & Infrastructure ─────────────────────────────────────────
 
   - name: Vercel
@@ -186,27 +165,11 @@ tracked_companies:
     careers_url: https://jobs.lever.co/tinybird
     enabled: true
 
-  - name: Retool
-    industry: Developer Tools
-    careers_url: https://jobs.ashbyhq.com/retool
-    enabled: true
-
   # ── Productivity & Work OS ────────────────────────────────────────────────────
-
-  - name: Notion
-    industry: Productivity
-    careers_url: https://job-boards.greenhouse.io/notion
-    api: https://boards-api.greenhouse.io/v1/boards/notion/jobs
-    enabled: true
 
   - name: Linear
     industry: Productivity
     careers_url: https://jobs.ashbyhq.com/linear
-    enabled: true
-
-  - name: Webflow
-    industry: Productivity
-    careers_url: https://jobs.ashbyhq.com/webflow
     enabled: true
 
   - name: Zapier
@@ -230,18 +193,6 @@ tracked_companies:
     careers_url: https://jobs.ashbyhq.com/attio
     enabled: true
 
-  - name: Loom
-    industry: Productivity
-    careers_url: https://job-boards.greenhouse.io/loom
-    api: https://boards-api.greenhouse.io/v1/boards/loom/jobs
-    enabled: true
-
-  - name: Coda
-    industry: Productivity
-    careers_url: https://job-boards.greenhouse.io/coda
-    api: https://boards-api.greenhouse.io/v1/boards/coda/jobs
-    enabled: true
-
   # ── Social, Media & Creator ───────────────────────────────────────────────────
 
   - name: Hootsuite
@@ -261,17 +212,7 @@ tracked_companies:
     careers_url: https://jobs.lever.co/spotify
     enabled: true
 
-  - name: Buffer
-    industry: Social & Media
-    careers_url: https://jobs.lever.co/buffer
-    enabled: true
-
   # ── FinTech & Banking ─────────────────────────────────────────────────────────
-
-  - name: Brex
-    industry: FinTech
-    careers_url: https://jobs.ashbyhq.com/brex
-    enabled: true
 
   - name: Ramp
     industry: FinTech

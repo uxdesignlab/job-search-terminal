@@ -471,5 +471,123 @@ export const migrations = [
   {
     id: "0029_job_scope_status",
     sql: `alter table jobs add column scope_status text not null default '';`
+  },
+  {
+    id: "0030_remove_legacy_demo_seed_data",
+    sql: `
+      delete from application_answer_drafts where job_id in (
+        'northstar-principal-product-designer',
+        'atlas-designops-lead',
+        'civic-accessibility-systems',
+        'academy-ux-educator',
+        'startup-brand-designer'
+      );
+      delete from outreach_drafts where job_id in (
+        'northstar-principal-product-designer',
+        'atlas-designops-lead',
+        'civic-accessibility-systems',
+        'academy-ux-educator',
+        'startup-brand-designer'
+      );
+      delete from company_research where job_id in (
+        'northstar-principal-product-designer',
+        'atlas-designops-lead',
+        'civic-accessibility-systems',
+        'academy-ux-educator',
+        'startup-brand-designer'
+      );
+      delete from job_gap_responses where job_id in (
+        'northstar-principal-product-designer',
+        'atlas-designops-lead',
+        'civic-accessibility-systems',
+        'academy-ux-educator',
+        'startup-brand-designer'
+      );
+      update story_bank
+      set source_job_id = null
+      where source_job_id in (
+        'northstar-principal-product-designer',
+        'atlas-designops-lead',
+        'civic-accessibility-systems',
+        'academy-ux-educator',
+        'startup-brand-designer'
+      );
+      delete from generated_documents where id in ('document-1', 'document-2')
+        or job_id in (
+          'northstar-principal-product-designer',
+          'atlas-designops-lead',
+          'civic-accessibility-systems',
+          'academy-ux-educator',
+          'startup-brand-designer',
+          'external-document-1',
+          'external-document-2'
+        );
+      delete from applications where id in ('application-1', 'application-2', 'application-3', 'application-4')
+        or job_id in (
+          'northstar-principal-product-designer',
+          'atlas-designops-lead',
+          'civic-accessibility-systems',
+          'academy-ux-educator',
+          'startup-brand-designer',
+          'external-application-1',
+          'external-application-2',
+          'external-application-3',
+          'external-application-4'
+        );
+      delete from evaluation_feedback where job_id in (
+        'northstar-principal-product-designer',
+        'atlas-designops-lead',
+        'civic-accessibility-systems',
+        'academy-ux-educator',
+        'startup-brand-designer'
+      );
+      delete from evaluations where id in (
+        'evaluation-northstar-principal-product-designer',
+        'evaluation-atlas-designops-lead',
+        'evaluation-civic-accessibility-systems',
+        'evaluation-academy-ux-educator',
+        'evaluation-startup-brand-designer'
+      );
+      delete from jobs where id in (
+        'northstar-principal-product-designer',
+        'atlas-designops-lead',
+        'civic-accessibility-systems',
+        'academy-ux-educator',
+        'startup-brand-designer'
+      );
+      delete from role_directions where id in (
+        'principal-product-design',
+        'design-operations',
+        'accessibility-and-design-systems',
+        'ux-education'
+      );
+      delete from skill_inventory where evidence_source = 'Resume lane source';
+      delete from activity_log where json_extract(details_json, '$.source') = 'seed'
+        or id in ('activity-1', 'activity-2', 'activity-3', 'activity-4');
+      update user_profile
+      set
+        name = '',
+        location = '',
+        current_search_goal = '',
+        urgency = '',
+        direction = '',
+        constraints_json = '[]',
+        target_roles_json = '[]',
+        strongest_skills_json = '[]',
+        skills_to_use_more_json = '[]',
+        skills_to_use_less_json = '[]',
+        desired_industries_json = '[]',
+        compensation_needs = '',
+        work_preferences_json = '[]',
+        work_modes_json = '[]',
+        deal_breakers_json = '[]',
+        career_intent = '',
+        career_change_interest = '',
+        confidence_level = '',
+        updated_at = current_timestamp
+      where id = 'pavel'
+        and name = 'Alex Jordan'
+        and current_search_goal = 'Find senior product design leadership roles with strong strategic scope.';
+    `
   }
 ];

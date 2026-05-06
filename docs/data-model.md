@@ -6,7 +6,7 @@ sequential migration system defined in `src/lib/db/schema.ts`.
 
 The database is initialized automatically on first server start via
 `getDatabase()` in `src/lib/db/client.ts`, which runs all pending migrations
-and seeds demo data if the database is empty.
+and initializes an empty local profile if the database is empty.
 
 ---
 
@@ -43,6 +43,7 @@ and seeds demo data if the database is empty.
 | `0027_work_modes` | Adds `work_modes_json` to `user_profile` |
 | `0028_onboarding_preferences_confirmation` | Adds explicit first-run job-preference confirmation to `ai_settings` |
 | `0029_job_scope_status` | Adds `scope_status` to `jobs` for maintenance labeling |
+| `0030_remove_legacy_demo_seed_data` | Removes legacy demo jobs, applications, generated documents, activity, skills, and profile placeholders |
 
 ---
 
@@ -483,9 +484,9 @@ via `src/lib/table-saved-filters-actions.ts` (Next.js server actions).
 
 ```bash
 npm run db:migrate        # apply pending migrations
-npm run db:seed           # seed demo data
-npm run db:reset          # drop, re-migrate, and re-seed
-npm run db:check          # verify database is readable and seed records exist
+npm run db:seed           # initialize an empty local profile
+npm run db:reset          # drop, re-migrate, and initialize empty local state
+npm run db:check          # verify database is readable and starts empty
 npm run profile:extract   # extract resume PDFs into resumes table and refresh skills
 npm run profile:check     # verify extracted profile intelligence
 npm run scanner:check     # verify scanner adapter with mock ATS payloads
@@ -502,9 +503,9 @@ npm run discover:sources  # discover new job posting sources
 
 ## Runtime Behavior
 
-- `getDatabase()` runs migrations and seeds only if the database is empty.
+- `getDatabase()` runs migrations and initializes base local rows only if the database is empty.
 - Server-rendered pages read through `src/lib/db/queries.ts`.
-- `db:reset` deletes the SQLite file, re-runs all migrations, and re-seeds.
+- `db:reset` deletes the SQLite file, re-runs all migrations, and initializes empty local state.
 - The database file is `data/job-search-terminal.sqlite` by default. Override with
   `JST_DATABASE_PATH` environment variable.
 - Do not delete or move `data/job-search-terminal.sqlite` while the dev server is running.

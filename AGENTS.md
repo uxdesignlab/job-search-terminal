@@ -8,6 +8,8 @@ all running locally on the user's machine with no cloud storage.
 ## Project Direction
 
 - Claude Code is the primary development and orchestration tool.
+- Codex is an approved project collaborator for implementation, review,
+  documentation, verification, commits, and pushes when the user requests it.
 - `AGENTS.md` is the authoritative agent contract for this repo.
 - Detailed project documentation belongs in `docs/`.
 - Keep `README.md` short and link to docs instead of duplicating detail.
