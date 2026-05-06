@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import type { AISettingsRecord, AIProviderName } from "@/lib/db/types";
 import { saveAISettingsAction } from "@/app/settings/actions";
@@ -14,9 +15,12 @@ type ProviderTestState = {
 
 type Props = {
   settings: AISettingsRecord;
+  onSaved?: () => void;
+  submitLabel?: string;
 };
 
-export function AISettingsForm({ settings }: Props) {
+export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings" }: Props) {
+  const router = useRouter();
   const [activeProvider, setActiveProvider] = useState<AIProviderName>(settings.activeProvider);
   const [anthropicKey, setAnthropicKey] = useState(settings.anthropicApiKey);
   const [geminiKey, setGeminiKey] = useState(settings.geminiApiKey);
@@ -76,6 +80,8 @@ export function AISettingsForm({ settings }: Props) {
     startTransition(async () => {
       await saveAISettingsAction(fd);
       setSaved(true);
+      router.refresh();
+      onSaved?.();
       setTimeout(() => setSaved(false), 3000);
     });
   }
@@ -231,7 +237,7 @@ export function AISettingsForm({ settings }: Props) {
 
       <div className="flex items-center gap-3">
         <Button disabled={isPending} type="submit" variant="primary">
-          {isPending ? "Saving…" : "Save settings"}
+          {isPending ? "Saving…" : submitLabel}
         </Button>
         {saved && <span className="text-xs text-[var(--color-success)]">Saved</span>}
       </div>

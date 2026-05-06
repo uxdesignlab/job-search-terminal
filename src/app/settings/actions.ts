@@ -43,6 +43,7 @@ export async function saveAISettingsAction(formData: FormData) {
   });
 
   revalidatePath("/settings");
+  revalidatePath("/dashboard");
 }
 
 export async function saveCompanyIndustryAction(name: string, industry: string) {
