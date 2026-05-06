@@ -223,6 +223,11 @@ function buildTailoredContent(
   tailoredSummary?: string | null
 ) {
   const source = parseSourceResume(sourceResumeText, profile);
+  const extractionIssues = validateResumeExtraction(source, sourceResumeText);
+  if (extractionIssues.length > 0) {
+    throw new Error(`Resume extraction is incomplete: ${extractionIssues.join("; ")}`);
+  }
+
   const keywords = evaluation.keywords.slice(0, 8);
   const preferredSkillNames = skills
     .filter((skill) => skill.usePreference !== "use_less")
@@ -259,23 +264,37 @@ function buildTailoredContent(
   } satisfies ResumeTemplateInput;
 }
 
-function parseSourceResume(text: string, profile: UserProfileRecord) {
+export function parseSourceResume(text: string, profile: Pick<UserProfileRecord, "name" | "location" | "portfolio">) {
   const lines = text
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line && !/^-- \d+ of \d+ --$/.test(line));
 
-  const sections = {
-    summary: findHeading(lines, ["Summary", "Professional Summary"]),
-    impact: findHeading(lines, ["Selected Impact", "Selected Executive Impact", "Career Highlights", "Core Strengths", "Key Achievements"]),
-    experience: findHeading(lines, ["Professional Experience", "Teaching Experience", "Experience"]),
-    skills: findHeading(lines, ["Skills", "Core Skills", "Core Competencies"]),
-    recognition: findHeading(lines, ["Recognition", "Industry Leadership, Publications & Mentorship", "Awards and Recognition"]),
-    education: findHeading(lines, ["Education"]),
+  const headingGroups = {
+    summary: ["Summary", "Professional Summary", "Executive Summary", "Career Summary", "Profile", "Professional Profile", "About", "About Me"],
+    impact: ["Selected Impact", "Selected Executive Impact", "Career Highlights", "Highlights", "Core Strengths", "Key Achievements", "Achievements", "Selected Achievements"],
+    experience: ["Professional Experience", "Teaching Experience", "Work Experience", "Experience", "Relevant Experience", "Selected Experience", "Employment Experience", "Employment History", "Work History", "Career Experience", "Professional Background"],
+    skills: ["Skills", "Core Skills", "Core Competencies", "Competencies", "Areas of Expertise", "Expertise", "Technical Skills", "Design Skills", "Skills and Tools", "Technical Skills and Tools", "Tools", "Tools and Technologies", "Technologies", "Soft Skills", "Languages"],
+    recognition: ["Recognition", "Industry Leadership, Publications and Mentorship", "Awards and Recognition", "Awards", "Publications", "Certifications", "Licenses and Certifications"],
+    education: ["Education", "Education and Training", "Education and Certifications", "Academic Background", "Credentials"],
   };
 
+  const sections = {
+    summary: findHeading(lines, headingGroups.summary),
+    impact: findHeading(lines, headingGroups.impact),
+    experience: findHeading(lines, headingGroups.experience),
+    skills: findHeading(lines, headingGroups.skills),
+    recognition: findHeading(lines, headingGroups.recognition),
+    education: findHeading(lines, headingGroups.education),
+  };
+
+  const allHeadingIndexes = uniqueIndexes(
+    Object.values(headingGroups).flatMap((headings) => findHeadingIndexes(lines, headings))
+  );
+  const skillIndexes = findHeadingIndexes(lines, headingGroups.skills);
+
   const getNextBoundary = (currentIndex: number) => {
-    const boundaries = Object.values(sections).filter(v => v > currentIndex);
+    const boundaries = allHeadingIndexes.filter(v => v > currentIndex);
     return boundaries.length > 0 ? Math.min(...boundaries) : lines.length;
   };
 
@@ -288,28 +307,83 @@ function parseSourceResume(text: string, profile: UserProfileRecord) {
     impactItems: sections.impact !== -1 ? parseBulletLines(lines.slice(sections.impact + 1, getNextBoundary(sections.impact))) : [],
     experienceHeading: sections.experience !== -1 ? lines[sections.experience] : "Professional Experience",
     experience: sections.experience !== -1 ? parseExperience(lines.slice(sections.experience + 1, getNextBoundary(sections.experience))) : [],
-    skills: sections.skills !== -1 ? parseSectionList(lines, sections.skills, getNextBoundary(sections.skills)) : [],
+    skills: skillIndexes.flatMap((index) => parseSectionList(lines, index, getNextBoundary(index))),
     recognition: sections.recognition !== -1 ? parseSectionList(lines, sections.recognition, getNextBoundary(sections.recognition)) : [],
     education: sections.education !== -1 ? parseEducation(lines.slice(sections.education + 1, getNextBoundary(sections.education))) : []
   };
 }
 
-function parseHeader(lines: string[], profile: UserProfileRecord) {
+export type ParsedResumeSections = ReturnType<typeof parseSourceResume>;
+
+export function validateResumeExtraction(parsed: ParsedResumeSections, sourceText: string) {
+  const issues: string[] = [];
+  const wordCount = sourceText.split(/\s+/).filter(Boolean).length;
+
+  if (wordCount < 120) {
+    issues.push("PDF text layer is too short to be a complete resume");
+  }
+  if (parsed.summary.split(/\s+/).filter(Boolean).length < 12) {
+    issues.push("missing or incomplete summary section");
+  }
+  if (parsed.experience.length === 0) {
+    issues.push("missing experience section");
+  } else if (parsed.experience.every((entry) => entry.bullets.length === 0)) {
+    issues.push("experience section has no role details or bullets");
+  }
+  if (parsed.skills.length === 0) {
+    issues.push("missing skills section");
+  }
+  if (parsed.education.length === 0) {
+    issues.push("missing education section");
+  }
+
+  return issues;
+}
+
+function parseHeader(lines: string[], profile: Pick<UserProfileRecord, "name" | "location" | "portfolio">) {
   const name = lines[0] || profile.name;
-  // Find the first line that looks like a contact line (email or phone)
-  const contactIndex = lines.findIndex((line) => line.includes("@") || line.includes("+1-") || line.includes("+1 "));
-  // Extract headline: lines between name and contact line that aren't location/contact info
-  const headlineLines = contactIndex > 1
-    ? lines.slice(1, contactIndex).filter((line) => !line.match(/^[\d+]/) && !line.includes("linkedin."))
-    : [];
-  const headline = headlineLines.length > 0 ? headlineLines.join(" ") : "";
-  const contactLine = contactIndex >= 0 ? lines[contactIndex] : `${profile.location} | ${profile.portfolio}`;
+  const contactItems: string[] = [];
+  const headlineLines: string[] = [];
+
+  for (const line of lines.slice(1)) {
+    const parsedContact = parseContactLine(line);
+    if (parsedContact.length > 0) {
+      contactItems.push(...parsedContact);
+      continue;
+    }
+
+    headlineLines.push(line);
+  }
+
+  const headline = headlineLines.join(" ").trim();
 
   return {
     name,
     headline,
-    contactItems: contactLine.split(/[|•]/).map((item) => item.trim()).filter(Boolean)
+    contactItems: contactItems.length > 0 ? unique(contactItems) : [profile.location, profile.portfolio].filter(Boolean)
   };
+}
+
+function parseContactLine(line: string) {
+  const labeled = /^(Location|Phone|Email|Portfolio|LinkedIn|Website|Relocation):\s*(.+)$/i.exec(line);
+  if (labeled) {
+    const label = labeled[1].toLowerCase();
+    const value = labeled[2].trim();
+    if (label === "email") {
+      const email = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+      return email ? [email] : [];
+    }
+    if (label === "relocation") {
+      return [`Relocation: ${value}`];
+    }
+    return value ? [value] : [];
+  }
+
+  if (line.includes("@") || /\+?\d[\d\s().-]{7,}/.test(line) || /linkedin\.com|https?:\/\/|www\./i.test(line)) {
+    return line.split(/[|\u2022]/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  return [];
 }
 
 function parseExperience(lines: string[]) {
@@ -317,32 +391,21 @@ function parseExperience(lines: string[]) {
   let current: ResumeTemplateInput["experience"][number] | undefined;
   let pendingTitle = "";
 
-  // Matches a date range anywhere in the line — handles / and . separators,
-  // regular hyphen AND Unicode en-dash (–) as separators.
-  const DATE_RANGE_RE = /(\d{2}[/.]\d{4})\s*[–\-\u2013]\s*(Present|\d{2}[/.]\d{4})/;
-
   for (const line of lines) {
-    // ── Bullet line ──────────────────────────────────────────────────────────
-    if (line.startsWith("●")) {
-      const bullet = line.replace(/^●\s*/, "").trim();
+    if (isBulletLine(line)) {
+      const bullet = stripBullet(line);
       if (current) {
         current.bullets.push(bullet);
       }
-      // A fresh bullet resets any stray pendingTitle
       pendingTitle = "";
       continue;
     }
 
-    // ── Org + date line ───────────────────────────────────────────────────────
-    // If the line contains a date range, it's "Organization | Location  DATE – DATE"
     const dateMatch = DATE_RANGE_RE.exec(line);
     if (dateMatch) {
-      // Everything before the date range is the org/location string
       const orgPart = line.slice(0, dateMatch.index).replace(/[\t|]+\s*$/, "").trim();
       const dateRange = formatDate(`${dateMatch[1]} - ${dateMatch[2]}`);
-      const pipeIdx = orgPart.indexOf(" | ");
-      const organization = pipeIdx >= 0 ? orgPart.slice(0, pipeIdx).trim() : orgPart;
-      const location = pipeIdx >= 0 ? orgPart.slice(pipeIdx + 3).trim() : undefined;
+      const { organization, location } = splitOrganizationAndLocation(orgPart);
 
       if (pendingTitle) {
         current = { title: pendingTitle, organization, location, dateRange, bullets: [] };
@@ -356,21 +419,17 @@ function parseExperience(lines: string[]) {
       continue;
     }
 
-    // ── Everything else: new job title OR wrapped bullet continuation ─────────
-    // Heuristic: if the line starts with an uppercase letter and is short enough
-    // to be a title, treat it as a new pending title. Otherwise, append to the
-    // last bullet as a wrapped continuation.
     const looksLikeTitle =
       /^[A-Z]/.test(line) &&
       line.length <= 120 &&
-      !line.startsWith("–") &&
+      !line.startsWith("\u2013") &&
       !line.startsWith("-");
 
-    if (looksLikeTitle || !current?.bullets.length) {
-      // Start or extend a pending title
+    if (current && !pendingTitle && current.bullets.length === 0) {
+      current.bullets.push(line);
+    } else if (looksLikeTitle || !current?.bullets.length) {
       pendingTitle = pendingTitle ? `${pendingTitle} ${line}` : line;
     } else if (current?.bullets.length) {
-      // Wrapped bullet continuation
       current.bullets[current.bullets.length - 1] =
         `${current.bullets[current.bullets.length - 1]} ${line}`.trim();
     }
@@ -379,11 +438,62 @@ function parseExperience(lines: string[]) {
   return entries;
 }
 
+const MONTH_RE = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
+const DATE_VALUE_RE = `(?:\\d{2}[/.]\\d{4}|${MONTH_RE}\\s+\\d{4})`;
+const DATE_RANGE_RE = new RegExp(`(${DATE_VALUE_RE})\\s*[\\-\u2013\u2014]\\s*(Present|${DATE_VALUE_RE})`, "i");
+
+function splitOrganizationAndLocation(value: string) {
+  const pipeParts = value.split(/\s+\|\s+/);
+  if (pipeParts.length >= 2) {
+    return {
+      organization: pipeParts[0].trim(),
+      location: pipeParts.slice(1).join(" | ").trim() || undefined,
+    };
+  }
+
+  const dashParts = value.split(/\s+[\-\u2013\u2014]\s+/);
+  if (dashParts.length >= 2) {
+    return {
+      organization: dashParts[0].trim(),
+      location: dashParts.slice(1).join(" - ").trim() || undefined,
+    };
+  }
+
+  return { organization: value.trim(), location: undefined };
+}
+
 function formatDate(dateStr: string) {
-  return dateStr.replace(/(\d{2})[/.](\d{4})/g, (_, m, y) => {
+  return dateStr.replace(new RegExp(`\\d{2}[/.]\\d{4}|${MONTH_RE}\\s+\\d{4}`, "gi"), (date) => {
+    const numeric = /(\d{2})[/.](\d{4})/.exec(date);
+    if (!numeric) {
+      return formatMonthDate(date);
+    }
+
+    const [, m, y] = numeric;
     const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][parseInt(m, 10) - 1];
     return `${month} ${y}`;
   });
+}
+
+function formatMonthDate(value: string) {
+  const match = new RegExp(`^(${MONTH_RE})\\s+(\\d{4})$`, "i").exec(value.trim());
+  if (!match) return value;
+  const monthKey = match[1].slice(0, 3).toLowerCase();
+  const month = {
+    jan: "Jan",
+    feb: "Feb",
+    mar: "Mar",
+    apr: "Apr",
+    may: "May",
+    jun: "Jun",
+    jul: "Jul",
+    aug: "Aug",
+    sep: "Sep",
+    oct: "Oct",
+    nov: "Nov",
+    dec: "Dec",
+  }[monthKey] ?? match[1];
+  return `${month} ${match[2]}`;
 }
 
 function parseEducation(lines: string[]) {
@@ -391,7 +501,7 @@ function parseEducation(lines: string[]) {
   let current: ResumeTemplateInput["education"][number] | undefined;
   
   for (const line of lines) {
-    const text = line.replace(/^●\s*/, "").trim();
+    const text = stripBullet(line);
     if (!text || /^-- \d+ of \d+ --$/.test(text)) continue;
     
     if (text.includes(" | ") || text.includes("Bachelor") || text.includes("Master")) {
@@ -432,8 +542,8 @@ function parseBulletLines(lines: string[]) {
   const items: string[] = [];
 
   for (const line of lines) {
-    if (line.startsWith("●")) {
-      items.push(line.replace(/^●\s*/, "").trim());
+    if (isBulletLine(line)) {
+      items.push(stripBullet(line));
       continue;
     }
 
@@ -445,6 +555,14 @@ function parseBulletLines(lines: string[]) {
   }
 
   return items;
+}
+
+function isBulletLine(line: string) {
+  return /^[\u25aa\u25ab\u25cf\u25e6\u2022*\-]\s+/.test(line);
+}
+
+function stripBullet(line: string) {
+  return line.replace(/^[\u25aa\u25ab\u25cf\u25e6\u2022*\-]\s+/, "").trim();
 }
 
 function rankItems(items: string[], keywords: string[]) {
@@ -488,8 +606,29 @@ function paperFormatFor(job: JobRecord): "letter" | "a4" {
 }
 
 function findHeading(lines: string[], headings: string[]) {
-  const normalizedHeadings = headings.map((heading) => heading.toLowerCase());
-  return lines.findIndex((line) => normalizedHeadings.includes(line.toLowerCase()));
+  const normalizedHeadings = headings.map(normalizeHeading);
+  return lines.findIndex((line) => normalizedHeadings.includes(normalizeHeading(line)));
+}
+
+function findHeadingIndexes(lines: string[], headings: string[]) {
+  const normalizedHeadings = headings.map(normalizeHeading);
+  return lines
+    .map((line, index) => normalizedHeadings.includes(normalizeHeading(line)) ? index : -1)
+    .filter((index) => index !== -1);
+}
+
+function normalizeHeading(line: string) {
+  return line
+    .replace(/^[#\s]+/, "")
+    .replace(/[:|]+$/, "")
+    .replace(/\s*&\s*/g, " and ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function uniqueIndexes(values: number[]) {
+  return [...new Set(values.filter((value) => value >= 0))].sort((a, b) => a - b);
 }
 
 
