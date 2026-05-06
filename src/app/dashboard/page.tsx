@@ -21,6 +21,7 @@ import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 import { isScanSourceEnabled, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
+import { LocalDateLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,7 @@ export default function DashboardPage() {
     .at(-1);
   const activity = getActivity();
   const latestScan = getLatestScanRun();
+  const latestScanTime = latestScan?.completedAt ?? latestScan?.startedAt;
 
   return (
     <Shell activeItem="Dashboard">
@@ -124,19 +126,22 @@ export default function DashboardPage() {
                     <p className="mt-0.5 text-xs text-muted">added manually</p>
                   </div>
                 </div>
-                {lastApplicationDate && (
-                  <div className="border-t border-border pt-3">
+                <div className="flex flex-col gap-1 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  {lastApplicationDate && (
                     <p className="text-xs text-muted">
                       Last application:{" "}
                       <span className="font-medium text-ink">
-                        {new Date(lastApplicationDate).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        <LocalDateLabel value={lastApplicationDate} />
                       </span>
                     </p>
-                  </div>
-                )}
+                  )}
+                  <p className="text-xs text-muted sm:text-right">
+                    Last scan:{" "}
+                    <span className="font-medium text-ink">
+                      <LocalRelativeTimeLabel value={latestScanTime} />
+                    </span>
+                  </p>
+                </div>
               </Card>
             </div>
 
