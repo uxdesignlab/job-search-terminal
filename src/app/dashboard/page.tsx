@@ -66,6 +66,7 @@ export default function DashboardPage() {
   const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
   const hasLocationPreferences = profile.workModes.length > 0;
   const onboardingComplete = hasKey && hasResume && hasRolePreferences && hasLocationPreferences;
+  const showOnboarding = !onboardingComplete || !settings.onboardingDismissed;
 
   const actionQueue = getDashboardActionQueue();
   const jobSources = getJobSourceBreakdown();
@@ -96,7 +97,7 @@ export default function DashboardPage() {
           title="Dashboard"
         />
 
-        {!onboardingComplete && <NewUserOnboarding />}
+        {showOnboarding && <NewUserOnboarding />}
 
         {/* Returning user: full dashboard */}
         {onboardingComplete && (

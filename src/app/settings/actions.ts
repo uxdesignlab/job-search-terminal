@@ -39,7 +39,8 @@ export async function saveAISettingsAction(formData: FormData) {
     anthropicModel,
     geminiModel,
     openaiModel,
-    fallbackProvider
+    fallbackProvider,
+    onboardingDismissed: stored.onboardingDismissed,
   });
 
   revalidatePath("/settings");
