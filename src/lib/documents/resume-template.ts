@@ -138,12 +138,7 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
         <p>${escapeHtml(input.summary)}</p>
       </section>
 
-      <section>
-        <h2>Key Achievements</h2>
-        <ul>
-          ${input.impactItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-        </ul>
-      </section>
+      ${renderOptionalSection(input.impactHeading || "Key Achievements", input.impactItems)}
 
       <section class="experience">
         <h2>Professional Experience</h2>
