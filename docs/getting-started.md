@@ -286,7 +286,7 @@ npm run data:export
 
 ## Reset everything and start fresh
 
-This deletes all local data and resets to demo data:
+This deletes all local data and resets to an empty local profile:
 
 ```bash
 npm run db:reset

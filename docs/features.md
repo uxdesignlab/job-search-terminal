@@ -434,4 +434,4 @@ Location matching uses the selected Location mode checkboxes:
 - The database file is excluded from git.
 - Backup: `npm run data:backup` writes a SQLite snapshot to `output/backups/`.
 - Export: `npm run data:export` writes a JSON snapshot to `output/exports/`.
-- To reset all data: `npm run db:reset` (drops and re-seeds with demo data).
+- To reset all data: `npm run db:reset` (drops local data and initializes an empty profile).

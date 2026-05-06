@@ -153,7 +153,7 @@ npm run typecheck        # TypeScript check
 npm run quality:check    # accessibility + screenshot checks
 
 npm run db:migrate       # apply pending migrations
-npm run db:seed          # seed demo data
+npm run db:seed          # initialize an empty local profile
 npm run db:reset         # reset local database
 npm run db:check         # verify database
 
