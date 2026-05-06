@@ -7,6 +7,7 @@ import { PreferredLocationsInput } from "@/components/preferred-locations-input"
 import { ResumeManageCard } from "@/components/resume-manage-card";
 import { createResumeLane, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
+import { normalizePreferredLocations } from "@/lib/profile/locations";
 import type { WorkMode } from "@/lib/db/types";
 
 export const dynamic = "force-dynamic";
@@ -132,7 +133,7 @@ async function updatePreferencesAction(formData: FormData) {
     workPreferences:    splitListValue(formData.get("workPreferences")),
     workModes,
     compensationNeeds:  String(formData.get("compensationNeeds") ?? ""),
-    preferredLocations: splitListValue(formData.get("preferredLocations")),
+    preferredLocations: normalizePreferredLocations(splitListValue(formData.get("preferredLocations"))),
     remotePreference:   remotePreferenceFromWorkModes(workModes),
     // Preserve other tabs' fields
     currentSearchGoal:    p.currentSearchGoal,
@@ -150,6 +151,7 @@ async function updatePreferencesAction(formData: FormData) {
   revalidatePath("/profile");
   revalidatePath("/strategy");
   revalidatePath("/dashboard");
+  revalidatePath("/jobs");
 }
 
 async function updateConstraintsAction(formData: FormData) {
@@ -181,6 +183,7 @@ async function updateConstraintsAction(formData: FormData) {
   });
   revalidatePath("/profile");
   revalidatePath("/strategy");
+  revalidatePath("/jobs");
 }
 
 async function addResumeLaneAction() {

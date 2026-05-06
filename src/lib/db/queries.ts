@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses } from "../applications/status";
 import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
+import { normalizePreferredLocations } from "../profile/locations";
 import { getDatabase } from "./client";
 import type {
   AIProviderName,
@@ -197,7 +198,7 @@ export function getUserProfile(): UserProfileRecord {
     strongestSkills: parseJson<string[]>(row.strongest_skills_json),
     skillsToUseMore: parseJson<string[]>(row.skills_to_use_more_json),
     skillsToUseLess: parseJson<string[]>(row.skills_to_use_less_json),
-    preferredLocations: parseJson<string[]>(row.preferred_locations_json ?? "[]"),
+    preferredLocations: normalizePreferredLocations(parseJson<string[]>(row.preferred_locations_json ?? "[]")),
     remotePreference: (row.remote_preference ?? "all") as UserProfileRecord["remotePreference"]
   };
 }
