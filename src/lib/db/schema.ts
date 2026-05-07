@@ -589,5 +589,14 @@ export const migrations = [
         and name = 'Alex Jordan'
         and current_search_goal = 'Find senior product design leadership roles with strong strategic scope.';
     `
+  },
+  {
+    id: "0031_linkedin_scan_support",
+    sql: `
+      alter table jobs add column is_duplicate integer not null default 0;
+      alter table jobs add column duplicate_of text default null;
+      alter table scan_runs add column scan_type text not null default 'careerops';
+      create index if not exists idx_jobs_company_title_location on jobs(company, title, location);
+    `
   }
 ];

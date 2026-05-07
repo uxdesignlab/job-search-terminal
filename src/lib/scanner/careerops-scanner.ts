@@ -213,7 +213,8 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     filteredCount,
     duplicateCount: duplicateCount + (newJobs.length - insertedCount),
     newJobsCount: insertedCount,
-    errors
+    errors,
+    scanType: "careerops"
   };
 
   if (persist) {
