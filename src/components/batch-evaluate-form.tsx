@@ -56,6 +56,7 @@ const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "recommendation", label: "Action" },
   { col: "posted", label: "Posted" },
   { col: "scanned", label: "Added" },
+  { col: "source", label: "Source" },
 ];
 
 export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
@@ -123,6 +124,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
         case "recommendation": cmp = a.recommendation.localeCompare(b.recommendation); break;
         case "posted": cmp = (a.datePosted ?? "").localeCompare(b.datePosted ?? ""); break;
         case "scanned": cmp = (a.firstSeenDate ?? "").localeCompare(b.firstSeenDate ?? ""); break;
+        case "source": cmp = a.source.localeCompare(b.source); break;
       }
       return sort.dir === "asc" ? cmp : -cmp;
     });
@@ -323,6 +325,12 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                     </td>
                     <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.datePosted)}</td>
                     <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.firstSeenDate)}</td>
+                    <td className="py-3 pr-4">
+                      <div className="flex flex-wrap gap-1">
+                        {job.source === "linkedin-claude-scan" && <Badge tone="neutral">LinkedIn</Badge>}
+                        {job.isDuplicate && <Badge tone="warning">Duplicate</Badge>}
+                      </div>
+                    </td>
                     <td className="py-3">
                       {job.url && (
                         <a

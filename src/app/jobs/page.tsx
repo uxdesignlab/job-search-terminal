@@ -8,6 +8,7 @@ import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import { AddJobModal } from "@/components/AddJobModal";
 import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
 import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
+import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,7 @@ export default async function JobsPage() {
           </div>
         ) : null}
       </div>
+      <LinkedInImportNotification />
     </Shell>
   );
 }

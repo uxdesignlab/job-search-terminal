@@ -78,6 +78,8 @@ export type JobRecord = {
   livenessCheckedAt: string;
   scopeStatus: string;
   archived: boolean;
+  isDuplicate: boolean;
+  duplicateOf: string[] | null;
 };
 
 export type ScannedJobInput = {
@@ -168,6 +170,38 @@ export type ScanRunRecord = {
   duplicateCount: number;
   newJobsCount: number;
   errors: Array<{ company: string; error: string }>;
+  scanType: "careerops" | "linkedin-claude-scan";
+};
+
+export type ImportResult = {
+  success: boolean;
+  imported: number;
+  duplicates: number;
+  errors: string[];
+  summary: string;
+  jobIds: string[];
+  scanRunId: string;
+};
+
+export type LinkedInScanFile = {
+  metadata: {
+    scanTimestamp: string;
+    scanDurationSeconds: number;
+    totalJobsDiscovered: number;
+    totalJobsValid: number;
+    totalJobsSkipped: number;
+    searchCriteria: Record<string, unknown>;
+  };
+  jobs: Array<{
+    id: string;
+    company: string;
+    position: string;
+    jobDescription?: string;
+    url: string;
+    discoveredAt: string;
+    location?: string;
+    dataQuality?: Record<string, boolean | number | string[]>;
+  }>;
 };
 
 export type ResumeRecord = {
