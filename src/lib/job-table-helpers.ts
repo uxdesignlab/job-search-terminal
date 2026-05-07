@@ -27,7 +27,8 @@ export type MainJobsSortCol =
   | "status"
   | "recommendation"
   | "posted"
-  | "scanned";
+  | "scanned"
+  | "source";
 
 export function getMainJobColValue(job: MainJobTableRecord, col: MainJobsSortCol): string {
   switch (col) {
@@ -49,6 +50,8 @@ export function getMainJobColValue(job: MainJobTableRecord, col: MainJobsSortCol
       return job.datePosted ? "Has date" : "No date";
     case "scanned":
       return job.firstSeenDate ? "Has date" : "No date";
+    case "source":
+      return job.source === "linkedin-claude-scan" ? "LinkedIn" : "Scanner";
   }
 }
 
@@ -56,6 +59,7 @@ export function getMainJobColOptions(jobs: MainJobTableRecord[], col: MainJobsSo
   if (col === "fit") return [...JOB_FIT_BUCKETS];
   if (col === "preference") return [MATCHES_PREFERENCES_LABEL, OUTSIDE_PREFERENCES_LABEL];
   if (col === "posted" || col === "scanned") return ["Has date", "No date"];
+  if (col === "source") return ["LinkedIn", "Scanner"];
   return [...new Set(jobs.map((j) => getMainJobColValue(j, col)))].sort();
 }
 
