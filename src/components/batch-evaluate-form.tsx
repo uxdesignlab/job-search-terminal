@@ -11,6 +11,7 @@ import {
   DataTableColHeader,
   DataTableSavedFiltersBar,
   DataTableSortFilterDropdown,
+  type DataTableSortFilterSnapshot,
   useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
@@ -65,6 +66,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
   const [jobStatus, setJobStatus] = useState<Record<string, JobRowStatus>>({});
   const [running, setRunning] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [duplicateGroupFilter, setDuplicateGroupFilter] = useState<{ company: string; title: string } | null>(null);
   // Build default filter: exclude non-actionable statuses unless the user clears it
   const statusOptions = getMainJobColOptions(jobs, "status");
   const hiddenStatuses = new Set(["Applied", "Rejected", "Skipped"]);
@@ -106,11 +108,27 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     [jobs],
   );
 
+  const handleClearAll = useCallback(() => {
+    clearAllFilters();
+    setDuplicateGroupFilter(null);
+  }, [clearAllFilters]);
+
+  const handleApplySortAndFilters = useCallback((snapshot: DataTableSortFilterSnapshot<SortCol>) => {
+    applySortAndFilters(snapshot);
+    setDuplicateGroupFilter(null);
+  }, [applySortAndFilters]);
+
   const displayJobs = useMemo(() => {
     let result = jobs;
     for (const [col, allowed] of Object.entries(filters) as [SortCol, Set<string>][]) {
       if (!allowed) continue;
       result = result.filter((j) => allowed.has(getMainJobColValue(j, col)));
+    }
+    if (duplicateGroupFilter) {
+      const { company, title } = duplicateGroupFilter;
+      result = result.filter(
+        (j) => j.company.toLowerCase() === company.toLowerCase() && j.title.toLowerCase() === title.toLowerCase(),
+      );
     }
     return [...result].sort((a, b) => {
       let cmp = 0;
@@ -125,10 +143,11 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
         case "posted": cmp = (a.datePosted ?? "").localeCompare(b.datePosted ?? ""); break;
         case "scanned": cmp = (a.firstSeenDate ?? "").localeCompare(b.firstSeenDate ?? ""); break;
         case "source": cmp = a.source.localeCompare(b.source); break;
+        case "duplicate": cmp = (a.isDuplicate ? 1 : 0) - (b.isDuplicate ? 1 : 0); break;
       }
       return sort.dir === "asc" ? cmp : -cmp;
     });
-  }, [jobs, sort, filters]);
+  }, [jobs, sort, filters, duplicateGroupFilter]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -212,8 +231,8 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
           (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
           <DataTableActiveFiltersSummary
             entityLabel="jobs"
-            hasActiveFilters={activeFilterCount > 0}
-            onClearAll={clearAllFilters}
+            hasActiveFilters={activeFilterCount > 0 || duplicateGroupFilter !== null}
+            onClearAll={handleClearAll}
             shown={displayJobs.length}
             total={jobs.length}
             trailing={
@@ -223,7 +242,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                 deleteById={savedFiltersState.deleteById}
                 filters={filters}
                 items={savedFiltersState.items}
-                onApply={applySortAndFilters}
+                onApply={handleApplySortAndFilters}
                 onResetToDefault={resetToDefault}
                 ready={savedFiltersState.ready}
                 saveSnapshot={savedFiltersState.saveSnapshot}
@@ -328,7 +347,25 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                     <td className="py-3 pr-4">
                       <div className="flex flex-wrap gap-1">
                         {job.source === "linkedin-claude-scan" && <Badge tone="neutral">LinkedIn</Badge>}
-                        {job.isDuplicate && <Badge tone="warning">Duplicate</Badge>}
+                        {job.source === "manual" && <Badge tone="neutral">Manual</Badge>}
+                        {job.isDuplicate && (() => {
+                          const isActive = duplicateGroupFilter?.company === job.company && duplicateGroupFilter?.title === job.title;
+                          return (
+                            <button
+                              type="button"
+                              title={isActive ? "Clear duplicate filter" : "Show potential duplicates"}
+                              onClick={() => setDuplicateGroupFilter(isActive ? null : { company: job.company, title: job.title })}
+                              className={cn(
+                                "inline-flex min-h-7 cursor-pointer items-center rounded-control border px-2.5 text-xs font-medium transition-colors",
+                                isActive
+                                  ? "border-warning/60 bg-warning/25 text-warning ring-1 ring-warning/30"
+                                  : "border-warning/35 bg-warning/10 text-warning hover:bg-warning/20",
+                              )}
+                            >
+                              Duplicate
+                            </button>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="py-3">

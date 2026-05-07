@@ -13,6 +13,9 @@ all running locally on the user's machine with no cloud storage.
 - `AGENTS.md` is the authoritative agent contract for this repo.
 - Detailed project documentation belongs in `docs/`.
 - Keep `README.md` short and link to docs instead of duplicating detail.
+- After adding or changing functionality, always document it in the same change
+  set before considering the work complete. Update user-facing docs, technical
+  references, and in-app help as applicable.
 
 ## Architecture
 
