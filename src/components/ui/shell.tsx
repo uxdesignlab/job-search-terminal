@@ -49,6 +49,7 @@ function ProviderHealthDot() {
 
 export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
   const isAccountActive = ACCOUNT_ITEMS.some((i) => i.label === activeItem);
+  const isHelpActive = activeItem === "Help";
 
   return (
     <div className="min-h-screen bg-surface">
@@ -118,6 +119,19 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
                     </li>
                   ))}
                 </ul>
+              </li>
+              <li>
+                <Link
+                  aria-current={isHelpActive ? "page" : undefined}
+                  className={
+                    isHelpActive
+                      ? "relative inline-flex items-center px-3 py-4 text-sm font-medium text-accent after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-accent after:content-['']"
+                      : "inline-flex items-center px-3 py-4 text-sm font-medium text-muted transition-colors hover:text-ink"
+                  }
+                  href="/help"
+                >
+                  Help
+                </Link>
               </li>
             </ul>
           </nav>

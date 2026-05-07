@@ -341,12 +341,14 @@ Added `"source"` to the `MainJobsSortCol` union type.
 Added a `case "source"` to `getMainJobColValue()`:
 ```typescript
 case 'source':
-  return job.source === 'linkedin-claude-scan' ? 'LinkedIn' : 'Scanner';
+  if (job.source === 'linkedin-claude-scan') return 'LinkedIn';
+  if (job.source === 'manual') return 'Manual';
+  return 'Scanner';
 ```
 
 Added a `"source"` branch to `getMainJobColOptions()`:
 ```typescript
-if (col === 'source') return ['LinkedIn', 'Scanner'];
+if (col === 'source') return ['LinkedIn', 'Manual', 'Scanner'];
 ```
 
 ---
@@ -360,12 +362,17 @@ if (col === 'source') return ['LinkedIn', 'Scanner'];
   <td className="py-3 pr-4">
     <div className="flex flex-wrap gap-1">
       {job.source === 'linkedin-claude-scan' && <Badge tone="neutral">LinkedIn</Badge>}
+      {job.source === 'manual' && <Badge tone="neutral">Manual</Badge>}
       {job.isDuplicate && <Badge tone="warning">Duplicate</Badge>}
     </div>
   </td>
   ```
 
-The "LinkedIn" badge uses `tone="neutral"` (standard gray border) to indicate source without urgency. The "Duplicate" badge uses `tone="warning"` (amber) to indicate that a manual review may be warranted, consistent with other informational warnings in the table.
+The "LinkedIn" and "Manual" badges use `tone="neutral"` (standard gray border) to indicate source without urgency.
+
+The "Duplicate" badge is rendered as a `<button>` (not a `<span>`) with warning styling. Clicking it toggles a `"duplicate"` filter that is tracked in the same `useDataTableSortFilterState` filter map as column filters — when active, `filters.duplicate` is `new Set(["Yes"])`, which causes `displayJobs` to pass only jobs where `isDuplicate` is true. When the filter is active the badge renders with a ring and slightly higher opacity background to signal the active state. Clicking again passes `undefined` to `handleFilter`, clearing the filter.
+
+The `"duplicate"` column is added to `MainJobsSortCol` and handled in `getMainJobColValue()` (returns `"Yes"` / `"No"`) so the filter machinery works without a visible column header.
 
 ---
 

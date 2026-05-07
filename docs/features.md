@@ -13,12 +13,54 @@ The Shell header provides two navigation groups:
 
 **Account dropdown** (hover on "Account"): Profile · Strategy · Settings
 
+**Help link** appears immediately after Account and opens the in-app help site at
+`/help`.
+
 The Account menu shows a live AI provider health dot:
 - Green: active provider has a key configured
 - Yellow: a key exists but the active provider's key is missing
 - Red: no AI keys configured at all
 
 The app redirects `/` to `/dashboard` on load.
+
+---
+
+## Help Site `/help`
+
+The in-app help site is a self-service documentation surface for open-source
+users. It is designed as a mini website inside the product, with a landing page,
+search, workflow cards, a persistent documentation sidebar, screenshots, related
+guides, and per-topic pages.
+
+**Help home:**
+- Hero with product screenshot and calls to start the guide or open the resume
+  and ATS guide.
+- Search across all help pages.
+- Workflow groups for setup, profile, jobs, applying, tracking, interview prep,
+  privacy, and troubleshooting.
+
+**Guide pages:**
+- `/help/getting-started` — setup, onboarding, and daily workflow.
+- `/help/ai-providers` — how to create and add OpenAI, Anthropic, or Google
+  Gemini API keys, test the provider, and protect keys.
+- `/help/resume-lanes` — resume lanes, resume upload, ATS-friendly formatting,
+  PDF guidance, and bullet quality.
+- `/help/job-search` — dashboard scans, job sources, manual job entry, filters,
+  and saved presets.
+- `/help/linkedin-scanner` — Claude Desktop LinkedIn scanning, result
+  scrolling/paging behavior, imports, duplicates, limits, and safety notes.
+- `/help/evaluate-tailor` — evaluation, tailored resume generation, PDF export,
+  application answers, research, and outreach drafting.
+- `/help/applications` — statuses, table and kanban tracking, follow-ups, and
+  archive vs. delete behavior.
+- `/help/interview-prep` — STAR stories and voice practice.
+- `/help/privacy-data` — local data, AI-provider data flow, backups, and safety
+  boundaries.
+- `/help/troubleshooting` — common setup, AI, resume/PDF, scan, and LinkedIn
+  fixes.
+
+The help content is sourced from `src/lib/help/content.ts` and rendered through
+the shared help components under `src/components/help/`.
 
 ---
 
@@ -86,7 +128,9 @@ status, posting maintenance, and bulk tools.
   untouched jobs, and identify active jobs whose titles no longer match saved
   title filters. Out-of-scope cleanup only bulk-deletes untouched jobs; jobs with
   user activity must be removed through explicit selected-job actions.
-- Add job manually via modal (paste URL or fill in details).
+- Add job manually via modal (paste URL or fill in details). Jobs added this
+  way are stored with `source = 'manual'` and display a **Manual** badge in
+  the Source column.
 - **Column filters** — click any column header to open a sort + multi-value
   checkbox filter dropdown. Active filters show a count summary ("X of Y jobs")
   with a "Clear all filters" link.
@@ -438,9 +482,10 @@ An optional feature for users with Claude Desktop. Claude browses LinkedIn on yo
 5. Job Search Terminal detects the file, imports jobs with duplicate detection, and shows a notification
 
 **UI indicators on the Jobs table:**
-- **LinkedIn** badge (neutral gray) — source column — identifies jobs discovered via the scanner
-- **Duplicate** badge (amber) — flagged jobs whose URL or company+title already existed in the database
-- **Source** column — filterable and sortable; options are "LinkedIn" and "Scanner"
+- **LinkedIn** badge (neutral gray) — source column — identifies jobs discovered via the LinkedIn scanner
+- **Manual** badge (neutral gray) — source column — identifies jobs added manually via the Add Job modal
+- **Duplicate** badge (amber, clickable) — flagged jobs whose URL or company+title already existed in the database. Clicking the badge instantly filters the table to show only duplicate-flagged jobs. Clicking again clears the filter.
+- **Source** column — filterable and sortable; options are "LinkedIn", "Manual", and "Scanner"
 
 **Duplicate detection:** Jobs are marked as possible duplicates (not dropped) when their URL or company+title matches an existing record. The user can review and act on flagged jobs normally.
 

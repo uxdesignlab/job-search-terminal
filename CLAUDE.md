@@ -1,6 +1,34 @@
-# Job Search Terminal — Claude Desktop LinkedIn Scanner
+# Job Search Terminal — Project Rules & Claude Desktop LinkedIn Scanner
 
-This file contains instructions for Claude Desktop to perform automated LinkedIn job discovery and write results into Job Search Terminal's import pipeline.
+---
+
+## Documentation Requirements
+
+**Every code change must be documented.** This is a hard rule, not optional.
+
+When making any change to this codebase — new feature, bug fix, refactor, or configuration — update the relevant documentation before considering the task complete:
+
+- **`docs/features.md`** — describes every user-facing feature. Update it when adding, changing, or removing any feature or UI element.
+- **`docs/data-model.md`** — documents the database schema, migrations, and all types. Update it whenever a migration is added, a column changes, or a new type is introduced.
+- **`docs/linkedin-scanner-technical.md`** — technical reference for the LinkedIn scanner integration. Update code snippets, file descriptions, and architecture notes when touching that subsystem.
+- **`docs/linkedin-scanner-guide.md`** — user guide for the LinkedIn scanner. Update when behavior visible to the user changes.
+- **`CLAUDE.md`** — project rules and Claude Desktop agent instructions. Update when adding new rules or changing the LinkedIn scanner workflow.
+
+**What "thoroughly documented" means:**
+
+1. Describe what changed and why, not just that it changed.
+2. Update any code snippets in docs to match the new implementation.
+3. Update filter options, badge lists, table columns, and other enumerations that appear in docs.
+4. If a doc section is now incorrect or incomplete, fix it — don't leave stale information.
+5. New files or subsystems must have their purpose, exported API, and behavior documented.
+
+**When there is no matching doc section**, add one. Do not skip documentation because a section doesn't exist yet.
+
+---
+
+## LinkedIn Scanner Agent Instructions
+
+This file also contains instructions for Claude Desktop to perform automated LinkedIn job discovery and write results into Job Search Terminal's import pipeline.
 
 ---
 

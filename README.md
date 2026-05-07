@@ -128,6 +128,8 @@ Full setup guide: [docs/getting-started.md](docs/getting-started.md)
 
 - [Getting Started](docs/getting-started.md)
 - [Features](docs/features.md)
+- [Help Site](docs/help-site.md)
+- [LinkedIn Scanner Guide](docs/linkedin-scanner-guide.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Privacy](PRIVACY.md)
 - [Legal Disclaimer](LEGAL_DISCLAIMER.md)
