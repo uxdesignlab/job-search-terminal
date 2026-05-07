@@ -426,6 +426,35 @@ Location matching uses the selected Location mode checkboxes:
 
 ---
 
+## LinkedIn Scanner (Claude Desktop Integration)
+
+An optional feature for users with Claude Desktop. Claude browses LinkedIn on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required.
+
+**How it works:**
+1. Say "Scan LinkedIn for jobs" in Claude Desktop
+2. Claude reads your target roles and location preferences from the JST database
+3. Claude opens LinkedIn in Chrome and extracts matching job postings
+4. A JSON file is written to `data/linkedin-imports/`
+5. Job Search Terminal detects the file, imports jobs with duplicate detection, and shows a notification
+
+**UI indicators on the Jobs table:**
+- **LinkedIn** badge (neutral gray) — source column — identifies jobs discovered via the scanner
+- **Duplicate** badge (amber) — flagged jobs whose URL or company+title already existed in the database
+- **Source** column — filterable and sortable; options are "LinkedIn" and "Scanner"
+
+**Duplicate detection:** Jobs are marked as possible duplicates (not dropped) when their URL or company+title matches an existing record. The user can review and act on flagged jobs normally.
+
+**Import notification:** A fixed-bottom green alert appears on the Jobs page within 30 seconds of a completed import, showing the count of new jobs and duplicates. Auto-dismissed after 5 minutes.
+
+**Requirements:** Claude Desktop, Claude in Chrome extension, LinkedIn session active in Chrome.
+
+**Full documentation:**
+- User guide: `docs/linkedin-scanner-guide.md`
+- Technical reference: `docs/linkedin-scanner-technical.md`
+- Agent instructions: `CLAUDE.md` (read by Claude Desktop automatically)
+
+---
+
 ## Data and Privacy
 
 - All data is stored locally in `data/job-search-terminal.sqlite` on the user's machine.

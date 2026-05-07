@@ -44,6 +44,7 @@ and initializes an empty local profile if the database is empty.
 | `0028_onboarding_preferences_confirmation` | Adds explicit first-run job-preference confirmation to `ai_settings` |
 | `0029_job_scope_status` | Adds `scope_status` to `jobs` for maintenance labeling |
 | `0030_remove_legacy_demo_seed_data` | Removes legacy demo jobs, applications, generated documents, activity, skills, and profile placeholders |
+| `0031_linkedin_scan_support` | Adds `is_duplicate`, `duplicate_of` to `jobs`; adds `scan_type` to `scan_runs`; adds compound index on `(company, title, location)` |
 
 ---
 

@@ -105,6 +105,8 @@ type JobRow = {
   liveness_checked_at: string;
   scope_status: string;
   archived: number;
+  is_duplicate: number;
+  duplicate_of: string | null;
 };
 
 type ScanRunRow = {
@@ -119,6 +121,7 @@ type ScanRunRow = {
   duplicate_count: number;
   new_jobs_count: number;
   errors_json: string;
+  scan_type: string;
 };
 
 type EvaluationRow = {
@@ -1192,6 +1195,79 @@ export function insertScannedJobs(jobs: ScannedJobInput[]) {
   return insertMany(jobs);
 }
 
+export type LinkedInJobInput = {
+  id: string;
+  company: string;
+  title: string;
+  url: string;
+  location: string;
+  rawDescription: string;
+  datePosted: string | null;
+  firstSeenDate: string;
+  isDuplicate: boolean;
+  duplicateOf: string[] | null;
+};
+
+export function insertLinkedInJobs(jobs: LinkedInJobInput[]): { inserted: number; jobIds: string[] } {
+  if (jobs.length === 0) return { inserted: 0, jobIds: [] };
+
+  const database = getDatabase();
+  const insert = database.prepare(
+    `insert or ignore into jobs (
+      id, company, title, url, source, location, remote_type,
+      date_posted, first_seen_date, freshness_label, raw_description,
+      parsed_description, status, fit_score, role_archetype, recommendation,
+      summary, why_it_matches, main_concern, recommended_resume, salary_notes,
+      requirement_match_json, resume_evidence_json, gaps_json, red_flags_json,
+      is_duplicate, duplicate_of
+    ) values (
+      @id, @company, @title, @url, 'linkedin-claude-scan', @location, @remoteType,
+      @datePosted, @firstSeenDate, 'New today', @rawDescription,
+      '', 'Found', 0, 'Unreviewed', 'Needs review',
+      'Discovered via LinkedIn scan. Evaluate this role before acting.',
+      'Pending evaluation against profile, resume lanes, and constraints.',
+      'Not evaluated yet.', 'To be selected', 'Not captured by scanner.',
+      '[]', '[]', '[]', '[]',
+      @isDuplicate, @duplicateOf
+    )`
+  );
+
+  const jobIds: string[] = [];
+  const insertMany = database.transaction((items: LinkedInJobInput[]) => {
+    let inserted = 0;
+    for (const job of items) {
+      const result = insert.run({
+        ...job,
+        remoteType: inferRemoteType(job.location),
+        isDuplicate: job.isDuplicate ? 1 : 0,
+        duplicateOf: job.duplicateOf ? JSON.stringify(job.duplicateOf) : null
+      });
+      if (Number(result.changes) > 0) {
+        inserted++;
+        jobIds.push(job.id);
+      }
+    }
+    return inserted;
+  });
+
+  const inserted = insertMany(jobs);
+  return { inserted, jobIds };
+}
+
+export function getLatestLinkedInImport() {
+  return getDatabase()
+    .prepare(
+      `select id, new_jobs_count, duplicate_count, completed_at
+       from scan_runs
+       where scan_type = 'linkedin-claude-scan'
+       order by started_at desc
+       limit 1`
+    )
+    .get() as
+    | { id: string; new_jobs_count: number; duplicate_count: number; completed_at: string | null }
+    | undefined;
+}
+
 export function insertManualJob(job: {
   id: string;
   company: string;
@@ -1297,7 +1373,8 @@ export function recordScanRun(run: ScanRunRecord) {
         filtered_count,
         duplicate_count,
         new_jobs_count,
-        errors_json
+        errors_json,
+        scan_type
       ) values (
         @id,
         @status,
@@ -1309,12 +1386,14 @@ export function recordScanRun(run: ScanRunRecord) {
         @filteredCount,
         @duplicateCount,
         @newJobsCount,
-        @errorsJson
+        @errorsJson,
+        @scanType
       )`
     )
     .run({
       ...run,
-      errorsJson: JSON.stringify(run.errors)
+      errorsJson: JSON.stringify(run.errors),
+      scanType: run.scanType ?? "careerops"
     });
 
   logActivity("scan", run.id, scanActivityLabel(run), {
@@ -1371,7 +1450,9 @@ function mapJob(row: JobRow): JobRecord {
     livenessStatus: row.liveness_status ?? "",
     livenessCheckedAt: row.liveness_checked_at ?? "",
     scopeStatus: row.scope_status ?? "",
-    archived: (row.archived ?? 0) === 1
+    archived: (row.archived ?? 0) === 1,
+    isDuplicate: (row.is_duplicate ?? 0) === 1,
+    duplicateOf: row.duplicate_of ? (parseJson<string[]>(row.duplicate_of)) : null
   };
 }
 
@@ -1401,7 +1482,8 @@ function mapScanRun(row: ScanRunRow): ScanRunRecord {
     filteredCount: row.filtered_count,
     duplicateCount: row.duplicate_count,
     newJobsCount: row.new_jobs_count,
-    errors: parseJson<Array<{ company: string; error: string }>>(row.errors_json)
+    errors: parseJson<Array<{ company: string; error: string }>>(row.errors_json),
+    scanType: (row.scan_type ?? "careerops") as ScanRunRecord["scanType"]
   };
 }
 
