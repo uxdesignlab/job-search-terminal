@@ -5,6 +5,8 @@ import { normalizePreferredLocations } from "../profile/locations";
 import { getDatabase } from "./client";
 import type {
   AIProviderName,
+  AIPromptId,
+  AIPromptOverrideRecord,
   AISettingsRecord,
   AISettingsUpdateInput,
   ActivityRecord,
@@ -28,6 +30,9 @@ import type {
   OutreachDraftInput,
   OutreachDraftRecord,
   ProfileUpdateInput,
+  ResumeBuilderSection,
+  ResumeBuilderVersionRecord,
+  ResumeBuilderVersionStatus,
   ResumeRecord,
   RoleDirectionRecord,
   RoleDirectionUpdateInput,
@@ -122,6 +127,17 @@ type ScanRunRow = {
   new_jobs_count: number;
   errors_json: string;
   scan_type: string;
+};
+
+type ResumeBuilderVersionRow = {
+  id: string;
+  resume_id: string;
+  status: string;
+  sections_json: string;
+  source_hash: string;
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
 };
 
 type EvaluationRow = {
@@ -328,10 +344,8 @@ export function updateResumeSource(id: string, sourceFile: string, extractedText
     .run({ id, sourceFile, extractedText, wordCount });
 }
 
-export function clearResumeSource(id: string) {
-  getDatabase()
-    .prepare("update resumes set source_file = '', extracted_text = '', word_count = 0, extracted_at = null where id = @id")
-    .run({ id });
+export function deleteResumeLane(id: string) {
+  getDatabase().prepare("delete from resumes where id = @id").run({ id });
 }
 
 export function createResumeLane(name: string): string {
@@ -417,7 +431,97 @@ export function getResumes(): ResumeRecord[] {
         activeStatus: Boolean(resume.activeStatus),
         evidence: parseJson<string[]>(resume.evidenceJson)
       };
+	    });
+}
+
+function mapResumeBuilderVersion(row: ResumeBuilderVersionRow): ResumeBuilderVersionRecord {
+  const statusValues: ResumeBuilderVersionStatus[] = ["needs_review", "approved", "missing_source"];
+  const status = statusValues.includes(row.status as ResumeBuilderVersionStatus)
+    ? row.status as ResumeBuilderVersionStatus
+    : "needs_review";
+
+  return {
+    id: row.id,
+    resumeId: row.resume_id,
+    status,
+    sections: parseJson<ResumeBuilderSection[]>(row.sections_json || "[]"),
+    sourceHash: row.source_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    approvedAt: row.approved_at
+  };
+}
+
+export function getResumeBuilderVersions(): ResumeBuilderVersionRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from resume_builder_versions order by updated_at desc")
+    .all() as ResumeBuilderVersionRow[];
+  return rows.map(mapResumeBuilderVersion);
+}
+
+export function getResumeBuilderVersion(resumeId: string): ResumeBuilderVersionRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from resume_builder_versions where resume_id = ?")
+    .get(resumeId) as ResumeBuilderVersionRow | undefined;
+  return row ? mapResumeBuilderVersion(row) : undefined;
+}
+
+export function saveResumeBuilderVersion(input: {
+  resumeId: string;
+  status: ResumeBuilderVersionStatus;
+  sections: ResumeBuilderSection[];
+  sourceHash: string;
+}) {
+  const existing = getResumeBuilderVersion(input.resumeId);
+  const id = existing?.id ?? `resume-version-${input.resumeId}`;
+  const approvedAt = input.status === "approved"
+    ? existing?.approvedAt ?? new Date().toISOString()
+    : existing?.approvedAt ?? null;
+
+  getDatabase()
+    .prepare(
+      `insert into resume_builder_versions (
+        id,
+        resume_id,
+        status,
+        sections_json,
+        source_hash,
+        approved_at
+      ) values (
+        @id,
+        @resumeId,
+        @status,
+        @sectionsJson,
+        @sourceHash,
+        @approvedAt
+      )
+      on conflict(resume_id) do update set
+        status = excluded.status,
+        sections_json = excluded.sections_json,
+        source_hash = excluded.source_hash,
+        approved_at = excluded.approved_at,
+        updated_at = current_timestamp`
+    )
+    .run({
+      id,
+      resumeId: input.resumeId,
+      status: input.status,
+      sectionsJson: JSON.stringify(input.sections),
+      sourceHash: input.sourceHash,
+      approvedAt
     });
+}
+
+export function approveResumeBuilderVersion(resumeId: string, sections: ResumeBuilderSection[], sourceHash: string) {
+  saveResumeBuilderVersion({
+    resumeId,
+    status: "approved",
+    sections,
+    sourceHash
+  });
+  logActivity("resume", resumeId, "Resume builder version approved", {
+    sectionCount: sections.length
+  });
 }
 
 export function getApplications(): ApplicationRecord[] {
@@ -1676,7 +1780,55 @@ export function setOnboardingPreferencesConfirmed(confirmed: boolean) {
         updated_at = current_timestamp
       where id = 'singleton'`
     )
-    .run({ confirmed: confirmed ? 1 : 0 });
+	    .run({ confirmed: confirmed ? 1 : 0 });
+}
+
+type AIPromptOverrideRow = {
+  prompt_id: string;
+  custom_prompt: string;
+  updated_at: string;
+};
+
+function mapPromptOverride(row: AIPromptOverrideRow): AIPromptOverrideRecord {
+  return {
+    promptId: row.prompt_id as AIPromptId,
+    customPrompt: row.custom_prompt,
+    updatedAt: row.updated_at
+  };
+}
+
+export function getAIPromptOverrides(): AIPromptOverrideRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from ai_prompt_overrides order by prompt_id")
+    .all() as AIPromptOverrideRow[];
+  return rows.map(mapPromptOverride);
+}
+
+export function getAIPromptOverride(promptId: AIPromptId): AIPromptOverrideRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from ai_prompt_overrides where prompt_id = ?")
+    .get(promptId) as AIPromptOverrideRow | undefined;
+  return row ? mapPromptOverride(row) : undefined;
+}
+
+export function saveAIPromptOverride(promptId: AIPromptId, customPrompt: string) {
+  getDatabase()
+    .prepare(
+      `insert into ai_prompt_overrides (prompt_id, custom_prompt)
+      values (@promptId, @customPrompt)
+      on conflict(prompt_id) do update set
+        custom_prompt = excluded.custom_prompt,
+        updated_at = current_timestamp`
+    )
+    .run({ promptId, customPrompt });
+  logActivity("ai_prompt", promptId, "AI prompt override updated", {});
+}
+
+export function resetAIPromptOverride(promptId: AIPromptId) {
+  getDatabase()
+    .prepare("delete from ai_prompt_overrides where prompt_id = ?")
+    .run(promptId);
+  logActivity("ai_prompt", promptId, "AI prompt override reset", {});
 }
 
 // ─── Story Bank ───────────────────────────────────────────────────────────────

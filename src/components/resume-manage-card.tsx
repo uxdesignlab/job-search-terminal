@@ -1,7 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui";
+import type { ResumeBuilderVersionStatus } from "@/lib/db/types";
 
 type Props = {
   id: string;
@@ -9,12 +12,13 @@ type Props = {
   wordCount: number;
   evidence: string[];
   initialUploadOnly?: boolean;
+  builderStatus?: ResumeBuilderVersionStatus;
 };
 
 const inputCls =
   "w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent";
 
-export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadOnly = false }: Props) {
+export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadOnly = false, builderStatus }: Props) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -29,7 +33,7 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
   const [currentWords, setCurrentWords] = useState(wordCount);
 
   // Remove
-  const [removeStatus, setRemoveStatus] = useState<"idle" | "removing" | "done" | "error">("idle");
+  const [removeStatus, setRemoveStatus] = useState<"idle" | "removing" | "error">("idle");
   const [showConfirm, setShowConfirm] = useState(false);
 
   async function saveName() {
@@ -81,16 +85,15 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
     try {
       const res = await fetch(`/api/resume/${id}/upload`, { method: "DELETE" });
       if (!res.ok) throw new Error("Remove failed");
-      setCurrentWords(0);
-      setRemoveStatus("done");
       router.refresh();
-      setTimeout(() => setRemoveStatus("idle"), 2000);
     } catch {
       setRemoveStatus("error");
     }
   }
 
   const hasFile = currentWords > 0;
+  const builderTone = builderStatus === "approved" ? "success" : builderStatus === "missing_source" ? "danger" : "warning";
+  const builderLabel = builderStatus === "approved" ? "Approved" : builderStatus === "missing_source" ? "Missing readable data" : "Needs review";
 
   const uploadButton = (
     <button
@@ -181,16 +184,19 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
         )}
 
         {/* Word count badge */}
-        <span
+	        <span
           className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
             hasFile
               ? "bg-success/10 text-success"
               : "bg-muted/10 text-muted"
           }`}
-        >
-          {hasFile ? `${currentWords} words` : "Not uploaded"}
-        </span>
-      </div>
+	        >
+	          {hasFile ? `${currentWords} words` : "Not uploaded"}
+	        </span>
+	        {hasFile && builderStatus && (
+	          <Badge tone={builderTone}>{builderLabel}</Badge>
+	        )}
+	      </div>
 
       {/* Evidence preview */}
       {hasFile && evidence.length > 0 && (
@@ -207,7 +213,7 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
         ) : (
           /* Re-upload (outlined button) + remove for filled lanes */
           <>
-            <button
+	            <button
               className="inline-flex items-center gap-1.5 rounded-control border border-accent/60 px-3 py-1.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={uploadStatus === "uploading" || removeStatus === "removing"}
               onClick={() => fileRef.current?.click()}
@@ -230,10 +236,17 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
                   </svg>
                   Replace PDF
                 </>
-              )}
-            </button>
+	              )}
+	            </button>
 
-            {/* Remove: confirm inline */}
+	            <Link
+	              className="text-xs font-medium text-accent hover:underline"
+	              href={`/profile/resumes/${id}/builder`}
+	            >
+	              {builderStatus === "approved" ? "Edit approved version" : "Review builder"}
+	            </Link>
+
+	            {/* Remove: confirm inline */}
             {!showConfirm ? (
               <button
                 className="text-xs font-medium text-muted hover:text-danger hover:underline disabled:opacity-50"
@@ -241,7 +254,7 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
                 onClick={() => setShowConfirm(true)}
                 type="button"
               >
-                {removeStatus === "removing" ? "Removing…" : removeStatus === "done" ? "✓ Removed" : "Remove"}
+                {removeStatus === "removing" ? "Removing…" : "Remove"}
               </button>
             ) : (
               <span className="flex items-center gap-2 text-xs">

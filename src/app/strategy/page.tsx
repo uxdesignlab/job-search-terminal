@@ -1,7 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, Input, PageHeader, SubmitButton, Textarea } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
-import { getEvaluationFeedback, getRoleDirections, getUserProfile, updateRoleDirection } from "@/lib/db/queries";
+import { getAIPromptOverrides, getEvaluationFeedback, getRoleDirections, getUserProfile, resetAIPromptOverride, saveAIPromptOverride, updateRoleDirection } from "@/lib/db/queries";
+import type { AIPromptId } from "@/lib/db/types";
+import { PROMPT_DEFINITIONS } from "@/lib/ai/prompt-registry";
 import { splitListValue } from "@/lib/profile/intelligence";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +35,17 @@ function ScoreBar({ value }: { value: number }) {
   );
 }
 
-export default function StrategyPage() {
+export default async function StrategyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
+  const activeTab = tab === "prompts" ? "prompts" : "strategy";
   const profile = getUserProfile();
   const roleDirections = getRoleDirections();
   const feedback = getEvaluationFeedback();
+  const promptOverrides = new Map(getAIPromptOverrides().map((prompt) => [prompt.promptId, prompt.customPrompt]));
 
   async function updateRoleDirectionAction(formData: FormData) {
     "use server";
@@ -51,6 +60,27 @@ export default function StrategyPage() {
     revalidatePath("/dashboard");
   }
 
+  async function savePromptAction(formData: FormData) {
+    "use server";
+    const promptId = String(formData.get("promptId") ?? "") as AIPromptId;
+    const customPrompt = String(formData.get("customPrompt") ?? "").trim();
+    if (!PROMPT_DEFINITIONS.some((prompt) => prompt.id === promptId)) {
+      throw new Error("Unknown prompt.");
+    }
+    saveAIPromptOverride(promptId, customPrompt);
+    revalidatePath("/strategy");
+  }
+
+  async function resetPromptAction(formData: FormData) {
+    "use server";
+    const promptId = String(formData.get("promptId") ?? "") as AIPromptId;
+    if (!PROMPT_DEFINITIONS.some((prompt) => prompt.id === promptId)) {
+      throw new Error("Unknown prompt.");
+    }
+    resetAIPromptOverride(promptId);
+    revalidatePath("/strategy");
+  }
+
   const directCount = roleDirections.filter((d) => d.fitLevel.toLowerCase() === "direct").length;
   const adjacentCount = roleDirections.filter((d) => d.fitLevel.toLowerCase() === "adjacent").length;
 
@@ -63,6 +93,76 @@ export default function StrategyPage() {
           title="Strategy"
         />
 
+        <div className="flex gap-1 border-b border-border">
+          {[
+            { id: "strategy", label: "Strategy", href: "/strategy" },
+            { id: "prompts", label: "AI Prompts", href: "/strategy?tab=prompts" },
+          ].map(({ id, label, href }) => (
+            <a
+              key={id}
+              href={href}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === id
+                  ? "border-accent text-ink"
+                  : "border-transparent text-muted hover:text-ink"
+              }`}
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+
+        {activeTab === "prompts" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>AI prompt tuning</CardTitle>
+            <CardDescription>
+              Tune resume tailoring, application answers, and outreach. Locked safety rules still apply even when prompts are edited.
+            </CardDescription>
+          </CardHeader>
+          <div className="grid gap-4">
+            {PROMPT_DEFINITIONS.map((prompt) => {
+              const currentPrompt = promptOverrides.get(prompt.id) ?? prompt.defaultPrompt;
+              const customized = promptOverrides.has(prompt.id);
+              return (
+                <div className="rounded-control border border-border bg-surface p-4" key={prompt.id}>
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink">{prompt.label}</h3>
+                      <p className="mt-1 text-xs leading-5 text-muted">{prompt.description}</p>
+                    </div>
+                    <Badge tone={customized ? "warning" : "neutral"}>{customized ? "Custom" : "Default"}</Badge>
+                  </div>
+                  <form action={savePromptAction} className="grid gap-3">
+                    <input name="promptId" type="hidden" value={prompt.id} />
+                    <Textarea
+                      defaultValue={currentPrompt}
+                      id={`prompt-${prompt.id}`}
+                      label={`${prompt.label} prompt`}
+                      name="customPrompt"
+                      rows={8}
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SubmitButton label="Save prompt" savedLabel="Saved" variant="secondary" />
+                      {customized && (
+                        <button
+                          className="min-h-11 rounded-control border border-border px-4 py-2 text-sm font-medium text-muted hover:border-danger hover:text-danger"
+                          formAction={resetPromptAction}
+                          type="submit"
+                        >
+                          Reset to default
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+        )}
+
+        {activeTab === "strategy" && <>
         {/* Search focus + summary stats */}
         <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
           <Card>
@@ -85,7 +185,7 @@ export default function StrategyPage() {
               </div>
             </div>
           )}
-        </div>
+	        </div>
 
         {/* Role direction cards */}
         {roleDirections.length > 0 ? (
@@ -194,6 +294,7 @@ export default function StrategyPage() {
             </ol>
           </Card>
         )}
+        </>}
       </div>
     </Shell>
   );

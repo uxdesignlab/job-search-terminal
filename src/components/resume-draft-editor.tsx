@@ -21,6 +21,7 @@ type EditorState = {
   impactText: string;
   skills: string;
   recognition: string;
+  extraSections: Array<{ id?: string; title: string; itemsText: string }>;
   experience: ExperienceState[];
 };
 
@@ -33,6 +34,11 @@ function draftToState(draft: ResumeTemplateInput): EditorState {
     impactText: draft.impactItems.join("\n"),
     skills: draft.skills.join("\n"),
     recognition: draft.recognition.join("\n"),
+    extraSections: (draft.extraSections ?? []).map((section) => ({
+      id: section.id,
+      title: section.title,
+      itemsText: section.items.join("\n"),
+    })),
     experience: draft.experience.map((e) => {
       // Existing saved drafts may have location embedded in organization as "Org | Location"
       const pipeIdx = e.location === undefined ? e.organization.indexOf(" | ") : -1;
@@ -56,9 +62,9 @@ function stateToDraft(state: EditorState, base: ResumeTemplateInput): ResumeTemp
     contactItems: state.contactText.split("\n").map((s) => s.trim()).filter(Boolean),
     title: base.title,
     summary: state.summary,
-    impactHeading: base.impactHeading,
-    impactItems: state.impactText.split("\n").map((s) => s.trim()).filter(Boolean),
-    experienceHeading: base.experienceHeading,
+	    impactHeading: base.impactHeading,
+	    impactItems: state.impactText.split("\n").map((s) => s.trim()).filter(Boolean),
+	    experienceHeading: base.experienceHeading,
     experience: state.experience.map((e) => ({
       title: e.title,
       organization: e.organization,
@@ -66,8 +72,17 @@ function stateToDraft(state: EditorState, base: ResumeTemplateInput): ResumeTemp
       dateRange: e.dateRange,
       bullets: e.bulletsText.split("\n").map((s) => s.trim()).filter(Boolean),
     })),
-    skills: state.skills.split("\n").map((s) => s.trim()).filter(Boolean),
-    recognition: state.recognition.split("\n").map((s) => s.trim()).filter(Boolean),
+	    skillsHeading: base.skillsHeading,
+	    skills: state.skills.split("\n").map((s) => s.trim()).filter(Boolean),
+	    recognitionHeading: base.recognitionHeading,
+	    recognition: state.recognition.split("\n").map((s) => s.trim()).filter(Boolean),
+    extraSections: state.extraSections
+      .map((section) => ({
+        id: section.id,
+        title: section.title.trim(),
+        items: section.itemsText.split("\n").map((s) => s.trim()).filter(Boolean),
+      }))
+      .filter((section) => section.title && section.items.length > 0),
     education: base.education,
   };
 }
@@ -112,6 +127,13 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
     setState((prev) => ({
       ...prev,
       experience: prev.experience.map((e, i) => (i === idx ? { ...e, [field]: value } : e)),
+    }));
+  }, []);
+
+  const updateExtraSection = useCallback((idx: number, field: "title" | "itemsText", value: string) => {
+    setState((prev) => ({
+      ...prev,
+      extraSections: prev.extraSections.map((section, i) => (i === idx ? { ...section, [field]: value } : section)),
     }));
   }, []);
 
@@ -308,6 +330,25 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
               />
             </div>
           ) : null}
+
+          {state.extraSections.map((section, idx) => (
+            <div className={sectionCls} key={`${section.title}-${idx}`}>
+              <label className={labelCls}>Section title</label>
+              <input
+                className={`${inputCls} mb-2`}
+                value={section.title}
+                onChange={(e) => updateExtraSection(idx, "title", e.target.value)}
+                type="text"
+              />
+              <label className={labelCls}>Items (one per line)</label>
+              <textarea
+                className={textareaCls}
+                rows={Math.max(3, section.itemsText.split("\n").length + 1)}
+                value={section.itemsText}
+                onChange={(e) => updateExtraSection(idx, "itemsText", e.target.value)}
+              />
+            </div>
+          ))}
 
           {/* Education — display only */}
           {initialDraft.education.length > 0 && (

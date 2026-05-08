@@ -3,16 +3,20 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import type { ResumeRecord } from "@/lib/db/types";
+import type { ResumeBuilderSection, ResumeBuilderVersionStatus, ResumeRecord, ResumeSectionMode, ResumeSectionModeInput } from "@/lib/db/types";
 
 type Props = {
   jobId: string;
   resumes: ResumeRecord[];
   recommendedResume: string;
   hasExistingDocument: boolean;
+  resumeVersions: Record<string, {
+    status: ResumeBuilderVersionStatus;
+    sections: ResumeBuilderSection[];
+  }>;
 };
 
-export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExistingDocument }: Props) {
+export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExistingDocument, resumeVersions }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>(() => {
@@ -21,6 +25,7 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
   });
   const [status, setStatus] = useState<"idle" | "generating" | "error">("idle");
   const [error, setError] = useState("");
+  const [sectionModes, setSectionModes] = useState<Record<string, ResumeSectionMode>>({});
   const dialogRef = useRef<HTMLDivElement>(null);
 
   function openModal() {
@@ -40,7 +45,7 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
       const res = await fetch("/api/resume/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId, resumeId: selectedId }),
+        body: JSON.stringify({ jobId, resumeId: selectedId, sectionModes: buildSectionModes() }),
       });
       const data = (await res.json()) as { documentId?: string; error?: string };
       if (!res.ok || !data.documentId) throw new Error(data.error ?? "Generation failed");
@@ -52,6 +57,22 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
   }
 
   if (resumes.length === 0) return null;
+
+  const selectedVersion = selectedId ? resumeVersions[selectedId] : undefined;
+  const selectedApproved = selectedVersion?.status === "approved";
+
+  function defaultModeFor(section: ResumeBuilderSection): ResumeSectionMode {
+    if (sectionModes[section.id]) return sectionModes[section.id];
+    if (section.type === "summary" || section.type === "impact" || section.type === "experience") return "update";
+    return "keep";
+  }
+
+  function buildSectionModes(): ResumeSectionModeInput[] {
+    return (selectedVersion?.sections ?? []).map((section) => ({
+      sectionId: section.id,
+      mode: defaultModeFor(section)
+    }));
+  }
 
   return (
     <>
@@ -129,18 +150,46 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
                                   </span>
                                 )}
                               </div>
-                              <p className="mt-0.5 text-xs text-muted">
-                                {resume.wordCount > 0 ? `${resume.wordCount} words` : "Uploaded resume"}
-                                {resume.activeStatus ? "" : " · Inactive"}
-                              </p>
+	                              <p className="mt-0.5 text-xs text-muted">
+	                                {resume.wordCount > 0 ? `${resume.wordCount} words` : "Uploaded resume"}
+	                                {resume.activeStatus ? "" : " · Inactive"}
+	                                {resumeVersions[resume.id]?.status === "approved" ? " · Approved" : " · Needs builder review"}
+	                              </p>
                             </div>
                           </label>
                         </li>
                       );
                     })}
-                  </ul>
+	                  </ul>
 
-                  {status === "error" && (
+	                  {selectedVersion && selectedApproved ? (
+	                    <div className="mt-5 rounded-lg border border-border bg-surface p-3">
+	                      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Sections for this resume</p>
+	                      <div className="grid gap-2">
+	                        {selectedVersion.sections.map((section) => (
+	                          <label className="grid gap-1 text-xs text-muted sm:grid-cols-[1fr_8rem]" key={section.id}>
+	                            <span className="min-w-0 truncate text-ink">{section.title}</span>
+	                            <select
+	                              className="rounded-control border border-border bg-panel px-2 py-1 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+	                              disabled={section.type === "header"}
+	                              onChange={(event) => setSectionModes((prev) => ({ ...prev, [section.id]: event.target.value as ResumeSectionMode }))}
+	                              value={section.type === "header" ? "keep" : defaultModeFor(section)}
+	                            >
+	                              <option value="keep">Keep</option>
+	                              <option value="update">AI update</option>
+	                              <option value="hide">Hide</option>
+	                            </select>
+	                          </label>
+	                        ))}
+	                      </div>
+	                    </div>
+	                  ) : selectedId ? (
+	                    <p className="mt-4 rounded-lg border border-warning/35 bg-warning/10 p-3 text-sm text-warning">
+	                      Review and approve this resume lane in Profile before generating from it.
+	                    </p>
+	                  ) : null}
+
+	                  {status === "error" && (
                     <p className="mt-3 text-sm text-danger">{error}</p>
                   )}
                 </>
@@ -153,8 +202,8 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
                 <Button onClick={() => setOpen(false)} variant="quiet">
                   Cancel
                 </Button>
-                <Button disabled={!selectedId} onClick={generate}>
-                  Generate
+	                <Button disabled={!selectedId || !selectedApproved} onClick={generate}>
+	                  Generate
                 </Button>
               </div>
             )}
