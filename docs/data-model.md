@@ -45,6 +45,9 @@ and initializes an empty local profile if the database is empty.
 | `0029_job_scope_status` | Adds `scope_status` to `jobs` for maintenance labeling |
 | `0030_remove_legacy_demo_seed_data` | Removes legacy demo jobs, applications, generated documents, activity, skills, and profile placeholders |
 | `0031_linkedin_scan_support` | Adds `is_duplicate`, `duplicate_of` to `jobs`; adds `scan_type` to `scan_runs`; adds compound index on `(company, title, location)` |
+| `0032_resume_builder_versions` | Adds approved structured resume versions per uploaded lane |
+| `0033_ai_prompt_overrides` | Adds local overrides for user-tunable AI prompts |
+| `0034_remove_legacy_demo_resumes` | Removes five hard-coded demo resume lane records left behind by `0030` (IDs: `accessibility-design-systems`, `ux-design`, `design-operations`, `principal-product-design`, `teaching-ux-education`); cascades to `resume_builder_versions` |
 
 ---
 
@@ -128,6 +131,23 @@ Source resume PDF lanes uploaded by the user.
 | `word_count` | Word count of extracted text |
 | `evidence_json` | Structured evidence blocks from extraction |
 | `created_at` | ISO timestamp |
+
+### resume_builder_versions
+
+Editable structured resume source for each uploaded lane. Existing lanes are
+backfilled from stored `resumes.extracted_text` before falling back to the
+stored PDF file.
+
+| Column | Purpose |
+|---|---|
+| `id` | Row identifier |
+| `resume_id` | Source lane in `resumes` |
+| `status` | `needs_review`, `approved`, or `missing_source` |
+| `sections_json` | Ordered builder sections, including custom sections |
+| `source_hash` | Hash of the source text used for backfill/change detection |
+| `created_at` | ISO timestamp |
+| `updated_at` | ISO timestamp |
+| `approved_at` | ISO timestamp for the active approved version |
 
 ### jobs
 
@@ -325,6 +345,17 @@ Singleton row holding AI provider configuration.
 | `fallback_provider` | Optional fallback provider |
 | `onboarding_dismissed` | 0 = show onboarding, 1 = dismissed |
 | `onboarding_preferences_confirmed` | 0 = first-run job preferences still need user confirmation, 1 = confirmed |
+| `updated_at` | ISO timestamp |
+
+### ai_prompt_overrides
+
+User-edited prompt text for tunable AI workflows. Missing rows mean the app uses
+the default prompt from code.
+
+| Column | Purpose |
+|---|---|
+| `prompt_id` | Prompt identifier, e.g. `resume_tailoring` |
+| `custom_prompt` | User-edited prompt text |
 | `updated_at` | ISO timestamp |
 
 ### story_bank

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getAIPromptText, renderPromptTemplate } from "../ai/prompt-registry";
 import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
@@ -73,21 +74,20 @@ Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyConte
     if (q.trim()) commonQuestions.push(q.trim());
   }
 
+  const userPrompt = renderPromptTemplate(getAIPromptText("application_answers"), {
+    role: job.title,
+    company: job.company,
+    location: job.location,
+    remoteType: job.remoteType,
+    salaryNotes: job.salaryNotes,
+    questions: commonQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")
+  });
+
   const messages: AIMessage[] = [
     { role: "system", content: systemPrompt },
     {
       role: "user",
-      content: `Write copy-paste ready answers for these job application questions. Each answer must sound like a real human wrote it — natural, specific, and interview-worthy.
-
-Role: ${job.title} at ${job.company}
-Location: ${job.location} / ${job.remoteType}
-Salary context: ${job.salaryNotes}
-
-Questions to answer:
-${commonQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}
-
-Return a JSON object: { "answers": ["answer 1", "answer 2", ...] }
-Exactly one answer per question, in the same order. Vary the opening words across answers. Make each one feel distinct and authentic to this specific role at ${job.company}.`
+      content: userPrompt
     }
   ];
 

@@ -6,6 +6,7 @@ import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { PreferredLocationsInput } from "@/components/preferred-locations-input";
 import { ResumeManageCard } from "@/components/resume-manage-card";
 import { createResumeLane, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
+import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import { splitListValue } from "@/lib/profile/intelligence";
 import { normalizePreferredLocations } from "@/lib/profile/locations";
 import type { WorkMode } from "@/lib/db/types";
@@ -224,6 +225,13 @@ export default async function ProfilePage({
   const visibleResumes = hasExtractedResumes
     ? resumes.filter((resume) => resume.wordCount > 0 || resume.sourceFile === "")
     : resumes.slice(0, 1);
+  const builderVersions = new Map<string, { status: "needs_review" | "approved" | "missing_source" }>();
+  for (const resume of visibleResumes) {
+    if (resume.wordCount > 0 || resume.extractedText || resume.sourceFile) {
+      const version = await ensureResumeBuilderVersion(resume, profile);
+      if (version) builderVersions.set(resume.id, { status: version.status });
+    }
+  }
 
   return (
     <Shell activeItem="Profile">
@@ -400,9 +408,10 @@ export default async function ProfilePage({
                     evidence={resume.evidence}
                     id={resume.id}
                     key={resume.id}
-                    name={resume.name}
-                    wordCount={resume.wordCount}
-                  />
+	                    name={resume.name}
+	                    wordCount={resume.wordCount}
+	                    builderStatus={builderVersions.get(resume.id)?.status}
+	                  />
                 ))}
               </div>
 

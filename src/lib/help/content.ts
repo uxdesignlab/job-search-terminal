@@ -285,16 +285,32 @@ export const helpPages: HelpPage[] = [
             title: "Rename the lane",
             body: "Give the lane a name that tells you when to use it. Examples: Product Leadership, Senior IC, Research Ops, Enterprise Design.",
           },
-          {
-            title: "Upload the PDF",
-            body: "Click Upload PDF or Replace PDF for that lane. The app extracts the text so AI evaluation and tailoring can use it.",
-          },
-          {
-            title: "Run extraction",
-            body: "Go back to Account -> Profile -> Overview and run Extract with AI. Then review the profile tabs before scanning jobs.",
-          },
-        ],
-      },
+	          {
+	            title: "Upload the PDF",
+	            body: "Click Upload PDF or Replace PDF for that lane. The app extracts the text so AI evaluation and tailoring can use it.",
+	          },
+	          {
+	            title: "Approve the builder version",
+	            body: "Open Review builder for the lane, confirm the detected sections, add or remove sections if needed, then approve the version used for job-specific generation.",
+	          },
+	          {
+	            title: "Run extraction",
+	            body: "Go back to Account -> Profile -> Overview and run Extract with AI. Then review the profile tabs before scanning jobs.",
+	          },
+	        ],
+	      },
+	      {
+	        id: "builder",
+	        title: "Resume builder versions",
+	        bullets: [
+	          "Existing uploaded resumes are converted from stored extracted text; you do not need to upload them again.",
+	          "The Resumes page shows each lane in the same dashboard table pattern as Jobs, with direct review and approve actions.",
+	          "The builder keeps the sections it detects from your resume and lets you rename, reorder, add, or remove sections.",
+	          "The builder uses a split editor and live preview so you can check the rendered resume while editing source sections.",
+	          "Custom sections such as Recognition can be kept as part of the approved lane.",
+	          "A lane must have an approved builder version before it is used for tailored resume generation.",
+	        ],
+	      },
       {
         id: "ats-meaning",
         title: "What ATS compliant means",
@@ -589,10 +605,14 @@ export const helpPages: HelpPage[] = [
         id: "tailor",
         title: "Generate a tailored resume",
         steps: [
-          {
-            title: "Open the Resume tab",
-            body: "The app chooses the best base resume lane and generates a tailored resume for the selected job.",
-          },
+	          {
+	            title: "Open the Resume tab",
+	            body: "The app recommends the best approved resume lane for the selected job.",
+	          },
+	          {
+	            title: "Choose section handling",
+	            body: "For each approved section, choose whether to keep it unchanged, let AI update it, or hide it from this generated resume.",
+	          },
           {
             title: "Review keyword coverage",
             body: "Coverage is a guide, not a guarantee. Use it to see whether important job-language is represented truthfully.",

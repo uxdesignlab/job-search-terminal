@@ -3,6 +3,7 @@ export type ResumeTemplateInput = {
   headline: string;
   contactItems: string[];
   title: string;
+  summaryHeading?: string;
   summary: string;
   impactHeading: string;
   impactItems: string[];
@@ -13,9 +14,17 @@ export type ResumeTemplateInput = {
     location?: string;
     dateRange: string;
     bullets: string[];
-  }>;
+	  }>;
+  skillsHeading?: string;
   skills: string[];
+  recognitionHeading?: string;
   recognition: string[];
+  extraSections?: Array<{
+    id?: string;
+    title: string;
+    items: string[];
+  }>;
+  educationHeading?: string;
   education: Array<{
     degree: string;
     school: string;
@@ -134,19 +143,22 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
       </header>
 
       <section>
-        <h2>Professional Summary</h2>
+        <h2>${escapeHtml(input.summaryHeading || "Professional Summary")}</h2>
         <p>${escapeHtml(input.summary)}</p>
       </section>
 
       ${renderOptionalSection(input.impactHeading || "Key Achievements", input.impactItems)}
 
       <section class="experience">
-        <h2>Professional Experience</h2>
+        <h2>${escapeHtml(input.experienceHeading || "Professional Experience")}</h2>
         ${input.experience
           .map(
             (item) => `          <div class="job-entry">
             <h3>${escapeHtml(item.title)}</h3>
-            <p class="organization">${[item.organization, item.dateRange, item.location].filter((s): s is string => Boolean(s)).map(escapeHtml).join(" · ")}</p>
+            <p class="job-meta">
+              <span class="organization">${[item.organization, item.location].filter((s): s is string => Boolean(s)).map(escapeHtml).join(" · ")}</span>
+              ${item.dateRange ? `<span class="date">${escapeHtml(item.dateRange)}</span>` : ""}
+            </p>
             <ul>
               ${item.bullets.map((bullet) => `<li>${escapeHtml(bullet)}</li>`).join("")}
             </ul>
@@ -155,9 +167,10 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
           .join("")}
       </section>
 
-      ${renderOptionalSection("Skills", input.skills)}
-      ${renderOptionalSection("Awards and Recognition", input.recognition)}
-      ${renderEducation(input.education)}
+      ${renderOptionalSection(input.skillsHeading || "Skills", input.skills)}
+      ${renderOptionalSection(input.recognitionHeading || "Awards and Recognition", input.recognition)}
+      ${(input.extraSections ?? []).map((section) => renderOptionalSection(section.title, section.items)).join("")}
+      ${renderEducation(input.education, input.educationHeading)}
     </div>
   </body>
 </html>`;
@@ -177,11 +190,11 @@ function renderOptionalSection(title: string, items: string[]) {
       </section>`;
 }
 
-function renderEducation(items: ResumeTemplateInput["education"]) {
+function renderEducation(items: ResumeTemplateInput["education"], heading?: string) {
   if (items.length === 0) return "";
   return `
       <section>
-        <h2>Education</h2>
+        <h2>${escapeHtml(heading || "Education")}</h2>
         ${items
           .map(
             (item) => `
@@ -203,17 +216,16 @@ function safeHref(url: string): string {
 
 function renderContact(items: string[]) {
   return items.map((item) => {
-    // Basic link inference for contact items
     if (item.includes("@")) {
       return `<a href="${safeHref(`mailto:${item}`)}">${escapeHtml(item)}</a>`;
     }
-    if (item.includes("linkedin.com")) {
+    if (/^https?:\/\//i.test(item) || /^www\./i.test(item) || item.includes("linkedin.com")) {
       const url = item.startsWith("http") ? item : `https://${item}`;
       return `<a href="${safeHref(url)}">${escapeHtml(item)}</a>`;
     }
-    if (item.match(/^(http|www\.)/)) {
-      const url = item.startsWith("http") ? item : `https://${item}`;
-      return `<a href="${safeHref(url)}">${escapeHtml(item)}</a>`;
+    // Bare domain like "pavel.ux.business" — no spaces, has at least one dot
+    if (/^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i.test(item)) {
+      return `<a href="${safeHref(`https://${item}`)}">${escapeHtml(item)}</a>`;
     }
     return escapeHtml(item);
   }).join(" | ");

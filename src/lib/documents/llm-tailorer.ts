@@ -1,12 +1,17 @@
 import { getActiveProvider } from "../ai/factory";
+import { getAIPromptText, renderPromptTemplate } from "../ai/prompt-registry";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
-import type { EvaluationRecord, JobRecord, UserProfileRecord } from "../db/types";
+import type { EvaluationRecord, JobRecord, ResumeSectionModeInput, UserProfileRecord } from "../db/types";
 import { getWritingStyle } from "../db/queries";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
+import type { ResumeTemplateInput } from "./resume-template";
 
-type TailoredSummary = {
-  summary: string;
+export type TailoredResumeSections = {
+  summary?: string;
+  impactItems?: string[];
+  experience?: Array<{ index: number; bullets: string[] }>;
+  extraSections?: Array<{ title: string; items: string[] }>;
 };
 
 type GapResponseContext = {
@@ -79,17 +84,32 @@ ${formatted}`;
 export async function tailorResumeWithAI(
   job: JobRecord,
   evaluation: EvaluationRecord,
-  _profile: UserProfileRecord,
+  profile: UserProfileRecord,
   sourceResumeText: string,
+  sourceDraft: ResumeTemplateInput,
+  sectionModes: ResumeSectionModeInput[],
   gapResponses?: GapResponseContext[],
   supplements?: SupplementContext[]
-): Promise<TailoredSummary> {
+): Promise<TailoredResumeSections> {
   const provider = getActiveProvider();
   const keywordLines = buildKeywordsBlock(evaluation.keywords.slice(0, 12));
   const strengthLines = buildStrengthsBlock(evaluation.strengths.slice(0, 4));
   const archetype = evaluation.roleArchetype;
   const styleContextBlock = buildStyleContextBlock();
   const gapContext = buildGapContext(gapResponses, supplements);
+  const modeById = new Map(sectionModes.map((mode) => [mode.sectionId, mode.mode]));
+  const userTuningPrompt = renderPromptTemplate(getAIPromptText("resume_tailoring"), {
+    company: job.company,
+    role: job.title,
+    archetype,
+    candidate: profile.name
+  });
+  const selectedSections = {
+    summary: modeById.get("summary") === "update" ? sourceDraft.summary : undefined,
+    impactItems: modeById.get("impact") === "update" ? sourceDraft.impactItems : undefined,
+    experience: modeById.get("experience") === "update" ? sourceDraft.experience : undefined,
+    extraSections: (sourceDraft.extraSections ?? []).filter((section) => modeById.get(section.id ?? `custom-${section.title}`) === "update")
+  };
 
   const resumeExcerpt =
     sourceResumeText.length > MAX_RESUME_PROMPT_CHARS
@@ -97,41 +117,48 @@ export async function tailorResumeWithAI(
       : sourceResumeText;
 
   const messages: AIMessage[] = [
-    {
-      role: "system",
+	    {
+	      role: "system",
       content: `You are a professional resume writer specializing in truthful, ATS-aware resume tailoring.
 
 PRIMARY TASK:
-Rewrite ONLY the Professional Summary section.
+Rewrite ONLY the selected resume sections supplied by the user.
 
 STRICT RULES — violating any rule is a failure:
-1. Rewrite ONLY the Professional Summary section.
-2. Do NOT touch, move, reorder, rewrite, summarize, or reinterpret any experience bullet points.
-3. Do NOT invent, fabricate, exaggerate, or imply any achievement, metric, skill, company, title, industry, credential, degree, tool, certification, responsibility, date, or seniority that is not explicitly supported by the candidate source data.
-4. Do NOT move content from one job role, project, company, or time period to another.
-5. Do NOT describe the candidate as having held the target job title unless that title or equivalent seniority/domain is clearly supported by the resume.
-6. Do NOT use vague hype such as "visionary," "world-class," "rockstar," "guru," "unparalleled," "proven track record," or "results-driven" unless the phrase is directly supported and still necessary.
-7. ATS keywords, candidate strengths, archetype, and gap responses are suggestions only. You must verify each one against the source resume or user-confirmed gap responses before using it.
-8. If fewer than 3 ATS keywords are genuinely supported, use fewer than 3. Truth beats keyword stuffing.
-9. If the source evidence is thin, write a conservative summary rather than stretching the candidate's background.
-10. The summary must be grounded solely in the candidate's actual background from the source resume and user-confirmed gap responses.
+1. Rewrite ONLY sections that are present in the selected sections JSON.
+2. Do NOT add or remove key achievement items.
+3. Do NOT add or remove experience entries.
+4. Do NOT add or remove bullets within an experience entry.
+5. Do NOT move, copy, merge, or reinterpret bullets between positions.
+6. Do NOT change company names, job titles, locations, dates, education, credentials, awards, or recognition entries unless they are explicitly present as editable selected section content.
+7. Do NOT invent, fabricate, exaggerate, or imply any achievement, metric, skill, company, title, industry, credential, degree, tool, certification, responsibility, date, or seniority that is not explicitly supported by the candidate source data.
+8. Do NOT move content from one job role, project, company, or time period to another.
+9. Do NOT describe the candidate as having held the target job title unless that title or equivalent seniority/domain is clearly supported by the resume.
+10. Do NOT use vague hype such as "visionary," "world-class," "rockstar," "guru," "unparalleled," "proven track record," or "results-driven" unless the phrase is directly supported and still necessary.
+11. ATS keywords, candidate strengths, archetype, and gap responses are suggestions only. You must verify each one against the source resume or user-confirmed gap responses before using it.
+12. If fewer than 3 ATS keywords are genuinely supported, use fewer than 3. Truth beats keyword stuffing.
+13. If the source evidence is thin, write conservative language rather than stretching the candidate's background.
+14. Every rewritten section must be grounded solely in the candidate's actual background from the source resume and user-confirmed gap responses.
 
 STYLE RULES:
-- Use 2–4 sentences.
-- Lead with the candidate's actual seniority, discipline, and domain.
-- Write in third person or implied third person; do not start with "I."
+- Keep summary to 2–4 sentences when summary is selected.
+- Keep bullets concise and recruiter-readable.
+- Use third person or implied third person; do not start with "I."
 - Keep it specific, plain, and recruiter-readable.
 - Prefer concrete domains, tools, methods, outcomes, and scope when supported.
-- Use natural ATS language, not keyword dumping.${styleContextBlock}`
-    },
-    {
-      role: "user",
-      content: `Write a tailored Professional Summary for this candidate applying to the role below.
+- Use natural ATS language, not keyword dumping.
+
+USER TUNING PROMPT:
+${userTuningPrompt}${styleContextBlock}`
+	    },
+	    {
+	      role: "user",
+      content: `Rewrite the selected resume sections for this candidate applying to the role below.
 
 ## Target Role
-Title: ${job.title}
-Company: ${job.company}
-Archetype: ${archetype}
+	Title: ${job.title}
+	Company: ${job.company}
+	Archetype: ${archetype}
 
 ## Candidate Signals to Verify Before Use
 ATS keywords to consider (use only if supported by the source resume or gap responses):
@@ -143,20 +170,28 @@ ${strengthLines}
 ## Candidate Source Resume
 ${resumeExcerpt}${gapContext}
 
+## Selected Sections To Rewrite
+${JSON.stringify(selectedSections, null, 2)}
+
 ## Output Requirements
 Return valid JSON only.
 
 JSON shape:
-{ "summary": "2–4 sentence tailored professional summary." }`
-    }
-  ];
+{
+  "summary": "2–4 sentence tailored professional summary when selected",
+  "impactItems": ["same number of items as input when selected"],
+  "experience": [{ "index": 0, "bullets": ["same number of bullets as that input entry"] }],
+  "extraSections": [{ "title": "same title as input", "items": ["same number of items as input"] }]
+}`
+	    }
+		  ];
 
   const result = await withRetry(() =>
-    provider.generateJSON<{ summary: string }>(
+    provider.generateJSON<TailoredResumeSections>(
       messages,
-      '{"summary":"string"}'
+      '{"summary":"string","impactItems":[],"experience":[],"extraSections":[]}'
     )
   );
 
-  return { summary: result.summary || "" };
+  return result;
 }

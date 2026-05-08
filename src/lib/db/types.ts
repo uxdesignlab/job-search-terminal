@@ -216,6 +216,61 @@ export type ResumeRecord = {
   evidence: string[];
 };
 
+export type ResumeBuilderSectionType =
+  | "header"
+  | "summary"
+  | "impact"
+  | "experience"
+  | "skills"
+  | "recognition"
+  | "education"
+  | "custom";
+
+export type ResumeBuilderSection = {
+  id: string;
+  type: ResumeBuilderSectionType;
+  title: string;
+  text?: string;
+  items?: string[];
+  header?: {
+    name: string;
+    headline: string;
+    contactItems: string[];
+  };
+  experience?: Array<{
+    title: string;
+    organization: string;
+    location?: string;
+    dateRange: string;
+    bullets: string[];
+  }>;
+  education?: Array<{
+    degree: string;
+    school: string;
+    focus?: string;
+  }>;
+};
+
+export type ResumeBuilderVersionStatus = "needs_review" | "approved" | "missing_source";
+
+export type ResumeBuilderVersionRecord = {
+  id: string;
+  resumeId: string;
+  status: ResumeBuilderVersionStatus;
+  sections: ResumeBuilderSection[];
+  sourceHash: string;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+};
+
+export type ResumeSectionMode = "keep" | "update" | "hide";
+
+export type ResumeSectionModeInput = {
+  sectionId: string;
+  mode: ResumeSectionMode;
+};
+
 export type GeneratedDocumentRecord = {
   id: string;
   jobId: string;
@@ -386,6 +441,19 @@ export type AISettingsUpdateInput = {
   fallbackProvider: string;
   onboardingDismissed?: boolean;
   onboardingPreferencesConfirmed?: boolean;
+};
+
+export type AIPromptId =
+  | "resume_tailoring"
+  | "application_answers"
+  | "outreach_recruiter"
+  | "outreach_hiring_manager"
+  | "outreach_peer";
+
+export type AIPromptOverrideRecord = {
+  promptId: AIPromptId;
+  customPrompt: string;
+  updatedAt: string;
 };
 
 export type StoryRecord = {

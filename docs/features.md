@@ -233,7 +233,28 @@ represents a different career angle (e.g., "Leadership", "IC / Individual
 Contributor", "Domain Specialist"). The app ships with five default lane names
 that can be renamed; new lanes can be added at any time.
 
-Each lane shows extraction status, word count, and a link to view.
+Each lane shows extraction status, word count, and resume-builder approval
+state. Existing uploaded resumes are backfilled from stored extracted text, so
+current users do not need to upload them again.
+
+The `/resumes` page uses the same dashboard table pattern as the Jobs page on
+desktop, with compact cards on smaller screens. The table shows lane name,
+builder status badge, source word count, extraction date, and an action button.
+Each lane has a direct **Review and approve** or **Edit approved version** action
+that opens the builder.
+
+### Resume Builder `/profile/resumes/[id]/builder`
+Structured source editor for each uploaded resume lane:
+- Parses the uploaded resume into editable sections.
+- Preserves custom sections such as Recognition when detected.
+- Supports editing, adding, removing, renaming, and reordering sections.
+- Uses the same split editor/preview layout as the generated resume editor, so
+  source edits can be checked against the rendered resume while reviewing.
+- Saves a draft or approves the lane version used by job-specific generation.
+
+The HTML resume template renders experience entries with the organization and
+location left-aligned and the date range right-aligned on the same line, matching
+standard resume layout conventions.
 
 **Generated documents** — tailored resumes produced for specific jobs:
 - Table showing job, lane used, keyword coverage %, generation date, and status.
@@ -243,7 +264,8 @@ Each lane shows extraction status, word count, and a link to view.
 
 ### Resume Editor `/generated-documents/[id]/edit`
 Full draft editor for a tailored resume before exporting to PDF:
-- Edit all sections: summary, experience bullets, skills.
+- Edit generated sections: summary, experience bullets, skills, recognition,
+  and custom sections carried from the approved lane.
 - Keyword coverage tracker updates as you edit.
 - Save draft and regenerate PDF buttons.
 
@@ -355,6 +377,11 @@ Role-fit map derived from the profile and skill inventory.
 
 Each archetype shows a score, rationale, and gap list. The user can edit the
 classification or rationale to correct AI judgments.
+
+The page has two tabs:
+
+- **Strategy** (default) — role-fit map, search focus, how-to-use guide, and evaluation corrections.
+- **AI Prompts** — prompt overrides for resume tailoring, application answers, and outreach. Prompt overrides are stored locally and can be reset to the app defaults; locked resume-safety rules remain enforced in code.
 
 ---
 

@@ -598,5 +598,44 @@ export const migrations = [
       alter table scan_runs add column scan_type text not null default 'careerops';
       create index if not exists idx_jobs_company_title_location on jobs(company, title, location);
     `
+  },
+  {
+    id: "0032_resume_builder_versions",
+    sql: `
+      create table if not exists resume_builder_versions (
+        id text primary key,
+        resume_id text not null references resumes(id) on delete cascade,
+        status text not null default 'needs_review',
+        sections_json text not null default '[]',
+        source_hash text not null default '',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp,
+        approved_at text
+      );
+
+      create unique index if not exists idx_resume_builder_versions_resume_id on resume_builder_versions(resume_id);
+    `
+  },
+  {
+    id: "0033_ai_prompt_overrides",
+    sql: `
+      create table if not exists ai_prompt_overrides (
+        prompt_id text primary key,
+        custom_prompt text not null,
+        updated_at text not null default current_timestamp
+      );
+    `
+  },
+  {
+    id: "0034_remove_legacy_demo_resumes",
+    sql: `
+      delete from resumes where id in (
+        'accessibility-design-systems',
+        'ux-design',
+        'design-operations',
+        'principal-product-design',
+        'teaching-ux-education'
+      );
+    `
   }
 ];

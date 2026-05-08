@@ -36,15 +36,18 @@ import {
   getEvaluationByJobId,
   getGeneratedDocumentById,
   getJobById,
-  getJobGapResponses,
-  getResumes,
-  saveEvaluationCorrection,
+	  getJobGapResponses,
+	  getResumes,
+	  getUserProfile,
+	  saveEvaluationCorrection,
   saveJobLiveness,
   saveStory,
   unarchiveJob,
   updateApplicationStatus,
   updateJobRecommendedResume,
 } from "@/lib/db/queries";
+import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
+import type { ResumeBuilderSection, ResumeBuilderVersionStatus } from "@/lib/db/types";
 import { coerceResumeBaseToLane } from "@/lib/evaluation/resume-lane-picker";
 import { splitListValue } from "@/lib/profile/intelligence";
 
@@ -75,6 +78,21 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
   const resumes = getResumes();
+  const profile = getUserProfile();
+  const resumeVersions: Record<string, { status: ResumeBuilderVersionStatus; sections: ResumeBuilderSection[] }> = Object.fromEntries(
+    await Promise.all(
+      resumes.map(async (resume) => {
+        const version = await ensureResumeBuilderVersion(resume, profile);
+        return [
+          resume.id,
+          {
+            status: version?.status ?? "missing_source",
+            sections: version?.sections ?? []
+          }
+        ];
+      })
+    )
+  );
   const resumeLaneNames = resumes.map((r) => r.name);
   const resolvedRecommendedResume = resumeLaneNames.includes(job.recommendedResume)
     ? job.recommendedResume
@@ -508,10 +526,11 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                   <div className="flex flex-wrap gap-2">
                     <ResumeGeneratorModal
                       hasExistingDocument={!!generatedDocument}
-                      jobId={id}
-                      recommendedResume={resolvedRecommendedResume}
-                      resumes={resumes}
-                    />
+	                      jobId={id}
+	                      recommendedResume={resolvedRecommendedResume}
+	                      resumeVersions={resumeVersions}
+	                      resumes={resumes}
+	                    />
                     {hasDraft && generatedDocument && (
                       <LinkButton href={`/generated-documents/${generatedDocument.id}/edit`} variant="secondary">
                         Edit draft

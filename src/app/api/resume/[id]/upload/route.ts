@@ -2,7 +2,7 @@ import { writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  clearResumeSource,
+  deleteResumeLane,
   getResumes,
   getTitleFilters,
   getUserProfile,
@@ -102,7 +102,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  clearResumeSource(id);
+  deleteResumeLane(id);
   return NextResponse.json({ ok: true });
 }
 
