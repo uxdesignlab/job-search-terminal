@@ -5,6 +5,7 @@ import { Shell } from "@/components/ui/shell";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { PreferredLocationsInput } from "@/components/preferred-locations-input";
 import { ResumeManageCard } from "@/components/resume-manage-card";
+import { CreateResumeButton } from "@/components/create-resume-button";
 import { createResumeLane, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import { splitListValue } from "@/lib/profile/intelligence";
@@ -416,7 +417,7 @@ export default async function ProfilePage({
               </div>
 
               {/* Add new lane */}
-              <div className="mt-4 border-t border-border pt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
                 <form action={addResumeLaneAction}>
                   <button
                     className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
@@ -425,9 +426,10 @@ export default async function ProfilePage({
                     <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                       <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    Add resume
+                    Add resume (PDF)
                   </button>
                 </form>
+                <CreateResumeButton compact />
               </div>
             </Card>
 

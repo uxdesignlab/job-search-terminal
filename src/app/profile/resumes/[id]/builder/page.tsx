@@ -9,10 +9,13 @@ export const dynamic = "force-dynamic";
 
 type BuilderPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ new?: string }>;
 };
 
-export default async function ResumeBuilderPage({ params }: BuilderPageProps) {
+export default async function ResumeBuilderPage({ params, searchParams }: BuilderPageProps) {
   const { id } = await params;
+  const { new: newParam } = await searchParams;
+  const isNew = newParam === "1";
   const resume = getResumes().find((item) => item.id === id);
   if (!resume) notFound();
 
@@ -22,7 +25,7 @@ export default async function ResumeBuilderPage({ params }: BuilderPageProps) {
   return (
     <Shell activeItem="Resumes">
       {version && version.status !== "missing_source" ? (
-        <ResumeBuilderEditor resumeId={resume.id} resumeName={resume.name} version={version} />
+        <ResumeBuilderEditor resumeId={resume.id} resumeName={resume.name} version={version} isNew={isNew} />
       ) : (
         <EmptyState
           title="No readable resume data"

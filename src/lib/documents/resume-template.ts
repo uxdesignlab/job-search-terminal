@@ -231,6 +231,102 @@ function renderContact(items: string[]) {
   }).join(" | ");
 }
 
+// ---------- Builder preview (order-aware) ----------
+
+import type { ResumeBuilderSection } from "@/lib/db/types";
+
+export function renderBuilderPreviewHtml(sections: ResumeBuilderSection[], fallbackName: string): string {
+  const headerSection = sections.find((s) => s.type === "header");
+  const name = headerSection?.header?.name || fallbackName;
+  const headline = headerSection?.header?.headline ?? "";
+  const contactItems = headerSection?.header?.contactItems ?? [];
+
+  const body = sections
+    .filter((s) => s.type !== "header")
+    .map((s) => renderBuilderSectionHtml(s))
+    .filter(Boolean)
+    .join("\n");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(name)} — Resume</title>
+    <style>
+      :root { color-scheme: light; --ink: #2f3a40; --muted: #34424a; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #fff; color: var(--ink); font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; line-height: 1.38; }
+      .page { max-width: 760px; margin: 48px auto 56px; }
+      h1, h2, h3, p, ul { margin: 0; }
+      h1 { font-size: 27px; font-weight: 400; line-height: 1.1; text-align: center; }
+      h2 { font-size: 20px; font-weight: 400; line-height: 1.2; margin-top: 20px; }
+      h3 { font-size: 16px; font-weight: 400; line-height: 1.25; margin-top: 13px; }
+      .headline, .contact { color: var(--muted); margin-top: 5px; text-align: center; }
+      .summary p { margin-top: 5px; }
+      .job-meta { display: flex; justify-content: space-between; gap: 16px; margin-top: 3px; }
+      .organization { font-style: normal; }
+      .date { white-space: nowrap; }
+      ul { margin-top: 6px; padding-left: 24px; }
+      li + li { margin-top: 3px; }
+      a { color: #0057b8; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+    <div class="page">
+      <header>
+        <h1>${escapeHtml(name)}</h1>
+        ${headline ? `<p class="headline">${escapeHtml(headline)}</p>` : ""}
+        <p class="contact">${renderContact(contactItems)}</p>
+      </header>
+      ${body}
+    </div>
+  </body>
+</html>`;
+}
+
+function renderBuilderSectionHtml(section: ResumeBuilderSection): string {
+  const title = escapeHtml(section.title || "");
+
+  if (section.type === "summary") {
+    const text = section.text?.trim();
+    if (!text) return "";
+    return `<section class="summary"><h2>${title}</h2><p>${escapeHtml(text)}</p></section>`;
+  }
+
+  if (["impact", "skills", "recognition", "custom"].includes(section.type)) {
+    const items = section.items ?? [];
+    if (items.length === 0) return "";
+    return `<section><h2>${title}</h2><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></section>`;
+  }
+
+  if (section.type === "experience") {
+    const entries = section.experience ?? [];
+    if (entries.length === 0) return "";
+    const entriesHtml = entries
+      .map((e) => {
+        const org = [e.organization, e.location].filter((s): s is string => Boolean(s)).map(escapeHtml).join(" · ");
+        const bullets = e.bullets.length > 0 ? `<ul>${e.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>` : "";
+        return `<div class="job-entry"><h3>${escapeHtml(e.title)}</h3><p class="job-meta"><span class="organization">${org}</span>${e.dateRange ? `<span class="date">${escapeHtml(e.dateRange)}</span>` : ""}</p>${bullets}</div>`;
+      })
+      .join("");
+    return `<section class="experience"><h2>${title}</h2>${entriesHtml}</section>`;
+  }
+
+  if (section.type === "education") {
+    const entries = section.education ?? [];
+    if (entries.length === 0) return "";
+    const entriesHtml = entries
+      .map((e) => `<div class="edu-entry"><h3>${escapeHtml(e.degree)}</h3><p>${escapeHtml(e.school)}</p>${e.focus ? `<p>${escapeHtml(e.focus)}</p>` : ""}</div>`)
+      .join("");
+    return `<section><h2>${title}</h2>${entriesHtml}</section>`;
+  }
+
+  return "";
+}
+
+// ---------- End builder preview ----------
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
