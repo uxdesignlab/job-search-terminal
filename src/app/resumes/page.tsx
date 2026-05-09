@@ -86,12 +86,12 @@ function ResumeLaneCards({ rows }: { rows: ResumeLaneRow[] }) {
 
 function ResumeLaneTable({ rows }: { rows: ResumeLaneRow[] }) {
   return (
-    <Card className="hidden lg:block">
+    <Card className="hidden lg:block overflow-hidden">
       <CardHeader>
         <CardTitle>Resume lanes</CardTitle>
         <CardDescription>Source PDF lanes — review and approve each before generating tailored resumes.</CardDescription>
       </CardHeader>
-      <div className="w-full max-w-full" role="region" aria-label="Resume lanes table">
+      <div className="w-full overflow-x-auto" role="region" aria-label="Resume lanes table">
         <table className={cn(dataTableClass, dataTableStickyHeadClass)}>
           <thead>
             <tr>
@@ -189,7 +189,7 @@ export default async function ResumesPage() {
           ) : null}
         </section>
 
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Generated documents</CardTitle>
             <CardDescription>Tailored documents prepared for target roles.</CardDescription>
