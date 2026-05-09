@@ -12,6 +12,14 @@ import { getResumeBuilderVersion, saveResumeBuilderVersion } from "../db/queries
 import { parseSourceResume } from "./resume-generator";
 import { assessExtractionQuality, extractResumeWithAI, mergeExtractions } from "./resume-ai-extractor";
 
+export const BLANK_STARTER_SECTIONS: ResumeBuilderSection[] = [
+  { id: "s-header", type: "header", title: "Contact", header: { name: "", headline: "", contactItems: [] } },
+  { id: "s-summary", type: "summary", title: "Professional Summary", text: "" },
+  { id: "s-experience", type: "experience", title: "Professional Experience", experience: [{ title: "", organization: "", location: "", dateRange: "", bullets: [] }] },
+  { id: "s-skills", type: "skills", title: "Skills", items: [] },
+  { id: "s-education", type: "education", title: "Education", education: [{ degree: "", school: "", focus: "" }] },
+];
+
 const KNOWN_SECTION_TITLES: Record<string, ResumeBuilderSection["type"]> = {
   summary: "summary",
   "professional summary": "summary",
@@ -118,19 +126,19 @@ export async function ensureResumeBuilderVersion(
   if (!sourceText.trim()) {
     saveResumeBuilderVersion({
       resumeId: resume.id,
-      status: "missing_source",
-      sections: [],
+      status: "needs_review",
+      sections: BLANK_STARTER_SECTIONS,
       sourceHash
     });
     return getResumeBuilderVersion(resume.id);
   }
 
-  const sections = await buildResumeBuilderSections(sourceText, profile);
-  const status: ResumeBuilderVersionStatus = sections.length > 0 ? "needs_review" : "missing_source";
+  const parsed = await buildResumeBuilderSections(sourceText, profile);
+  const sections = parsed.length > 0 ? parsed : BLANK_STARTER_SECTIONS;
 
   saveResumeBuilderVersion({
     resumeId: resume.id,
-    status,
+    status: "needs_review",
     sections,
     sourceHash
   });

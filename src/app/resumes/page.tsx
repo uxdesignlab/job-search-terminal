@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, LinkButton, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
+import { CreateResumeButton } from "@/components/create-resume-button";
 import {
   GeneratedDocumentsTable,
   type GeneratedDocumentTableRow,
@@ -167,6 +168,7 @@ export default async function ResumesPage() {
     <Shell activeItem="Resumes">
       <div className="grid gap-6">
         <PageHeader
+          actions={<CreateResumeButton />}
           description="Resume studio showing source lanes and generated documents for targeted applications."
           eyebrow="Resume studio"
           title="Resumes"

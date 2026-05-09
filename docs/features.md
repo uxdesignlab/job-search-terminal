@@ -228,10 +228,11 @@ Resume studio showing all resume lanes and generated documents.
 
 **Two sections:**
 
-**Base resumes** — the source PDF lanes uploaded by the user. Each lane
-represents a different career angle (e.g., "Leadership", "IC / Individual
-Contributor", "Domain Specialist"). The app ships with five default lane names
-that can be renamed; new lanes can be added at any time.
+**Base resumes** — the source PDF lanes uploaded by the user, or resumes built
+from scratch inside the app. Each lane represents a different career angle
+(e.g., "Leadership", "IC / Individual Contributor", "Domain Specialist"). The
+app ships with five default lane names that can be renamed; new lanes can be
+added at any time.
 
 Each lane shows extraction status, word count, and resume-builder approval
 state. Existing uploaded resumes are backfilled from stored extracted text, so
@@ -243,14 +244,42 @@ builder status badge, source word count, extraction date, and an action button.
 Each lane has a direct **Review and approve** or **Edit approved version** action
 that opens the builder.
 
+**Create new resume** button appears in the page header on `/resumes` and in the
+Resumes tab of `/profile`. Clicking it creates a new blank lane with starter
+sections (Contact, Summary, Experience, Skills, Education) pre-populated and
+immediately opens the Resume Builder.
+
 ### Resume Builder `/profile/resumes/[id]/builder`
-Structured source editor for each uploaded resume lane:
-- Parses the uploaded resume into editable sections.
+Structured source editor for each resume lane — works for both PDF-extracted and
+from-scratch resumes:
+- Parses the uploaded resume into editable sections, or starts from blank
+  starter sections when the lane was created from scratch.
 - Preserves custom sections such as Recognition when detected.
 - Supports editing, adding, removing, renaming, and reordering sections.
+- **Add section menu** — dropdown picker with section types: Summary, Key
+  Achievements, Experience, Skills, Awards & Recognition, Education, Custom.
+- **Add role / Add entry** buttons inside Experience and Education sections to
+  append additional entries without leaving the section.
+- **✨ Improve with AI** — available on Summary, Key Achievements, Skills,
+  Awards & Recognition, Experience bullets, and Custom sections. Sends the
+  section content to the active AI provider, which returns an improved version.
+  The suggestion is shown inline with **Accept** and **Discard** buttons; the
+  original is preserved until the user accepts.
+- Helpful placeholder text in every input guides users building from scratch.
 - Uses the same split editor/preview layout as the generated resume editor, so
   source edits can be checked against the rendered resume while reviewing.
 - Saves a draft or approves the lane version used by job-specific generation.
+- **Remove button** in the builder header — deletes the resume lane from the
+  system after inline confirmation ("Delete this resume? / Yes, delete / Cancel").
+  Available for all resumes, not just new ones.
+- **Back button** — navigates to `/resumes`. For newly created (unsaved) resumes,
+  clicking Back shows a leave confirmation dialog with four choices:
+  - **Save draft and leave** — saves the current state as a draft, then navigates away.
+  - **Delete and leave** — permanently deletes the resume lane.
+  - **Leave without saving** — navigates away without saving (lane is kept but blank).
+  - **Keep editing** — dismisses the dialog and stays on the page.
+  The browser's native `beforeunload` prompt also fires if the user tries to close
+  the tab or navigate directly while a new resume has not yet been saved.
 
 The HTML resume template renders experience entries with the organization and
 location left-aligned and the date range right-aligned on the same line, matching
@@ -318,14 +347,20 @@ Resumes tab shows an upload banner when no extracted resumes exist.
 - **Resume lanes card** — each lane is a different resume version. Per-lane actions:
   - **Upload PDF** (blue solid button): shown when the lane has no PDF; opens file
     picker, uploads and auto-extracts text.
-  - **Replace PDF** (outlined button): shown when the lane already has a PDF;
+  - **Replace PDF** (outlined button): shown when the lane already has content;
     replaces the file and re-extracts.
-  - **Remove** (text link): shown when the lane has a PDF; clears the file and
-    text after inline confirm ("Remove this resume? / Yes, remove / Cancel").
+  - **Edit resume** / **Edit approved version** (text link): always shown for
+    every lane; opens the Resume Builder for that lane.
+  - **Remove** (text link): always shown for every lane; deletes the entire resume
+    lane after inline confirm ("Remove this resume? / Yes, remove / Cancel"). This
+    replaces the old PDF-only removal behavior — the lane itself is deleted.
   - **Rename** (✎ pencil icon): inline rename with keyboard support (Enter saves,
     Escape cancels).
-- **Add resume** button at the bottom of the lanes list: creates a new empty lane
-  named "New Resume". User then renames it and uploads a PDF.
+- **Add resume (PDF)** button at the bottom of the lanes list: creates a new
+  empty lane named "New Resume". User then renames it and uploads a PDF.
+- **Create new resume** button: creates a blank lane with starter sections
+  (Contact, Summary, Experience, Skills, Education) and opens the Resume Builder
+  immediately — no PDF required. User types or pastes their content directly.
 - **Skill inventory card** (shown only after at least one AI extraction): lists
   extracted skills with category and evidence source.
 
