@@ -135,7 +135,6 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
   </head>
   <body>
     <main class="page">
-    <div class="page">
       <header>
         <h1>${escapeHtml(input.name)}</h1>
         ${input.headline ? `<p class="headline">${escapeHtml(input.headline)}</p>` : ""}
@@ -171,7 +170,7 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
       ${renderOptionalSection(input.recognitionHeading || "Awards and Recognition", input.recognition)}
       ${(input.extraSections ?? []).map((section) => renderOptionalSection(section.title, section.items)).join("")}
       ${renderEducation(input.education, input.educationHeading)}
-    </div>
+    </main>
   </body>
 </html>`;
 }
@@ -273,14 +272,13 @@ export function renderBuilderPreviewHtml(sections: ResumeBuilderSection[], fallb
   </head>
   <body>
     <main class="page">
-    <div class="page">
       <header>
         <h1>${escapeHtml(name)}</h1>
         ${headline ? `<p class="headline">${escapeHtml(headline)}</p>` : ""}
         <p class="contact">${renderContact(contactItems)}</p>
       </header>
       ${body}
-    </div>
+    </main>
   </body>
 </html>`;
 }
