@@ -774,12 +774,15 @@ function formatMonthDate(value: string) {
 function parseEducation(lines: string[]) {
   const entries: ResumeTemplateInput["education"] = [];
   let current: ResumeTemplateInput["education"][number] | undefined;
+  let pendingSchool = "";
 
   for (const line of lines) {
     const text = stripBullet(line);
     if (!text || /^-- \d+ of \d+ --$/.test(text)) continue;
 
-    if (text.includes(" | ") || text.includes("Bachelor") || text.includes("Master")) {
+    // Match both spelled-out degree names and common abbreviations (B.S., M.A., A.S., etc.)
+    const isDegreeKeyword = /Bachelor|Master|Doctor|Associate|Ph\.?D|MBA|M\.B\.A|M\.D\.|Ed\.D\.|J\.D\.|LL\.M|B\.S\.|B\.A\.|B\.Sc\.|B\.E\.|B\.F\.A\.|M\.S\.|M\.A\.|M\.Sc\.|M\.Eng\.|A\.A\.|A\.S\.|A\.A\.S\./i.test(text);
+    if (text.includes(" | ") || isDegreeKeyword) {
       let degree = text;
       let inlineSchool = "";
       let inlineFocus = "";
@@ -819,7 +822,8 @@ function parseEducation(lines: string[]) {
         }
       }
 
-      current = { degree, school: inlineSchool };
+      current = { degree, school: inlineSchool || pendingSchool };
+      pendingSchool = "";
       if (inlineFocus) current.focus = inlineFocus.replace(/^Focus:\s*/, "");
       entries.push(current);
     } else if (current) {
@@ -829,8 +833,21 @@ function parseEducation(lines: string[]) {
       } else if (!current.school) {
         current.school = text;
       }
+    } else {
+      // School name before the degree line (common format)
+      pendingSchool = text;
     }
   }
+
+  // Fallback: if no entries were parsed but the section had content, create a basic entry
+  // so validation doesn't falsely report a missing education section.
+  if (entries.length === 0) {
+    const nonEmpty = lines.map((l) => stripBullet(l)).filter((l) => l && !/^-- \d+ of \d+ --$/.test(l));
+    if (nonEmpty.length > 0) {
+      entries.push({ degree: nonEmpty[0], school: nonEmpty[1] ?? "" });
+    }
+  }
+
   return entries;
 }
 
