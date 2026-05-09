@@ -160,7 +160,7 @@ export function GeneratedDocumentsTable({ rows }: Props) {
         />
       )}
 
-      <div className="w-full max-w-full" role="region" aria-label="Generated documents table">
+      <div className="w-full overflow-x-auto" role="region" aria-label="Generated documents table">
         <table className={cn(dataTableClass, dataTableStickyHeadClass, "min-w-max")}>
             <thead>
               <tr>
