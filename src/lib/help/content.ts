@@ -300,6 +300,38 @@ export const helpPages: HelpPage[] = [
 	        ],
 	      },
 	      {
+	        id: "create-from-scratch",
+	        title: "Create a resume from scratch",
+	        intro:
+	          "Instead of uploading a PDF, you can build a resume directly in the app. Use this approach when you want to start fresh, when you have no existing resume file, or when you want to design a resume specifically for tailoring.",
+	        steps: [
+	          {
+	            title: "Click Create new resume",
+	            body: "Open the Resumes page or go to Account -> Profile -> Resumes. Click the Create new resume button. The app generates a blank resume with starter sections.",
+	          },
+	          {
+	            title: "Enter your name and headline",
+	            body: "The header section collects your name, job title or headline, and contact information (email, phone, website, LinkedIn).",
+	          },
+	          {
+	            title: "Add your core sections",
+	            body: "The builder starts with sections for professional summary, key achievements, experience, and skills. Edit each section title and content. You can reorder, rename, hide, or delete sections as needed.",
+	          },
+	          {
+	            title: "Use AI to improve sections",
+	            body: "For any section, click Improve to let AI enhance the wording and impact while keeping your voice and facts intact.",
+	          },
+	          {
+	            title: "Save as draft or approve",
+	            body: "Click Save draft to preserve your work without committing to it. Click Approve version when you are satisfied. If you leave without saving, a confirmation dialog will ask whether to save, discard, or continue editing.",
+	          },
+	          {
+	            title: "Refine before tailoring",
+	            body: "Return to edit the approved resume using the back-up workflow. The builder is available anytime to refine sections before generating job-specific versions.",
+	          },
+	        ],
+	      },
+	      {
 	        id: "builder",
 	        title: "Resume builder versions",
 	        bullets: [
