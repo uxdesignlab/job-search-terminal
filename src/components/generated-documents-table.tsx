@@ -11,7 +11,7 @@ import {
   useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
-import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
+import { dataTableClass } from "@/components/ui/table";
 import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
 import { cn } from "@/lib/utils";
 
