@@ -92,7 +92,7 @@ function ResumeLaneTable({ rows }: { rows: ResumeLaneRow[] }) {
         <CardDescription>Source PDF lanes — review and approve each before generating tailored resumes.</CardDescription>
       </CardHeader>
       <div className="w-full overflow-x-auto" role="region" aria-label="Resume lanes table">
-        <table className={cn(dataTableClass, dataTableStickyHeadClass)}>
+        <table className={cn(dataTableClass)}>
           <thead>
             <tr>
               <th className="pb-3 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-muted">Lane</th>
