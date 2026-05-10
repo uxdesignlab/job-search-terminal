@@ -10,7 +10,7 @@ import { formatPostedDate } from "@/lib/dates";
 import { getGeneratedDocuments, getJobById, getResumes, getUserProfile } from "@/lib/db/queries";
 import type { ResumeBuilderVersionRecord, ResumeRecord } from "@/lib/db/types";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
-import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
+import { dataTableClass } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
