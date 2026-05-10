@@ -183,7 +183,7 @@ export function GeneratedDocumentsTable({ rows }: Props) {
             <tbody className="divide-y divide-border">
               {displayRows.map((document) => (
                 <tr key={document.id}>
-                  <td className="py-3 pr-4">
+                  <td className="w-48 py-3 pr-4">
                     {document.hasDraft ? (
                       <Link className="font-medium text-accent hover:underline" href={document.editHref}>
                         {document.role}
