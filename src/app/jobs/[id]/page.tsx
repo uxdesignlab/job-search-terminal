@@ -5,6 +5,7 @@ import { ApplicationStatusSelect } from "@/components/application-status-select"
 import { ApplicationQuestionsForm } from "@/components/application-questions-form";
 import { CopyAnswerButton } from "@/components/copy-answer-button";
 import { GapAddressingPanel } from "@/components/gap-addressing-panel";
+import { EditJobModal } from "@/components/EditJobModal";
 import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { AIProviderBadge } from "@/components/ai-provider-badge";
@@ -44,7 +45,6 @@ import {
   saveStory,
   unarchiveJob,
   updateApplicationStatus,
-  updateJobDetails,
   updateJobRecommendedResume,
 } from "@/lib/db/queries";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
@@ -194,23 +194,6 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
       if (desc) saveJobDescription(id, desc);
     }
     revalidatePath(`/jobs/${id}`);
-  }
-
-  async function editJobAction(formData: FormData) {
-    "use server";
-    const title = String(formData.get("title") ?? "").trim();
-    const company = String(formData.get("company") ?? "").trim();
-    const url = String(formData.get("url") ?? "").trim();
-    const rawDescription = String(formData.get("rawDescription") ?? "").trim();
-    updateJobDetails(id, {
-      title: title || undefined,
-      company: company || undefined,
-      url: url || undefined,
-      rawDescription: rawDescription || undefined,
-    });
-    revalidatePath(`/jobs/${id}`);
-    revalidatePath("/jobs");
-    revalidatePath("/dashboard");
   }
 
   async function checkLivenessAction() {
@@ -473,52 +456,15 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             </Card>
 
             {/* Edit job details */}
-            <Card>
-              <details>
-                <summary className="cursor-pointer list-none px-1">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-ink">Edit job details</p>
-                      <p className="text-xs text-muted">Overwrite position, company, link, or description — useful for LinkedIn and other partial imports</p>
-                    </div>
-                    <span className="text-xs text-muted select-none">▸ Edit</span>
-                  </div>
-                </summary>
-                <form action={editJobAction} className="mt-4 grid gap-4 border-t border-border pt-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Input
-                      label="Position"
-                      name="title"
-                      defaultValue={job.title}
-                      placeholder="e.g. Senior Product Manager"
-                    />
-                    <Input
-                      label="Company"
-                      name="company"
-                      defaultValue={job.company}
-                      placeholder="e.g. Acme Corp"
-                    />
-                  </div>
-                  <Input
-                    label="Job posting URL"
-                    name="url"
-                    defaultValue={job.url}
-                    placeholder="https://www.linkedin.com/jobs/view/..."
-                  />
-                  <Textarea
-                    label="Job description"
-                    name="rawDescription"
-                    defaultValue={job.rawDescription || job.parsedDescription || ""}
-                    placeholder="Paste the full job description here…"
-                    rows={12}
-                  />
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-xs text-muted">Re-run evaluation after updating the description to refresh the AI analysis.</p>
-                    <SubmitButton label="Save changes" pendingLabel="Saving…" savedLabel="Saved ✓" variant="secondary" />
-                  </div>
-                </form>
-              </details>
-            </Card>
+            <div className="flex justify-end">
+              <EditJobModal
+                jobId={id}
+                defaultTitle={job.title}
+                defaultCompany={job.company}
+                defaultUrl={job.url}
+                defaultDescription={job.rawDescription || job.parsedDescription || ""}
+              />
+            </div>
           </div>
         )}
 
