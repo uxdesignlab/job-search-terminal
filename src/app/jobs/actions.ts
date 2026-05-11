@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { insertManualJob } from "@/lib/db/queries";
+import { insertManualJob, updateJobDetails } from "@/lib/db/queries";
 
 export async function addManualJobAction(formData: FormData) {
   const company = formData.get("company") as string;
@@ -30,4 +30,21 @@ export async function addManualJobAction(formData: FormData) {
   revalidatePath("/jobs");
   revalidatePath("/dashboard");
   return { success: true, jobId: id };
+}
+
+export async function editJobAction(
+  jobId: string,
+  formData: FormData
+): Promise<{ success: boolean }> {
+  const title = (formData.get("title") as string | null)?.trim() || undefined;
+  const company = (formData.get("company") as string | null)?.trim() || undefined;
+  const url = (formData.get("url") as string | null)?.trim() || undefined;
+  const rawDescription = (formData.get("description") as string | null)?.trim() || undefined;
+
+  updateJobDetails(jobId, { title, company, url, rawDescription });
+
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/jobs");
+  revalidatePath("/dashboard");
+  return { success: true };
 }
