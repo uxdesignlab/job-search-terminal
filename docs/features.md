@@ -114,6 +114,8 @@ status, posting maintenance, and bulk tools.
 - Sort by fit score, date, company, preference, or workflow status.
 - Filter by workflow status, preference status, score range, location, company,
   recommendation, posted date availability, and added date availability.
+- The last sort and filter settings are restored automatically on the next
+  visit; named presets are still available for recurring review modes.
 - **Preference column** — shows `Match` when a job still fits the current
   profile preferences and constraints, or `Out of scope` when saved preferences
   have changed and the job no longer fits. This is a derived display/filter

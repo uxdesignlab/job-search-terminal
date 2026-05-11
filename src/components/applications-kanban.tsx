@@ -23,7 +23,10 @@ import {
   useDataTableSavedFilters,
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
-import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
+import {
+  TABLE_SAVED_FILTER_STORAGE_KEYS,
+  TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
+} from "@/lib/table-saved-filter-storage-keys";
 import { cn } from "@/lib/utils";
 import type { ApplicationTableRow } from "./applications-table";
 
@@ -378,7 +381,11 @@ export function ApplicationsKanban({ rows, todayIso }: Props) {
     resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
-  } = useDataTableSortFilterState<SortCol>({ col: "company", dir: "asc" });
+  } = useDataTableSortFilterState<SortCol>(
+    { col: "company", dir: "asc" },
+    undefined,
+    TABLE_SORT_FILTER_STATE_STORAGE_KEYS.applications,
+  );
 
   const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.applications);
   const columnLabels = useMemo(

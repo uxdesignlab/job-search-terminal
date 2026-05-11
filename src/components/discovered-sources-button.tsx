@@ -16,7 +16,10 @@ import {
   dataTableStickyHeadClass,
   dataTableStickyModalClass,
 } from "@/components/ui/table";
-import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
+import {
+  TABLE_SAVED_FILTER_STORAGE_KEYS,
+  TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
+} from "@/lib/table-saved-filter-storage-keys";
 
 type DiscoveredEntry = {
   slug: string;
@@ -76,7 +79,11 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
     resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
-  } = useDataTableSortFilterState<SortCol>({ col: "slug", dir: "asc" });
+  } = useDataTableSortFilterState<SortCol>(
+    { col: "slug", dir: "asc" },
+    undefined,
+    TABLE_SORT_FILTER_STATE_STORAGE_KEYS.discoveredSources,
+  );
   const savedFiltersState = useDataTableSavedFilters<SortCol>(
     TABLE_SAVED_FILTER_STORAGE_KEYS.discoveredSources,
   );

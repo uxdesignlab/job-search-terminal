@@ -12,7 +12,10 @@ import {
   useDataTableSortFilterState,
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass } from "@/components/ui/table";
-import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
+import {
+  TABLE_SAVED_FILTER_STORAGE_KEYS,
+  TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
+} from "@/lib/table-saved-filter-storage-keys";
 import { cn } from "@/lib/utils";
 
 export type GeneratedDocumentTableRow = {
@@ -84,7 +87,11 @@ export function GeneratedDocumentsTable({ rows }: Props) {
     resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
-  } = useDataTableSortFilterState<SortCol>({ col: "generated", dir: "desc" });
+  } = useDataTableSortFilterState<SortCol>(
+    { col: "generated", dir: "desc" },
+    undefined,
+    TABLE_SORT_FILTER_STATE_STORAGE_KEYS.generatedDocs,
+  );
 
   const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.generatedDocs);
   const columnLabels = useMemo(
