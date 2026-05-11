@@ -323,32 +323,43 @@ saved chips. Each chip has an apply button (click label) and a delete button
 
 **Hooks:**
 
-`useDataTableSortFilterState(initialSort, initialFilters?)` — manages sort col,
-sort dir, per-column filter Sets, and the open dropdown position. Returns
-`sort`, `filters`, `activeFilterCount`, `openFilter`, `handleSort`,
-`handleFilter`, `clearAllFilters`, `applySortAndFilters`.
+`useDataTableSortFilterState(initialSort, initialFilters?, storageKey?)` —
+manages sort col, sort dir, per-column filter Sets, and the open dropdown
+position. When passed a registered state storage key, it restores the last
+sort/filter settings on mount and debounces future changes back to SQLite
+(falling back to `localStorage`). Returns `sort`, `filters`,
+`activeFilterCount`, `openFilter`, `handleSort`, `handleFilter`,
+`clearAllFilters`, `applySortAndFilters`.
 
 `useDataTableSavedFilters(storageKey)` — loads and persists named filter
 presets from the SQLite `table_saved_filters` table (falls back to
 `localStorage`). Returns `items`, `ready`, `saveSnapshot`, `deleteById`.
 
-**Saved filter persistence:**
+**Table state persistence:**
 
-Presets are stored in `table_saved_filters` (migration `0026`). Each table has
-a stable key defined in `src/lib/table-saved-filter-storage-keys.ts`:
+The data-table hooks persist two separate records per table in
+`table_saved_filters` (migration `0026`):
 
-| Table | Key constant |
+- `TABLE_SORT_FILTER_STATE_STORAGE_KEYS.*` stores the latest sort/filter state
+  automatically, so the table reopens the same way on the next visit.
+- `TABLE_SAVED_FILTER_STORAGE_KEYS.*` stores named filter presets the user saves
+  explicitly.
+
+Each table has stable keys defined in
+`src/lib/table-saved-filter-storage-keys.ts`:
+
+| Table | Preset key | Last-state key |
 |---|---|
-| Jobs | `TABLE_SAVED_FILTER_STORAGE_KEYS.mainJobs` |
-| Archived jobs | `TABLE_SAVED_FILTER_STORAGE_KEYS.archivedJobs` |
-| Applications | `TABLE_SAVED_FILTER_STORAGE_KEYS.applications` |
-| Generated documents | `TABLE_SAVED_FILTER_STORAGE_KEYS.generatedDocs` |
-| Scan sources | `TABLE_SAVED_FILTER_STORAGE_KEYS.scanSources` |
-| Discovered sources | `TABLE_SAVED_FILTER_STORAGE_KEYS.discoveredSources` |
+| Jobs | `TABLE_SAVED_FILTER_STORAGE_KEYS.mainJobs` | `TABLE_SORT_FILTER_STATE_STORAGE_KEYS.mainJobs` |
+| Archived jobs | `TABLE_SAVED_FILTER_STORAGE_KEYS.archivedJobs` | `TABLE_SORT_FILTER_STATE_STORAGE_KEYS.archivedJobs` |
+| Applications | `TABLE_SAVED_FILTER_STORAGE_KEYS.applications` | `TABLE_SORT_FILTER_STATE_STORAGE_KEYS.applications` |
+| Generated documents | `TABLE_SAVED_FILTER_STORAGE_KEYS.generatedDocs` | `TABLE_SORT_FILTER_STATE_STORAGE_KEYS.generatedDocs` |
+| Scan sources | `TABLE_SAVED_FILTER_STORAGE_KEYS.scanSources` | `TABLE_SORT_FILTER_STATE_STORAGE_KEYS.scanSources` |
+| Discovered sources | `TABLE_SAVED_FILTER_STORAGE_KEYS.discoveredSources` | `TABLE_SORT_FILTER_STATE_STORAGE_KEYS.discoveredSources` |
 
-Maximum 5 presets per table. Duplicate snapshots are not saved. Labels are
-auto-generated from active column names but the user can rename before saving.
-Maximum label length: 60 characters.
+For named presets, the maximum is 5 presets per table. Duplicate snapshots are
+not saved. Labels are auto-generated from active column names but the user can
+rename before saving. Maximum label length: 60 characters.
 
 ### Shell
 

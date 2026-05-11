@@ -495,9 +495,10 @@ Company metadata cache used to tag and cluster jobs.
 
 ### table_saved_filters
 
-Persisted named sort + filter presets for data tables. One row per table key,
-storing a JSON payload that contains up to 5 named presets. Read and written
-via `src/lib/table-saved-filters-actions.ts` (Next.js server actions).
+Persisted data-table view settings. One row per table key, storing a JSON
+payload for either the latest automatic sort/filter state or up to 5 named
+sort/filter presets. Read and written via
+`src/lib/table-saved-filters-actions.ts` (Next.js server actions).
 
 | Column | Purpose |
 |---|---|
@@ -505,10 +506,15 @@ via `src/lib/table-saved-filters-actions.ts` (Next.js server actions).
 | `payload_json` | Versioned JSON blob containing the array of saved filter entries |
 | `updated_at` | ISO timestamp of last save |
 
-**Registered table keys:** `jst.dt.savedFilters.mainJobs` ·
+**Registered saved-preset keys:** `jst.dt.savedFilters.mainJobs` ·
 `jst.dt.savedFilters.archivedJobs` · `jst.dt.savedFilters.applications` ·
 `jst.dt.savedFilters.generatedDocs` · `jst.dt.savedFilters.scanSources` ·
 `jst.dt.savedFilters.discoveredSources`
+
+**Registered last-state keys:** `jst.dt.state.mainJobs` ·
+`jst.dt.state.archivedJobs` · `jst.dt.state.applications` ·
+`jst.dt.state.generatedDocs` · `jst.dt.state.scanSources` ·
+`jst.dt.state.discoveredSources`
 
 ---
 

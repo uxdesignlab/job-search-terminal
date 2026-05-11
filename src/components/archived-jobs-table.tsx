@@ -21,7 +21,10 @@ import {
   getArchivedJobColOptions,
   getArchivedJobColValue,
 } from "@/lib/job-table-helpers";
-import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
+import {
+  TABLE_SAVED_FILTER_STORAGE_KEYS,
+  TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
+} from "@/lib/table-saved-filter-storage-keys";
 
 const COL_DEFS: Array<{ col: ArchivedJobsSortCol; label: string }> = [
   { col: "title", label: "Role" },
@@ -52,7 +55,11 @@ export function ArchivedJobsTable({ jobs, unarchiveAction, deleteArchivedAction 
     resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
-  } = useDataTableSortFilterState<ArchivedJobsSortCol>({ col: "score", dir: "desc" });
+  } = useDataTableSortFilterState<ArchivedJobsSortCol>(
+    { col: "score", dir: "desc" },
+    undefined,
+    TABLE_SORT_FILTER_STATE_STORAGE_KEYS.archivedJobs,
+  );
 
   const savedFiltersState = useDataTableSavedFilters<ArchivedJobsSortCol>(
     TABLE_SAVED_FILTER_STORAGE_KEYS.archivedJobs,

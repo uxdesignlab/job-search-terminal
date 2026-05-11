@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 const MAX_SAVED_TABLE_FILTERS = 5;
 const SAVED_FILTERS_STORAGE_VERSION = 1;
+const TABLE_STATE_STORAGE_VERSION = 1;
 const MAX_SAVED_FILTER_NAME_LENGTH = 60;
 
 export type DataTableSortDir = "asc" | "desc";
@@ -78,6 +79,47 @@ function snapshotsEqual<T extends string>(a: DataTableSortFilterSnapshot<T>, b: 
     for (let j = 0; j < va.length; j++) if (va[j] !== vb[j]) return false;
   }
   return true;
+}
+
+type PersistedTableStatePayload<T extends string> = {
+  v: number;
+  snapshot: DataTableSortFilterSnapshot<T>;
+};
+
+function isSortDir(value: unknown): value is DataTableSortDir {
+  return value === "asc" || value === "desc";
+}
+
+function normalizePersistedSnapshot<T extends string>(
+  raw: unknown,
+): DataTableSortFilterSnapshot<T> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const snapshot = raw as Partial<DataTableSortFilterSnapshot<T>>;
+  if (!snapshot.sort || typeof snapshot.sort.col !== "string" || !isSortDir(snapshot.sort.dir)) {
+    return null;
+  }
+
+  const filters: Partial<Record<T, string[]>> = {};
+  if (snapshot.filters && typeof snapshot.filters === "object") {
+    for (const [key, values] of Object.entries(snapshot.filters)) {
+      if (!Array.isArray(values)) continue;
+      const cleanValues = values.filter((value): value is string => typeof value === "string");
+      if (cleanValues.length > 0) filters[key as T] = cleanValues;
+    }
+  }
+
+  return {
+    sort: snapshot.sort as { col: T; dir: DataTableSortDir },
+    filters,
+  };
+}
+
+function parsePersistedTableStatePayload<T extends string>(
+  raw: string,
+): DataTableSortFilterSnapshot<T> | null {
+  const parsed = JSON.parse(raw) as PersistedTableStatePayload<T>;
+  if (parsed?.v !== TABLE_STATE_STORAGE_VERSION) return null;
+  return normalizePersistedSnapshot(parsed.snapshot);
 }
 
 export type DataTableSortFilterDropdownProps = {
@@ -267,6 +309,7 @@ export function DataTableColHeader<T extends string>({
 export function useDataTableSortFilterState<T extends string>(
   initialSort: { col: T; dir: DataTableSortDir },
   initialFilters?: Partial<Record<T, Set<string>>>,
+  storageKey?: string,
 ) {
   const cloneFilters = useCallback((source?: Partial<Record<T, Set<string>>>) => {
     const next: Partial<Record<T, Set<string>>> = {};
@@ -279,6 +322,7 @@ export function useDataTableSortFilterState<T extends string>(
   const [filters, setFilters] = useState<Partial<Record<T, Set<string>>>>(() => cloneFilters(initialFilters));
   const [openFilterCol, setOpenFilterCol] = useState<T | null>(null);
   const [filterPos, setFilterPos] = useState({ top: 0, left: 0 });
+  const [hasLoadedPersistedState, setHasLoadedPersistedState] = useState(!storageKey);
 
   const openFilter = useCallback(
     (col: T, btn: HTMLButtonElement) => {
@@ -320,6 +364,73 @@ export function useDataTableSortFilterState<T extends string>(
   }, [cloneFilters, initialFilters, initialSort]);
 
   const activeFilterCount = Object.keys(filters).length;
+
+  useEffect(() => {
+    if (!storageKey) return;
+    if (!TABLE_SAVED_FILTER_STORAGE_KEY_SET.has(storageKey)) {
+      setHasLoadedPersistedState(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        let raw = await loadTableSavedFiltersAction(storageKey);
+        if (!raw && typeof window !== "undefined") {
+          const fromLs = localStorage.getItem(storageKey);
+          if (fromLs) {
+            try {
+              JSON.parse(fromLs);
+              raw = fromLs;
+              await persistTableSavedFiltersAction(storageKey, fromLs);
+              localStorage.removeItem(storageKey);
+            } catch {
+              localStorage.removeItem(storageKey);
+            }
+          }
+        }
+
+        if (cancelled || !raw) return;
+        const persistedSnapshot = parsePersistedTableStatePayload<T>(raw);
+        if (persistedSnapshot) {
+          setSort(persistedSnapshot.sort);
+          setFilters(snapshotToFilterSets(persistedSnapshot));
+        }
+      } catch {
+        /* Keep the table defaults if persisted state cannot be loaded. */
+      } finally {
+        if (!cancelled) setHasLoadedPersistedState(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey || !hasLoadedPersistedState || !TABLE_SAVED_FILTER_STORAGE_KEY_SET.has(storageKey)) {
+      return;
+    }
+
+    const payload: PersistedTableStatePayload<T> = {
+      v: TABLE_STATE_STORAGE_VERSION,
+      snapshot: toSortFilterSnapshot(sort, filters),
+    };
+    const json = JSON.stringify(payload);
+    const timeout = window.setTimeout(() => {
+      void persistTableSavedFiltersAction(storageKey, json).catch(() => {
+        try {
+          localStorage.setItem(storageKey, json);
+        } catch {
+          /* ignore */
+        }
+      });
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [filters, hasLoadedPersistedState, sort, storageKey]);
 
   return {
     sort,

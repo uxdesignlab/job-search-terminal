@@ -468,6 +468,7 @@ export const helpPages: HelpPage[] = [
         title: "Use filters and saved presets",
         bullets: [
           "Use column menus to filter by source, company, recommendation, preference match, score, posted date, and status.",
+          "Your last table sort and filter settings are restored the next time you open the app.",
           "Search across company and title when you need one role quickly.",
           "Save up to five filter presets for recurring reviews, such as Priority Remote, LinkedIn New, or Follow Up.",
           "Use Archived when you need to restore skipped or archived roles.",

@@ -24,7 +24,10 @@ import {
   getMainJobColOptions,
   getMainJobColValue,
 } from "@/lib/job-table-helpers";
-import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
+import {
+  TABLE_SAVED_FILTER_STORAGE_KEYS,
+  TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
+} from "@/lib/table-saved-filter-storage-keys";
 
 type JobRowStatus = "loading" | "done" | "error";
 type SortCol = MainJobsSortCol;
@@ -89,7 +92,11 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
-  } = useDataTableSortFilterState<SortCol>({ col: "fit", dir: "desc" }, defaultFilters);
+  } = useDataTableSortFilterState<SortCol>(
+    { col: "fit", dir: "desc" },
+    defaultFilters,
+    TABLE_SORT_FILTER_STATE_STORAGE_KEYS.mainJobs,
+  );
 
   const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.mainJobs);
   const columnLabels = useMemo(

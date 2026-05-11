@@ -16,7 +16,10 @@ import {
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
-import { TABLE_SAVED_FILTER_STORAGE_KEYS } from "@/lib/table-saved-filter-storage-keys";
+import {
+  TABLE_SAVED_FILTER_STORAGE_KEYS,
+  TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
+} from "@/lib/table-saved-filter-storage-keys";
 import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -95,7 +98,11 @@ export function ScanSourcesTable({
     resetToDefault,
     setOpenFilterCol,
     activeFilterCount,
-  } = useDataTableSortFilterState<SortCol>({ col: "company", dir: "asc" });
+  } = useDataTableSortFilterState<SortCol>(
+    { col: "company", dir: "asc" },
+    undefined,
+    TABLE_SORT_FILTER_STATE_STORAGE_KEYS.scanSources,
+  );
   const savedFiltersState = useDataTableSavedFilters<SortCol>(TABLE_SAVED_FILTER_STORAGE_KEYS.scanSources);
   const columnLabels = useMemo(
     () => Object.fromEntries(COL_DEFS.map(({ col, label }) => [col, label])) as Record<SortCol, string>,
