@@ -14,6 +14,17 @@ If pages render stale data:
 - Run `npm run db:check` to verify the database is readable.
 - Confirm the expected local database is being used if `JST_DATABASE_PATH` is set.
 
+If the browser console reports a hydration mismatch on the root `<html>` element:
+
+- Check whether a browser extension added an attribute before React loaded.
+  Privacy and analytics-blocking extensions may add attributes such as
+  `data-google-analytics-opt-out`.
+- The app suppresses hydration warnings on the root element so extension-owned
+  attributes do not interrupt local dashboard use.
+- If the warning points to a component below `<html>`, inspect that component for
+  server/client branching, time-based values, random values, locale formatting,
+  or invalid HTML nesting.
+
 ## Local Database
 
 If the database fails to open:
@@ -49,4 +60,3 @@ If `npm audit --audit-level=moderate` reports issues:
 - Prefer the smallest viable upgrade set.
 - Do not take major migrations during Phase 9 unless the audit requires it.
 - Document any unresolved audit item in `docs/lessons.md`.
-
