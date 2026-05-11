@@ -151,6 +151,12 @@ Tabbed view for a single job. Four tabs:
 - Requirement match table showing which JD requirements the profile covers.
 - Gap list: requirements not yet addressed.
 - Red flags list.
+- **Job description** — collapsed panel showing the saved description text.
+- **Edit job details** — collapsed form to overwrite position, company, job posting
+  URL, and job description without creating a duplicate record. Useful when LinkedIn
+  or other scanner sources capture only partial metadata. All four fields are
+  pre-filled with the current values. A reminder to re-run evaluation is shown
+  after saving, since any description change makes the existing AI analysis stale.
 
 ### Analysis tab
 - Run evaluation: triggers AI streaming evaluation with real-time output.
