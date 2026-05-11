@@ -159,12 +159,47 @@ Tabbed view for a single job. Four tabs:
 - User correction: override the AI recommendation and score with a note.
 - Provider and model metadata for the last evaluation run.
 
+**AI evaluation data sources (all fed into the analysis):**
+- Full job description (up to 6,000 characters — captures required qualifications
+  that appear deep in the posting).
+- Candidate profile: goal, urgency, direction, compensation needs, work preferences,
+  target roles, deal breakers, constraints.
+- Skill inventory (up to 30 skills with strength level and evidence source).
+- Role strategy (role-fit scores and rationale from the profile).
+- Active resume excerpts (up to 2 resumes × 1,800 chars each) — ensures Block B
+  CV-match assessment and proof-point citations are grounded in actual resume text,
+  not inferred from skill abstractions alone.
+
+**ATS keyword extraction (Block E):**
+- Extracts 10–15 keywords from the job posting.
+- Each keyword carries a priority (`required` or `preferred`) based on which section
+  of the JD it appears in, and a category (`technical`, `soft`, `domain`, `tool`,
+  `methodology`).
+- Keywords are stored in priority order (required first) and used during resume
+  tailoring to rank emphasis decisions.
+
 ### Resume tab
 - Generate tailored resume for this job: picks best base resume, produces
   HTML and PDF output with tailoring summary and keyword coverage %.
 - Resume draft editor: edit the tailored resume before export.
 - Keyword coverage progress bar.
 - Download PDF button.
+
+**Tailored resume AI context:**
+- Source resume full text (up to 5,000 chars) — the AI must verify every keyword
+  and strength against this text before using it.
+- Evaluation keywords in priority order (required first, then preferred).
+- Evaluation strengths (top 4) as suggested emphasis signals.
+- Gap responses — user-supplied notes addressing identified experience gaps.
+- Profile supplements — any extra context the user has added.
+- Job description excerpt (up to 3,000 chars) — allows the AI to verify keyword
+  context and understand requirement weight, not just the extracted keyword list.
+- Skills preference flags — skills the user wants to emphasize or de-emphasize
+  (derived from `use_more` / `use_less` preference on each skill record).
+
+**Keyword coverage metric:**
+- Counts how many evaluation keywords appear in the resume text values (not JSON
+  keys), giving an accurate ATS signal. Displayed as a percentage on the Resume tab.
 
 ### Apply tab
 - Prepare application answers: paste common or custom application questions,

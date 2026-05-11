@@ -1,6 +1,21 @@
 import type { JobRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
 
-export function buildSystemPrompt(profile: UserProfileRecord, skills: SkillRecord[], roleDirections: RoleDirectionRecord[]): string {
+export type ResumeExcerpt = {
+  name: string;
+  excerpt: string;
+};
+
+export function buildSystemPrompt(
+  profile: UserProfileRecord,
+  skills: SkillRecord[],
+  roleDirections: RoleDirectionRecord[],
+  resumeExcerpts?: ResumeExcerpt[]
+): string {
+  const resumeSection =
+    resumeExcerpts && resumeExcerpts.length > 0
+      ? `\n\n## Resume Evidence Base\nThese excerpts are the ONLY source of truth for the candidate's actual experience. Every strength, gap, and proof point you cite in CV match and personalization analysis must be grounded in this text.\n\n${resumeExcerpts.map((r) => `### ${r.name} Resume\n${r.excerpt}`).join("\n\n")}`
+      : "";
+
   return `You are a career strategy advisor helping a job seeker make smart application decisions.
 
 Be specific and evidence-based. Never hallucinate skills or experience not in the candidate profile below. Use the actual job history and skill inventory as your sole evidence base.
@@ -23,11 +38,11 @@ Constraints: ${profile.constraints.join(", ") || "None specified"}
 ${skills.slice(0, 30).map((s) => `- ${s.skillName} [${s.strengthLevel}] — ${s.evidenceSource}`).join("\n")}
 
 ## Role Strategy
-${roleDirections.map((r) => `- ${r.roleFamily}: ${r.fitLevel} (${r.score}%) — ${r.rationale}`).join("\n")}`;
+${roleDirections.map((r) => `- ${r.roleFamily}: ${r.fitLevel} (${r.score}%) — ${r.rationale}`).join("\n")}${resumeSection}`;
 }
 
 export function buildJobContext(job: JobRecord): string {
-  const description = (job.rawDescription || job.parsedDescription || "").slice(0, 3000);
+  const description = (job.rawDescription || job.parsedDescription || "").slice(0, 6000);
   return `## Job Posting
 Title: ${job.title}
 Company: ${job.company}
