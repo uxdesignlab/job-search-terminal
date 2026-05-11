@@ -43,7 +43,7 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     try {
       const gapResponses = getJobGapResponses(jobId);
       const supplements = getProfileSupplements();
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements);
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills);
     } catch {
       // Fall through to approved source content.
     }
@@ -125,7 +125,7 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     try {
       const gapResponses = getJobGapResponses(jobId);
       const supplements = getProfileSupplements();
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements);
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills);
     } catch { /* fall through to source resume summary */ }
   }
 
@@ -921,8 +921,17 @@ function buildTailoringPlan(evaluation: EvaluationRecord, resume: ResumeRecord, 
   ];
 }
 
+function extractTextValues(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(extractTextValues).join(" ");
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value as Record<string, unknown>).map(extractTextValues).join(" ");
+  }
+  return "";
+}
+
 function keywordCoverageFor(content: ResumeTemplateInput, keywords: string[]) {
-  const text = JSON.stringify(content).toLowerCase();
+  const text = extractTextValues(content).toLowerCase();
   const relevant = unique(keywords.map((keyword) => keyword.toLowerCase())).filter(Boolean);
   if (relevant.length === 0) {
     return 0;

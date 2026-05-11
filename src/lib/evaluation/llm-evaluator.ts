@@ -5,7 +5,7 @@ import type { AIMessage, AIProvider } from "../ai/provider";
 import { getJobById, getRoleDirections, getResumes, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
 import type { EvaluationSections, JobEvaluationResultInput, JobRecord } from "../db/types";
 import { coerceResumeBaseToLane, pickResumeBase } from "./resume-lane-picker";
-import { buildJobContext, buildSystemPrompt } from "./prompts";
+import { buildJobContext, buildSystemPrompt, type ResumeExcerpt } from "./prompts";
 
 export type BlockName = "a" | "b" | "c" | "d" | "e" | "f" | "g";
 
@@ -140,9 +140,15 @@ Include: estimated base salary band for this role/seniority/location, total comp
 
 // ─── Block E: Personalization Plan ────────────────────────────────────────
 
+export type KeywordEntry = {
+  keyword: string;
+  priority: "required" | "preferred";
+  category: "technical" | "soft" | "domain" | "tool" | "methodology";
+};
+
 type BlockEResult = {
   plan: string[];
-  keywords: string[];
+  keywords: KeywordEntry[];
 };
 
 async function runBlockE(provider: AIProvider, systemPrompt: string, jobCtx: string, blockA: BlockAResult, blockB: BlockBResult): Promise<BlockEResult> {
@@ -156,10 +162,23 @@ Archetype: ${blockA.archetype} | Gaps: ${blockB.gaps.slice(0, 3).join("; ")}
 
 Create a CV/LinkedIn personalization roadmap. Return JSON:
 - "plan": up to 6 bullet strings — specific summary rewrites, bullet reorders, skills to emphasize, LinkedIn headline changes
-- "keywords": 10-15 ATS keywords from this job posting to weave into the resume`
+- "keywords": 10-15 ATS keyword objects extracted from the job posting, each with:
+  - "keyword": the exact term or phrase from the posting
+  - "priority": "required" if it appears in must-have or required qualifications, "preferred" if it is a nice-to-have or bonus
+  - "category": one of "technical" | "soft" | "domain" | "tool" | "methodology"`
     }
   ];
-  return provider.generateJSON<BlockEResult>(messages, '{"plan":[],"keywords":[]}');
+  const raw = await provider.generateJSON<{ plan: string[]; keywords: unknown[] }>(messages, '{"plan":[],"keywords":[]}');
+  const keywords: KeywordEntry[] = (raw.keywords ?? [])
+    .filter((k): k is KeywordEntry => typeof k === "object" && k !== null && "keyword" in k)
+    .map((k) => ({
+      keyword: String((k as KeywordEntry).keyword),
+      priority: (k as KeywordEntry).priority === "preferred" ? "preferred" : "required",
+      category: (["technical", "soft", "domain", "tool", "methodology"] as const).includes((k as KeywordEntry).category)
+        ? (k as KeywordEntry).category
+        : "technical"
+    }));
+  return { plan: raw.plan ?? [], keywords };
 }
 
 // ─── Block F: Interview Plan ───────────────────────────────────────────────
@@ -212,6 +231,21 @@ Signals to evaluate: posting age, description quality, salary transparency, spec
   return provider.generateJSON<BlockGResult>(messages, '{"assessment":"string","legitimacy":[]}');
 }
 
+// ─── Resume Excerpt Builder ───────────────────────────────────────────────
+
+const MAX_EXCERPT_CHARS_PER_RESUME = 1800;
+const MAX_RESUME_EXCERPTS = 2;
+
+function buildResumeExcerpts(resumes: { name: string; extractedText: string; activeStatus: boolean }[]): ResumeExcerpt[] {
+  return resumes
+    .filter((r) => r.activeStatus && r.extractedText && r.extractedText.length > 100)
+    .slice(0, MAX_RESUME_EXCERPTS)
+    .map((r) => ({
+      name: r.name,
+      excerpt: r.extractedText.slice(0, MAX_EXCERPT_CHARS_PER_RESUME)
+    }));
+}
+
 // ─── Orchestrator ──────────────────────────────────────────────────────────
 
 export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallback): Promise<JobEvaluationResultInput> {
@@ -237,7 +271,8 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   const roleDirections = getRoleDirections();
   const resumes = getResumes();
 
-  const systemPrompt = buildSystemPrompt(profile, skills, roleDirections);
+  const resumeExcerpts = buildResumeExcerpts(resumes);
+  const systemPrompt = buildSystemPrompt(profile, skills, roleDirections, resumeExcerpts);
   const jobCtx = buildJobContext(job);
 
   // All blocks run sequentially — avoids rate-limit/503 from parallel API calls,
@@ -276,6 +311,12 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   const score = Math.max(10, Math.min(98, blockB.fitScore));
   const resumeBase = pickResumeBase(blockA.archetype, resumes.map((r) => r.name));
 
+  // Required keywords first, then preferred — used for ATS prioritization in tailoring
+  const orderedKeywords = [
+    ...blockE.keywords.filter((k) => k.priority === "required"),
+    ...blockE.keywords.filter((k) => k.priority === "preferred"),
+  ].map((k) => k.keyword);
+
   return {
     id: `evaluation-${job.id}`,
     jobId: job.id,
@@ -292,7 +333,7 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
     resumeEvidence: blockB.resumeEvidence,
     sections,
     legitimacyLabel: blockGResult.assessment,
-    keywords: blockE.keywords,
+    keywords: orderedKeywords,
     userCorrection: {},
     providerUsed: provider.name,
     modelUsed: provider.effectiveModel,

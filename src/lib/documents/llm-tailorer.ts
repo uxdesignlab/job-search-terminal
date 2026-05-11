@@ -2,7 +2,7 @@ import { getActiveProvider } from "../ai/factory";
 import { getAIPromptText, renderPromptTemplate } from "../ai/prompt-registry";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
-import type { EvaluationRecord, JobRecord, ResumeSectionModeInput, UserProfileRecord } from "../db/types";
+import type { EvaluationRecord, JobRecord, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
 import { getWritingStyle } from "../db/queries";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 import type { ResumeTemplateInput } from "./resume-template";
@@ -25,6 +25,7 @@ type SupplementContext = {
 };
 
 const MAX_RESUME_PROMPT_CHARS = 5000;
+const MAX_JD_TAILORING_CHARS = 3000;
 
 function buildGapContext(
   gapResponses?: GapResponseContext[],
@@ -65,6 +66,21 @@ function buildStrengthsBlock(strengths: string[]): string {
   return strengths.map((s) => `- ${s}`).join("\n");
 }
 
+function buildSkillsPreferenceBlock(skills: SkillRecord[]): string {
+  const emphasize = skills.filter((s) => s.usePreference === "use_more").map((s) => s.skillName);
+  const deemphasize = skills.filter((s) => s.usePreference === "use_less").map((s) => s.skillName);
+  const parts: string[] = [];
+  if (emphasize.length > 0) parts.push(`Skills to emphasize (candidate wants more of these): ${emphasize.join(", ")}`);
+  if (deemphasize.length > 0) parts.push(`Skills to de-emphasize (candidate wants less of these): ${deemphasize.join(", ")}`);
+  return parts.length > 0 ? `\n\nSKILLS PREFERENCE:\n${parts.join("\n")}` : "";
+}
+
+function buildJobDescriptionBlock(job: JobRecord): string {
+  const description = (job.rawDescription || job.parsedDescription || "").trim();
+  if (!description) return "";
+  return `\n\n## Job Description (Reference for Keyword Context)\n${description.slice(0, MAX_JD_TAILORING_CHARS)}${description.length > MAX_JD_TAILORING_CHARS ? "\n[Truncated — use keywords as the primary signal for requirements beyond this excerpt.]" : ""}`;
+}
+
 function buildStyleContextBlock(): string {
   const writingStyle = getWritingStyle();
   if (!writingStyle.toneProfile) {
@@ -89,13 +105,18 @@ export async function tailorResumeWithAI(
   sourceDraft: ResumeTemplateInput,
   sectionModes: ResumeSectionModeInput[],
   gapResponses?: GapResponseContext[],
-  supplements?: SupplementContext[]
+  supplements?: SupplementContext[],
+  skills?: SkillRecord[]
 ): Promise<TailoredResumeSections> {
   const provider = getActiveProvider();
-  const keywordLines = buildKeywordsBlock(evaluation.keywords.slice(0, 12));
+  // Required keywords first so the tailorer treats them with higher priority
+  const sortedKeywords = evaluation.keywords.slice(0, 12);
+  const keywordLines = buildKeywordsBlock(sortedKeywords);
   const strengthLines = buildStrengthsBlock(evaluation.strengths.slice(0, 4));
   const archetype = evaluation.roleArchetype;
   const styleContextBlock = buildStyleContextBlock();
+  const skillsPreferenceBlock = skills ? buildSkillsPreferenceBlock(skills) : "";
+  const jobDescriptionBlock = buildJobDescriptionBlock(job);
   const gapContext = buildGapContext(gapResponses, supplements);
   const modeById = new Map(sectionModes.map((mode) => [mode.sectionId, mode.mode]));
   const userTuningPrompt = renderPromptTemplate(getAIPromptText("resume_tailoring"), {
@@ -149,7 +170,7 @@ STYLE RULES:
 - Use natural ATS language, not keyword dumping.
 
 USER TUNING PROMPT:
-${userTuningPrompt}${styleContextBlock}`
+${userTuningPrompt}${styleContextBlock}${skillsPreferenceBlock}`
 	    },
 	    {
 	      role: "user",
@@ -168,7 +189,7 @@ Candidate strengths to consider (use only if supported):
 ${strengthLines}
 
 ## Candidate Source Resume
-${resumeExcerpt}${gapContext}
+${resumeExcerpt}${gapContext}${jobDescriptionBlock}
 
 ## Selected Sections To Rewrite
 ${JSON.stringify(selectedSections, null, 2)}
