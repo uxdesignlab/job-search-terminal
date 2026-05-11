@@ -330,6 +330,23 @@ export function saveJobDescription(id: string, rawDescription: string) {
     .run({ id, rawDescription });
 }
 
+export function updateJobDetails(
+  id: string,
+  fields: { title?: string; company?: string; url?: string; rawDescription?: string }
+) {
+  const sets: string[] = ["updated_at = current_timestamp"];
+  const params: Record<string, string> = { id };
+  if (fields.title !== undefined) { sets.push("title = @title"); params.title = fields.title; }
+  if (fields.company !== undefined) { sets.push("company = @company"); params.company = fields.company; }
+  if (fields.url !== undefined) { sets.push("url = @url"); params.url = fields.url; }
+  if (fields.rawDescription !== undefined) {
+    sets.push("raw_description = @rawDescription, parsed_description = @rawDescription");
+    params.rawDescription = fields.rawDescription;
+  }
+  getDatabase().prepare(`update jobs set ${sets.join(", ")} where id = @id`).run(params);
+  logActivity("job", id, "Job details updated manually", {});
+}
+
 export function updateJobRecommendedResume(id: string, resumeName: string) {
   getDatabase().prepare("update jobs set recommended_resume = @resumeName where id = @id").run({ id, resumeName });
 }
