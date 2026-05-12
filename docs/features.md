@@ -47,8 +47,8 @@ guides, and per-topic pages.
   PDF guidance, and bullet quality.
 - `/help/job-search` — dashboard scans, job sources, manual job entry, filters,
   and saved presets.
-- `/help/linkedin-scanner` — Claude Desktop LinkedIn scanning, result
-  scrolling/paging behavior, imports, duplicates, limits, and safety notes.
+- `/help/linkedin-scanner` — Claude/Codex browser-board scanning for LinkedIn,
+  Wellfound, and Work at a Startup; imports, duplicates, limits, and safety notes.
 - `/help/evaluate-tailor` — evaluation, tailored resume generation, PDF export,
   application answers, research, and outreach drafting.
 - `/help/applications` — statuses, table and kanban tracking, follow-ups, and
@@ -575,33 +575,35 @@ Location matching uses the selected Location mode checkboxes:
 
 ---
 
-## LinkedIn Scanner (Claude Desktop Integration)
+## Browser Job Board Scanner (Claude and Codex Integration)
 
-An optional feature for users with Claude Desktop. Claude browses LinkedIn on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required.
+An optional feature for users with Claude Desktop or Codex Chrome. An agent browses visible job-board results on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required. Supported browser-board sources are LinkedIn, Wellfound, and Work at a Startup.
 
 **How it works:**
-1. Say "Scan LinkedIn for jobs" in Claude Desktop
-2. Claude reads your target roles and location preferences from the JST database
-3. Claude opens LinkedIn in Chrome and extracts matching job postings
-4. A JSON file is written to `data/linkedin-imports/`
+1. Ask Claude or Codex to scan LinkedIn, Wellfound, or Work at a Startup
+2. The agent reads your target roles and location preferences from the JST database
+3. The agent opens the requested board in Chrome and extracts matching visible postings
+4. A JSON file is written to `data/job-board-imports/` (`data/linkedin-imports/` remains supported for legacy LinkedIn files)
 5. Job Search Terminal detects the file, imports jobs with duplicate detection, and shows a notification
 
 **UI indicators on the Jobs table:**
-- **LinkedIn** badge (neutral gray) — source column — identifies jobs discovered via the LinkedIn scanner
+- **LinkedIn**, **Wellfound**, or **Work at a Startup** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans
 - **Manual** badge (neutral gray) — source column — identifies jobs added manually via the Add Job modal
 - **Duplicate** badge (amber, clickable) — flagged jobs whose URL or company+title already existed in the database. Clicking the badge instantly filters the table to show only duplicate-flagged jobs. Clicking again clears the filter.
-- **Source** column — filterable and sortable; options are "LinkedIn", "Manual", and "Scanner"
+- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Manual", and "Scanner"
 
-**Duplicate detection:** Jobs are marked as possible duplicates (not dropped) when their URL or company+title matches an existing record. The user can review and act on flagged jobs normally.
+**URL behavior:** Browser-board imports prefer a visible job-specific employer/ATS apply URL. If one is not available, the platform job URL is used and preserved as provenance.
+
+**Duplicate detection:** Jobs are marked as possible duplicates (not dropped) when their original posting key, URL, or company+title+location matches an existing record. The user can review and act on flagged jobs normally.
 
 **Import notification:** A fixed-bottom green alert appears on the Jobs page within 30 seconds of a completed import, showing the count of new jobs and duplicates. Auto-dismissed after 5 minutes.
 
-**Requirements:** Claude Desktop, Claude in Chrome extension, LinkedIn session active in Chrome.
+**Requirements:** Claude Desktop with Claude in Chrome, or Codex with the Codex Chrome Extension. The user must already be logged into boards that require a session.
 
 **Full documentation:**
 - User guide: `docs/linkedin-scanner-guide.md`
-- Technical reference: `docs/linkedin-scanner-technical.md`
-- Agent instructions: `CLAUDE.md` (read by Claude Desktop automatically)
+- Technical reference: `docs/browser-board-scanner-technical.md`
+- Agent instructions: `CLAUDE.md` and `AGENTS.md`
 
 ---
 

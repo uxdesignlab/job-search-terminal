@@ -85,6 +85,9 @@ type JobRow = {
   company: string;
   title: string;
   url: string;
+  source_url: string;
+  original_posting_url: string;
+  original_posting_key: string;
   source: string;
   location: string;
   remote_type: string;
@@ -1214,12 +1217,45 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
 
 export function getJobDedupKeys() {
   const rows = getDatabase()
-    .prepare("select url, company, title from jobs")
-    .all() as Array<{ url: string; company: string; title: string }>;
+    .prepare("select id, url, source_url, original_posting_url, original_posting_key, company, title, location from jobs")
+    .all() as Array<{
+      id: string;
+      url: string;
+      source_url: string;
+      original_posting_url: string;
+      original_posting_key: string;
+      company: string;
+      title: string;
+      location: string;
+    }>;
+
+  const urlToIds = new Map<string, string[]>();
+  const originalPostingKeyToIds = new Map<string, string[]>();
+  const companyRoleLocationToIds = new Map<string, string[]>();
+
+  const add = (map: Map<string, string[]>, key: string, id: string) => {
+    if (!key) return;
+    const existing = map.get(key) ?? [];
+    existing.push(id);
+    map.set(key, existing);
+  };
+
+  for (const row of rows) {
+    add(urlToIds, row.url, row.id);
+    add(urlToIds, row.original_posting_url, row.id);
+    add(originalPostingKeyToIds, row.original_posting_key, row.id);
+    add(companyRoleLocationToIds, `${row.company.toLowerCase()}::${row.title.toLowerCase()}::${row.location.toLowerCase()}`, row.id);
+  }
 
   return {
-    urls: new Set(rows.map((row) => row.url).filter(Boolean)),
-    companyRoles: new Set(rows.map((row) => `${row.company.toLowerCase()}::${row.title.toLowerCase()}`))
+    urls: new Set(rows.flatMap((row) => [row.url, row.original_posting_url]).filter(Boolean)),
+    companyRoles: new Set(rows.map((row) => `${row.company.toLowerCase()}::${row.title.toLowerCase()}`)),
+    companyRoleLocations: new Set(
+      rows.map((row) => `${row.company.toLowerCase()}::${row.title.toLowerCase()}::${row.location.toLowerCase()}`)
+    ),
+    urlToIds,
+    originalPostingKeyToIds,
+    companyRoleLocationToIds
   };
 }
 
@@ -1316,50 +1352,62 @@ export function insertScannedJobs(jobs: ScannedJobInput[]) {
   return insertMany(jobs);
 }
 
-export type LinkedInJobInput = {
+export type BrowserBoardJobInput = {
   id: string;
   company: string;
   title: string;
   url: string;
+  sourceUrl: string;
+  originalPostingUrl: string;
+  originalPostingKey: string;
+  source: "linkedin-claude-scan" | "wellfound-browser-scan" | "workatastartup-browser-scan";
   location: string;
   rawDescription: string;
   datePosted: string | null;
   firstSeenDate: string;
+  salaryNotes: string;
   isDuplicate: boolean;
   duplicateOf: string[] | null;
 };
 
-export function insertLinkedInJobs(jobs: LinkedInJobInput[]): { inserted: number; jobIds: string[] } {
+export type LinkedInJobInput = Omit<
+  BrowserBoardJobInput,
+  "source" | "sourceUrl" | "originalPostingUrl" | "originalPostingKey" | "salaryNotes"
+>;
+
+export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted: number; jobIds: string[] } {
   if (jobs.length === 0) return { inserted: 0, jobIds: [] };
 
   const database = getDatabase();
   const insert = database.prepare(
     `insert or ignore into jobs (
-      id, company, title, url, source, location, remote_type,
+      id, company, title, url, source_url, original_posting_url, original_posting_key, source, location, remote_type,
       date_posted, first_seen_date, freshness_label, raw_description,
       parsed_description, status, fit_score, role_archetype, recommendation,
       summary, why_it_matches, main_concern, recommended_resume, salary_notes,
       requirement_match_json, resume_evidence_json, gaps_json, red_flags_json,
       is_duplicate, duplicate_of
     ) values (
-      @id, @company, @title, @url, 'linkedin-claude-scan', @location, @remoteType,
+      @id, @company, @title, @url, @sourceUrl, @originalPostingUrl, @originalPostingKey, @source, @location, @remoteType,
       @datePosted, @firstSeenDate, 'New today', @rawDescription,
       '', 'Found', 0, 'Unreviewed', 'Needs review',
-      'Discovered via LinkedIn scan. Evaluate this role before acting.',
+      @summary,
       'Pending evaluation against profile, resume lanes, and constraints.',
-      'Not evaluated yet.', 'To be selected', 'Not captured by scanner.',
+      'Not evaluated yet.', 'To be selected', @salaryNotes,
       '[]', '[]', '[]', '[]',
       @isDuplicate, @duplicateOf
     )`
   );
 
   const jobIds: string[] = [];
-  const insertMany = database.transaction((items: LinkedInJobInput[]) => {
+  const insertMany = database.transaction((items: BrowserBoardJobInput[]) => {
     let inserted = 0;
     for (const job of items) {
       const result = insert.run({
         ...job,
         remoteType: inferRemoteType(job.location),
+        summary: `Discovered via ${sourceNameForSummary(job.source)} browser scan. Evaluate this role before acting.`,
+        salaryNotes: job.salaryNotes || "Not captured by scanner.",
         isDuplicate: job.isDuplicate ? 1 : 0,
         duplicateOf: job.duplicateOf ? JSON.stringify(job.duplicateOf) : null
       });
@@ -1375,6 +1423,19 @@ export function insertLinkedInJobs(jobs: LinkedInJobInput[]): { inserted: number
   return { inserted, jobIds };
 }
 
+export function insertLinkedInJobs(jobs: LinkedInJobInput[]): { inserted: number; jobIds: string[] } {
+  return insertBrowserBoardJobs(
+    jobs.map((job) => ({
+      ...job,
+      source: "linkedin-claude-scan",
+      sourceUrl: job.url,
+      originalPostingUrl: "",
+      originalPostingKey: "",
+      salaryNotes: "Not captured by scanner."
+    }))
+  );
+}
+
 export function getLatestLinkedInImport() {
   return getDatabase()
     .prepare(
@@ -1386,6 +1447,26 @@ export function getLatestLinkedInImport() {
     )
     .get() as
     | { id: string; new_jobs_count: number; duplicate_count: number; completed_at: string | null }
+    | undefined;
+}
+
+export function getLatestBrowserBoardImport() {
+  return getDatabase()
+    .prepare(
+      `select id, new_jobs_count, duplicate_count, completed_at, scan_type
+       from scan_runs
+       where scan_type in ('linkedin-claude-scan', 'wellfound-browser-scan', 'workatastartup-browser-scan')
+       order by started_at desc
+       limit 1`
+    )
+    .get() as
+    | {
+      id: string;
+      new_jobs_count: number;
+      duplicate_count: number;
+      completed_at: string | null;
+      scan_type: string;
+    }
     | undefined;
 }
 
@@ -1547,6 +1628,9 @@ function mapJob(row: JobRow): JobRecord {
     company: row.company,
     title: row.title,
     url: row.url,
+    sourceUrl: row.source_url ?? "",
+    originalPostingUrl: row.original_posting_url ?? "",
+    originalPostingKey: row.original_posting_key ?? "",
     source: row.source,
     location: row.location,
     remoteType: row.remote_type,
@@ -1699,6 +1783,12 @@ function scoreLabelFor(score: number) {
 
 function inferRemoteType(location: string) {
   return location.toLowerCase().includes("remote") ? "Remote" : "Not specified";
+}
+
+function sourceNameForSummary(source: BrowserBoardJobInput["source"]) {
+  if (source === "linkedin-claude-scan") return "LinkedIn";
+  if (source === "wellfound-browser-scan") return "Wellfound";
+  return "Work at a Startup";
 }
 
 function scanActivityLabel(run: ScanRunRecord) {

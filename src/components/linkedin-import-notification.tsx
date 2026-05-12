@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 type RecentImport = {
   hasRecent: boolean;
+  sourceLabel?: string;
   newJobsCount?: number;
   duplicateCount?: number;
   completedAt?: string;
@@ -19,7 +20,7 @@ export function LinkedInImportNotification() {
 
   const check = useCallback(async () => {
     try {
-      const res = await fetch("/api/linkedin/recent");
+      const res = await fetch("/api/job-board/recent");
       if (!res.ok) return;
       const data = (await res.json()) as RecentImport;
       if (data.hasRecent && !dismissed) {
@@ -43,6 +44,7 @@ export function LinkedInImportNotification() {
 
   const count = state.newJobsCount ?? 0;
   const dupeCount = state.duplicateCount ?? 0;
+  const sourceLabel = state.sourceLabel ?? "Job board";
   const jobLabel = `${count} new job${count !== 1 ? "s" : ""}`;
   const dupeLabel = dupeCount > 0 ? ` · ${dupeCount} possible duplicate${dupeCount !== 1 ? "s" : ""} flagged` : "";
 
@@ -54,7 +56,7 @@ export function LinkedInImportNotification() {
     >
       <div className="flex items-start justify-between gap-3">
         <span>
-          LinkedIn scan imported {jobLabel}
+          {sourceLabel} scan imported {jobLabel}
           {dupeLabel}.
         </span>
         <button

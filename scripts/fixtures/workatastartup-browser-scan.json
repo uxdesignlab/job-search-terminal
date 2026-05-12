@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "source": "workatastartup",
+    "scanTimestamp": "2026-05-11T12:10:00Z",
+    "scanDurationSeconds": 60,
+    "totalJobsDiscovered": 2,
+    "totalJobsValid": 2,
+    "totalJobsSkipped": 0,
+    "searchCriteria": {
+      "titles": ["Designer"],
+      "locations": ["Remote"],
+      "remotePreference": "remote-only"
+    },
+    "generatedBy": "Codex Chrome Browser Board Scanner v1.0"
+  },
+  "jobs": [
+    {
+      "company": "Northstar Tools",
+      "title": "Founding Designer",
+      "jobDescription": "Own design for a seed-stage product team.",
+      "sourceUrl": "https://www.workatastartup.com/jobs/200-founding-designer",
+      "discoveredAt": "2026-05-11T12:10:00Z",
+      "location": "San Francisco, CA"
+    },
+    {
+      "company": "Acme AI",
+      "title": "Product Design Lead",
+      "description": "Lead product design for an applied AI workflow product.",
+      "sourceUrl": "https://www.workatastartup.com/jobs/201-product-design-lead",
+      "originalPostingUrl": "https://job-boards.greenhouse.io/acmeai/jobs/1234567",
+      "discoveredAt": "2026-05-11T12:11:00Z",
+      "location": "Remote United States"
+    }
+  ]
+}

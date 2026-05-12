@@ -637,5 +637,14 @@ export const migrations = [
         'teaching-ux-education'
       );
     `
+  },
+  {
+    id: "0035_browser_board_job_provenance",
+    sql: `
+      alter table jobs add column source_url text not null default '';
+      alter table jobs add column original_posting_url text not null default '';
+      alter table jobs add column original_posting_key text not null default '';
+      create index if not exists idx_jobs_original_posting_key on jobs(original_posting_key);
+    `
   }
 ];

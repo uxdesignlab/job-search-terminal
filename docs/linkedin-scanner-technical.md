@@ -1,5 +1,11 @@
 # LinkedIn Scanner — Technical Reference
 
+> Current implementation note: the LinkedIn flow now runs through the generalized
+> browser-board importer described in
+> [`docs/browser-board-scanner-technical.md`](browser-board-scanner-technical.md).
+> This file remains as historical detail for the original LinkedIn-only
+> implementation and legacy import path.
+
 This document describes the LinkedIn job scanner integration added in migration `0031`. It covers the architecture, all new and modified files, the data model changes, and how the components connect end to end.
 
 ---

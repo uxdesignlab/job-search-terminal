@@ -14,6 +14,8 @@ export async function GET() {
 
   return NextResponse.json({
     hasRecent: isRecent,
+    source: "linkedin",
+    sourceLabel: "LinkedIn",
     newJobsCount: latest.new_jobs_count,
     duplicateCount: latest.duplicate_count,
     completedAt: latest.completed_at

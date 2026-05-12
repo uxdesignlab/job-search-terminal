@@ -53,6 +53,9 @@ export type JobRecord = {
   company: string;
   title: string;
   url: string;
+  sourceUrl: string;
+  originalPostingUrl: string;
+  originalPostingKey: string;
   source: string;
   location: string;
   remoteType: string;
@@ -170,7 +173,7 @@ export type ScanRunRecord = {
   duplicateCount: number;
   newJobsCount: number;
   errors: Array<{ company: string; error: string }>;
-  scanType: "careerops" | "linkedin-claude-scan";
+  scanType: "careerops" | "linkedin-claude-scan" | "wellfound-browser-scan" | "workatastartup-browser-scan";
 };
 
 export type ImportResult = {
@@ -200,8 +203,46 @@ export type LinkedInScanFile = {
     url: string;
     discoveredAt: string;
     location?: string;
-    dataQuality?: Record<string, boolean | number | string[]>;
+    dataQuality?: Record<string, boolean | number | string | string[]>;
   }>;
+};
+
+export type BrowserBoardScanFile = {
+  metadata: {
+    source: "linkedin" | "wellfound" | "workatastartup";
+    scanTimestamp: string;
+    scanDurationSeconds: number;
+    totalJobsDiscovered: number;
+    totalJobsValid?: number;
+    totalJobsSkipped?: number;
+    searchCriteria: Record<string, unknown>;
+    generatedBy?: string;
+  };
+  jobs: Array<{
+    id?: string;
+    company: string;
+    title?: string;
+    position?: string;
+    jobDescription?: string;
+    description?: string;
+    url?: string;
+    platformUrl?: string;
+    sourceUrl?: string;
+    originalPostingUrl?: string;
+    applyUrl?: string;
+    externalApplyUrl?: string;
+    discoveredAt: string;
+    location?: string;
+    datePosted?: string | null;
+    salaryNotes?: string;
+    dataQuality?: Record<string, boolean | number | string | string[]>;
+  }>;
+  validationSummary?: {
+    totalRecords: number;
+    validRecords: number;
+    invalidRecords: number;
+    errors: string[];
+  };
 };
 
 export type ResumeRecord = {

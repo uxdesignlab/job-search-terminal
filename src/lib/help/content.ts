@@ -73,7 +73,7 @@ export const helpPages: HelpPage[] = [
         id: "what-it-is",
         title: "What this app does",
         intro:
-          "Job Search Terminal is a local-first job-search workspace. It scans supported career sources, imports manual and LinkedIn jobs, evaluates fit with AI, generates tailored resumes, prepares application answers, and tracks every application through the funnel.",
+          "Job Search Terminal is a local-first job-search workspace. It scans supported career sources, imports manual and browser-board jobs, evaluates fit with AI, generates tailored resumes, prepares application answers, and tracks every application through the funnel.",
         bullets: [
           "No cloud account is required for the app itself.",
           "Your profile, resumes, generated documents, jobs, and application history stay on your computer.",
@@ -115,7 +115,7 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Scan or import",
-            body: "Use the Dashboard scan, manual Add Job, or the LinkedIn scanner to bring new postings into the pipeline.",
+            body: "Use the Dashboard scan, manual Add Job, or the browser job board scanner to bring new postings into the pipeline.",
           },
           {
             title: "Review and evaluate",
@@ -479,9 +479,9 @@ export const helpPages: HelpPage[] = [
   },
   {
     slug: "linkedin-scanner",
-    title: "LinkedIn scanner guide",
-    shortTitle: "LinkedIn scanner",
-    description: "Set up Claude Desktop scanning, understand the scroll behavior, import results, review duplicates, and avoid unsafe actions.",
+    title: "Browser job board scanner guide",
+    shortTitle: "Job board scanner",
+    description: "Set up Claude or Codex Chrome scanning, understand browser-board imports, review duplicates, and avoid unsafe actions.",
     category: "Jobs",
     readTime: "16 min",
     icon: "globe",
@@ -490,7 +490,7 @@ export const helpPages: HelpPage[] = [
       alt: "Jobs table showing imported job records and filterable source data",
     },
     highlights: [
-      "Claude Desktop browses LinkedIn in Chrome and writes a local import file.",
+      "Claude Desktop or Codex browses supported boards in Chrome and writes a local import file.",
       "Job Search Terminal imports the file and marks possible duplicates.",
       "The scanner reads only postings. It must never click Apply or message anyone.",
     ],
@@ -499,10 +499,9 @@ export const helpPages: HelpPage[] = [
         id: "requirements",
         title: "What you need",
         bullets: [
-          "Claude Desktop installed and open.",
-          "Claude in Chrome installed and active.",
-          "LinkedIn open in Chrome and already logged into your account.",
-          "Job Search Terminal running locally or available to Claude Desktop.",
+          "Claude Desktop with Claude in Chrome, or Codex with the Codex Chrome Extension.",
+          "LinkedIn, Wellfound, or Work at a Startup open in Chrome if the board requires an active session.",
+          "Job Search Terminal running locally or available to the agent.",
           "Target roles, preferred locations, work modes, and title filters saved in Job Search Terminal.",
         ],
       },
@@ -510,7 +509,7 @@ export const helpPages: HelpPage[] = [
         id: "criteria",
         title: "How search criteria are chosen",
         intro:
-          "Claude reads the criteria from your saved profile and settings. You do not need to retype them into Claude for every scan.",
+          "The agent reads the criteria from your saved profile and settings. You do not need to retype them for every scan.",
         bullets: [
           "Target roles determine the job-title searches.",
           "Preferred locations and work modes narrow where Claude searches.",
@@ -521,38 +520,38 @@ export const helpPages: HelpPage[] = [
       },
       {
         id: "run",
-        title: "Run a LinkedIn scan",
+        title: "Run a browser-board scan",
         steps: [
           {
-            title: "Open Claude Desktop",
-            body: "Make sure Claude Desktop is using this project folder so it can read the project instructions.",
+            title: "Open Claude or Codex",
+            body: "Make sure the agent is using this project folder so it can read the project instructions.",
           },
           {
             title: "Start with a simple prompt",
-            body: "Ask Claude to scan LinkedIn for jobs, find new jobs on LinkedIn posed in the past 24 hours, or run a LinkedIn job search.",
+            body: "Ask the agent to scan LinkedIn, Wellfound, or Work at a Startup for jobs matching your saved criteria.",
           },
           {
             title: "Confirm before browsing",
-            body: "Claude should summarize the saved criteria and ask before it starts browsing LinkedIn.",
+            body: "The agent should summarize the saved criteria before it starts browsing a session-dependent board.",
           },
           {
             title: "Let it browse the results",
-            body: "Claude opens LinkedIn Jobs in Chrome, searches each target title, applies filters, opens job cards, reads details, and moves through result pages.",
+            body: "The agent opens the requested board in Chrome, searches each target title, applies visible filters, opens job details, and reads visible posting content.",
           },
           {
             title: "Review the import",
-            body: "When the scan completes, the Jobs page shows a LinkedIn import notification and the imported jobs appear with a LinkedIn source badge.",
+            body: "When the scan completes, the Jobs page shows an import notification and the imported jobs appear with a source badge.",
           },
         ],
       },
       {
         id: "scrolling",
-        title: "How LinkedIn scrolling works",
+        title: "How board scrolling works",
         intro:
-          "LinkedIn job results load as a list of visible cards. The scanner has to work through visible results, open details, then continue scrolling or paging through more results.",
+          "Job-board results usually load as visible cards or rows. The scanner works through visible results, opens details, then continues scrolling or paging through more results.",
         bullets: [
-          "Claude scans visible job cards first.",
-          "For each card, Claude opens the detail pane and extracts company, title, location, job URL, and full description.",
+          "The agent scans visible job cards first.",
+          "For each card, the agent opens the detail pane and extracts company, title, location, platform URL, employer/ATS URL when visible, and full description.",
           "After visible cards are processed, Claude scrolls the results list to reveal more jobs.",
           "When a next page is available, Claude moves to the next page and pauses before continuing.",
           "The project instructions cap the scan to avoid aggressive browsing and stop immediately on CAPTCHA, bot detection, or login prompts.",
@@ -560,27 +559,27 @@ export const helpPages: HelpPage[] = [
         callout: {
           title: "Important",
           body:
-            "LinkedIn states that third-party software, crawlers, bots, browser plug-ins, or extensions that scrape or automate activity can violate its User Agreement. Users are responsible for their own compliance.",
+            "Job boards may restrict automated browsing or scraping. Users are responsible for complying with each board's terms.",
         },
       },
       {
         id: "duplicates",
         title: "Duplicates and imported jobs",
         bullets: [
-          "LinkedIn jobs enter the pipeline with status Found and recommendation Needs review.",
-          "A LinkedIn badge identifies imported jobs in the Jobs table.",
-          "A Duplicate badge appears when the URL or company plus title matches an existing record.",
+          "Browser-board jobs enter the pipeline with status Found and recommendation Needs review.",
+          "LinkedIn, Wellfound, and Work at a Startup badges identify imported jobs in the Jobs table.",
+          "A Duplicate badge appears when the original posting key, URL, or company plus title and location matches an existing record.",
           "Duplicate jobs are not silently dropped; they stay visible so you can review them.",
-          "Filtering by Source -> LinkedIn is the fastest way to review a fresh import.",
+          "Filtering by Source is the fastest way to review a fresh import.",
         ],
       },
       {
         id: "troubleshooting",
-        title: "LinkedIn scanner troubleshooting",
+        title: "Browser-board scanner troubleshooting",
         bullets: [
           "If the scan does not start, check that target roles and preferences are saved.",
           "If no notification appears, open Jobs and refresh. The import may already be present.",
-          "If LinkedIn shows CAPTCHA or bot detection, stop and wait before trying again.",
+          "If a board shows CAPTCHA or bot detection, stop and wait before trying again.",
           "If every job is marked duplicate, you probably scanned the same roles recently.",
           "If imported roles are noisy, tighten title filters and reduce the target-role list.",
         ],
@@ -845,7 +844,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "The app does not submit applications for you.",
           "The app does not send emails or LinkedIn messages for you.",
-          "The app does not click Apply during LinkedIn scanning.",
+          "The app does not click Apply during browser-board scanning.",
           "The app preserves resumes, reports, outputs, and tracked data unless you explicitly delete them.",
         ],
       },
@@ -918,11 +917,11 @@ export const helpPages: HelpPage[] = [
       },
       {
         id: "linkedin",
-        title: "LinkedIn scanner issues",
+        title: "Browser-board scanner issues",
         bullets: [
           "If criteria are empty, save target roles and preferences first.",
           "If CAPTCHA or bot detection appears, stop scanning and reduce scope later.",
-          "If no import notification appears, open Jobs and check whether LinkedIn jobs are already present.",
+          "If no import notification appears, open Jobs and check whether imported jobs are already present.",
           "If all jobs are duplicates, the scan likely overlaps a previous scan.",
         ],
       },
