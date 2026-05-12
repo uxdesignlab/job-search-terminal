@@ -26,6 +26,30 @@ all running locally on the user's machine with no cloud storage.
 - **AI:** provider-mediated calls via `src/lib/ai/` — supports OpenAI, Anthropic, Google Gemini
 - **Job scanning:** Greenhouse / Ashby / Lever ATS APIs configured via `config/portals.example.yml`
 
+## Browser Job Board Scanner
+
+Codex can use the Codex Chrome Extension for signed-in or session-dependent job
+boards. Claude Desktop can use Claude in Chrome. Both runners must follow the
+same local import contract:
+
+1. Read target roles, preferred locations, remote preference, and title filters
+   from `data/job-search-terminal.sqlite`.
+2. Browse only visible job-board results in Chrome for LinkedIn, Wellfound, or
+   Work at a Startup.
+3. Extract company, title, location, description, platform URL, and a visible
+   job-specific employer/ATS apply URL when one exists.
+4. Prefer the employer/ATS URL as the job URL; otherwise use the platform job
+   URL. Preserve the platform URL as source provenance.
+5. Write JSON to `data/job-board-imports/` using a `.tmp` file first, then
+   rename to the final `.json` file. Legacy LinkedIn files may still be written
+   to `data/linkedin-imports/`.
+
+Supported `metadata.source` values are `linkedin`, `wellfound`, and
+`workatastartup`. Never click Apply, submit forms, log in for the user, message
+recruiters, bypass bot detection, or continue after CAPTCHA/login walls. Use the
+in-app browser for local Job Search Terminal verification; use Chrome only when
+the task needs the user's browser session.
+
 ## Resume Lanes
 
 Resumes are uploaded through the in-app UI (Profile → Resumes tab). The app

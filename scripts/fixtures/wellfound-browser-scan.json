@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "source": "wellfound",
+    "scanTimestamp": "2026-05-11T12:05:00Z",
+    "scanDurationSeconds": 60,
+    "totalJobsDiscovered": 1,
+    "totalJobsValid": 1,
+    "totalJobsSkipped": 0,
+    "searchCriteria": {
+      "titles": ["Product Design Lead"],
+      "locations": ["Remote"],
+      "remotePreference": "remote-only"
+    },
+    "generatedBy": "Codex Chrome Browser Board Scanner v1.0"
+  },
+  "jobs": [
+    {
+      "company": "Acme AI",
+      "title": "Product Design Lead",
+      "description": "Lead product design for an applied AI workflow product.",
+      "sourceUrl": "https://wellfound.com/jobs/100-product-design-lead?utm_source=test",
+      "externalApplyUrl": "https://job-boards.greenhouse.io/acmeai/jobs/1234567?utm_source=wellfound",
+      "discoveredAt": "2026-05-11T12:05:00Z",
+      "location": "Remote United States",
+      "salaryNotes": "$180k - $220k"
+    }
+  ]
+}

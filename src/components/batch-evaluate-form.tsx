@@ -28,6 +28,7 @@ import {
   TABLE_SAVED_FILTER_STORAGE_KEYS,
   TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
 } from "@/lib/table-saved-filter-storage-keys";
+import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
 
 type JobRowStatus = "loading" | "done" | "error";
 type SortCol = MainJobsSortCol;
@@ -291,6 +292,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
             <tbody className="divide-y divide-border">
               {displayJobs.map((job) => {
                 const rowStatus = jobStatus[job.id];
+                const sourceLabel = sourceLabelFromJobSource(job.source);
                 return (
                   <tr
                     key={job.id}
@@ -353,8 +355,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                     <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.firstSeenDate)}</td>
                     <td className="py-3 pr-4">
                       <div className="flex flex-wrap gap-1">
-                        {job.source === "linkedin-claude-scan" && <Badge tone="neutral">LinkedIn</Badge>}
-                        {job.source === "manual" && <Badge tone="neutral">Manual</Badge>}
+                        {sourceLabel && <Badge tone="neutral">{sourceLabel}</Badge>}
                         {job.isDuplicate && (() => {
                           const isActive = duplicateGroupFilter?.company === job.company && duplicateGroupFilter?.title === job.title;
                           return (

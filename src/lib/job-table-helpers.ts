@@ -1,5 +1,6 @@
 import type { JobRecord } from "@/lib/db/types";
 import { OUTSIDE_PREFERENCES_LABEL } from "@/lib/jobs/preference-fit";
+import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
 
 export type MainJobTableRecord = JobRecord & {
   preferenceLabel?: string;
@@ -52,9 +53,7 @@ export function getMainJobColValue(job: MainJobTableRecord, col: MainJobsSortCol
     case "scanned":
       return job.firstSeenDate ? "Has date" : "No date";
     case "source":
-      if (job.source === "linkedin-claude-scan") return "LinkedIn";
-      if (job.source === "manual") return "Manual";
-      return "Scanner";
+      return sourceLabelFromJobSource(job.source) ?? "Scanner";
     case "duplicate":
       return job.isDuplicate ? "Yes" : "No";
   }
@@ -64,7 +63,7 @@ export function getMainJobColOptions(jobs: MainJobTableRecord[], col: MainJobsSo
   if (col === "fit") return [...JOB_FIT_BUCKETS];
   if (col === "preference") return [MATCHES_PREFERENCES_LABEL, OUTSIDE_PREFERENCES_LABEL];
   if (col === "posted" || col === "scanned") return ["Has date", "No date"];
-  if (col === "source") return ["LinkedIn", "Manual", "Scanner"];
+  if (col === "source") return ["LinkedIn", "Wellfound", "Work at a Startup", "Manual", "Scanner"];
   return [...new Set(jobs.map((j) => getMainJobColValue(j, col)))].sort();
 }
 

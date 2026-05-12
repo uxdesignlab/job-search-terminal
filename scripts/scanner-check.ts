@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildTitleFilter,
   detectApi,
@@ -7,6 +8,7 @@ import {
   parseLever,
   runCareerOpsScanner
 } from "../src/lib/scanner/careerops-scanner";
+import { parseBrowserBoardScanFile, prepareBrowserBoardJobs } from "../src/lib/scanner/browser-board-importer";
 import { shouldPurgeJob } from "../src/lib/db/queries";
 import { buildJobPreferenceFilter } from "../src/lib/jobs/preference-fit";
 import { normalizePreferredLocations } from "../src/lib/profile/locations";
@@ -106,6 +108,52 @@ assert.equal(
 );
 assert.equal(parseAshby({ jobs: [{ title: "Design Manager", jobUrl: "https://example.com/design", location: "Remote" }] }, "Example")[0].url, "https://example.com/design");
 assert.equal(parseLever([{ text: "Product Design Lead", hostedUrl: "https://example.com/lead", categories: { location: "US" } }], "Example")[0].location, "US");
+
+function readFixture(name: string): unknown {
+  return JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf-8"));
+}
+
+function emptyDedupKeys() {
+  return {
+    urls: new Set<string>(),
+    companyRoles: new Set<string>(),
+    companyRoleLocations: new Set<string>(),
+    urlToIds: new Map<string, string[]>(),
+    originalPostingKeyToIds: new Map<string, string[]>(),
+    companyRoleLocationToIds: new Map<string, string[]>()
+  };
+}
+
+const legacyLinkedInScan = parseBrowserBoardScanFile(readFixture("linkedin-legacy-scan.json"), "linkedin");
+const legacyLinkedInJobs = prepareBrowserBoardJobs(legacyLinkedInScan, {
+  dedup: emptyDedupKeys(),
+  now: new Date("2026-05-11T12:00:00Z")
+});
+assert.equal(legacyLinkedInScan.source, "linkedin");
+assert.equal(legacyLinkedInJobs.jobs[0].source, "linkedin-claude-scan");
+assert.equal(legacyLinkedInJobs.jobs[0].url, "https://www.linkedin.com/jobs/view/9000000001/");
+
+const wellfoundScan = parseBrowserBoardScanFile(readFixture("wellfound-browser-scan.json"));
+const sharedDedup = emptyDedupKeys();
+const wellfoundJobs = prepareBrowserBoardJobs(wellfoundScan, {
+  dedup: sharedDedup,
+  now: new Date("2026-05-11T12:05:00Z")
+});
+assert.equal(wellfoundJobs.jobs[0].source, "wellfound-browser-scan");
+assert.equal(wellfoundJobs.jobs[0].url, "https://job-boards.greenhouse.io/acmeai/jobs/1234567");
+assert.equal(wellfoundJobs.jobs[0].sourceUrl, "https://wellfound.com/jobs/100-product-design-lead");
+assert.equal(wellfoundJobs.jobs[0].originalPostingKey, "greenhouse:acmeai:1234567");
+
+const workAtAStartupScan = parseBrowserBoardScanFile(readFixture("workatastartup-browser-scan.json"));
+const workAtAStartupJobs = prepareBrowserBoardJobs(workAtAStartupScan, {
+  dedup: sharedDedup,
+  now: new Date("2026-05-11T12:10:00Z")
+});
+assert.equal(workAtAStartupJobs.jobs[0].source, "workatastartup-browser-scan");
+assert.equal(workAtAStartupJobs.jobs[0].url, "https://www.workatastartup.com/jobs/200-founding-designer");
+assert.equal(workAtAStartupJobs.jobs[0].originalPostingKey, "workatastartup:200-founding-designer");
+assert.equal(workAtAStartupJobs.jobs[1].isDuplicate, true);
+assert.deepEqual(workAtAStartupJobs.jobs[1].duplicateOf, [wellfoundJobs.jobs[0].id]);
 
 async function main() {
   const result = await runCareerOpsScanner({

@@ -9,6 +9,7 @@ import { AddJobModal } from "@/components/AddJobModal";
 import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
 import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
+import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function JobsPage() {
       ...job,
       preferenceLabel: preferenceDecision.accepted ? undefined : OUTSIDE_PREFERENCES_LABEL,
       removalProtected: isJobProtectedFromAutomaticRemoval(job),
+      sourceLabel: sourceLabelFromJobSource(job.source),
     };
   });
 
@@ -73,6 +75,7 @@ export default async function JobsPage() {
                 <Badge>{job.fitScore}% fit</Badge>
                 <Badge>{formatPostedDate(job)}</Badge>
                 <Badge tone={toneForRecommendation(job.recommendation)}>{job.recommendation}</Badge>
+                {job.sourceLabel ? <Badge tone="neutral">{job.sourceLabel}</Badge> : null}
                 {job.preferenceLabel ? <Badge tone="warning">{job.preferenceLabel}</Badge> : null}
                 {job.livenessStatus === "expired" ? <Badge tone="danger">Posting expired</Badge> : null}
                 {job.url ? (

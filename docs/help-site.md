@@ -2,7 +2,7 @@
 
 Job Search Terminal includes an in-app documentation site at `/help`. It is
 designed as the product's self-service support surface for open-source users, so
-common setup, search, resume, LinkedIn scanning, application, privacy, and
+common setup, search, resume, browser-board scanning, application, privacy, and
 troubleshooting questions should be answered there instead of only in developer
 docs.
 
@@ -39,7 +39,7 @@ components. The help registry stores serializable icon names, and
 - AI provider setup for OpenAI, Anthropic, and Google Gemini
 - Resume lanes, resume upload, ATS-friendly resume structure, and PDF guidance
 - Job search, scan sources, manual job entry, filters, and saved presets
-- LinkedIn scanner setup, result scrolling/paging behavior, imports,
+- Browser-board scanner setup, result scrolling/paging behavior, imports,
   duplicates, limits, and safety notes
 - Job evaluation, tailored resume generation, application answers, research,
   and outreach drafting
@@ -47,7 +47,7 @@ components. The help registry stores serializable icon names, and
   delete
 - Interview preparation with STAR stories and voice practice
 - Privacy, local data, AI-provider data flow, backups, and safety boundaries
-- Troubleshooting for setup, AI, resume/PDF, scan quality, and LinkedIn imports
+- Troubleshooting for setup, AI, resume/PDF, scan quality, and browser-board imports
 
 ## Research References
 
