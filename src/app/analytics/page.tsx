@@ -231,7 +231,13 @@ export default function AnalyticsPage() {
 
           <GlobalGapAddressingPanel
             topGaps={topGaps}
-            initialSupplements={supplements.map((s) => ({ id: s.id, content: s.content, tags: s.tags }))}
+            initialSupplements={supplements.map((s) => ({
+              id: s.id,
+              content: s.content,
+              tags: s.tags,
+              qualityStatus: s.qualityStatus,
+              followUpQuestion: s.followUpQuestion,
+            }))}
           />
         </section>
 

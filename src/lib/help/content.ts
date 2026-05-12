@@ -608,6 +608,7 @@ export const helpPages: HelpPage[] = [
     highlights: [
       "Evaluation explains fit, concerns, gaps, red flags, and recommendation.",
       "Tailoring starts from the best matching resume lane.",
+      "Gap answers need concrete evidence before they influence a resume.",
       "Generated answers are for copy-paste; the app never submits them.",
     ],
     sections: [
@@ -631,6 +632,10 @@ export const helpPages: HelpPage[] = [
             title: "Correct the AI if needed",
             body: "Override the score or recommendation when your judgment, private context, or networking information is better than the model's read.",
           },
+          {
+            title: "Address gaps with evidence",
+            body: "When you save a gap answer, the app checks whether it includes where the experience happened, what you did, and what proof point supports it. Vague answers are saved as drafts and prompt a follow-up question.",
+          },
         ],
       },
       {
@@ -641,10 +646,14 @@ export const helpPages: HelpPage[] = [
 	            title: "Open the Resume tab",
 	            body: "The app recommends the best approved resume lane for the selected job.",
 	          },
-	          {
-	            title: "Choose section handling",
-	            body: "For each approved section, choose whether to keep it unchanged, let AI update it, or hide it from this generated resume.",
-	          },
+          {
+            title: "Choose section handling",
+            body: "For each approved section, choose whether to keep it unchanged, let AI update it, or hide it from this generated resume.",
+          },
+          {
+            title: "Use confirmed context only",
+            body: "Tailoring uses approved resume content plus gap answers and profile supplements that have enough concrete detail. Draft gap answers marked Needs detail are not used until completed.",
+          },
           {
             title: "Review keyword coverage",
             body: "Coverage is a guide, not a guarantee. Use it to see whether important job-language is represented truthfully.",

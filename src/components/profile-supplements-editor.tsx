@@ -1,8 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import { Badge } from "@/components/ui";
 
-type Supplement = { id: string; content: string };
+type QualityStatus = "addressed" | "needs_followup";
+type Supplement = {
+  id: string;
+  content: string;
+  qualityStatus: QualityStatus;
+  followUpQuestion: string;
+};
+type FollowUpState = {
+  id: string;
+  baseContent: string;
+  question: string;
+  draft: string;
+  saving: boolean;
+} | null;
 
 type Props = {
   initialSupplements: Supplement[];
@@ -14,6 +28,7 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [followUp, setFollowUp] = useState<FollowUpState>(null);
 
   async function handleAdd() {
     if (!draft.trim()) return;
@@ -24,8 +39,23 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: draft.trim() }),
       });
-      const data = await res.json() as { id: string };
-      setItems((prev) => [{ id: data.id, content: draft.trim() }, ...prev]);
+      const data = await res.json() as { id: string; qualityStatus: QualityStatus; followUpQuestion: string };
+      const item = {
+        id: data.id,
+        content: draft.trim(),
+        qualityStatus: data.qualityStatus,
+        followUpQuestion: data.followUpQuestion,
+      };
+      setItems((prev) => [item, ...prev]);
+      if (data.qualityStatus === "needs_followup") {
+        setFollowUp({
+          id: data.id,
+          baseContent: draft.trim(),
+          question: data.followUpQuestion,
+          draft: "",
+          saving: false,
+        });
+      }
       setDraft("");
     } finally {
       setSaving(false);
@@ -44,13 +74,57 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
 
   async function handleSaveEdit(id: string) {
     if (!editDraft.trim()) return;
-    await fetch(`/api/profile-supplements/${id}`, {
+    const res = await fetch(`/api/profile-supplements/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: editDraft.trim() }),
     });
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, content: editDraft.trim() } : i));
+    const data = await res.json() as { qualityStatus: QualityStatus; followUpQuestion: string };
+    setItems((prev) => prev.map((i) => i.id === id ? {
+      ...i,
+      content: editDraft.trim(),
+      qualityStatus: data.qualityStatus,
+      followUpQuestion: data.followUpQuestion,
+    } : i));
+    if (data.qualityStatus === "needs_followup") {
+      setFollowUp({
+        id,
+        baseContent: editDraft.trim(),
+        question: data.followUpQuestion,
+        draft: "",
+        saving: false,
+      });
+    }
     setEditId(null);
+  }
+
+  async function handleSaveFollowUp() {
+    if (!followUp || !followUp.draft.trim()) return;
+    const content = `${followUp.baseContent.trim()}\n\nAdditional detail: ${followUp.draft.trim()}`;
+    setFollowUp({ ...followUp, saving: true });
+    const res = await fetch(`/api/profile-supplements/${followUp.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    const data = await res.json() as { qualityStatus: QualityStatus; followUpQuestion: string };
+    setItems((prev) => prev.map((i) => i.id === followUp.id ? {
+      ...i,
+      content,
+      qualityStatus: data.qualityStatus,
+      followUpQuestion: data.followUpQuestion,
+    } : i));
+    if (data.qualityStatus === "needs_followup") {
+      setFollowUp({
+        id: followUp.id,
+        baseContent: content,
+        question: data.followUpQuestion,
+        draft: "",
+        saving: false,
+      });
+    } else {
+      setFollowUp(null);
+    }
   }
 
   return (
@@ -108,6 +182,26 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
                 <div className="flex items-start gap-3 px-3 py-2">
                   <p className="flex-1 text-sm text-ink leading-6">{item.content}</p>
                   <div className="flex gap-2 shrink-0 pt-0.5">
+                    {item.qualityStatus === "addressed" ? (
+                      <Badge tone="success" className="text-[11px] px-2 min-h-0 py-0.5">Addressed</Badge>
+                    ) : (
+                      <Badge tone="warning" className="text-[11px] px-2 min-h-0 py-0.5">Needs detail</Badge>
+                    )}
+                    {item.qualityStatus === "needs_followup" && (
+                      <button
+                        className="text-xs text-warning hover:underline"
+                        onClick={() => setFollowUp({
+                          id: item.id,
+                          baseContent: item.content,
+                          question: item.followUpQuestion,
+                          draft: "",
+                          saving: false,
+                        })}
+                        type="button"
+                      >
+                        Add detail
+                      </button>
+                    )}
                     <button
                       className="text-xs text-muted hover:text-accent transition-colors"
                       onClick={() => startEdit(item)}
@@ -130,6 +224,51 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
         </ul>
       ) : (
         <p className="text-sm text-muted">No supplements added yet. Add context that strengthens your profile across all jobs.</p>
+      )}
+      {followUp && (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          role="dialog"
+        >
+          <div className="w-full max-w-lg rounded-panel bg-panel shadow-2xl">
+            <div className="border-b border-border px-5 py-4">
+              <h3 className="text-sm font-semibold text-ink">Add evidence detail</h3>
+              <p className="mt-1 text-sm text-muted">{followUp.question}</p>
+            </div>
+            <div className="grid gap-3 px-5 py-4">
+              <div className="rounded-control border border-border bg-surface px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Saved draft</p>
+                <p className="mt-1 text-sm leading-6 text-ink">{followUp.baseContent}</p>
+              </div>
+              <textarea
+                aria-label="Follow-up detail"
+                autoFocus
+                className="min-h-24 w-full resize-none rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                onChange={(event) => setFollowUp({ ...followUp, draft: event.target.value })}
+                placeholder="Add the role, project, your action, and the result..."
+                value={followUp.draft}
+              />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+              <button
+                className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
+                onClick={() => setFollowUp(null)}
+                type="button"
+              >
+                Later
+              </button>
+              <button
+                className="h-9 rounded-control border border-accent bg-accent px-3 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={followUp.saving || !followUp.draft.trim()}
+                onClick={handleSaveFollowUp}
+                type="button"
+              >
+                {followUp.saving ? "Saving…" : "Save detail"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
