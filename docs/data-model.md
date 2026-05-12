@@ -49,6 +49,7 @@ and initializes an empty local profile if the database is empty.
 | `0033_ai_prompt_overrides` | Adds local overrides for user-tunable AI prompts |
 | `0034_remove_legacy_demo_resumes` | Removes five hard-coded demo resume lane records left behind by `0030` (IDs: `accessibility-design-systems`, `ux-design`, `design-operations`, `principal-product-design`, `teaching-ux-education`); cascades to `resume_builder_versions` |
 | `0035_browser_board_job_provenance` | Adds `source_url`, `original_posting_url`, and `original_posting_key` to support browser-assisted LinkedIn, Wellfound, and Work at a Startup imports |
+| `0036_gap_answer_quality` | Adds quality-status, follow-up question, and assessment metadata to gap responses and profile supplements |
 
 ---
 
@@ -472,6 +473,10 @@ User-written responses to job skill gaps, with optional AI polish.
 | `raw_response` | User's initial response |
 | `polished_response` | AI-polished version |
 | `source` | `user-added` / `ai-generated` |
+| `quality_status` | `addressed` when the answer is concrete enough for resume tailoring, otherwise `needs_followup` |
+| `follow_up_question` | Targeted question shown when the answer needs more detail |
+| `assessment_json` | Assessment rationale and signal metadata |
+| `assessed_at` | Timestamp for the latest quality assessment |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
 
@@ -484,6 +489,10 @@ Supplemental profile content used to fill skill gaps in evaluations and resumes.
 | `id` | Row identifier |
 | `content` | Supplement text |
 | `tags_json` | Array of tags for matching |
+| `quality_status` | `addressed` when the supplement is concrete enough for resume tailoring, otherwise `needs_followup` |
+| `follow_up_question` | Targeted question shown when the supplement needs more detail |
+| `assessment_json` | Assessment rationale and signal metadata |
+| `assessed_at` | Timestamp for the latest quality assessment |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
 

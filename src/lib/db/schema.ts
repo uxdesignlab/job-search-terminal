@@ -646,5 +646,19 @@ export const migrations = [
       alter table jobs add column original_posting_key text not null default '';
       create index if not exists idx_jobs_original_posting_key on jobs(original_posting_key);
     `
+  },
+  {
+    id: "0036_gap_answer_quality",
+    sql: `
+      alter table job_gap_responses add column quality_status text not null default 'addressed';
+      alter table job_gap_responses add column follow_up_question text not null default '';
+      alter table job_gap_responses add column assessment_json text not null default '{}';
+      alter table job_gap_responses add column assessed_at text;
+
+      alter table profile_gap_supplements add column quality_status text not null default 'addressed';
+      alter table profile_gap_supplements add column follow_up_question text not null default '';
+      alter table profile_gap_supplements add column assessment_json text not null default '{}';
+      alter table profile_gap_supplements add column assessed_at text;
+    `
   }
 ];

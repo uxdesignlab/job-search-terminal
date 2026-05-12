@@ -374,7 +374,12 @@ export default async function SettingsPage({
                 </CardDescription>
               </CardHeader>
               <ProfileSupplementsEditor
-                initialSupplements={supplements.map((s) => ({ id: s.id, content: s.content }))}
+                initialSupplements={supplements.map((s) => ({
+                  id: s.id,
+                  content: s.content,
+                  qualityStatus: s.qualityStatus,
+                  followUpQuestion: s.followUpQuestion,
+                }))}
               />
             </Card>
           </>

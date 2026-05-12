@@ -200,6 +200,9 @@ Tabbed view for a single job. Four tabs:
 - Evaluation strengths (top 4) as suggested emphasis signals.
 - Gap responses — user-supplied notes addressing identified experience gaps.
 - Profile supplements — any extra context the user has added.
+- Gap answer quality checks — vague gap responses and supplements are saved as
+  drafts with a follow-up question, and only confirmed answers are used during
+  resume tailoring.
 - Job description excerpt (up to 3,000 chars) — allows the AI to verify keyword
   context and understand requirement weight, not just the extracted keyword list.
 - Skills preference flags — skills the user wants to emphasize or de-emphasize
@@ -501,7 +504,9 @@ Three configuration tabs:
 
 ### Preferences
 - Edit title include / exclude filters.
-- Add profile supplements for gap filling.
+- Add profile supplements for gap filling. Supplements are checked for concrete
+  role, project, action, and outcome detail before they are treated as confirmed
+  resume-tailoring context.
 - Adjust other search preferences.
 
 ---

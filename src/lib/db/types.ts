@@ -580,6 +580,8 @@ export type WritingStyleRecord = {
   lastUpdated: string;
 };
 
+export type GapAnswerQualityStatus = "addressed" | "needs_followup";
+
 export type JobGapResponseRecord = {
   id: string;
   jobId: string;
@@ -587,6 +589,10 @@ export type JobGapResponseRecord = {
   rawResponse: string;
   polishedResponse: string;
   source: string;
+  qualityStatus: GapAnswerQualityStatus;
+  followUpQuestion: string;
+  assessment: JsonValue;
+  assessedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -597,12 +603,19 @@ export type JobGapResponseInput = {
   gapText: string;
   rawResponse: string;
   polishedResponse: string;
+  qualityStatus?: GapAnswerQualityStatus;
+  followUpQuestion?: string;
+  assessment?: JsonValue;
 };
 
 export type ProfileSupplementRecord = {
   id: string;
   content: string;
   tags: string[];
+  qualityStatus: GapAnswerQualityStatus;
+  followUpQuestion: string;
+  assessment: JsonValue;
+  assessedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -611,6 +624,9 @@ export type ProfileSupplementInput = {
   id: string;
   content: string;
   tags: string[];
+  qualityStatus?: GapAnswerQualityStatus;
+  followUpQuestion?: string;
+  assessment?: JsonValue;
 };
 
 export type ActionQueueData = {

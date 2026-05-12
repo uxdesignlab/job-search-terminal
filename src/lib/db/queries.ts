@@ -2365,9 +2365,17 @@ type JobGapResponseRow = {
   raw_response: string;
   polished_response: string;
   source: string;
+  quality_status: string;
+  follow_up_question: string;
+  assessment_json: string;
+  assessed_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+function normalizeGapQualityStatus(value: string | undefined): JobGapResponseRecord["qualityStatus"] {
+  return value === "needs_followup" ? "needs_followup" : "addressed";
+}
 
 function mapGapResponse(row: JobGapResponseRow): JobGapResponseRecord {
   return {
@@ -2377,6 +2385,10 @@ function mapGapResponse(row: JobGapResponseRow): JobGapResponseRecord {
     rawResponse: row.raw_response,
     polishedResponse: row.polished_response,
     source: row.source,
+    qualityStatus: normalizeGapQualityStatus(row.quality_status),
+    followUpQuestion: row.follow_up_question,
+    assessment: parseJson<JsonValue>(row.assessment_json),
+    assessedAt: row.assessed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -2390,17 +2402,30 @@ export function getJobGapResponses(jobId: string): JobGapResponseRecord[] {
 }
 
 export function saveJobGapResponse(input: JobGapResponseInput): void {
+  const qualityStatus = input.qualityStatus ?? "addressed";
+  const followUpQuestion = input.followUpQuestion ?? "";
+  const assessmentJson = JSON.stringify(input.assessment ?? {});
   getDatabase()
     .prepare(
-      `insert into job_gap_responses (id, job_id, gap_text, raw_response, polished_response, source, updated_at)
-       values (@id, @jobId, @gapText, @rawResponse, @polishedResponse, 'user-added', current_timestamp)
+      `insert into job_gap_responses (
+         id, job_id, gap_text, raw_response, polished_response, source,
+         quality_status, follow_up_question, assessment_json, assessed_at, updated_at
+       )
+       values (
+         @id, @jobId, @gapText, @rawResponse, @polishedResponse, 'user-added',
+         @qualityStatus, @followUpQuestion, @assessmentJson, current_timestamp, current_timestamp
+       )
        on conflict(job_id, gap_text) do update set
          raw_response = excluded.raw_response,
          polished_response = excluded.polished_response,
+         quality_status = excluded.quality_status,
+         follow_up_question = excluded.follow_up_question,
+         assessment_json = excluded.assessment_json,
+         assessed_at = excluded.assessed_at,
          updated_at = current_timestamp`
     )
-    .run(input);
-  logActivity("gap_response", input.jobId, "Gap response saved", { gapText: input.gapText });
+    .run({ ...input, qualityStatus, followUpQuestion, assessmentJson });
+  logActivity("gap_response", input.jobId, "Gap response saved", { gapText: input.gapText, qualityStatus });
 }
 
 export function deleteJobGapResponse(jobId: string, gapText: string): void {
@@ -2415,6 +2440,10 @@ type ProfileSupplementRow = {
   id: string;
   content: string;
   tags_json: string;
+  quality_status: string;
+  follow_up_question: string;
+  assessment_json: string;
+  assessed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -2427,23 +2456,45 @@ export function getProfileSupplements(): ProfileSupplementRecord[] {
     id: r.id,
     content: r.content,
     tags: parseJson<string[]>(r.tags_json),
+    qualityStatus: normalizeGapQualityStatus(r.quality_status),
+    followUpQuestion: r.follow_up_question,
+    assessment: parseJson<JsonValue>(r.assessment_json),
+    assessedAt: r.assessed_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
 }
 
 export function saveProfileSupplement(input: ProfileSupplementInput): void {
+  const qualityStatus = input.qualityStatus ?? "addressed";
+  const followUpQuestion = input.followUpQuestion ?? "";
+  const assessmentJson = JSON.stringify(input.assessment ?? {});
   getDatabase()
     .prepare(
-      `insert into profile_gap_supplements (id, content, tags_json, updated_at)
-       values (@id, @content, @tagsJson, current_timestamp)
+      `insert into profile_gap_supplements (
+         id, content, tags_json, quality_status, follow_up_question, assessment_json, assessed_at, updated_at
+       )
+       values (
+         @id, @content, @tagsJson, @qualityStatus, @followUpQuestion, @assessmentJson, current_timestamp, current_timestamp
+       )
        on conflict(id) do update set
          content = excluded.content,
          tags_json = excluded.tags_json,
+         quality_status = excluded.quality_status,
+         follow_up_question = excluded.follow_up_question,
+         assessment_json = excluded.assessment_json,
+         assessed_at = excluded.assessed_at,
          updated_at = current_timestamp`
     )
-    .run({ id: input.id, content: input.content, tagsJson: JSON.stringify(input.tags) });
-  logActivity("profile_supplement", input.id, "Profile supplement saved", {});
+    .run({
+      id: input.id,
+      content: input.content,
+      tagsJson: JSON.stringify(input.tags),
+      qualityStatus,
+      followUpQuestion,
+      assessmentJson,
+    });
+  logActivity("profile_supplement", input.id, "Profile supplement saved", { qualityStatus });
 }
 
 export function deleteProfileSupplement(id: string): void {

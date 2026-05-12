@@ -106,7 +106,12 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
       : "";
   const gapResponses = getJobGapResponses(id);
   const gapResponseMap = Object.fromEntries(
-    gapResponses.map((r) => [r.gapText, { rawResponse: r.rawResponse, polishedResponse: r.polishedResponse }])
+    gapResponses.map((r) => [r.gapText, {
+      rawResponse: r.rawResponse,
+      polishedResponse: r.polishedResponse,
+      qualityStatus: r.qualityStatus,
+      followUpQuestion: r.followUpQuestion,
+    }])
   );
   const allGapItems = [...(evaluation?.gaps ?? job.gaps), ...(evaluation?.redFlags ?? job.redFlags)];
 

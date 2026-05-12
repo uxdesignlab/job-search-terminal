@@ -41,8 +41,8 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
 
   if (hasAIKey) {
     try {
-      const gapResponses = getJobGapResponses(jobId);
-      const supplements = getProfileSupplements();
+      const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
+      const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
       aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills);
     } catch {
       // Fall through to approved source content.
@@ -123,8 +123,8 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
 
   if (hasAIKey) {
     try {
-      const gapResponses = getJobGapResponses(jobId);
-      const supplements = getProfileSupplements();
+      const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
+      const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
       aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills);
     } catch { /* fall through to source resume summary */ }
   }
