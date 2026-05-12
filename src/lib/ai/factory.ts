@@ -1,6 +1,7 @@
 import { getAISettings } from "@/lib/db/queries";
 import type { AIProviderName } from "@/lib/db/types";
 import { AnthropicProvider } from "./anthropic";
+import { FallbackProvider } from "./fallback-provider";
 import { GeminiProvider } from "./gemini";
 import { OpenAIProvider } from "./openai";
 import type { AIProvider, AIProviderConfig } from "./provider";
@@ -47,17 +48,16 @@ export function getActiveProvider(): AIProvider {
     }
   }
 
-  const chosen = candidates[0];
-  if (!chosen) {
+  if (candidates.length === 0) {
     throw new Error(
       "No AI provider configured. Add an API key in Settings → AI Provider."
     );
   }
 
-  return createProvider(chosen, {
-    apiKey: providerKey(chosen),
-    model: providerModel(chosen)
-  });
+  const providers = candidates.map((name) =>
+    createProvider(name, { apiKey: providerKey(name), model: providerModel(name) })
+  );
+  return providers.length === 1 ? providers[0] : new FallbackProvider(providers);
 }
 
 /** Same resolution as {@link getActiveProvider}, but returns null when no API key is configured. */
