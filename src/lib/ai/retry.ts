@@ -1,11 +1,24 @@
-const RETRYABLE = ["503", "429", "overloaded", "unavailable", "rate limit", "too many requests", "econnreset", "etimedout"];
+// Rate limit errors (429, "rate limit", "too many requests") are excluded — they need
+// 20-60s to clear and short retries just waste time. If the provider attaches a
+// retryAfterMs property (from the Retry-After header), withRetry will honor it instead.
+const RETRYABLE = ["503", "overloaded", "unavailable", "econnreset", "etimedout"];
+
+const MAX_AUTO_RETRY_AFTER_MS = 30_000;
 
 function isRetryable(error: unknown): boolean {
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return RETRYABLE.some((pattern) => msg.includes(pattern));
 }
 
-function delay(ms: number) {
+function getRetryAfterMs(error: unknown): number | null {
+  if (error && typeof error === "object" && "retryAfterMs" in error) {
+    const ms = (error as { retryAfterMs: unknown }).retryAfterMs;
+    if (typeof ms === "number" && ms <= MAX_AUTO_RETRY_AFTER_MS) return ms;
+  }
+  return null;
+}
+
+function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -16,9 +29,16 @@ export async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, baseDe
       return await fn();
     } catch (error) {
       lastError = error;
-      if (attempt < maxAttempts && isRetryable(error)) {
-        await delay(baseDelayMs * 2 ** (attempt - 1));
-        continue;
+      if (attempt < maxAttempts) {
+        const retryAfterMs = getRetryAfterMs(error);
+        if (retryAfterMs !== null) {
+          await sleep(retryAfterMs);
+          continue;
+        }
+        if (isRetryable(error)) {
+          await sleep(baseDelayMs * 2 ** (attempt - 1));
+          continue;
+        }
       }
       throw error;
     }
