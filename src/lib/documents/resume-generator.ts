@@ -43,7 +43,8 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     try {
       const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
       const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills);
+      const missing = missingKeywordsFor(sourceDraft, evaluation.keywords);
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, missing);
     } catch {
       // Fall through to approved source content.
     }
@@ -125,7 +126,8 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     try {
       const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
       const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills);
+      const missing = missingKeywordsFor(sourceDraft, evaluation.keywords);
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, missing);
     } catch { /* fall through to source resume summary */ }
   }
 
@@ -930,15 +932,25 @@ function extractTextValues(value: unknown): string {
   return "";
 }
 
-function keywordCoverageFor(content: ResumeTemplateInput, keywords: string[]) {
+const STOP_WORDS = new Set(["and", "or", "in", "of", "the", "a", "an", "to", "for", "with", "by", "as", "is", "are", "was", "were", "at", "on", "its", "be", "been"]);
+
+function keywordHit(text: string, keyword: string): boolean {
+  if (text.includes(keyword)) return true;
+  const words = keyword.split(/[\s\-\/,]+/).filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
+  return words.length > 0 && words.some((w) => text.includes(w));
+}
+
+export function keywordCoverageFor(content: ResumeTemplateInput, keywords: string[]) {
   const text = extractTextValues(content).toLowerCase();
   const relevant = unique(keywords.map((keyword) => keyword.toLowerCase())).filter(Boolean);
-  if (relevant.length === 0) {
-    return 0;
-  }
-
-  const matched = relevant.filter((keyword) => text.includes(keyword)).length;
+  if (relevant.length === 0) return 0;
+  const matched = relevant.filter((kw) => keywordHit(text, kw)).length;
   return Math.round((matched / relevant.length) * 100);
+}
+
+export function missingKeywordsFor(content: ResumeTemplateInput, keywords: string[]): string[] {
+  const text = extractTextValues(content).toLowerCase();
+  return unique(keywords.map((k) => k.toLowerCase())).filter(Boolean).filter((kw) => !keywordHit(text, kw));
 }
 
 function paperFormatFor(job: JobRecord): "letter" | "a4" {

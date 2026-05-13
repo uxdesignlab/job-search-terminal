@@ -170,7 +170,13 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           <p className="text-xs text-muted">Edit resume draft</p>
           <h1 className="text-lg font-semibold text-ink">{documentTitle}</h1>
           <p className="mt-0.5 text-xs text-muted">
-            Base: {baseResume} · {keywordCoverage}% keyword coverage
+            Base: {baseResume} ·{" "}
+            <span className={keywordCoverage >= 70 ? "text-success font-medium" : keywordCoverage >= 40 ? "text-warning font-medium" : "text-danger font-medium"}>
+              {keywordCoverage}% keyword coverage
+            </span>
+            {keywordCoverage < 70 && (
+              <span className="ml-1 text-muted">(target: 70%+)</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
