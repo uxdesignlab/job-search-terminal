@@ -120,6 +120,9 @@ status, posting maintenance, and bulk tools.
   profile preferences and constraints, or `Out of scope` when saved preferences
   have changed and the job no longer fits. This is a derived display/filter
   value, not a separate stored job status.
+- **Posted column** — shows a short `MM/DD/YY` when a real posted date is known;
+  the cell is left empty when there is no date or the stored value is not a
+  parseable calendar date (no em dash or placeholder text).
 - Text search across company and title.
 - Bulk operations: change status on multiple jobs, archive, or delete in bulk.
 - Marking a job **Skipped** (individually or in bulk) removes it from this list
