@@ -63,7 +63,7 @@ export function getMainJobColOptions(jobs: MainJobTableRecord[], col: MainJobsSo
   if (col === "fit") return [...JOB_FIT_BUCKETS];
   if (col === "preference") return [MATCHES_PREFERENCES_LABEL, OUTSIDE_PREFERENCES_LABEL];
   if (col === "posted" || col === "scanned") return ["Has date", "No date"];
-  if (col === "source") return ["LinkedIn", "Wellfound", "Work at a Startup", "Manual", "Scanner"];
+  if (col === "source") return ["LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Manual", "Scanner"];
   return [...new Set(jobs.map((j) => getMainJobColValue(j, col)))].sort();
 }
 

@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "source": "indeed",
+    "scanTimestamp": "2026-05-11T12:20:00Z",
+    "scanDurationSeconds": 48,
+    "totalJobsDiscovered": 1,
+    "totalJobsValid": 1,
+    "totalJobsSkipped": 0,
+    "searchCriteria": {
+      "titles": ["Product Design Lead"],
+      "locations": ["Remote United States"],
+      "remotePreference": "remote-only"
+    },
+    "generatedBy": "Codex Browser Board Scanner Fixture"
+  },
+  "jobs": [
+    {
+      "id": "fixture-indeed-1",
+      "company": "Acme AI",
+      "position": "Product Design Lead",
+      "jobDescription": "Own end-to-end product design for an AI workflow product.",
+      "sourceUrl": "https://www.indeed.com/viewjob?jk=abc123def456&utm_campaign=job_alert",
+      "originalPostingUrl": "https://job-boards.greenhouse.io/acmeai/jobs/1234567",
+      "url": "https://job-boards.greenhouse.io/acmeai/jobs/1234567",
+      "discoveredAt": "2026-05-11T12:20:00Z",
+      "location": "Remote United States"
+    }
+  ],
+  "validationSummary": {
+    "totalRecords": 1,
+    "validRecords": 1,
+    "invalidRecords": 0,
+    "errors": []
+  }
+}

@@ -34,8 +34,8 @@ same local import contract:
 
 1. Read target roles, preferred locations, remote preference, and title filters
    from `data/job-search-terminal.sqlite`.
-2. Browse only visible job-board results in Chrome for LinkedIn, Wellfound, or
-   Work at a Startup.
+2. Browse only visible job-board results in Chrome for LinkedIn, Wellfound,
+   Work at a Startup, Glassdoor, Indeed, or Monster.
 3. Extract company, title, location, description, platform URL, and a visible
    job-specific employer/ATS apply URL when one exists.
 4. Prefer the employer/ATS URL as the job URL; otherwise use the platform job
@@ -44,8 +44,9 @@ same local import contract:
    rename to the final `.json` file. Legacy LinkedIn files may still be written
    to `data/linkedin-imports/`.
 
-Supported `metadata.source` values are `linkedin`, `wellfound`, and
-`workatastartup`. Never click Apply, submit forms, log in for the user, message
+Supported `metadata.source` values are `linkedin`, `wellfound`,
+`workatastartup`, `glassdoor`, `indeed`, and `monster`. Never click Apply,
+submit forms, log in for the user, message
 recruiters, bypass bot detection, or continue after CAPTCHA/login walls. Use the
 in-app browser for local Job Search Terminal verification; use Chrome only when
 the task needs the user's browser session.

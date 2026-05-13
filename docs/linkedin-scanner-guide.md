@@ -1,6 +1,6 @@
 # Browser Job Board Scanner — User Guide
 
-The browser job board scanner lets Claude Desktop or Codex browse supported boards on your behalf and automatically import matching job postings into Job Search Terminal. It supports LinkedIn, Wellfound, and Work at a Startup using the same local JSON import pipeline.
+The browser job board scanner lets Claude Desktop or Codex browse supported boards on your behalf and automatically import matching job postings into Job Search Terminal. It supports LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster using the same local JSON import pipeline.
 
 ---
 
@@ -39,6 +39,9 @@ The agent will use these exact settings when building the board search.
    - `Scan LinkedIn for jobs`
    - `Find new jobs on Wellfound`
    - `Scan Work at a Startup for jobs`
+   - `Scan Glassdoor for jobs`
+   - `Scan Indeed for jobs`
+   - `Scan Monster for jobs`
 4. The agent will confirm your saved criteria and ask before starting when a signed-in browser session is involved
 5. The agent opens the requested board in Chrome and begins scanning
 6. You'll see live status updates as it pages through results
@@ -63,7 +66,7 @@ After a scan, imported jobs appear in your Jobs table (`/jobs`) with two new ind
 
 ### Source Badge
 
-A neutral-gray **LinkedIn**, **Wellfound**, or **Work at a Startup** badge in the Source column identifies every job that came from a browser-board scan. This lets you quickly tell imported jobs apart from ATS-scanned jobs or manually added ones.
+A neutral-gray **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, or **Monster** badge in the Source column identifies every job that came from a browser-board scan. This lets you quickly tell imported jobs apart from ATS-scanned jobs or manually added ones.
 
 You can filter the table by source using the **Source** column filter.
 

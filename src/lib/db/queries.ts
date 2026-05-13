@@ -1360,7 +1360,13 @@ export type BrowserBoardJobInput = {
   sourceUrl: string;
   originalPostingUrl: string;
   originalPostingKey: string;
-  source: "linkedin-claude-scan" | "wellfound-browser-scan" | "workatastartup-browser-scan";
+  source:
+    | "linkedin-claude-scan"
+    | "wellfound-browser-scan"
+    | "workatastartup-browser-scan"
+    | "glassdoor-browser-scan"
+    | "indeed-browser-scan"
+    | "monster-browser-scan";
   location: string;
   rawDescription: string;
   datePosted: string | null;
@@ -1455,7 +1461,14 @@ export function getLatestBrowserBoardImport() {
     .prepare(
       `select id, new_jobs_count, duplicate_count, completed_at, scan_type
        from scan_runs
-       where scan_type in ('linkedin-claude-scan', 'wellfound-browser-scan', 'workatastartup-browser-scan')
+       where scan_type in (
+         'linkedin-claude-scan',
+         'wellfound-browser-scan',
+         'workatastartup-browser-scan',
+         'glassdoor-browser-scan',
+         'indeed-browser-scan',
+         'monster-browser-scan'
+       )
        order by started_at desc
        limit 1`
     )
@@ -1788,7 +1801,10 @@ function inferRemoteType(location: string) {
 function sourceNameForSummary(source: BrowserBoardJobInput["source"]) {
   if (source === "linkedin-claude-scan") return "LinkedIn";
   if (source === "wellfound-browser-scan") return "Wellfound";
-  return "Work at a Startup";
+  if (source === "workatastartup-browser-scan") return "Work at a Startup";
+  if (source === "glassdoor-browser-scan") return "Glassdoor";
+  if (source === "indeed-browser-scan") return "Indeed";
+  return "Monster";
 }
 
 function scanActivityLabel(run: ScanRunRecord) {

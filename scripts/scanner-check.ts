@@ -155,6 +155,38 @@ assert.equal(workAtAStartupJobs.jobs[0].originalPostingKey, "workatastartup:200-
 assert.equal(workAtAStartupJobs.jobs[1].isDuplicate, true);
 assert.deepEqual(workAtAStartupJobs.jobs[1].duplicateOf, [wellfoundJobs.jobs[0].id]);
 
+const glassdoorScan = parseBrowserBoardScanFile(readFixture("glassdoor-browser-scan.json"));
+const glassdoorJobs = prepareBrowserBoardJobs(glassdoorScan, {
+  dedup: sharedDedup,
+  now: new Date("2026-05-11T12:15:00Z")
+});
+assert.equal(glassdoorJobs.jobs[0].source, "glassdoor-browser-scan");
+assert.equal(glassdoorJobs.jobs[0].url, "https://www.glassdoor.com/job-listing/product-design-manager-acme-JV_IC1128808_KO0,22_KE23,27.htm");
+assert.equal(glassdoorJobs.jobs[0].sourceUrl, "https://www.glassdoor.com/job-listing/product-design-manager-acme-JV_IC1128808_KO0,22_KE23,27.htm");
+assert.equal(glassdoorJobs.jobs[0].originalPostingKey, "glassdoor:product-design-manager-acme-JV_IC1128808_KO0,22_KE23,27.htm");
+
+const indeedScan = parseBrowserBoardScanFile(readFixture("indeed-browser-scan.json"));
+const indeedJobs = prepareBrowserBoardJobs(indeedScan, {
+  dedup: sharedDedup,
+  now: new Date("2026-05-11T12:20:00Z")
+});
+assert.equal(indeedJobs.jobs[0].source, "indeed-browser-scan");
+assert.equal(indeedJobs.jobs[0].url, "https://job-boards.greenhouse.io/acmeai/jobs/1234567");
+assert.equal(indeedJobs.jobs[0].sourceUrl, "https://www.indeed.com/viewjob?jk=abc123def456");
+assert.equal(indeedJobs.jobs[0].originalPostingKey, "greenhouse:acmeai:1234567");
+assert.equal(indeedJobs.jobs[0].isDuplicate, true);
+assert.equal(indeedJobs.jobs[0].duplicateOf?.includes(wellfoundJobs.jobs[0].id), true);
+
+const monsterScan = parseBrowserBoardScanFile(readFixture("monster-browser-scan.json"));
+const monsterJobs = prepareBrowserBoardJobs(monsterScan, {
+  dedup: sharedDedup,
+  now: new Date("2026-05-11T12:25:00Z")
+});
+assert.equal(monsterJobs.jobs[0].source, "monster-browser-scan");
+assert.equal(monsterJobs.jobs[0].url, "https://www.monster.com/job-openings/senior-product-designer-remote-us--987654");
+assert.equal(monsterJobs.jobs[0].sourceUrl, "https://www.monster.com/job-openings/senior-product-designer-remote-us--987654");
+assert.equal(monsterJobs.jobs[0].originalPostingKey, "monster:senior-product-designer-remote-us--987654");
+
 async function main() {
   const result = await runCareerOpsScanner({
     persist: false,

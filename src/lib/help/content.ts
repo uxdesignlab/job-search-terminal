@@ -500,7 +500,7 @@ export const helpPages: HelpPage[] = [
         title: "What you need",
         bullets: [
           "Claude Desktop with Claude in Chrome, or Codex with the Codex Chrome Extension.",
-          "LinkedIn, Wellfound, or Work at a Startup open in Chrome if the board requires an active session.",
+          "LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster open in Chrome if the board requires an active session.",
           "Job Search Terminal running locally or available to the agent.",
           "Target roles, preferred locations, work modes, and title filters saved in Job Search Terminal.",
         ],
@@ -528,7 +528,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Start with a simple prompt",
-            body: "Ask the agent to scan LinkedIn, Wellfound, or Work at a Startup for jobs matching your saved criteria.",
+            body: "Ask the agent to scan LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster for jobs matching your saved criteria.",
           },
           {
             title: "Confirm before browsing",
@@ -567,7 +567,7 @@ export const helpPages: HelpPage[] = [
         title: "Duplicates and imported jobs",
         bullets: [
           "Browser-board jobs enter the pipeline with status Found and recommendation Needs review.",
-          "LinkedIn, Wellfound, and Work at a Startup badges identify imported jobs in the Jobs table.",
+          "LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster badges identify imported jobs in the Jobs table.",
           "A Duplicate badge appears when the original posting key, URL, or company plus title and location matches an existing record.",
           "Duplicate jobs are not silently dropped; they stay visible so you can review them.",
           "Filtering by Source is the fastest way to review a fresh import.",

@@ -1,7 +1,8 @@
 # Browser Board Scanner — Technical Reference
 
 The browser board scanner generalizes the original LinkedIn import flow for
-agent-assisted job discovery across LinkedIn, Wellfound, and Work at a Startup.
+agent-assisted job discovery across LinkedIn, Wellfound, Work at a Startup,
+Glassdoor, Indeed, and Monster.
 It is intentionally not a server-side crawler. Claude Desktop and Codex browse
 visible pages in Chrome, write a local JSON file, and Job Search Terminal imports
 that file into SQLite.
@@ -36,6 +37,9 @@ importBrowserBoardJobs()
 | LinkedIn | `linkedin` | `linkedin-claude-scan` |
 | Wellfound | `wellfound` | `wellfound-browser-scan` |
 | Work at a Startup | `workatastartup` | `workatastartup-browser-scan` |
+| Glassdoor | `glassdoor` | `glassdoor-browser-scan` |
+| Indeed | `indeed` | `indeed-browser-scan` |
+| Monster | `monster` | `monster-browser-scan` |
 
 Legacy LinkedIn files without `metadata.source` remain supported when imported
 through the legacy LinkedIn directory or route.

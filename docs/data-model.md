@@ -48,7 +48,7 @@ and initializes an empty local profile if the database is empty.
 | `0032_resume_builder_versions` | Adds approved structured resume versions per uploaded lane |
 | `0033_ai_prompt_overrides` | Adds local overrides for user-tunable AI prompts |
 | `0034_remove_legacy_demo_resumes` | Removes five hard-coded demo resume lane records left behind by `0030` (IDs: `accessibility-design-systems`, `ux-design`, `design-operations`, `principal-product-design`, `teaching-ux-education`); cascades to `resume_builder_versions` |
-| `0035_browser_board_job_provenance` | Adds `source_url`, `original_posting_url`, and `original_posting_key` to support browser-assisted LinkedIn, Wellfound, and Work at a Startup imports |
+| `0035_browser_board_job_provenance` | Adds `source_url`, `original_posting_url`, and `original_posting_key` to support browser-assisted LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster imports |
 | `0036_gap_answer_quality` | Adds quality-status, follow-up question, and assessment metadata to gap responses and profile supplements |
 
 ---
@@ -164,7 +164,7 @@ Every job discovered by scanning or added manually.
 | `source_url` | Platform URL where a browser-board job was found |
 | `original_posting_url` | Visible job-specific employer/ATS apply URL when available |
 | `original_posting_key` | Canonical dedupe key, preferring ATS provider + job ID |
-| `source` | ATS source, manual source, or browser-board source (`linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`) |
+| `source` | ATS source, manual source, or browser-board source (`linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`) |
 | `location` | Job location text |
 | `remote_type` | `remote` / `hybrid` / `onsite` / `unknown` |
 | `date_posted` | Date from ATS if available |
@@ -318,7 +318,7 @@ History of job scan executions.
 | `duplicate_count` | Duplicate jobs skipped |
 | `new_jobs_count` | Net new jobs added |
 | `errors_json` | Array of per-company error objects |
-| `scan_type` | `careerops`, `linkedin-claude-scan`, `wellfound-browser-scan`, or `workatastartup-browser-scan` |
+| `scan_type` | `careerops`, `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, or `monster-browser-scan` |
 
 ### evaluation_feedback
 

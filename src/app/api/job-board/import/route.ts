@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "@/lib/scanner/browser-board-importer";
 
 const WATCH_DIR = getBrowserBoardImportDirectory();
-const FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup)-jobs-.+\.json$/;
+const FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster)-jobs-.+\.json$/;
 
 export async function POST(req: Request) {
   try {

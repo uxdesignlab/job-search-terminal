@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "source": "monster",
+    "scanTimestamp": "2026-05-11T12:25:00Z",
+    "scanDurationSeconds": 51,
+    "totalJobsDiscovered": 1,
+    "totalJobsValid": 1,
+    "totalJobsSkipped": 0,
+    "searchCriteria": {
+      "titles": ["Senior Product Designer"],
+      "locations": ["Remote United States"],
+      "remotePreference": "remote-only"
+    },
+    "generatedBy": "Codex Browser Board Scanner Fixture"
+  },
+  "jobs": [
+    {
+      "id": "fixture-monster-1",
+      "company": "Example Health",
+      "position": "Senior Product Designer",
+      "jobDescription": "Design clinical workflow tools with product, research, and engineering partners.",
+      "sourceUrl": "https://www.monster.com/job-openings/senior-product-designer-remote-us--987654?utm_medium=email",
+      "url": "https://www.monster.com/job-openings/senior-product-designer-remote-us--987654",
+      "originalPostingUrl": "",
+      "discoveredAt": "2026-05-11T12:25:00Z",
+      "location": "Remote United States"
+    }
+  ],
+  "validationSummary": {
+    "totalRecords": 1,
+    "validRecords": 1,
+    "invalidRecords": 0,
+    "errors": []
+  }
+}
