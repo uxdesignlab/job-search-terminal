@@ -24,9 +24,6 @@ import {
   Textarea,
 } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
-import { prepareApplicationAnswers } from "@/lib/applications/application-assistant";
-import { prepareApplicationAnswersWithAI } from "@/lib/applications/llm-answer-generator";
-import { getAISettings } from "@/lib/db/queries";
 import { isApplicationStatus } from "@/lib/applications/status";
 import { formatPostedDate } from "@/lib/dates";
 import {
@@ -145,21 +142,6 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
     });
     revalidatePath(`/jobs/${id}`);
     revalidatePath("/jobs");
-    revalidatePath("/dashboard");
-  }
-
-  async function prepareAnswersAction(formData: FormData) {
-    "use server";
-    const customQuestions = formData.getAll("question").map(String).filter((q) => q.trim());
-    const aiSettings = getAISettings();
-    const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
-    if (hasAIKey) {
-      await prepareApplicationAnswersWithAI(id, customQuestions);
-    } else {
-      prepareApplicationAnswers(id, customQuestions);
-    }
-    revalidatePath(`/jobs/${id}`);
-    revalidatePath("/applications");
     revalidatePath("/dashboard");
   }
 
@@ -649,7 +631,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                 <CardDescription>Paste the questions from the application form and get AI-generated answers grounded in your resume and evaluation.</CardDescription>
               </CardHeader>
               <div className="grid gap-4">
-                <ApplicationQuestionsForm action={prepareAnswersAction} />
+                <ApplicationQuestionsForm jobId={id} />
                 {answerDrafts.length > 0 ? (
                   <ol className="grid gap-3">
                     {answerDrafts.map((draft) => (

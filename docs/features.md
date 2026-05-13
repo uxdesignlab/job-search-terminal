@@ -232,6 +232,14 @@ Tabbed view for a single job. Four tabs:
 ### Apply tab
 - Prepare application answers: paste common or custom application questions,
   generate AI answers for copy-paste. App never auto-submits anything.
+  - Pressing **Prepare answers** opens a blocking progress modal ("Drafting
+    answers grounded in your resume and evaluation…") while the request is in
+    flight, mirroring the resume generator modal. The modal closes
+    automatically when drafts are ready and shows an inline error dialog with
+    a Close button if generation fails (questions are preserved).
+  - After answers return, the question inputs reset to a single empty row and
+    the drafts list refreshes in place — no page reload is required to submit
+    another batch of questions.
 - Application status selector: move the job through the 11-status funnel.
 - Follow-up date picker.
 - Contact field.
