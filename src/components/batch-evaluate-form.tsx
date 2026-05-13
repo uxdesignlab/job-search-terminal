@@ -45,6 +45,29 @@ function fmtDate(iso: string | null | undefined): string {
   return `${m}/${day}/${y?.slice(2)}`;
 }
 
+/** Posted column: blank when missing or not a real calendar date (avoids `undefined/…` from bad imports). */
+function fmtPostedCell(iso: string | null | undefined): string {
+  if (iso == null) return "";
+  const trimmed = iso.trim();
+  if (!trimmed) return "";
+
+  const isoDay = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  if (isoDay) {
+    const [, y, m, day] = isoDay;
+    return `${m}/${day}/${y.slice(2)}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${m}/${day}/${String(y).slice(2)}`;
+  }
+
+  return "";
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export type BatchEvaluateFormProps = {
@@ -351,7 +374,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                         {job.recommendation}
                       </Badge>
                     </td>
-                    <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.datePosted)}</td>
+                    <td className="py-3 pr-4 tabular-nums text-muted">{fmtPostedCell(job.datePosted)}</td>
                     <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.firstSeenDate)}</td>
                     <td className="py-3 pr-4">
                       <div className="flex flex-wrap gap-1">
