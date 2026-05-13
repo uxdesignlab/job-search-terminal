@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { Shell } from "@/components/ui/shell";
-import { getGeneratedDocumentById } from "@/lib/db/queries";
+import { getGeneratedDocumentById, getEvaluationByJobId } from "@/lib/db/queries";
 import { ResumeDraftEditor } from "@/components/resume-draft-editor";
 import type { ResumeTemplateInput } from "@/lib/documents/resume-template";
+import { keywordCoverageFor } from "@/lib/documents/resume-generator";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,11 @@ export default async function EditResumePage({ params }: EditPageProps) {
     notFound();
   }
 
+  const evaluation = getEvaluationByJobId(doc.jobId);
+  const keywordCoverage = evaluation?.keywords?.length
+    ? keywordCoverageFor(draft, evaluation.keywords)
+    : doc.keywordCoverage;
+
   return (
     <Shell activeItem="Resumes">
       <ResumeDraftEditor
@@ -33,7 +39,7 @@ export default async function EditResumePage({ params }: EditPageProps) {
         initialDraft={draft}
         documentTitle={doc.title}
         baseResume={doc.baseResume}
-        keywordCoverage={doc.keywordCoverage}
+        keywordCoverage={keywordCoverage}
       />
     </Shell>
   );

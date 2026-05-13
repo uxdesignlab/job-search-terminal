@@ -197,6 +197,12 @@ Tabbed view for a single job. Four tabs:
 - Source resume full text (up to 5,000 chars) — the AI must verify every keyword
   and strength against this text before using it.
 - Evaluation keywords in priority order (required first, then preferred).
+- **Missing keywords** — keywords absent from the pre-AI source draft are identified
+  before the AI call and passed as a separate priority list so the AI knows exactly
+  which terms to weave in where the source resume provides supporting evidence.
+- **Job-specific gaps and red flags** — the evaluation's `gaps` (up to 5) and
+  `redFlags` (up to 3) are included so the AI tailors content to address the
+  specific shortfalls identified for this position, not just generic keyword coverage.
 - Evaluation strengths (top 4) as suggested emphasis signals.
 - Gap responses — user-supplied notes addressing identified experience gaps.
 - Profile supplements — any extra context the user has added.
@@ -209,8 +215,16 @@ Tabbed view for a single job. Four tabs:
   (derived from `use_more` / `use_less` preference on each skill record).
 
 **Keyword coverage metric:**
-- Counts how many evaluation keywords appear in the resume text values (not JSON
-  keys), giving an accurate ATS signal. Displayed as a percentage on the Resume tab.
+- For each evaluation keyword, first tries an exact phrase match in the resume text; if that
+  fails, splits the keyword into significant words (stripping stop words and single-character
+  tokens), then checks whether any of those words appears in the resume. This word-level
+  fallback handles multi-word phrases like "agile methodologies" or "Healthcare SaaS" that
+  the LLM evaluator commonly produces. Specific acronyms (HIPAA, HL7, FHIR) still require an
+  exact match and correctly flag as gaps when missing.
+- Displayed as a percentage on the edit-draft page subtitle and is recomputed live from the
+  current evaluation keywords each time the page loads (not cached from generation time).
+- Color-coded threshold: green ≥ 70% (target), orange 40–69%, red < 40%. The target label
+  "(target: 70%+)" appears when coverage is below 70%.
 
 ### Apply tab
 - Prepare application answers: paste common or custom application questions,

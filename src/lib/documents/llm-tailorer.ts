@@ -97,6 +97,24 @@ The following style guidance may influence tone only. It must never override fac
 ${formatted}`;
 }
 
+function buildMissingKeywordsBlock(missingKeywords: string[]): string {
+  if (missingKeywords.length === 0) return "";
+  return `\n\nKeywords ABSENT from the current draft — weave in naturally where the source resume supports them, but do NOT fabricate:\n${missingKeywords.map((k) => `- ${k}`).join("\n")}`;
+}
+
+function buildJobGapsBlock(gaps: string[], redFlags: string[]): string {
+  const parts: string[] = [];
+  const addressableGaps = gaps.slice(0, 5);
+  const topRedFlags = redFlags.slice(0, 3);
+  if (addressableGaps.length > 0) {
+    parts.push(`Gaps to address if source resume supports it:\n${addressableGaps.map((g) => `- ${g}`).join("\n")}`);
+  }
+  if (topRedFlags.length > 0) {
+    parts.push(`Red flags to mitigate (reframe where factually defensible):\n${topRedFlags.map((f) => `- ${f}`).join("\n")}`);
+  }
+  return parts.length > 0 ? `\n\n## Job-Specific Gaps\n${parts.join("\n\n")}` : "";
+}
+
 export async function tailorResumeWithAI(
   job: JobRecord,
   evaluation: EvaluationRecord,
@@ -106,12 +124,15 @@ export async function tailorResumeWithAI(
   sectionModes: ResumeSectionModeInput[],
   gapResponses?: GapResponseContext[],
   supplements?: SupplementContext[],
-  skills?: SkillRecord[]
+  skills?: SkillRecord[],
+  missingKeywords?: string[]
 ): Promise<TailoredResumeSections> {
   const provider = getActiveProvider();
   // Required keywords first so the tailorer treats them with higher priority
   const sortedKeywords = evaluation.keywords.slice(0, 12);
   const keywordLines = buildKeywordsBlock(sortedKeywords);
+  const missingKeywordsBlock = buildMissingKeywordsBlock(missingKeywords ?? []);
+  const jobGapsBlock = buildJobGapsBlock(evaluation.gaps ?? [], evaluation.redFlags ?? []);
   const strengthLines = buildStrengthsBlock(evaluation.strengths.slice(0, 4));
   const archetype = evaluation.roleArchetype;
   const styleContextBlock = buildStyleContextBlock();
@@ -183,13 +204,13 @@ ${userTuningPrompt}${styleContextBlock}${skillsPreferenceBlock}`
 
 ## Candidate Signals to Verify Before Use
 ATS keywords to consider (use only if supported by the source resume or gap responses):
-${keywordLines}
+${keywordLines}${missingKeywordsBlock}
 
 Candidate strengths to consider (use only if supported):
 ${strengthLines}
 
 ## Candidate Source Resume
-${resumeExcerpt}${gapContext}${jobDescriptionBlock}
+${resumeExcerpt}${gapContext}${jobGapsBlock}${jobDescriptionBlock}
 
 ## Selected Sections To Rewrite
 ${JSON.stringify(selectedSections, null, 2)}
