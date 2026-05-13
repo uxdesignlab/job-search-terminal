@@ -173,7 +173,14 @@ export type ScanRunRecord = {
   duplicateCount: number;
   newJobsCount: number;
   errors: Array<{ company: string; error: string }>;
-  scanType: "careerops" | "linkedin-claude-scan" | "wellfound-browser-scan" | "workatastartup-browser-scan";
+  scanType:
+    | "careerops"
+    | "linkedin-claude-scan"
+    | "wellfound-browser-scan"
+    | "workatastartup-browser-scan"
+    | "glassdoor-browser-scan"
+    | "indeed-browser-scan"
+    | "monster-browser-scan";
 };
 
 export type ImportResult = {
@@ -209,7 +216,7 @@ export type LinkedInScanFile = {
 
 export type BrowserBoardScanFile = {
   metadata: {
-    source: "linkedin" | "wellfound" | "workatastartup";
+    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster";
     scanTimestamp: string;
     scanDurationSeconds: number;
     totalJobsDiscovered: number;

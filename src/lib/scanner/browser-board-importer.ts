@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/queries";
 import type { BrowserBoardScanFile, ImportResult } from "@/lib/db/types";
 import {
+  BROWSER_BOARD_SOURCES,
   browserBoardSourceLabel,
   browserBoardSourceToScanType,
   type BrowserBoardSource,
@@ -53,7 +54,7 @@ export function parseBrowserBoardScanFile(raw: unknown, fallbackSource?: Browser
 
   const source = isBrowserBoardSource(raw.metadata.source) ? raw.metadata.source : fallbackSource;
   if (!source) {
-    throw new Error("Invalid file structure: metadata.source must be linkedin, wellfound, or workatastartup.");
+    throw new Error(`Invalid file structure: metadata.source must be one of: ${BROWSER_BOARD_SOURCES.join(", ")}.`);
   }
 
   return {
@@ -328,6 +329,17 @@ function platformPostingId(source: BrowserBoardSource, rawUrl: string) {
       const viewIndex = segments.indexOf("view");
       return viewIndex >= 0 ? segments[viewIndex + 1] ?? "" : "";
     }
+    if (source === "glassdoor") {
+      const jobListing = segments.find((segment) => /(?:^|-)JV_[A-Z0-9]+/i.test(segment));
+      return jobListing || segments.at(-1) || "";
+    }
+    if (source === "indeed") {
+      return url.searchParams.get("jk") || url.searchParams.get("vjk") || segments.at(-1) || "";
+    }
+    if (source === "monster") {
+      const jobIndex = segments.findIndex((segment) => segment === "job-openings" || segment === "jobs");
+      return jobIndex >= 0 ? segments[jobIndex + 1] ?? segments.at(-1) ?? "" : segments.at(-1) ?? "";
+    }
   } catch {
     return "";
   }
@@ -335,7 +347,18 @@ function platformPostingId(source: BrowserBoardSource, rawUrl: string) {
 }
 
 function stableJobId(source: BrowserBoardSource, url: string): string {
-  const prefix = source === "linkedin" ? "li" : source === "wellfound" ? "wf" : "was";
+  const prefix =
+    source === "linkedin"
+      ? "li"
+      : source === "wellfound"
+        ? "wf"
+        : source === "workatastartup"
+          ? "was"
+          : source === "glassdoor"
+            ? "gd"
+            : source === "indeed"
+              ? "ind"
+              : "mon";
   const stableInput = source === "linkedin" ? url : `${source}:${url}`;
   return `${prefix}-${createHash("sha1").update(stableInput).digest("hex").slice(0, 16)}`;
 }

@@ -7,7 +7,7 @@ import {
 } from "./browser-board-importer";
 
 const LEGACY_LINKEDIN_FILE_PATTERN = /^linkedin-jobs-.+\.json$/;
-const BROWSER_BOARD_FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup)-jobs-.+\.json$/;
+const BROWSER_BOARD_FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster)-jobs-.+\.json$/;
 let started = false;
 
 export function startLinkedInFileWatcher() {

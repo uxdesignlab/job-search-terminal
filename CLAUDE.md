@@ -10,7 +10,7 @@ When making any change to this codebase — new feature, bug fix, refactor, or c
 
 - **`docs/features.md`** — describes every user-facing feature. Update it when adding, changing, or removing any feature or UI element.
 - **`docs/data-model.md`** — documents the database schema, migrations, and all types. Update it whenever a migration is added, a column changes, or a new type is introduced.
-- **`docs/browser-board-scanner-technical.md`** — technical reference for browser-assisted LinkedIn, Wellfound, and Work at a Startup imports. Update code snippets, file descriptions, and architecture notes when touching that subsystem.
+- **`docs/browser-board-scanner-technical.md`** — technical reference for browser-assisted LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster imports. Update code snippets, file descriptions, and architecture notes when touching that subsystem.
 - **`docs/linkedin-scanner-guide.md`** — user guide for the browser-assisted scanner. Update when behavior visible to the user changes.
 - **`CLAUDE.md`** — project rules and Claude Desktop agent instructions. Update when adding new rules or changing the browser job-board workflow.
 
@@ -34,7 +34,7 @@ This file also contains instructions for Claude Desktop to perform browser-assis
 
 ## When to Use This Workflow
 
-When the user asks you to "scan LinkedIn for jobs", "find new jobs on Wellfound", "scan Work at a Startup", or similar, follow the steps below. You will need:
+When the user asks you to "scan LinkedIn for jobs", "find new jobs on Wellfound", "scan Work at a Startup", "scan Glassdoor", "scan Indeed", "scan Monster", or similar, follow the steps below. You will need:
 
 - The **Claude in Chrome** browser extension installed and active.
 - The user already logged into the requested job board in Chrome if the board requires a session.
@@ -47,6 +47,9 @@ Supported boards:
 | LinkedIn | `linkedin` | `https://www.linkedin.com/jobs/search/` |
 | Wellfound | `wellfound` | `https://wellfound.com/jobs` |
 | Work at a Startup | `workatastartup` | `https://www.workatastartup.com/companies` |
+| Glassdoor | `glassdoor` | `https://www.glassdoor.com/Job/index.htm` |
+| Indeed | `indeed` | `https://www.indeed.com/jobs` |
+| Monster | `monster` | `https://www.monster.com/jobs/search` |
 
 ---
 
@@ -116,7 +119,7 @@ Structure the collected jobs as follows:
 ```json
 {
   "metadata": {
-    "source": "linkedin | wellfound | workatastartup",
+    "source": "linkedin | wellfound | workatastartup | glassdoor | indeed | monster",
     "scanTimestamp": "<ISO 8601 UTC datetime when scan started>",
     "scanDurationSeconds": 120,
     "totalJobsDiscovered": 12,
@@ -164,7 +167,7 @@ Structure the collected jobs as follows:
 
 Field rules:
 
-- `metadata.source` must be `linkedin`, `wellfound`, or `workatastartup`.
+- `metadata.source` must be `linkedin`, `wellfound`, `workatastartup`, `glassdoor`, `indeed`, or `monster`.
 - `position` must be the job title.
 - `jobDescription` must be the full visible description text.
 - `sourceUrl` must be the platform job URL.

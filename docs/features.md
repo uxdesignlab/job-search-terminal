@@ -48,7 +48,8 @@ guides, and per-topic pages.
 - `/help/job-search` — dashboard scans, job sources, manual job entry, filters,
   and saved presets.
 - `/help/linkedin-scanner` — Claude/Codex browser-board scanning for LinkedIn,
-  Wellfound, and Work at a Startup; imports, duplicates, limits, and safety notes.
+  Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster; imports,
+  duplicates, limits, and safety notes.
 - `/help/evaluate-tailor` — evaluation, tailored resume generation, PDF export,
   application answers, research, and outreach drafting.
 - `/help/applications` — statuses, table and kanban tracking, follow-ups, and
@@ -607,20 +608,20 @@ Location matching uses the selected Location mode checkboxes:
 
 ## Browser Job Board Scanner (Claude and Codex Integration)
 
-An optional feature for users with Claude Desktop or Codex Chrome. An agent browses visible job-board results on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required. Supported browser-board sources are LinkedIn, Wellfound, and Work at a Startup.
+An optional feature for users with Claude Desktop or Codex Chrome. An agent browses visible job-board results on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required. Supported browser-board sources are LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster.
 
 **How it works:**
-1. Ask Claude or Codex to scan LinkedIn, Wellfound, or Work at a Startup
+1. Ask Claude or Codex to scan LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster
 2. The agent reads your target roles and location preferences from the JST database
 3. The agent opens the requested board in Chrome and extracts matching visible postings
 4. A JSON file is written to `data/job-board-imports/` (`data/linkedin-imports/` remains supported for legacy LinkedIn files)
 5. Job Search Terminal detects the file, imports jobs with duplicate detection, and shows a notification
 
 **UI indicators on the Jobs table:**
-- **LinkedIn**, **Wellfound**, or **Work at a Startup** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans
+- **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, or **Monster** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans
 - **Manual** badge (neutral gray) — source column — identifies jobs added manually via the Add Job modal
 - **Duplicate** badge (amber, clickable) — flagged jobs whose URL or company+title already existed in the database. Clicking the badge instantly filters the table to show only duplicate-flagged jobs. Clicking again clears the filter.
-- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Manual", and "Scanner"
+- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Manual", and "Scanner"
 
 **URL behavior:** Browser-board imports prefer a visible job-specific employer/ATS apply URL. If one is not available, the platform job URL is used and preserved as provenance.
 

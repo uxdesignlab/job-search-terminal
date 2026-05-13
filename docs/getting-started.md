@@ -214,7 +214,7 @@ you invest time in a cover letter or tailored resume.
 
 **Good sources to add jobs from manually:**
 - LinkedIn job postings
-- Wellfound and Work at a Startup postings if you are not using the browser-board scanner
+- Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster postings if you are not using the browser-board scanner
 - Company careers pages
 - Referrals and warm introductions (add what you know about the role)
 - Jobs emailed to you by recruiters

@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "source": "glassdoor",
+    "scanTimestamp": "2026-05-11T12:15:00Z",
+    "scanDurationSeconds": 54,
+    "totalJobsDiscovered": 1,
+    "totalJobsValid": 1,
+    "totalJobsSkipped": 0,
+    "searchCriteria": {
+      "titles": ["Product Design Manager"],
+      "locations": ["Remote United States"],
+      "remotePreference": "remote-only"
+    },
+    "generatedBy": "Codex Browser Board Scanner Fixture"
+  },
+  "jobs": [
+    {
+      "id": "fixture-glassdoor-1",
+      "company": "Acme",
+      "position": "Product Design Manager",
+      "jobDescription": "Lead product design across discovery, systems, and delivery.",
+      "sourceUrl": "https://www.glassdoor.com/job-listing/product-design-manager-acme-JV_IC1128808_KO0,22_KE23,27.htm?utm_source=alerts",
+      "url": "https://www.glassdoor.com/job-listing/product-design-manager-acme-JV_IC1128808_KO0,22_KE23,27.htm",
+      "originalPostingUrl": "",
+      "discoveredAt": "2026-05-11T12:15:00Z",
+      "location": "Remote United States",
+      "salaryNotes": "$150K-$190K"
+    }
+  ],
+  "validationSummary": {
+    "totalRecords": 1,
+    "validRecords": 1,
+    "invalidRecords": 0,
+    "errors": []
+  }
+}
