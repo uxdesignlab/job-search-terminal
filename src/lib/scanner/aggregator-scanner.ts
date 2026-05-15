@@ -19,6 +19,7 @@ export type AggregatorScanResult = {
   duplicates: number;
   totalFound: number;
   errors: string[];
+  jobs: Array<{ title: string; url: string; company: string }>;
 };
 
 type AdzunaJob = {
@@ -77,10 +78,10 @@ export async function runAggregatorScan(
   onProgress?: (msg: string) => void,
 ): Promise<AggregatorScanResult> {
   if (!opts.adzunaAppId || !opts.adzunaApiKey) {
-    return { status: "no-credentials", imported: 0, duplicates: 0, totalFound: 0, errors: ["Adzuna App ID and API Key are required — configure them in Settings → AI Provider"] };
+    return { status: "no-credentials", imported: 0, duplicates: 0, totalFound: 0, errors: ["Adzuna App ID and API Key are required — configure them in Settings → AI Provider"], jobs: [] };
   }
   if (opts.titles.length === 0) {
-    return { status: "error", imported: 0, duplicates: 0, totalFound: 0, errors: ["No target roles configured — add them in Profile"] };
+    return { status: "error", imported: 0, duplicates: 0, totalFound: 0, errors: ["No target roles configured — add them in Profile"], jobs: [] };
   }
 
   const country = opts.country ?? "us";
@@ -139,7 +140,7 @@ export async function runAggregatorScan(
   }
 
   if (jobs.length === 0) {
-    return { status: "ok", imported: 0, duplicates: 0, totalFound: 0, errors };
+    return { status: "ok", imported: 0, duplicates: 0, totalFound: 0, errors, jobs: [] };
   }
 
   const ts = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "Z");
@@ -187,6 +188,7 @@ export async function runAggregatorScan(
   renameSync(tmpPath, finalPath);
   onProgress?.(`Saved ${jobs.length} jobs to ${filename}`);
 
+  const preview = jobs.map((j) => ({ title: j.position, url: j.url, company: j.company }));
   try {
     const importResult = await importBrowserBoardJobs(finalPath);
     return {
@@ -195,9 +197,10 @@ export async function runAggregatorScan(
       duplicates: importResult.duplicates,
       totalFound: jobs.length,
       errors: [...errors, ...importResult.errors],
+      jobs: preview,
     };
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
-    return { status: "error", imported: 0, duplicates: 0, totalFound: jobs.length, errors };
+    return { status: "error", imported: 0, duplicates: 0, totalFound: jobs.length, errors, jobs: preview };
   }
 }
