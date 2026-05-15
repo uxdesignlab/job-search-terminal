@@ -19,6 +19,7 @@ import {
 import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 import { isScanSourceEnabled, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
+import { runAggregatorScan } from "@/lib/scanner/aggregator-scanner";
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 import { LocalDateLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
@@ -29,21 +30,44 @@ export default function DashboardPage() {
   async function scanForJobsAction(): Promise<ScanJobResultSummary> {
     "use server";
 
-    const result = await runCareerOpsScanner();
+    const settings = getAISettings();
+    const profile = getUserProfile();
+    const hasAdzuna = Boolean(settings.adzunaAppId && settings.adzunaApiKey);
+
+    const [careerOps, adzuna] = await Promise.all([
+      runCareerOpsScanner(),
+      hasAdzuna
+        ? runAggregatorScan({
+            adzunaAppId: settings.adzunaAppId,
+            adzunaApiKey: settings.adzunaApiKey,
+            titles: profile.targetRoles,
+            locations: profile.preferredLocations,
+            remotePreference: profile.remotePreference,
+          })
+        : null,
+    ]);
+
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
-    const jobs = result.jobs;
+
+    const jobs = careerOps.jobs;
     const max = SCAN_RESULT_JOBS_PREVIEW_MAX;
+    const adzunaErrors = adzuna?.errors.map((e) => ({ company: "Adzuna", error: e })) ?? [];
+    const combinedStatus =
+      careerOps.status === "failed" ? "failed" :
+      (careerOps.status === "completed_with_errors" || adzuna?.status === "error") ? "completed_with_errors" :
+      "completed";
+
     return {
       companyName: "All enabled sources",
-      status: result.status,
-      newJobsCount: result.newJobsCount,
-      totalJobsFound: result.totalJobsFound,
-      filteredCount: result.filteredCount,
-      duplicateCount: result.duplicateCount,
-      companiesScanned: result.companiesScanned,
-      skippedCompanies: result.skippedCompanies,
-      errors: result.errors,
+      status: combinedStatus,
+      newJobsCount: careerOps.newJobsCount + (adzuna?.imported ?? 0),
+      totalJobsFound: careerOps.totalJobsFound + (adzuna?.totalFound ?? 0),
+      filteredCount: careerOps.filteredCount,
+      duplicateCount: careerOps.duplicateCount + (adzuna?.duplicates ?? 0),
+      companiesScanned: careerOps.companiesScanned,
+      skippedCompanies: careerOps.skippedCompanies,
+      errors: [...careerOps.errors, ...adzunaErrors],
       jobs: jobs.slice(0, max).map((j) => ({ title: j.title, url: j.url, company: j.company })),
       jobsTotal: jobs.length > max ? jobs.length : undefined,
     };
