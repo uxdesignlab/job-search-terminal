@@ -132,7 +132,7 @@ export async function runAggregatorScan(
         errors.push(msg);
         onProgress?.(`Warning: ${msg}`);
         if (msg.includes("credentials")) {
-          return { status: "error", imported: 0, duplicates: 0, totalFound: 0, errors };
+          return { status: "error", imported: 0, duplicates: 0, totalFound: 0, errors, jobs: [] };
         }
       }
       await new Promise((r) => setTimeout(r, 200));
