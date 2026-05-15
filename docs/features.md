@@ -601,13 +601,14 @@ custom URLs configured in Settings.
 
 **How a scan works:**
 1. User clicks "Scan for new jobs" on the Dashboard.
-2. The scanner queries each enabled source for open roles.
-3. Title filters remove irrelevant roles.
-4. Profile location and remote preferences remove listings outside the user's constraints.
-5. Duplicate URLs are skipped.
-6. New jobs are written to the `jobs` table with `status = found`.
-7. A `scan_runs` record is created with metrics.
-8. The Dashboard updates with the scan summary.
+2. The CareerOps ATS scanner queries each enabled Ashby/Greenhouse/Lever source in parallel.
+3. If Adzuna credentials are configured (Settings → AI Provider → Discovery & Aggregators), an Adzuna aggregator scan runs in parallel alongside the ATS scan.
+4. Title filters remove irrelevant roles.
+5. Profile location and remote preferences remove listings outside the user's constraints.
+6. Duplicate URLs are skipped.
+7. New jobs are written to the `jobs` table with `status = found`.
+8. A `scan_runs` record is created with metrics.
+9. The Dashboard updates with a combined scan summary (ATS + Adzuna totals merged).
 
 The Jobs page can also verify whether saved postings still exist. The liveness
 check updates `liveness_status` but does not automatically archive or delete

@@ -117,6 +117,28 @@ content. You can use whichever service you have access to:
 Once you have a key, you configure it inside the app itself (Settings → AI
 Providers). You do not need to create any configuration files manually.
 
+### 5a. Optional: Add job aggregator and source discovery keys
+
+These are not required to use the app, but they significantly expand how many
+jobs and sources the app can find automatically.
+
+**Adzuna** (job aggregator — free tier, 2,000 queries/month):
+- Register at [developer.adzuna.com](https://developer.adzuna.com) to get a
+  free App ID and API Key.
+- Once configured in Settings → AI Provider → Discovery & Aggregators, the
+  Dashboard **Scan for new jobs** button automatically runs an Adzuna scan in
+  parallel with the ATS scan — no extra step needed.
+- You can also run it independently from Settings → Sources → Job aggregators.
+
+**Brave Search** (ATS source discovery — free tier, 2,000 queries/month):
+- Register at [brave.com/search/api](https://brave.com/search/api) to get a
+  free API key.
+- Once configured, the **Search discover** button appears in Settings → Sources
+  and finds new Ashby, Greenhouse, and Lever companies from live web search
+  results (not just the Common Crawl archive).
+
+Add both keys in Settings → AI Provider → Discovery & Aggregators.
+
 ### 6. Start the app
 
 ```bash
@@ -171,7 +193,8 @@ for new jobs" to start discovering opportunities.
 
 | What you want to do | Where to go |
 |---|---|
-| Find new jobs | Dashboard → Scan for new jobs |
+| Find new jobs (ATS + Adzuna if configured) | Dashboard → Scan for new jobs |
+| Scan Adzuna independently | Settings → Sources → Job aggregators |
 | Add a job from anywhere | Jobs → Add Job button |
 | See all your jobs | Jobs |
 | Evaluate a job | Jobs → click a job → Evaluation tab |
@@ -184,8 +207,11 @@ for new jobs" to start discovering opportunities.
 | Update your profile | Account → Profile |
 | Upload or replace a resume | Account → Profile → Resumes tab |
 | Add an AI key | Account → Settings → AI Providers |
+| Add Adzuna or Brave Search keys | Account → Settings → AI Providers → Discovery & Aggregators |
+| Discover new ATS sources | Settings → Sources → Scan for new sources or Search discover |
+| Bulk-add validated discovered sources | Settings → Sources → Import all valid |
+| Check which sources are still live | Settings → Sources → Validate sources |
 | See role fit strategy | Account → Strategy |
-| Change AI provider or add sources | Account → Settings |
 
 ---
 
