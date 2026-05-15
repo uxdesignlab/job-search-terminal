@@ -40,6 +40,7 @@ export default async function EditResumePage({ params }: EditPageProps) {
         documentTitle={doc.title}
         baseResume={doc.baseResume}
         keywordCoverage={keywordCoverage}
+        keywords={evaluation?.keywords ?? []}
       />
     </Shell>
   );

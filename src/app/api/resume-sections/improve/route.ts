@@ -6,22 +6,28 @@ export const dynamic = "force-dynamic";
 const SYSTEM_PROMPT =
   "You are a professional resume writer. Improve the provided resume section content to be more impactful, ATS-friendly, and professional. Return ONLY the improved content with no preamble, explanation, or formatting marks. Use strong action verbs and quantified achievements where applicable.";
 
-function buildPrompt(type: ResumeBuilderSectionType, content: string): string {
+function keywordInstruction(jobKeywords: string[]): string {
+  if (!jobKeywords.length) return "";
+  return `\n\nJob keywords to weave in naturally where they genuinely fit (do not force any that don't belong): ${jobKeywords.join(", ")}.`;
+}
+
+function buildPrompt(type: ResumeBuilderSectionType, content: string, jobKeywords: string[]): string {
+  const kw = keywordInstruction(jobKeywords);
   switch (type) {
     case "summary":
-      return `Improve this professional summary. Make it concise (3–4 sentences), compelling, and keyword-rich. Focus on the candidate's unique value proposition:\n\n${content}`;
+      return `Improve this professional summary. Make it concise (3–4 sentences), compelling, and keyword-rich. Focus on the candidate's unique value proposition${kw}:\n\n${content}`;
     case "experience":
-      return `Improve these experience bullet points. Use strong action verbs, quantify achievements where possible (add placeholder numbers if none exist), and remove weak phrases like "responsible for" or "helped with". Keep one bullet per line:\n\n${content}`;
+      return `Improve these experience bullet points. Use strong action verbs, quantify achievements where possible (add placeholder numbers if none exist), and remove weak phrases like "responsible for" or "helped with". Keep one bullet per line${kw}:\n\n${content}`;
     case "impact":
-      return `Improve these key achievement bullets using the CAR (Challenge–Action–Result) framework. Each bullet should be measurable and specific. Keep one bullet per line:\n\n${content}`;
+      return `Improve these key achievement bullets using the CAR (Challenge–Action–Result) framework. Each bullet should be measurable and specific. Keep one bullet per line${kw}:\n\n${content}`;
     case "skills":
-      return `Clean up and organize this skills list. Remove duplicates, fix formatting inconsistencies, and ensure each skill is on its own line:\n\n${content}`;
+      return `Clean up and organize this skills list. Remove duplicates, fix formatting inconsistencies, and ensure each skill is on its own line${kw}:\n\n${content}`;
     case "recognition":
-      return `Improve this awards and recognition section. Make each entry clear, specific, and professionally formatted. Keep one item per line:\n\n${content}`;
+      return `Improve this awards and recognition section. Make each entry clear, specific, and professionally formatted. Keep one item per line${kw}:\n\n${content}`;
     case "education":
       return `Improve this education section entry. Ensure degree, institution, and any relevant honors or focus areas are clearly stated:\n\n${content}`;
     default:
-      return `Improve this resume section content. Make it more professional, concise, and impactful:\n\n${content}`;
+      return `Improve this resume section content. Make it more professional, concise, and impactful${kw}:\n\n${content}`;
   }
 }
 
@@ -30,6 +36,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       sectionType?: ResumeBuilderSectionType;
       content?: string;
+      jobKeywords?: string[];
     };
 
     if (!body.content?.trim()) {
@@ -38,7 +45,7 @@ export async function POST(req: Request) {
 
     const { getActiveProvider } = await import("@/lib/ai/factory");
     const provider = getActiveProvider();
-    const prompt = buildPrompt(body.sectionType ?? "custom", body.content);
+    const prompt = buildPrompt(body.sectionType ?? "custom", body.content, body.jobKeywords ?? []);
 
     const improved = await provider.generateText(
       [
