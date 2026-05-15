@@ -29,6 +29,9 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
   const [geminiModel, setGeminiModel] = useState(settings.geminiModel || "gemini-2.5-flash");
   const [openaiModel, setOpenaiModel] = useState(settings.openaiModel || "gpt-5.4-mini");
   const [fallbackProvider, setFallbackProvider] = useState(settings.fallbackProvider);
+  const [braveSearchApiKey, setBraveSearchApiKey] = useState(settings.braveSearchApiKey ?? "");
+  const [adzunaAppId, setAdzunaAppId] = useState(settings.adzunaAppId ?? "");
+  const [adzunaApiKey, setAdzunaApiKey] = useState(settings.adzunaApiKey ?? "");
   const [showKeys, setShowKeys] = useState<Record<AIProviderName, boolean>>({ anthropic: false, gemini: false, openai: false });
   const [testStates, setTestStates] = useState<Record<AIProviderName, ProviderTestState>>({
     anthropic: { status: "idle" },
@@ -77,6 +80,9 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
     fd.set("geminiModel", geminiModel);
     fd.set("openaiModel", openaiModel);
     fd.set("fallbackProvider", fallbackProvider);
+    fd.set("braveSearchApiKey", braveSearchApiKey);
+    fd.set("adzunaAppId", adzunaAppId);
+    fd.set("adzunaApiKey", adzunaApiKey);
     startTransition(async () => {
       await saveAISettingsAction(fd);
       setSaved(true);
@@ -233,6 +239,47 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
           ))}
         </select>
         <p className="text-xs text-muted">Used automatically if the active provider fails.</p>
+      </div>
+
+      {/* Discovery & Aggregators */}
+      <div className="grid gap-3 border border-border rounded-md p-4">
+        <span className="text-sm font-medium text-ink">Discovery &amp; Aggregators</span>
+        <p className="text-xs text-muted">Optional keys for search-based source discovery (Brave) and job aggregator scanning (Adzuna).</p>
+
+        <div className="grid gap-2">
+          <label className="text-xs text-muted">Brave Search API Key <span className="text-muted/60">(for Sources &rarr; Search discover)</span></label>
+          <input
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+            onChange={(e) => setBraveSearchApiKey(e.target.value)}
+            placeholder="BSA…"
+            type="password"
+            value={braveSearchApiKey}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-2">
+            <label className="text-xs text-muted">Adzuna App ID</label>
+            <input
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              onChange={(e) => setAdzunaAppId(e.target.value)}
+              placeholder="xxxxxxxx"
+              type="text"
+              value={adzunaAppId}
+            />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-xs text-muted">Adzuna API Key</label>
+            <input
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              onChange={(e) => setAdzunaApiKey(e.target.value)}
+              placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              type="password"
+              value={adzunaApiKey}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted/70">Free Adzuna keys: <span className="font-mono">developer.adzuna.com</span>. Free Brave Search keys: <span className="font-mono">brave.com/search/api</span>.</p>
       </div>
 
       <div className="flex items-center gap-3">
