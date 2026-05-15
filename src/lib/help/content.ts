@@ -234,14 +234,36 @@ export const helpPages: HelpPage[] = [
             "Job Search Terminal is open source and local-first. It does not operate a hosted AI account for users. Your own provider key lets the local app call the provider directly when you choose to run AI features.",
         },
       },
+      {
+        id: "discovery-aggregators",
+        title: "Discovery and aggregator keys",
+        intro:
+          "Two optional key groups power ATS source discovery and direct job aggregator scanning. Neither is required for core AI features — they extend how the app finds new sources and jobs.",
+        steps: [
+          {
+            title: "Brave Search API key",
+            body: "Enables the Search discover button in Settings → Sources. Brave Search queries ATS board patterns (site:jobs.ashbyhq.com, site:jobs.lever.co, site:boards.greenhouse.io) and merges new company slugs into your discovered sources list. Register at brave.com/search/api for a free tier of 2,000 queries per month.",
+          },
+          {
+            title: "Adzuna App ID and API Key",
+            body: "Enables the Scan with Adzuna button in Settings → Sources → Job aggregators. Adzuna pulls matching jobs from its aggregator index using your saved target roles and locations — no browser or logged-in session required. Register at developer.adzuna.com for a free tier of 2,000 queries per month.",
+          },
+          {
+            title: "Add the keys",
+            body: "Open Account → Settings → AI Provider, scroll to Discovery & Aggregators, paste your keys, and save. The Search discover button appears in Settings → Sources once the Brave key is present. The Job aggregators card with the Scan with Adzuna button appears once both Adzuna keys are present.",
+          },
+        ],
+      },
     ],
     externalLinks: [
       { label: "OpenAI API quickstart", href: "https://platform.openai.com/docs/quickstart" },
       { label: "Anthropic API overview", href: "https://docs.anthropic.com/en/api/overview" },
       { label: "Anthropic API access help", href: "https://support.anthropic.com/en/articles/8114521-how-can-i-access-the-anthropic-api" },
       { label: "Gemini API keys", href: "https://ai.google.dev/gemini-api/docs/api-key" },
+      { label: "Adzuna developer API (free tier)", href: "https://developer.adzuna.com" },
+      { label: "Brave Search API (free tier)", href: "https://brave.com/search/api" },
     ],
-    related: ["getting-started", "resume-lanes", "troubleshooting"],
+    related: ["getting-started", "job-search", "troubleshooting"],
   },
   {
     slug: "resume-lanes",
@@ -400,9 +422,9 @@ export const helpPages: HelpPage[] = [
     slug: "job-search",
     title: "Search, import, and review jobs",
     shortTitle: "Job search",
-    description: "Use dashboard scans, job sources, manual entry, filters, saved presets, and archive behavior.",
+    description: "Use dashboard scans, ATS source management, Adzuna aggregator scanning, manual entry, filters, and saved presets.",
     category: "Jobs",
-    readTime: "11 min",
+    readTime: "13 min",
     icon: "search",
     image: {
       src: "/images/job-search-terminal/job-search-terminal-jobs-table.png",
@@ -410,7 +432,7 @@ export const helpPages: HelpPage[] = [
     },
     highlights: [
       "Scans use saved role, title, and location preferences.",
-      "Manual jobs enter the same pipeline as scanned jobs.",
+      "Adzuna aggregator scanning pulls jobs from its API without a browser — configure in Settings.",
       "Filters and saved presets keep the table usable as the pipeline grows.",
     ],
     sections: [
@@ -436,11 +458,15 @@ export const helpPages: HelpPage[] = [
         id: "sources",
         title: "Manage job sources",
         bullets: [
-          "Open Account -> Settings -> Job Sources.",
+          "Open Account → Settings → Sources.",
           "Enable or disable existing company sources.",
-          "Add supported career pages when you want the scanner to watch a new company.",
+          "Add a supported career page (Ashby, Greenhouse, or Lever) when you want the scanner to watch a new company.",
           "Use title include filters for roles you want and exclude filters for titles you never want.",
           "Disable noisy or failing sources instead of deleting useful search criteria.",
+          "Click Validate sources to check which career portals are still live — each row shows a live job count, Dead, or Unknown badge.",
+          "Use Scan for new sources to discover new Ashby, Greenhouse, and Lever companies via Common Crawl.",
+          "Use Search discover (requires Brave Search API key in AI Provider settings) to find new companies from live web search results instead of the crawl archive.",
+          "Click Import all valid (N) to add all validated discovered sources in one step — no need to review each one individually.",
         ],
       },
       {
@@ -464,6 +490,30 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "aggregator",
+        title: "Scan with Adzuna",
+        intro:
+          "Adzuna is a job aggregator that indexes listings from many sources. Unlike browser-board scanning, it requires no browser or active session — the app queries its API directly from Settings.",
+        steps: [
+          {
+            title: "Get free credentials",
+            body: "Register at developer.adzuna.com for a free App ID and API Key. The free tier covers 2,000 queries per month, which is more than enough for regular scanning.",
+          },
+          {
+            title: "Add the keys",
+            body: "Open Account → Settings → AI Provider, scroll to Discovery & Aggregators, and paste your Adzuna App ID and API Key. Save.",
+          },
+          {
+            title: "Scan",
+            body: "Go to Account → Settings → Sources. A Job aggregators card appears at the bottom. Click Scan with Adzuna — the scanner runs against your saved target roles and preferred locations and shows the import count inline when done.",
+          },
+        ],
+        callout: {
+          title: "What Adzuna covers",
+          body: "Adzuna aggregates from many sources and reaches jobs that may not appear in direct ATS portals or browser-board searches. Use it alongside other scan methods for broader coverage. Jobs posted in the last 14 days, up to 50 results per title/location pair.",
+        },
+      },
+      {
         id: "filters",
         title: "Use filters and saved presets",
         bullets: [
@@ -475,7 +525,11 @@ export const helpPages: HelpPage[] = [
         ],
       },
     ],
-    related: ["linkedin-scanner", "evaluate-tailor", "applications"],
+    externalLinks: [
+      { label: "Adzuna developer API (free tier)", href: "https://developer.adzuna.com" },
+      { label: "Brave Search API (free tier)", href: "https://brave.com/search/api" },
+    ],
+    related: ["linkedin-scanner", "ai-providers", "evaluate-tailor"],
   },
   {
     slug: "linkedin-scanner",
