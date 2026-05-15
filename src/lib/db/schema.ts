@@ -660,5 +660,13 @@ export const migrations = [
       alter table profile_gap_supplements add column assessment_json text not null default '{}';
       alter table profile_gap_supplements add column assessed_at text;
     `
+  },
+  {
+    id: "0037_discovery_and_aggregator_keys",
+    sql: `
+      alter table ai_settings add column brave_search_api_key text not null default '';
+      alter table ai_settings add column adzuna_app_id text not null default '';
+      alter table ai_settings add column adzuna_api_key text not null default '';
+    `
   }
 ];

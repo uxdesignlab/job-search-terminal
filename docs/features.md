@@ -545,7 +545,18 @@ Three configuration tabs:
   config file); manually added sources have a Remove button.
 - Add any company by pasting its careers page URL — Greenhouse, Ashby, and
   Lever are auto-detected.
-- "Scan for new sources" discovers additional Greenhouse boards automatically.
+- "Scan for new sources" queries the Common Crawl index to discover additional
+  ATS boards automatically.
+- "Import all valid (N)" bulk-imports all currently valid discovered sources
+  into the tracked list in one click (only shown when there are valid
+  unimported entries).
+- "Search discover" queries Brave Search API for ATS job boards not in Common
+  Crawl (requires Brave Search API key in AI Provider settings). Merges new
+  findings into `data/discovered-sources.json` without overwriting existing
+  entries.
+- "Validate sources" checks live job counts for all tracked sources; shows a
+  "Live / N jobs", "Dead", or "Unknown" badge in a per-row column. A
+  "Re-validate sources" button re-runs the check after the first run.
 
 ### Preferences
 - Edit title include / exclude filters.
@@ -629,6 +640,8 @@ Location matching uses the selected Location mode checkboxes:
 
 An optional feature for users with Claude Desktop or Codex Chrome. An agent browses visible job-board results on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required. Supported browser-board sources are LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster.
 
+A separate **Adzuna API scanner** (Settings → Sources → Job aggregators card) pulls matching jobs directly from the Adzuna aggregator API without requiring a browser. It uses the same import pipeline as browser-board scans. Requires an Adzuna App ID and API Key configured in Settings → AI Provider → Discovery &amp; Aggregators.
+
 **How it works:**
 1. Ask Claude or Codex to scan LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster
 2. The agent reads your target roles and location preferences from the JST database
@@ -637,10 +650,10 @@ An optional feature for users with Claude Desktop or Codex Chrome. An agent brow
 5. Job Search Terminal detects the file, imports jobs with duplicate detection, and shows a notification
 
 **UI indicators on the Jobs table:**
-- **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, or **Monster** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans
+- **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, **Monster**, or **Adzuna** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans or aggregator API scans
 - **Manual** badge (neutral gray) — source column — identifies jobs added manually via the Add Job modal
 - **Duplicate** badge (amber, clickable) — flagged jobs whose URL or company+title already existed in the database. Clicking the badge instantly filters the table to show only duplicate-flagged jobs. Clicking again clears the filter.
-- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Manual", and "Scanner"
+- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Adzuna", "Manual", and "Scanner"
 
 **URL behavior:** Browser-board imports prefer a visible job-specific employer/ATS apply URL. If one is not available, the platform job URL is used and preserved as provenance.
 

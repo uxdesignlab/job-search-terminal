@@ -50,6 +50,7 @@ and initializes an empty local profile if the database is empty.
 | `0034_remove_legacy_demo_resumes` | Removes five hard-coded demo resume lane records left behind by `0030` (IDs: `accessibility-design-systems`, `ux-design`, `design-operations`, `principal-product-design`, `teaching-ux-education`); cascades to `resume_builder_versions` |
 | `0035_browser_board_job_provenance` | Adds `source_url`, `original_posting_url`, and `original_posting_key` to support browser-assisted LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster imports |
 | `0036_gap_answer_quality` | Adds quality-status, follow-up question, and assessment metadata to gap responses and profile supplements |
+| `0037_discovery_and_aggregator_keys` | Adds `brave_search_api_key`, `adzuna_app_id`, and `adzuna_api_key` to `ai_settings` to support search-based source discovery (Brave) and the Adzuna job aggregator scanner |
 
 ---
 
@@ -351,6 +352,9 @@ Singleton row holding AI provider configuration.
 | `fallback_provider` | Optional fallback provider |
 | `onboarding_dismissed` | 0 = show onboarding, 1 = dismissed |
 | `onboarding_preferences_confirmed` | 0 = first-run job preferences still need user confirmation, 1 = confirmed |
+| `brave_search_api_key` | Optional Brave Search API key for search-based ATS source discovery |
+| `adzuna_app_id` | Optional Adzuna App ID for the job aggregator scanner |
+| `adzuna_api_key` | Optional Adzuna API key for the job aggregator scanner |
 | `updated_at` | ISO timestamp |
 
 ### ai_prompt_overrides

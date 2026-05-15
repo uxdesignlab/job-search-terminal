@@ -1366,7 +1366,8 @@ export type BrowserBoardJobInput = {
     | "workatastartup-browser-scan"
     | "glassdoor-browser-scan"
     | "indeed-browser-scan"
-    | "monster-browser-scan";
+    | "monster-browser-scan"
+    | "adzuna-api-scan";
   location: string;
   rawDescription: string;
   datePosted: string | null;
@@ -1833,6 +1834,9 @@ type AISettingsRow = {
   fallback_provider: string;
   onboarding_dismissed: number;
   onboarding_preferences_confirmed: number;
+  brave_search_api_key: string;
+  adzuna_app_id: string;
+  adzuna_api_key: string;
   updated_at: string;
 };
 
@@ -1851,6 +1855,9 @@ export function getAISettings(): AISettingsRecord {
       fallbackProvider: "",
       onboardingDismissed: false,
       onboardingPreferencesConfirmed: false,
+      braveSearchApiKey: "",
+      adzunaAppId: "",
+      adzunaApiKey: "",
       updatedAt: new Date().toISOString()
     };
   }
@@ -1866,11 +1873,15 @@ export function getAISettings(): AISettingsRecord {
     fallbackProvider: row.fallback_provider,
     onboardingDismissed: Boolean(row.onboarding_dismissed),
     onboardingPreferencesConfirmed: Boolean(row.onboarding_preferences_confirmed),
+    braveSearchApiKey: row.brave_search_api_key ?? "",
+    adzunaAppId: row.adzuna_app_id ?? "",
+    adzunaApiKey: row.adzuna_api_key ?? "",
     updatedAt: row.updated_at
   };
 }
 
 export function saveAISettings(input: AISettingsUpdateInput) {
+  const existing = getAISettings();
   getDatabase()
     .prepare(
       `update ai_settings set
@@ -1884,13 +1895,19 @@ export function saveAISettings(input: AISettingsUpdateInput) {
         fallback_provider = @fallbackProvider,
         onboarding_dismissed = @onboardingDismissed,
         onboarding_preferences_confirmed = @onboardingPreferencesConfirmed,
+        brave_search_api_key = @braveSearchApiKey,
+        adzuna_app_id = @adzunaAppId,
+        adzuna_api_key = @adzunaApiKey,
         updated_at = current_timestamp
       where id = 'singleton'`
     )
     .run({
       ...input,
       onboardingDismissed: input.onboardingDismissed ? 1 : 0,
-      onboardingPreferencesConfirmed: input.onboardingPreferencesConfirmed ? 1 : 0
+      onboardingPreferencesConfirmed: input.onboardingPreferencesConfirmed ? 1 : 0,
+      braveSearchApiKey: input.braveSearchApiKey ?? existing.braveSearchApiKey,
+      adzunaAppId: input.adzunaAppId ?? existing.adzunaAppId,
+      adzunaApiKey: input.adzunaApiKey ?? existing.adzunaApiKey,
     });
 }
 
