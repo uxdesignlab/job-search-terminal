@@ -191,6 +191,7 @@ export type ImportResult = {
   errors: string[];
   summary: string;
   jobIds: string[];
+  importedJobs: Array<{ id: string; title: string; url: string; company: string }>;
   scanRunId: string;
 };
 
