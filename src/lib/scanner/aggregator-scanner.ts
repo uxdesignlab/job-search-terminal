@@ -197,7 +197,7 @@ export async function runAggregatorScan(
       duplicates: importResult.duplicates,
       totalFound: jobs.length,
       errors: [...errors, ...importResult.errors],
-      jobs: preview.slice(0, importResult.imported),
+      jobs: importResult.importedJobs.map((job) => ({ title: job.title, url: job.url, company: job.company })),
     };
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));

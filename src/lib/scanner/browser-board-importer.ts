@@ -163,12 +163,17 @@ export async function importBrowserBoardJobs(
       errors: [String(e)],
       summary: "Failed to parse job board import file.",
       jobIds: [],
+      importedJobs: [],
       scanRunId
     };
   }
 
   const prepared = prepareBrowserBoardJobs(scan);
   const { inserted, jobIds } = insertBrowserBoardJobs(prepared.jobs);
+  const insertedJobIds = new Set(jobIds);
+  const importedJobs = prepared.jobs
+    .filter((job) => insertedJobIds.has(job.id))
+    .map((job) => ({ id: job.id, title: job.title, url: job.url, company: job.company }));
 
   try {
     archiveImportFile(jsonFilePath);
@@ -204,7 +209,7 @@ export async function importBrowserBoardJobs(
   const ds = prepared.duplicates !== 1 ? "s" : "";
   const summary = `Imported ${inserted} ${label} job${s}. ${prepared.duplicates} duplicate${ds} detected.`;
 
-  return { success: true, imported: inserted, duplicates: prepared.duplicates, errors, summary, jobIds, scanRunId };
+  return { success: true, imported: inserted, duplicates: prepared.duplicates, errors, summary, jobIds, importedJobs, scanRunId };
 }
 
 function archiveImportFile(jsonFilePath: string) {

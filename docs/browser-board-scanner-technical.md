@@ -45,7 +45,9 @@ importBrowserBoardJobs()
 Adzuna uses a direct API scan (`src/lib/scanner/aggregator-scanner.ts`) rather
 than browser automation. The `metadata.source` value `"adzuna"` is recognised
 by the same importer pipeline, and the scan type `"adzuna-api-scan"` is stored
-in `scan_runs.scan_type`.
+in `scan_runs.scan_type`. Adzuna scan summaries use the importer-returned
+inserted job IDs for their new-listing preview, so ignored duplicate rows do
+not displace jobs that were actually added.
 
 Legacy LinkedIn files without `metadata.source` remain supported when imported
 through the legacy LinkedIn directory or route.
