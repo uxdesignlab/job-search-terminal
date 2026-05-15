@@ -446,11 +446,11 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Start the scan",
-            body: "Click Scan for new jobs from the Dashboard. The app checks enabled sources and applies your title and location constraints before inserting jobs.",
+            body: "Click Scan for new jobs from the Dashboard. The app checks all enabled ATS sources and, if Adzuna credentials are configured, also runs an Adzuna aggregator scan in parallel.",
           },
           {
             title: "Read the scan summary",
-            body: "The Dashboard reports companies scanned, new jobs, filtered jobs, duplicates, skipped sources, and source errors.",
+            body: "The Dashboard reports companies scanned, new jobs (ATS + Adzuna combined), filtered jobs, duplicates, skipped sources, and any source errors.",
           },
         ],
       },
