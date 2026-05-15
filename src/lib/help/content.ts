@@ -55,9 +55,9 @@ export const helpPages: HelpPage[] = [
     slug: "getting-started",
     title: "Getting started with Job Search Terminal",
     shortTitle: "Getting started",
-    description: "Set up the local app, finish onboarding, and understand the core workflow before your first job scan.",
+    description: "Set up the local app, finish onboarding, add optional Adzuna and Brave keys, and understand the core workflow.",
     category: "Setup",
-    readTime: "8 min",
+    readTime: "10 min",
     icon: "laptop",
     image: {
       src: "/images/job-search-terminal/job-search-terminal-dashboard.png",
@@ -65,15 +65,15 @@ export const helpPages: HelpPage[] = [
     },
     highlights: [
       "Everything runs locally on your machine.",
-      "The app needs one AI provider key, at least one resume lane, and confirmed search preferences.",
-      "The Dashboard becomes your command center after setup is complete.",
+      "One AI provider key is required; Adzuna and Brave Search keys are optional but expand coverage significantly.",
+      "The Dashboard scan runs ATS sources and Adzuna together once credentials are configured.",
     ],
     sections: [
       {
         id: "what-it-is",
         title: "What this app does",
         intro:
-          "Job Search Terminal is a local-first job-search workspace. It scans supported career sources, imports manual and browser-board jobs, evaluates fit with AI, generates tailored resumes, prepares application answers, and tracks every application through the funnel.",
+          "Job Search Terminal is a local-first job-search workspace. It scans supported career sources, imports manual and browser-board jobs, pulls jobs from aggregator APIs, evaluates fit with AI, generates tailored resumes, prepares application answers, and tracks every application through the funnel.",
         bullets: [
           "No cloud account is required for the app itself.",
           "Your profile, resumes, generated documents, jobs, and application history stay on your computer.",
@@ -89,15 +89,15 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Add one AI provider key",
-            body: "Open Account -> Settings -> AI Providers, choose OpenAI, Anthropic, or Google Gemini, paste the key, save, and test the connection.",
+            body: "Open Account → Settings → AI Providers, choose OpenAI, Anthropic, or Google Gemini, paste the key, save, and test the connection.",
           },
           {
             title: "Upload your base resumes",
-            body: "Open Account -> Profile -> Resumes. Upload each PDF into the lane that matches its career angle, such as Leadership, IC, Operations, or Consulting.",
+            body: "Open Account → Profile → Resumes. Upload each PDF into the lane that matches its career angle, such as Leadership, IC, Operations, or Consulting.",
           },
           {
             title: "Extract your profile",
-            body: "Open Account -> Profile -> Overview and run Extract with AI after at least one resume has been uploaded. Review the extracted profile before using it.",
+            body: "Open Account → Profile → Overview and run Extract with AI after at least one resume has been uploaded. Review the extracted profile before using it.",
           },
           {
             title: "Confirm preferences",
@@ -105,9 +105,29 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Run your first scan",
-            body: "Return to the Dashboard and use Scan for new jobs. New jobs appear in Jobs, where they can be filtered, evaluated, skipped, archived, or moved into the application funnel.",
+            body: "Return to the Dashboard and click Scan for new jobs. The scan checks all enabled ATS career portals and, if Adzuna credentials are configured, runs an Adzuna aggregator scan in parallel. New jobs appear in Jobs.",
           },
         ],
+      },
+      {
+        id: "optional-keys",
+        title: "Optional: expand job coverage",
+        intro:
+          "Two free API keys unlock additional job sources and source discovery. Neither is required to use the core app.",
+        steps: [
+          {
+            title: "Adzuna (job aggregator)",
+            body: "Register at developer.adzuna.com for a free App ID and API Key (2,000 queries/month). Add both in Account → Settings → AI Provider → Discovery & Aggregators. Once set, the Dashboard scan automatically includes Adzuna results alongside ATS sources — no extra step needed.",
+          },
+          {
+            title: "Brave Search (source discovery)",
+            body: "Register at brave.com/search/api for a free API key (2,000 queries/month). Add it in Account → Settings → AI Provider → Discovery & Aggregators. Once set, the Search discover button appears in Settings → Sources and finds new companies using Ashby, Greenhouse, or Lever from live search results.",
+          },
+        ],
+        callout: {
+          title: "Already tracking 50+ ATS sources",
+          body: "The app ships with ~50 curated companies in portals.yml. Use Settings → Sources → Scan for new sources (Common Crawl) or Search discover (Brave) to find more, then Validate sources to confirm which are live and Import all valid to add them in bulk.",
+        },
       },
       {
         id: "daily-loop",
@@ -115,7 +135,7 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Scan or import",
-            body: "Use the Dashboard scan, manual Add Job, or the browser job board scanner to bring new postings into the pipeline.",
+            body: "Click Scan for new jobs on the Dashboard — ATS portals and Adzuna (if configured) run together. Or use manual Add Job, or the browser job board scanner for LinkedIn and similar boards.",
           },
           {
             title: "Review and evaluate",
@@ -132,7 +152,7 @@ export const helpPages: HelpPage[] = [
         ],
       },
     ],
-    related: ["ai-providers", "resume-lanes", "job-search"],
+    related: ["ai-providers", "job-search", "linkedin-scanner"],
   },
   {
     slug: "ai-providers",
