@@ -364,11 +364,30 @@ standard resume layout conventions.
 - Delete document action.
 
 ### Resume Editor `/generated-documents/[id]/edit`
-Full draft editor for a tailored resume before exporting to PDF:
-- Edit generated sections: summary, experience bullets, skills, recognition,
-  and custom sections carried from the approved lane.
-- Keyword coverage tracker updates as you edit.
-- Save draft and regenerate PDF buttons.
+Full draft editor for a tailored resume before exporting to PDF. Matches the
+approved-resume builder experience with identical section controls on every section:
+- **Section title** — editable input that updates the heading printed in the PDF.
+- **✨ Improve** — AI rewrites the section content; user can accept or discard the
+  suggestion. Not shown on the Experience section (improvement is per-entry).
+- **↑ Move up / ↓ Move down** — reorders sections; order is reflected in the preview
+  and the generated PDF.
+- **Remove** — hides a section from the PDF (data is not deleted).
+- Experience entries each have a **✨ Improve bullets** button with the same
+  accept/discard flow as the resume builder.
+- Header (name, headline, contact) is always pinned at the top and is not
+  moveable or removable.
+- Education is always shown last and is display-only (pulled from the base resume).
+- **Keyword coverage panel** — collapsible panel between the help text and the first
+  section showing all job keywords as chips. Green ✓ chips = covered in the current
+  resume text; muted ○ chips = not yet present. Updates instantly as the user types
+  (no debounce — pure JS computation). Starts expanded when coverage is below 70%.
+  Collapses to just the `covered/total` counter when the user has seen enough.
+- **Job-aware AI improvement** — ✨ Improve (and ✨ Improve bullets for experience)
+  include the job keywords in the API call. The AI naturally incorporates missing
+  keywords into suggestions without forcing them.
+- Live preview pane updates automatically with a 400 ms debounce; Refresh button
+  forces an immediate update.
+- Keyword coverage percentage shown in the page header (color-coded green/yellow/red).
 
 ### Resume Preview `/generated-documents/[id]/preview`
 Read-only HTML preview of the tailored resume.

@@ -30,6 +30,7 @@ export type ResumeTemplateInput = {
     school: string;
     focus?: string;
   }>;
+  sectionOrder?: string[];
 };
 
 export function renderResumeHtml(input: ResumeTemplateInput) {
@@ -141,18 +142,30 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
         <p class="contact">${renderContact(input.contactItems)}</p>
       </header>
 
+      ${renderBodySections(input)}
+      ${renderEducation(input.education, input.educationHeading)}
+    </main>
+  </body>
+</html>`;
+}
+
+function renderSummarySection(input: ResumeTemplateInput): string {
+  if (!input.summary.trim()) return "";
+  return `
       <section>
         <h2>${escapeHtml(input.summaryHeading || "Professional Summary")}</h2>
         <p>${escapeHtml(input.summary)}</p>
-      </section>
+      </section>`;
+}
 
-      ${renderOptionalSection(input.impactHeading || "Key Achievements", input.impactItems)}
-
+function renderExperienceSection(input: ResumeTemplateInput): string {
+  if (!input.experience.length) return "";
+  return `
       <section class="experience">
         <h2>${escapeHtml(input.experienceHeading || "Professional Experience")}</h2>
         ${input.experience
           .map(
-            (item) => `          <div class="job-entry">
+            (item) => `<div class="job-entry">
             <h3>${escapeHtml(item.title)}</h3>
             <p class="job-meta">
               <span class="organization">${[item.organization, item.location].filter((s): s is string => Boolean(s)).map(escapeHtml).join(" · ")}</span>
@@ -164,15 +177,31 @@ export function renderResumeHtml(input: ResumeTemplateInput) {
           </div>`
           )
           .join("")}
-      </section>
+      </section>`;
+}
 
-      ${renderOptionalSection(input.skillsHeading || "Skills", input.skills)}
-      ${renderOptionalSection(input.recognitionHeading || "Awards and Recognition", input.recognition)}
-      ${(input.extraSections ?? []).map((section) => renderOptionalSection(section.title, section.items)).join("")}
-      ${renderEducation(input.education, input.educationHeading)}
-    </main>
-  </body>
-</html>`;
+function renderSectionById(id: string, input: ResumeTemplateInput): string {
+  if (id === "summary") return renderSummarySection(input);
+  if (id === "impact") return renderOptionalSection(input.impactHeading || "Key Achievements", input.impactItems);
+  if (id === "experience") return renderExperienceSection(input);
+  if (id === "skills") return renderOptionalSection(input.skillsHeading || "Skills", input.skills);
+  if (id === "recognition") return renderOptionalSection(input.recognitionHeading || "Awards and Recognition", input.recognition);
+  const extra = input.extraSections?.find((s) => s.id === id);
+  if (extra) return renderOptionalSection(extra.title, extra.items);
+  return "";
+}
+
+function renderBodySections(input: ResumeTemplateInput): string {
+  const defaultOrder: string[] = [
+    "summary",
+    "impact",
+    "experience",
+    "skills",
+    "recognition",
+    ...(input.extraSections ?? []).map((s) => s.id ?? "").filter(Boolean),
+  ];
+  const order = input.sectionOrder ?? defaultOrder;
+  return order.map((id) => renderSectionById(id, input)).join("\n");
 }
 
 function renderOptionalSection(title: string, items: string[]) {
