@@ -50,13 +50,18 @@ export default function DashboardPage() {
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
 
-    const jobs = careerOps.jobs;
     const max = SCAN_RESULT_JOBS_PREVIEW_MAX;
     const adzunaErrors = adzuna?.errors.map((e) => ({ company: "Adzuna", error: e })) ?? [];
+    const adzunaHasErrors = (adzuna?.errors.length ?? 0) > 0;
     const combinedStatus =
       careerOps.status === "failed" ? "failed" :
-      (careerOps.status === "completed_with_errors" || adzuna?.status === "error") ? "completed_with_errors" :
+      (careerOps.status === "completed_with_errors" || adzuna?.status === "error" || adzunaHasErrors) ? "completed_with_errors" :
       "completed";
+
+    const allJobs = [
+      ...careerOps.jobs.map((j) => ({ title: j.title, url: j.url, company: j.company })),
+      ...(adzuna?.jobs ?? []),
+    ];
 
     return {
       companyName: "All enabled sources",
@@ -68,8 +73,8 @@ export default function DashboardPage() {
       companiesScanned: careerOps.companiesScanned,
       skippedCompanies: careerOps.skippedCompanies,
       errors: [...careerOps.errors, ...adzunaErrors],
-      jobs: jobs.slice(0, max).map((j) => ({ title: j.title, url: j.url, company: j.company })),
-      jobsTotal: jobs.length > max ? jobs.length : undefined,
+      jobs: allJobs.slice(0, max),
+      jobsTotal: allJobs.length > max ? allJobs.length : undefined,
     };
   }
 
