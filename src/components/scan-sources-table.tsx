@@ -42,6 +42,7 @@ type Props = {
   onRemove: (name: string) => Promise<void>;
   onSaveIndustry: (name: string, industry: string) => Promise<void>;
   onScanCompany: (companyName: string) => Promise<CompanyScanResultSummary>;
+  onValidateAll?: () => Promise<Array<{ name: string; status: string; jobCount: number | null }>>;
 };
 
 type SortCol = "company" | "industry" | "ats" | "status";
@@ -83,6 +84,7 @@ export function ScanSourcesTable({
   onRemove,
   onSaveIndustry,
   onScanCompany,
+  onValidateAll,
 }: Props) {
   const router = useRouter();
   const {
@@ -116,6 +118,8 @@ export function ScanSourcesTable({
   const [scanResult, setScanResult] = useState<ScanJobResultSummary | null>(null);
   const [scanningName, setScanningName] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [validationMap, setValidationMap] = useState<Map<string, { status: string; jobCount: number | null }>>(new Map());
+  const [validating, setValidating] = useState(false);
 
   function handleToggle(name: string) {
     const currentEnabled = enabledOverrides.has(name)
@@ -207,6 +211,17 @@ export function ScanSourcesTable({
     });
   }
 
+  async function handleValidateAll() {
+    if (!onValidateAll) return;
+    setValidating(true);
+    try {
+      const results = await onValidateAll();
+      setValidationMap(new Map(results.map((r) => [r.name, { status: r.status, jobCount: r.jobCount }])));
+    } finally {
+      setValidating(false);
+    }
+  }
+
   return (
     <div className="relative">
       {(activeFilterCount > 0 ||
@@ -232,6 +247,19 @@ export function ScanSourcesTable({
             />
           }
         />
+      )}
+
+      {onValidateAll && (
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => void handleValidateAll()}
+            disabled={validating}
+            className="text-xs text-muted hover:text-ink disabled:opacity-50"
+          >
+            {validating ? "Validating…" : validationMap.size > 0 ? "Re-validate sources" : "Validate sources"}
+          </button>
+        </div>
       )}
 
       <div className="w-full max-w-full" role="region" aria-label="Scan sources table">
@@ -260,6 +288,9 @@ export function ScanSourcesTable({
                   onOpen={openFilter}
                 />
               ))}
+              {validationMap.size > 0 && (
+                <th className="pb-3 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-muted w-24">Live</th>
+              )}
               <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted w-28">
                 Scan
               </th>
@@ -310,6 +341,17 @@ export function ScanSourcesTable({
                       {isEnabled ? "Enabled" : "Disabled"}
                     </Badge>
                   </td>
+                  {validationMap.size > 0 && (
+                    <td className="py-3 pr-4">
+                      {(() => {
+                        const v = validationMap.get(source.name);
+                        if (!v) return <span className="text-xs text-muted">—</span>;
+                        if (v.status === "valid") return <Badge tone="success">{v.jobCount !== null ? `${v.jobCount} jobs` : "Live"}</Badge>;
+                        if (v.status === "dead") return <Badge tone="danger">Dead</Badge>;
+                        return <Badge tone="neutral">Unknown</Badge>;
+                      })()}
+                    </td>
+                  )}
                   <td className="py-3 pr-4">
                     <Button
                       aria-label={`Scan for new jobs at ${source.name}`}

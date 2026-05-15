@@ -180,7 +180,8 @@ export type ScanRunRecord = {
     | "workatastartup-browser-scan"
     | "glassdoor-browser-scan"
     | "indeed-browser-scan"
-    | "monster-browser-scan";
+    | "monster-browser-scan"
+    | "adzuna-api-scan";
 };
 
 export type ImportResult = {
@@ -216,7 +217,7 @@ export type LinkedInScanFile = {
 
 export type BrowserBoardScanFile = {
   metadata: {
-    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster";
+    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster" | "adzuna";
     scanTimestamp: string;
     scanDurationSeconds: number;
     totalJobsDiscovered: number;
@@ -475,6 +476,9 @@ export type AISettingsRecord = {
   fallbackProvider: string;
   onboardingDismissed: boolean;
   onboardingPreferencesConfirmed: boolean;
+  braveSearchApiKey: string;
+  adzunaAppId: string;
+  adzunaApiKey: string;
   updatedAt: string;
 };
 
@@ -489,6 +493,9 @@ export type AISettingsUpdateInput = {
   fallbackProvider: string;
   onboardingDismissed?: boolean;
   onboardingPreferencesConfirmed?: boolean;
+  braveSearchApiKey?: string;
+  adzunaAppId?: string;
+  adzunaApiKey?: string;
 };
 
 export type AIPromptId =
