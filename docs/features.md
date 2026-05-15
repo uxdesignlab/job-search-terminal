@@ -640,14 +640,32 @@ Location matching uses the selected Location mode checkboxes:
 
 An optional feature for users with Claude Desktop or Codex Chrome. An agent browses visible job-board results on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required. Supported browser-board sources are LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster.
 
-A separate **Adzuna API scanner** (Settings → Sources → Job aggregators card) pulls matching jobs directly from the Adzuna aggregator API without requiring a browser. It uses the same import pipeline as browser-board scans. Requires an Adzuna App ID and API Key configured in Settings → AI Provider → Discovery &amp; Aggregators.
-
 **How it works:**
 1. Ask Claude or Codex to scan LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster
 2. The agent reads your target roles and location preferences from the JST database
 3. The agent opens the requested board in Chrome and extracts matching visible postings
 4. A JSON file is written to `data/job-board-imports/` (`data/linkedin-imports/` remains supported for legacy LinkedIn files)
 5. Job Search Terminal detects the file, imports jobs with duplicate detection, and shows a notification
+
+---
+
+## Adzuna Job Aggregator (Direct API Scanner)
+
+Adzuna is a job aggregator that indexes listings from many sources including Indeed, CareerBuilder, and direct employer feeds. Unlike browser-board scanning, Adzuna requires no browser or logged-in session — the app queries its public API directly.
+
+**How it works:**
+1. Register at [developer.adzuna.com](https://developer.adzuna.com) for a free App ID and API Key (free tier: 2,000 queries/month)
+2. Paste both keys in Settings → AI Provider → Discovery & Aggregators
+3. Open Settings → Sources — the Job aggregators card appears at the bottom
+4. Click **Scan with Adzuna**; the scanner queries Adzuna for each of your saved target roles and preferred locations
+5. New jobs enter the same import pipeline as browser-board scans — duplicate detection, title filtering, and source badges all apply
+6. The button shows imported count and duplicate count inline after the scan completes
+
+**What it covers:** Adzuna aggregates from multiple sources and covers roles that may not appear in direct ATS portals or browser-board searches. It is best used alongside browser-board and CareerOps ATS scans.
+
+**Limits:** Up to 5 target roles × 3 locations per scan, 50 results per query, jobs posted within the last 14 days only. Adzuna's coverage varies by country (default: `us`).
+
+**Scan type recorded:** `adzuna-api-scan`. Jobs appear in the Jobs table with an **Adzuna** source badge.
 
 **UI indicators on the Jobs table:**
 - **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, **Monster**, or **Adzuna** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans or aggregator API scans
