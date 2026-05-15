@@ -4,7 +4,8 @@ export const BROWSER_BOARD_SOURCES = [
   "workatastartup",
   "glassdoor",
   "indeed",
-  "monster"
+  "monster",
+  "adzuna"
 ] as const;
 
 export type BrowserBoardSource = (typeof BROWSER_BOARD_SOURCES)[number];
@@ -15,7 +16,8 @@ export type BrowserBoardScanType =
   | "workatastartup-browser-scan"
   | "glassdoor-browser-scan"
   | "indeed-browser-scan"
-  | "monster-browser-scan";
+  | "monster-browser-scan"
+  | "adzuna-api-scan";
 
 const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   linkedin: "LinkedIn",
@@ -23,7 +25,8 @@ const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   workatastartup: "Work at a Startup",
   glassdoor: "Glassdoor",
   indeed: "Indeed",
-  monster: "Monster"
+  monster: "Monster",
+  adzuna: "Adzuna"
 };
 
 const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
@@ -32,7 +35,8 @@ const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
   workatastartup: "workatastartup-browser-scan",
   glassdoor: "glassdoor-browser-scan",
   indeed: "indeed-browser-scan",
-  monster: "monster-browser-scan"
+  monster: "monster-browser-scan",
+  adzuna: "adzuna-api-scan"
 };
 
 const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
@@ -41,7 +45,8 @@ const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
   "workatastartup-browser-scan": "workatastartup",
   "glassdoor-browser-scan": "glassdoor",
   "indeed-browser-scan": "indeed",
-  "monster-browser-scan": "monster"
+  "monster-browser-scan": "monster",
+  "adzuna-api-scan": "adzuna"
 };
 
 export function isBrowserBoardSource(value: unknown): value is BrowserBoardSource {

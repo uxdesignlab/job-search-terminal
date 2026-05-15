@@ -11,6 +11,7 @@ import {
   getProfileSupplements,
   getScanSourceOverrides,
   getTitleFilters,
+  getUserProfile,
   saveTitleFilters,
   setScanSourceEnabled,
   syncCompanyProfilesFromYaml,
@@ -24,9 +25,11 @@ import { ProfileSupplementsEditor } from "@/components/profile-supplements-edito
 import { DiscoveredSourcesButton } from "@/components/discovered-sources-button";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
+import { AggregatorScanButton } from "@/components/aggregator-scan-button";
 import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
-import { runSourceDiscovery } from "@/lib/scanner/source-discovery";
+import { runSourceDiscovery, runSearchDiscovery } from "@/lib/scanner/source-discovery";
+import type { SourceValidationResult } from "@/lib/scanner/source-validator";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -142,6 +145,7 @@ export default async function SettingsPage({
   const importableDiscovered = allDiscovered.filter(
     (e) => e.validationStatus === "valid" && !existingNames.has(e.slug.toLowerCase())
   );
+  const validDiscoveredCount = importableDiscovered.length;
 
   // ── Server actions ──────────────────────────────────────────────────────────
 
@@ -151,6 +155,56 @@ export default async function SettingsPage({
       console.info(`[discover-sources] ${msg}`);
     });
     revalidatePath("/settings");
+  }
+
+  async function importAllValidAction() {
+    "use server";
+    const discovered = loadDiscoveredSources();
+    const cfg = loadScanConfig();
+    const cfgNames = new Set((cfg.tracked_companies ?? []).map((c) => c.name.toLowerCase()));
+    const custom = getCustomScanSources();
+    const customNames = new Set(custom.map((c) => c.name.toLowerCase()));
+    const existing = new Set([...cfgNames, ...customNames]);
+    const toImport = discovered.filter(
+      (e) => e.validationStatus === "valid" && !existing.has(e.slug.toLowerCase())
+    );
+    for (const entry of toImport) {
+      addCustomScanSource(entry.slug, entry.careersUrl, entry.apiUrl ?? "");
+      if (entry.industry) upsertCompanyProfile(entry.slug, entry.industry);
+    }
+    revalidatePath("/settings");
+  }
+
+  async function validateAllSourcesAction(): Promise<SourceValidationResult[]> {
+    "use server";
+    const { validateAllSources } = await import("@/lib/scanner/source-validator");
+    return validateAllSources(
+      allCompanies.map((c) => ({ name: c.name, careersUrl: c.careersUrl, apiType: c.apiType }))
+    );
+  }
+
+  async function searchDiscoverSourcesAction() {
+    "use server";
+    const currentSettings = getAISettings();
+    if (!currentSettings.braveSearchApiKey) throw new Error("Brave Search API key not configured");
+    await runSearchDiscovery(currentSettings.braveSearchApiKey, (msg) => {
+      console.info(`[search-discover] ${msg}`);
+    });
+    revalidatePath("/settings");
+  }
+
+  async function runAggregatorScanAction() {
+    "use server";
+    const currentSettings = getAISettings();
+    const profile = getUserProfile();
+    const { runAggregatorScan } = await import("@/lib/scanner/aggregator-scanner");
+    return runAggregatorScan({
+      adzunaAppId: currentSettings.adzunaAppId,
+      adzunaApiKey: currentSettings.adzunaApiKey,
+      titles: profile.targetRoles,
+      locations: profile.preferredLocations,
+      remotePreference: profile.remotePreference,
+    });
   }
 
   async function toggleSourceEnabledAction(name: string, enabled: boolean) {
@@ -293,12 +347,28 @@ export default async function SettingsPage({
                   </CardDescription>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {validDiscoveredCount > 0 && (
+                    <form action={importAllValidAction}>
+                      <SubmitButton
+                        label={`Import all valid (${validDiscoveredCount})`}
+                        pendingLabel="Importing…"
+                        variant="primary"
+                      />
+                    </form>
+                  )}
                   <DiscoveredSourcesButton entries={importableDiscovered} onImport={importDiscoveredAction} />
                   <ScanJobsForm
                     action={discoverSourcesAction}
                     label="Scan for new sources"
                     pendingLabel="Discovering…"
                   />
+                  {settings.braveSearchApiKey && (
+                    <ScanJobsForm
+                      action={searchDiscoverSourcesAction}
+                      label="Search discover"
+                      pendingLabel="Searching…"
+                    />
+                  )}
                 </div>
               </div>
               <ScanSourcesTable
@@ -308,6 +378,7 @@ export default async function SettingsPage({
                 onRemove={removeSourceAction}
                 onSaveIndustry={saveIndustryAction}
                 onScanCompany={scanCompanyJobsAction}
+                onValidateAll={validateAllSourcesAction}
               />
             </Card>
 
@@ -341,6 +412,23 @@ export default async function SettingsPage({
                   <SubmitButton label="Add company" savedLabel="Added" variant="primary" />
                 </div>
               </form>
+            </Card>
+
+            {/* Job aggregators */}
+            <Card>
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <CardTitle>Job aggregators</CardTitle>
+                  <CardDescription>
+                    Scan Adzuna to pull matching jobs directly from aggregator APIs into your pipeline.
+                    Configure your Adzuna App ID and API Key in the AI Provider tab.
+                  </CardDescription>
+                </div>
+                <AggregatorScanButton
+                  onScan={runAggregatorScanAction}
+                  hasCredentials={Boolean(settings.adzunaAppId && settings.adzunaApiKey)}
+                />
+              </div>
             </Card>
           </>
         )}

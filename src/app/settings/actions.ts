@@ -20,6 +20,9 @@ export async function saveAISettingsAction(formData: FormData) {
   const geminiModel = (formData.get("geminiModel") as string) || "gemini-2.0-flash";
   const openaiModel = (formData.get("openaiModel") as string) || "gpt-4o";
   const fallbackProvider = (formData.get("fallbackProvider") as string) ?? "";
+  const submittedBraveKey = (formData.get("braveSearchApiKey") as string) ?? "";
+  const adzunaAppId = (formData.get("adzunaAppId") as string) ?? "";
+  const submittedAdzunaKey = (formData.get("adzunaApiKey") as string) ?? "";
 
   const validProviders: AIProviderName[] = ["anthropic", "gemini", "openai"];
   if (!validProviders.includes(activeProvider)) {
@@ -30,6 +33,8 @@ export async function saveAISettingsAction(formData: FormData) {
   const anthropicApiKey = resolveKey(submittedAnthropicKey, stored.anthropicApiKey);
   const geminiApiKey = resolveKey(submittedGeminiKey, stored.geminiApiKey);
   const openaiApiKey = resolveKey(submittedOpenaiKey, stored.openaiApiKey);
+  const braveSearchApiKey = resolveKey(submittedBraveKey, stored.braveSearchApiKey);
+  const adzunaApiKey = resolveKey(submittedAdzunaKey, stored.adzunaApiKey);
 
   saveAISettings({
     activeProvider,
@@ -42,6 +47,9 @@ export async function saveAISettingsAction(formData: FormData) {
     fallbackProvider,
     onboardingDismissed: stored.onboardingDismissed,
     onboardingPreferencesConfirmed: stored.onboardingPreferencesConfirmed,
+    braveSearchApiKey,
+    adzunaAppId,
+    adzunaApiKey,
   });
 
   revalidatePath("/settings");

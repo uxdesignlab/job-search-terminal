@@ -40,6 +40,12 @@ importBrowserBoardJobs()
 | Glassdoor | `glassdoor` | `glassdoor-browser-scan` |
 | Indeed | `indeed` | `indeed-browser-scan` |
 | Monster | `monster` | `monster-browser-scan` |
+| Adzuna | `adzuna` | `adzuna-api-scan` |
+
+Adzuna uses a direct API scan (`src/lib/scanner/aggregator-scanner.ts`) rather
+than browser automation. The `metadata.source` value `"adzuna"` is recognised
+by the same importer pipeline, and the scan type `"adzuna-api-scan"` is stored
+in `scan_runs.scan_type`.
 
 Legacy LinkedIn files without `metadata.source` remain supported when imported
 through the legacy LinkedIn directory or route.

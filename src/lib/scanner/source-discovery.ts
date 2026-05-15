@@ -442,3 +442,154 @@ export async function runSourceDiscovery(
     unknown: validated.filter((e) => e.validationStatus === "unknown").length,
   };
 }
+
+// ─── Search-based Discovery ───────────────────────────────────────────────────
+
+type BraveSearchResult = { url?: string; title?: string };
+type BraveSearchResponse = { web?: { results?: BraveSearchResult[] } };
+
+const SEARCH_PATTERNS: Array<{ query: string; provider: AtsProvider }> = [
+  { query: "site:jobs.ashbyhq.com", provider: "ashby" },
+  { query: "site:jobs.lever.co", provider: "lever" },
+  { query: "site:boards.greenhouse.io", provider: "greenhouse" },
+  { query: "site:job-boards.greenhouse.io", provider: "greenhouse" },
+];
+
+const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
+const BRAVE_PAGES_PER_PATTERN = 5;
+const BRAVE_RESULTS_PER_PAGE = 20;
+
+async function queryBraveSearch(
+  apiKey: string,
+  query: string,
+  offset: number,
+): Promise<BraveSearchResult[]> {
+  const params = new URLSearchParams({
+    q: query,
+    count: String(BRAVE_RESULTS_PER_PAGE),
+    offset: String(offset),
+    search_lang: "en",
+    text_decorations: "false",
+    spellcheck: "false",
+  });
+  const res = await safeFetch(`${BRAVE_SEARCH_URL}?${params}`, {
+    headers: {
+      Accept: "application/json",
+      "Accept-Encoding": "gzip",
+      "X-Subscription-Token": apiKey,
+    },
+  });
+  if (!res.ok) throw new Error(`Brave Search returned HTTP ${res.status}`);
+  const data = await res.json() as BraveSearchResponse;
+  return data.web?.results ?? [];
+}
+
+export function loadDiscoveredEntries(): DiscoveredEntry[] {
+  if (!existsSync(OUTPUT_PATH)) return [];
+  try {
+    const data = JSON.parse(readFileSync(OUTPUT_PATH, "utf-8")) as DiscoveredSources;
+    return data.entries ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function runSearchDiscovery(
+  braveApiKey: string,
+  onProgress?: (msg: string) => void,
+): Promise<DiscoverySummary> {
+  if (!braveApiKey) throw new Error("Brave Search API key is required");
+
+  const existingSlugs = loadExistingSlugs();
+  // Also skip slugs already discovered in previous runs
+  const prevEntries = loadDiscoveredEntries();
+  const prevKeys = new Set(prevEntries.map(entryStableId));
+
+  const seen = new Map<string, DiscoveredEntry>();
+  let totalCrawled = 0;
+
+  for (const { query, provider } of SEARCH_PATTERNS) {
+    onProgress?.(`Searching Brave: ${query}…`);
+    for (let page = 0; page < BRAVE_PAGES_PER_PATTERN; page++) {
+      const offset = page * BRAVE_RESULTS_PER_PAGE;
+      let results: BraveSearchResult[] = [];
+      try {
+        results = await queryBraveSearch(braveApiKey, query, offset);
+      } catch (err) {
+        onProgress?.(`Warning: Brave Search failed for ${query} offset ${offset}: ${(err as Error).message}`);
+        break;
+      }
+      if (results.length === 0) break;
+      totalCrawled += results.length;
+
+      for (const { url } of results) {
+        if (!url) continue;
+        const slug = extractSlug(url);
+        if (!slug || existingSlugs.has(slug)) continue;
+        const key = `${provider}::${slug}`;
+        if (seen.has(key) || prevKeys.has(key)) continue;
+        seen.set(key, {
+          slug,
+          provider,
+          careersUrl: buildCareersUrl(slug, provider),
+          apiUrl: buildApiUrl(slug, provider),
+          validationStatus: "unknown",
+          checkedAt: null,
+          snapshotDate: null,
+          companyDisplayName: null,
+          industry: null,
+        });
+      }
+      if (results.length < BRAVE_RESULTS_PER_PAGE) break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  const candidates = [...seen.values()];
+  onProgress?.(`Validating ${candidates.length} new slugs from search…`);
+
+  const validated = await validateInBatches(candidates, (done, total) => {
+    onProgress?.(`Validating ${done}/${total}…`);
+  });
+
+  const industryById = await classifyIndustriesWithAI(validated, onProgress);
+  const withIndustries = validated.map((e) => {
+    const id = entryStableId(e);
+    let industry = industryById.get(id) ?? null;
+    if (e.validationStatus === "valid" && !industry) {
+      industry = heuristicIndustry(e.slug);
+    }
+    const companyDisplayName =
+      e.companyDisplayName?.trim() ||
+      (e.validationStatus === "valid" ? labelFromSlug(e.slug) : null);
+    return { ...e, companyDisplayName, industry };
+  });
+
+  // Merge with existing entries — new entries added, existing untouched
+  const merged = [...prevEntries];
+  for (const entry of withIndustries) {
+    const key = entryStableId(entry);
+    if (!prevKeys.has(key)) merged.push(entry);
+  }
+
+  const output: DiscoveredSources = {
+    fetchedAt: new Date().toISOString(),
+    totalCrawled,
+    entries: merged.sort(
+      (a, b) => a.provider.localeCompare(b.provider) || a.slug.localeCompare(b.slug),
+    ),
+  };
+
+  if (!existsSync(path.dirname(OUTPUT_PATH))) {
+    mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
+  }
+  writeFileSync(OUTPUT_PATH, JSON.stringify(output, null, 2));
+
+  return {
+    totalCrawled,
+    newSlugs: candidates.length,
+    valid: validated.filter((e) => e.validationStatus === "valid").length,
+    dead: validated.filter((e) => e.validationStatus === "dead").length,
+    unknown: validated.filter((e) => e.validationStatus === "unknown").length,
+  };
+}
