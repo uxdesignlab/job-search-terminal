@@ -378,10 +378,11 @@ approved-resume builder experience with identical section controls on every sect
   moveable or removable.
 - Education is always shown last and is display-only (pulled from the base resume).
 - **Keyword coverage panel** — collapsible panel between the help text and the first
-  section showing all job keywords as chips. Green ✓ chips = covered in the current
-  resume text; muted ○ chips = not yet present. Updates instantly as the user types
-  (no debounce — pure JS computation). Starts expanded when coverage is below 70%.
-  Collapses to just the `covered/total` counter when the user has seen enough.
+  section showing all job keywords as chips. Green ✓ chips = exact phrase or strong
+  term-overlap coverage in the current resume text; muted ○ chips = not yet strongly
+  represented. Updates instantly as the user types (no debounce — pure JS computation).
+  Starts expanded when coverage is below 70%. Collapses to just the `covered/total`
+  counter when the user has seen enough. The page header uses the same live matcher.
 - **Job-aware AI improvement** — ✨ Improve (and ✨ Improve bullets for experience)
   include the job keywords in the API call. The AI naturally incorporates missing
   keywords into suggestions without forcing them.
@@ -677,6 +678,8 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 **URL behavior:** Browser-board imports prefer a visible job-specific employer/ATS apply URL. If one is not available, the platform job URL is used and preserved as provenance.
 
 **Duplicate detection:** Jobs are marked as possible duplicates (not dropped) when their original posting key, URL, or company+title+location matches an existing record. The user can review and act on flagged jobs normally.
+
+**Adzuna URL stability:** Adzuna's API returns session-scoped redirect URLs that include tracking tokens which change on every API call. The importer normalises these to a stable canonical URL (`https://www.adzuna.com/land/ad/<id>`) so the same job always maps to the same database record across scan runs, preventing previously-imported Adzuna jobs from appearing as new. The same stable ID is also used for within-scan deduplication when the same listing appears under multiple search queries.
 
 **Import notification:** A fixed-bottom green alert appears on the Jobs page within 30 seconds of a completed import, showing the count of new jobs and duplicates. Auto-dismissed after 5 minutes.
 

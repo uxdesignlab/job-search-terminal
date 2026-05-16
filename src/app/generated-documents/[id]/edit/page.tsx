@@ -3,7 +3,7 @@ import { Shell } from "@/components/ui/shell";
 import { getGeneratedDocumentById, getEvaluationByJobId } from "@/lib/db/queries";
 import { ResumeDraftEditor } from "@/components/resume-draft-editor";
 import type { ResumeTemplateInput } from "@/lib/documents/resume-template";
-import { keywordCoverageFor } from "@/lib/documents/resume-generator";
+import { keywordCoverageFor } from "@/lib/documents/keyword-coverage";
 
 export const dynamic = "force-dynamic";
 

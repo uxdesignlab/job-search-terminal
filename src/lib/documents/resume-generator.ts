@@ -6,6 +6,9 @@ import { evaluateJob } from "../evaluation/job-evaluator";
 import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
+import { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
+
+export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
 
 export type GeneratedResumeResult = GeneratedDocumentInput & {
   pageCount: number;
@@ -921,36 +924,6 @@ function buildTailoringPlan(evaluation: EvaluationRecord, resume: ResumeRecord, 
     `Proof points reordered by overlap with the job/evaluation keywords.`,
     `Keyword coverage: ${keywordCoverage}%.`
   ];
-}
-
-function extractTextValues(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) return value.map(extractTextValues).join(" ");
-  if (typeof value === "object" && value !== null) {
-    return Object.values(value as Record<string, unknown>).map(extractTextValues).join(" ");
-  }
-  return "";
-}
-
-const STOP_WORDS = new Set(["and", "or", "in", "of", "the", "a", "an", "to", "for", "with", "by", "as", "is", "are", "was", "were", "at", "on", "its", "be", "been"]);
-
-function keywordHit(text: string, keyword: string): boolean {
-  if (text.includes(keyword)) return true;
-  const words = keyword.split(/[\s\-\/,]+/).filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
-  return words.length > 0 && words.some((w) => text.includes(w));
-}
-
-export function keywordCoverageFor(content: ResumeTemplateInput, keywords: string[]) {
-  const text = extractTextValues(content).toLowerCase();
-  const relevant = unique(keywords.map((keyword) => keyword.toLowerCase())).filter(Boolean);
-  if (relevant.length === 0) return 0;
-  const matched = relevant.filter((kw) => keywordHit(text, kw)).length;
-  return Math.round((matched / relevant.length) * 100);
-}
-
-export function missingKeywordsFor(content: ResumeTemplateInput, keywords: string[]): string[] {
-  const text = extractTextValues(content).toLowerCase();
-  return unique(keywords.map((k) => k.toLowerCase())).filter(Boolean).filter((kw) => !keywordHit(text, kw));
 }
 
 function paperFormatFor(job: JobRecord): "letter" | "a4" {

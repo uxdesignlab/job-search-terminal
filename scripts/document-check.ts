@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { getGeneratedDocumentById } from "../src/lib/db/queries";
+import { keywordCoverageDetailsForText } from "../src/lib/documents/keyword-coverage";
 import { generateTailoredResume } from "../src/lib/documents/resume-generator";
 
 async function main() {
@@ -22,6 +23,14 @@ async function main() {
 
   const pdf = await readFile(document.pdfUrl);
   assert.equal(pdf.subarray(0, 4).toString(), "%PDF");
+
+  const strictKeywordCheck = keywordCoverageDetailsForText("Led usability testing for clinical workflows.", [
+    "usability testing",
+    "department of veterans affairs",
+    "clinical workflows",
+  ]);
+  assert.deepEqual(strictKeywordCheck.covered, ["usability testing", "clinical workflows"]);
+  assert.deepEqual(strictKeywordCheck.missing, ["department of veterans affairs"]);
 
   console.log("Document generation check passed");
 }
