@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, LinkButton } from "@/components/ui";
+import { keywordCoverageDetailsForText } from "@/lib/documents/keyword-coverage";
 import { renderResumeHtml, type ResumeTemplateInput } from "@/lib/documents/resume-template";
 
 type SectionAIState = {
@@ -114,14 +115,6 @@ type Props = {
   keywords: string[];
 };
 
-// ---------- Keyword coverage utilities (client-side, mirrors resume-generator.ts) ----------
-
-function kwHit(text: string, keyword: string): boolean {
-  if (text.includes(keyword)) return true;
-  const words = keyword.split(/[\s\-\/,]+/).filter((w) => w.length >= 2);
-  return words.length > 0 && words.some((w) => text.includes(w));
-}
-
 function extractStateText(state: EditorState): string {
   return [
     state.name,
@@ -134,8 +127,7 @@ function extractStateText(state: EditorState): string {
     ...state.experience.flatMap((e) => [e.title, e.organization, e.bulletsText]),
     ...state.extraSections.map((s) => `${s.title} ${s.itemsText}`),
   ]
-    .join(" ")
-    .toLowerCase();
+    .join(" ");
 }
 
 // ---------- Styles ----------
@@ -161,14 +153,12 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
   const [previewHtml, setPreviewHtml] = useState(() => renderResumeHtml(initialDraft));
   const [kwExpanded, setKwExpanded] = useState(() => keywordCoverage < 70);
 
-  const { coveredKw, missingKw } = useMemo(() => {
-    if (!keywords.length) return { coveredKw: [], missingKw: [] };
+  const keywordDetails = useMemo(() => {
+    if (!keywords.length) return { covered: [], missing: [], total: 0, percentage: keywordCoverage };
     const text = extractStateText(state);
-    const normalized = [...new Set(keywords.map((k) => k.toLowerCase()))].filter(Boolean);
-    const coveredKw = normalized.filter((kw) => kwHit(text, kw));
-    const missingKw = normalized.filter((kw) => !kwHit(text, kw));
-    return { coveredKw, missingKw };
-  }, [state, keywords]);
+    return keywordCoverageDetailsForText(text, keywords);
+  }, [state, keywords, keywordCoverage]);
+  const { covered: coveredKw, missing: missingKw, total: keywordTotal, percentage: liveKeywordCoverage } = keywordDetails;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -526,10 +516,10 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           <h1 className="text-lg font-semibold text-ink">{documentTitle}</h1>
           <p className="mt-0.5 text-xs text-muted">
             Base: {baseResume} ·{" "}
-            <span className={keywordCoverage >= 70 ? "text-success font-medium" : keywordCoverage >= 40 ? "text-warning font-medium" : "text-danger font-medium"}>
-              {keywordCoverage}% keyword coverage
+            <span className={liveKeywordCoverage >= 70 ? "text-success font-medium" : liveKeywordCoverage >= 40 ? "text-warning font-medium" : "text-danger font-medium"}>
+              {liveKeywordCoverage}% keyword coverage
             </span>
-            {keywordCoverage < 70 && (
+            {liveKeywordCoverage < 70 && (
               <span className="ml-1 text-muted">(target: 70%+)</span>
             )}
           </p>
@@ -573,13 +563,13 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted">Keyword Coverage</span>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-semibold tabular-nums ${
-                    coveredKw.length / keywords.length >= 0.7
+                    keywordTotal > 0 && coveredKw.length / keywordTotal >= 0.7
                       ? "text-success"
-                      : coveredKw.length / keywords.length >= 0.4
+                      : keywordTotal > 0 && coveredKw.length / keywordTotal >= 0.4
                       ? "text-warning"
                       : "text-danger"
                   }`}>
-                    {coveredKw.length}/{keywords.length}
+                    {coveredKw.length}/{keywordTotal}
                   </span>
                   <svg
                     aria-hidden="true"
@@ -613,7 +603,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                         <span
                           key={kw}
                           className="inline-flex items-center gap-1 rounded-full border border-border bg-panel px-2 py-0.5 text-xs text-muted"
-                          title="Not yet in resume — try editing or use ✨ Improve"
+                          title="Not yet strongly represented in the resume — try editing or use ✨ Improve"
                         >
                           ○ {kw}
                         </span>
