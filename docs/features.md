@@ -74,7 +74,7 @@ an isolated dashboard modal so the user can finish setup without leaving the
 flow. Closing before completion shows a warning that the app will fail to
 generate useful matches, resumes, and answer drafts until setup is finished.
 
-The modal has 4 gated steps:
+The modal has 5 steps — 4 required and 1 optional:
 
 1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key inline.
 2. **Resume lanes** — uses the normal multi-lane resume upload cards. Uploading a
@@ -84,12 +84,28 @@ The modal has 4 gated steps:
    positions, include/exclude title filters, and location work modes. Resume
    upload or extraction may prefill these values, but the step does not become
    complete until the user confirms them.
-4. **Ready** — explains the next operational steps: review scan sources in
+4. **Integrations** *(optional)* — covers two free API keys that extend job
+   coverage. Each card shows a short explanation, a "Help →" link to the
+   relevant help section, and inline input fields with a "Leave blank to keep
+   existing" placeholder when keys are already saved.
+   - **Adzuna (job aggregator)** — App ID + API Key. Links to
+     `/help/job-search#aggregator`. Enables Adzuna API scanning alongside ATS
+     sources on every dashboard scan.
+   - **Brave Search (source discovery)** — API Key. Links to
+     `/help/ai-providers#discovery-aggregators`. Enables the "Search discover"
+     button in Settings → Sources.
+   The sidebar marks this step with a dashed "Optional" badge and a `·` in the
+   step circle when not yet configured. Clicking "Skip for now" advances to
+   Ready without saving. "Save and continue" saves any non-blank fields (blank
+   fields keep existing keys) and also advances to Ready.
+5. **Ready** — explains the next operational steps: review scan sources in
    Settings, run Scan for new jobs on the Dashboard, then review and evaluate
    imported matches.
 
 The normal dashboard and scan button are gated until an AI key exists, at least
 one resume lane has extracted text, and job preferences have been confirmed.
+The Integrations step is never a gate — completing it only enables optional
+features.
 
 **Normal dashboard** (after full setup):
 

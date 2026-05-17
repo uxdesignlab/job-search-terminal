@@ -49,6 +49,12 @@ in `scan_runs.scan_type`. Adzuna scan summaries use the importer-returned
 inserted job IDs for their new-listing preview, so ignored duplicate rows do
 not displace jobs that were actually added.
 
+The Adzuna scanner applies the same `title_filters` (positive/negative keyword
+lists from `getTitleFilters()`) as the Career Ops scanner before writing the
+import file. Jobs whose titles don't pass the filter are skipped and counted in
+`metadata.totalJobsSkipped`. The route (`src/app/api/aggregator/scan/route.ts`)
+reads and passes these filters via `AggregatorScanOptions.titleFilters`.
+
 Legacy LinkedIn files without `metadata.source` remain supported when imported
 through the legacy LinkedIn directory or route.
 
