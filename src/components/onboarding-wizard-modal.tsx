@@ -5,16 +5,17 @@ import { useRouter } from "next/navigation";
 import { AISettingsForm } from "@/components/ai-settings-form";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { ResumeManageCard } from "@/components/resume-manage-card";
-import { Button, SubmitButton, Textarea } from "@/components/ui";
+import { Button, Input, SubmitButton, Textarea } from "@/components/ui";
 import {
   createOnboardingResumeLaneAction,
   dismissOnboardingAction,
+  saveOnboardingIntegrationsAction,
   saveOnboardingPreferencesAction,
 } from "@/app/dashboard/onboarding-actions";
 import { cn } from "@/lib/utils";
 import type { AISettingsRecord, ResumeRecord, UserProfileRecord, WorkMode } from "@/lib/db/types";
 
-type StepId = "ai" | "resume" | "preferences" | "ready";
+type StepId = "ai" | "resume" | "preferences" | "integrations" | "ready";
 
 type OnboardingWizardModalProps = {
   settings: AISettingsRecord;
@@ -29,6 +30,8 @@ type OnboardingWizardModalProps = {
   hasRolePreferences: boolean;
   hasLocationPreferences: boolean;
   hasConfirmedPreferences: boolean;
+  hasAdzunaKeys: boolean;
+  hasBraveKey: boolean;
 };
 
 const WORK_MODES: WorkMode[] = ["remote", "hybrid", "onsite"];
@@ -57,6 +60,8 @@ export function OnboardingWizardModal({
   hasRolePreferences,
   hasLocationPreferences,
   hasConfirmedPreferences,
+  hasAdzunaKeys,
+  hasBraveKey,
 }: OnboardingWizardModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(true);
@@ -66,8 +71,9 @@ export function OnboardingWizardModal({
     ai: hasKey,
     resume: hasResume,
     preferences: hasConfirmedPreferences,
+    integrations: hasAdzunaKeys || hasBraveKey,
     ready: hasKey && hasResume && hasConfirmedPreferences,
-  }), [hasConfirmedPreferences, hasKey, hasResume]);
+  }), [hasAdzunaKeys, hasBraveKey, hasConfirmedPreferences, hasKey, hasResume]);
 
   const firstIncompleteStep = (Object.keys(statuses) as StepId[]).find((step) => !statuses[step]) ?? "ready";
   const [activeStep, setActiveStep] = useState<StepId>(firstIncompleteStep);
@@ -77,7 +83,7 @@ export function OnboardingWizardModal({
     if (statuses[activeStep]) setActiveStep(firstIncompleteStep);
   }, [activeStep, firstIncompleteStep, statuses]);
 
-  const steps: Array<{ id: StepId; title: string; description: string }> = [
+  const steps: Array<{ id: StepId; title: string; description: string; optional?: boolean }> = [
     {
       id: "ai",
       title: "AI provider",
@@ -92,6 +98,12 @@ export function OnboardingWizardModal({
       id: "preferences",
       title: "Job preferences",
       description: "Set target roles, title filters, and location mode before scanning.",
+    },
+    {
+      id: "integrations",
+      title: "Integrations",
+      description: "Connect Adzuna and Brave Search for broader job coverage.",
+      optional: true,
     },
     {
       id: "ready",
@@ -116,7 +128,13 @@ export function OnboardingWizardModal({
       formData.getAll("workModes").length > 0
     );
     await saveOnboardingPreferencesAction(formData);
-    if (canContinue) setActiveStep("ready");
+    if (canContinue) setActiveStep("integrations");
+    router.refresh();
+  }
+
+  async function saveIntegrations(formData: FormData) {
+    await saveOnboardingIntegrationsAction(formData);
+    setActiveStep("ready");
     router.refresh();
   }
 
@@ -208,6 +226,7 @@ export function OnboardingWizardModal({
                     const locked =
                       (step.id === "resume" && !statuses.ai) ||
                       (step.id === "preferences" && (!statuses.ai || !statuses.resume)) ||
+                      (step.id === "integrations" && !statuses.preferences) ||
                       (step.id === "ready" && !statuses.ready);
                     return (
                       <li key={step.id}>
@@ -223,18 +242,27 @@ export function OnboardingWizardModal({
                         >
                           <span
                             className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-full border text-sm font-semibold",
+                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold",
                               complete
                                 ? "border-success bg-success text-white"
                                 : active
                                   ? "border-accent bg-accent text-white"
-                                  : "border-border bg-surface text-muted"
+                                  : step.optional
+                                    ? "border-dashed border-border bg-surface text-muted"
+                                    : "border-border bg-surface text-muted"
                             )}
                           >
-                            {complete ? "✓" : index + 1}
+                            {complete ? "✓" : step.optional && !active ? "·" : index + 1}
                           </span>
                           <span className="min-w-0">
-                            <span className="block text-sm font-semibold text-ink">{step.title}</span>
+                            <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                              {step.title}
+                              {step.optional && (
+                                <span className="rounded-full border border-border px-1.5 py-px text-[10px] font-medium leading-4 text-muted">
+                                  Optional
+                                </span>
+                              )}
+                            </span>
                             <span className="mt-0.5 block text-xs leading-5 text-muted">{step.description}</span>
                           </span>
                         </button>
@@ -354,6 +382,110 @@ export function OnboardingWizardModal({
                       </fieldset>
                       <div>
                         <SubmitButton label="Save and continue" pendingLabel="Saving…" savedLabel="Preferences saved ✓" />
+                      </div>
+                    </form>
+                  </section>
+                )}
+
+                {activeStep === "integrations" && (
+                  <section className="grid gap-5">
+                    <div>
+                      <h3 className="text-lg font-semibold text-ink">Optional integrations</h3>
+                      <p className="mt-1 text-sm leading-6 text-muted">
+                        Both are free and optional. You can skip this step and add keys later in Settings → AI Provider.
+                      </p>
+                    </div>
+
+                    <form action={saveIntegrations} className="grid gap-5">
+                      <div className="rounded-panel border border-border bg-surface p-5">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-ink">Adzuna · Job aggregator</p>
+                            {hasAdzunaKeys && (
+                              <span className="rounded-full bg-success/10 px-2 py-px text-xs font-medium text-success">Configured ✓</span>
+                            )}
+                          </div>
+                          <a
+                            className="shrink-0 text-xs text-accent hover:underline"
+                            href="/help/job-search#aggregator"
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Help →
+                          </a>
+                        </div>
+                        <p className="text-sm leading-6 text-muted">
+                          Pulls matching jobs directly from Adzuna&apos;s index using your saved roles and locations — no browser session needed.
+                          Free tier: 2,000 queries/month.
+                        </p>
+                        <div className="mt-4 grid gap-3">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <Input
+                              autoComplete="off"
+                              label="App ID"
+                              name="adzunaAppId"
+                              placeholder={hasAdzunaKeys ? "Leave blank to keep existing" : "e.g. a1b2c3d4"}
+                            />
+                            <Input
+                              autoComplete="off"
+                              label="API Key"
+                              name="adzunaApiKey"
+                              placeholder={hasAdzunaKeys ? "Leave blank to keep existing" : "e.g. e5f6g7h8i9j0…"}
+                              type="password"
+                            />
+                          </div>
+                          <p className="text-xs text-muted">
+                            Free keys at{" "}
+                            <a className="text-accent hover:underline" href="https://developer.adzuna.com" rel="noopener noreferrer" target="_blank">
+                              developer.adzuna.com
+                            </a>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-panel border border-border bg-surface p-5">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-ink">Brave Search · Source discovery</p>
+                            {hasBraveKey && (
+                              <span className="rounded-full bg-success/10 px-2 py-px text-xs font-medium text-success">Configured ✓</span>
+                            )}
+                          </div>
+                          <a
+                            className="shrink-0 text-xs text-accent hover:underline"
+                            href="/help/ai-providers#discovery-aggregators"
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Help →
+                          </a>
+                        </div>
+                        <p className="text-sm leading-6 text-muted">
+                          Powers the &ldquo;Search discover&rdquo; button in Settings → Sources. Finds new companies using Ashby, Greenhouse, or Lever
+                          from live search results. Free tier: 2,000 queries/month.
+                        </p>
+                        <div className="mt-4 grid gap-3">
+                          <Input
+                            autoComplete="off"
+                            label="API Key"
+                            name="braveSearchApiKey"
+                            placeholder={hasBraveKey ? "Leave blank to keep existing" : "e.g. BSAxxxxxxxxxx…"}
+                            type="password"
+                          />
+                          <p className="text-xs text-muted">
+                            Free keys at{" "}
+                            <a className="text-accent hover:underline" href="https://brave.com/search/api" rel="noopener noreferrer" target="_blank">
+                              brave.com/search/api
+                            </a>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <SubmitButton label="Save and continue" pendingLabel="Saving…" savedLabel="Saved ✓" />
+                        <Button onClick={() => setActiveStep("ready")} type="button" variant="secondary">
+                          Skip for now
+                        </Button>
                       </div>
                     </form>
                   </section>

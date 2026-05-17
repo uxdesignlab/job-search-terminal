@@ -20,9 +20,13 @@ export function NewUserOnboarding() {
   const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
   const hasLocationPreferences = profile.workModes.length > 0;
   const hasConfirmedPreferences = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
+  const hasAdzunaKeys = Boolean(settings.adzunaAppId && settings.adzunaApiKey);
+  const hasBraveKey = Boolean(settings.braveSearchApiKey);
 
   return (
     <OnboardingWizardModal
+      hasAdzunaKeys={hasAdzunaKeys}
+      hasBraveKey={hasBraveKey}
       hasKey={hasKey}
       hasLocationPreferences={hasLocationPreferences}
       hasConfirmedPreferences={hasConfirmedPreferences}

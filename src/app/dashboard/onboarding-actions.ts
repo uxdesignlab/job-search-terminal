@@ -70,6 +70,27 @@ export async function createOnboardingResumeLaneAction() {
   revalidateOnboardingSurfaces();
 }
 
+export async function saveOnboardingIntegrationsAction(formData: FormData) {
+  const existing = getAISettings();
+  const adzunaAppId = String(formData.get("adzunaAppId") ?? "").trim();
+  const adzunaApiKey = String(formData.get("adzunaApiKey") ?? "").trim();
+  const braveSearchApiKey = String(formData.get("braveSearchApiKey") ?? "").trim();
+  saveAISettings({
+    activeProvider: existing.activeProvider,
+    anthropicApiKey: existing.anthropicApiKey,
+    geminiApiKey: existing.geminiApiKey,
+    openaiApiKey: existing.openaiApiKey,
+    anthropicModel: existing.anthropicModel,
+    geminiModel: existing.geminiModel,
+    openaiModel: existing.openaiModel,
+    fallbackProvider: existing.fallbackProvider,
+    adzunaAppId: adzunaAppId || undefined,
+    adzunaApiKey: adzunaApiKey || undefined,
+    braveSearchApiKey: braveSearchApiKey || undefined,
+  });
+  revalidateOnboardingSurfaces();
+}
+
 export async function dismissOnboardingAction() {
   const settings = getAISettings();
   saveAISettings({

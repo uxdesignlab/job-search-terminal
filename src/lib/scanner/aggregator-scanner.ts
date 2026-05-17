@@ -11,6 +11,7 @@ export type AggregatorScanOptions = {
   locations: string[];
   remotePreference: string;
   country?: string;
+  titleFilters?: { positive: string[]; negative: string[] };
 };
 
 export type AggregatorScanResult = {
@@ -147,6 +148,22 @@ export async function runAggregatorScan(
     return { status: "ok", imported: 0, duplicates: 0, totalFound: 0, errors, jobs: [] };
   }
 
+  const { positive = [], negative = [] } = opts.titleFilters ?? {};
+  const titleMatches = (title: string) => {
+    const t = title.toLowerCase();
+    const passPositive = positive.length === 0 || positive.some((k) => t.includes(k.toLowerCase()));
+    const failNegative = negative.some((k) => t.includes(k.toLowerCase()));
+    return passPositive && !failNegative;
+  };
+  const totalFound = jobs.length;
+  const filteredJobs = jobs.filter((j) => titleMatches(j.position));
+  const skipped = totalFound - filteredJobs.length;
+  if (skipped > 0) onProgress?.(`Filtered out ${skipped} jobs that didn't match title filters`);
+
+  if (filteredJobs.length === 0) {
+    return { status: "ok", imported: 0, duplicates: 0, totalFound, errors, jobs: [] };
+  }
+
   const ts = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "Z");
   const filename = `adzuna-jobs-${ts}.json`;
   const dir = getBrowserBoardImportDirectory();
@@ -159,9 +176,9 @@ export async function runAggregatorScan(
       source: "adzuna",
       scanTimestamp,
       scanDurationSeconds: 0,
-      totalJobsDiscovered: jobs.length,
-      totalJobsValid: jobs.length,
-      totalJobsSkipped: 0,
+      totalJobsDiscovered: totalFound,
+      totalJobsValid: filteredJobs.length,
+      totalJobsSkipped: skipped,
       searchCriteria: {
         titles: opts.titles,
         locations: opts.locations,
@@ -169,7 +186,7 @@ export async function runAggregatorScan(
       },
       generatedBy: "Adzuna Aggregator Scanner v1.0",
     },
-    jobs: jobs.map((j) => ({
+    jobs: filteredJobs.map((j) => ({
       ...j,
       dataQuality: {
         hasCompany: Boolean(j.company),
@@ -181,8 +198,8 @@ export async function runAggregatorScan(
       },
     })),
     validationSummary: {
-      totalRecords: jobs.length,
-      validRecords: jobs.length,
+      totalRecords: filteredJobs.length,
+      validRecords: filteredJobs.length,
       invalidRecords: 0,
       errors: [],
     },
@@ -190,9 +207,9 @@ export async function runAggregatorScan(
 
   writeFileSync(tmpPath, JSON.stringify(payload, null, 2));
   renameSync(tmpPath, finalPath);
-  onProgress?.(`Saved ${jobs.length} jobs to ${filename}`);
+  onProgress?.(`Saved ${filteredJobs.length} jobs to ${filename}`);
 
-  const preview = jobs.map((j) => ({ title: j.position, url: j.url, company: j.company }));
+  const preview = filteredJobs.map((j) => ({ title: j.position, url: j.url, company: j.company }));
   try {
     const importResult = await importBrowserBoardJobs(finalPath);
     return {
@@ -205,6 +222,6 @@ export async function runAggregatorScan(
     };
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
-    return { status: "error", imported: 0, duplicates: 0, totalFound: jobs.length, errors, jobs: preview };
+    return { status: "error", imported: 0, duplicates: 0, totalFound, errors, jobs: preview };
   }
 }
