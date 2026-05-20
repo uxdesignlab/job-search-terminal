@@ -22,7 +22,6 @@ const ACTIVE_PATTERNS = [
   /apply now/i,
   /submit (your )?application/i,
   /we('re| are) hiring/i,
-  /join (our|the) team/i,
 ];
 
 export type LivenessStatus = "active" | "expired" | "uncertain";
@@ -33,11 +32,28 @@ export type LivenessResult = {
   checkedAt: string;
 };
 
+const BLOCKED_HOSTS = [
+  "monster.com",
+];
+
+function isBlockedHost(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return BLOCKED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
 export async function checkJobLiveness(url: string): Promise<LivenessResult> {
   const checkedAt = new Date().toISOString();
 
   if (!url) {
     return { status: "uncertain", reason: "No URL on file", checkedAt };
+  }
+
+  if (isBlockedHost(url)) {
+    return { status: "uncertain", reason: "Host blocks automated checks", checkedAt };
   }
 
   let res: Response;

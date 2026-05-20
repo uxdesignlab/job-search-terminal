@@ -85,7 +85,11 @@ async function checkJobs(jobs: JobRecord[], titleFilters: { positive: string[]; 
         continue;
       }
 
-      const result = await checkJobLiveness(job.url);
+      let result = await checkJobLiveness(job.url);
+      if (result.status === "uncertain" && job.originalPostingUrl && job.originalPostingUrl !== job.url) {
+        const fallback = await checkJobLiveness(job.originalPostingUrl);
+        if (fallback.status !== "uncertain") result = fallback;
+      }
       saveJobLiveness(job.id, result.status, result.reason);
 
       if (result.status === "expired") {
