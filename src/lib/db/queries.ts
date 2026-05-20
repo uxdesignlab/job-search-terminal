@@ -383,6 +383,11 @@ export function getJobById(id: string): JobRecord | undefined {
   return row ? mapJob(row) : undefined;
 }
 
+export function getJobByUrl(url: string): JobRecord | undefined {
+  const row = getDatabase().prepare("select * from jobs where url = ?").get(url) as JobRow | undefined;
+  return row ? mapJob(row) : undefined;
+}
+
 export function getEvaluationByJobId(jobId: string): EvaluationRecord | undefined {
   const row = getDatabase()
     .prepare("select * from evaluations where job_id = ? order by created_at desc limit 1")

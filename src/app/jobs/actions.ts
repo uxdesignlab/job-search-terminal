@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { insertManualJob, updateJobDetails } from "@/lib/db/queries";
+import { getJobByUrl, insertManualJob, updateJobDetails } from "@/lib/db/queries";
 
 export async function addManualJobAction(formData: FormData) {
   const company = formData.get("company") as string;
@@ -17,7 +17,7 @@ export async function addManualJobAction(formData: FormData) {
   const id = `job-${randomUUID().split("-")[0]}`;
   const date = new Date().toISOString().slice(0, 10);
 
-  insertManualJob({
+  const changes = insertManualJob({
     id,
     company,
     title,
@@ -26,6 +26,16 @@ export async function addManualJobAction(formData: FormData) {
     datePosted: date,
     firstSeenDate: date,
   });
+
+  if (changes === 0) {
+    // URL already exists — find the existing job and redirect there instead.
+    const existing = url ? getJobByUrl(url) : undefined;
+    if (existing) {
+      revalidatePath("/jobs");
+      return { success: true, jobId: existing.id };
+    }
+    throw new Error("This job could not be saved. A job with the same URL may already exist.");
+  }
 
   revalidatePath("/jobs");
   revalidatePath("/dashboard");
