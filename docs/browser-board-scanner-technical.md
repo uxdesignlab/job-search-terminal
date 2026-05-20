@@ -58,6 +58,33 @@ reads and passes these filters via `AggregatorScanOptions.titleFilters`.
 Legacy LinkedIn files without `metadata.source` remain supported when imported
 through the legacy LinkedIn directory or route.
 
+## Per-Source Liveness Notes
+
+The liveness checker (`src/lib/scanner/liveness-checker.ts`) fetches `jobs.url`
+and scans the response body for expiry/active-signal patterns. Two Monster-specific
+limitations affect liveness:
+
+**Monster blocks automated HTTP requests.** Monster's CDN (Cloudflare) returns
+HTTP 403 for all non-browser user-agents. The liveness checker detects
+`monster.com` URLs and short-circuits with `"uncertain"` rather than wasting a
+network request. Monster jobs will never be automatically marked expired; the
+user must manually archive or delete them.
+
+**Workaround — capture ATS URLs during scan.** When a Monster job detail page
+shows an "Apply on company site" button pointing to a third-party ATS (Greenhouse,
+Lever, Ashby, etc.), the scanner records that ATS URL as `original_posting_url`.
+The liveness route (`src/app/api/jobs/liveness/route.ts`) falls back to
+`original_posting_url` when the primary URL check returns `"uncertain"`, so ATS
+URLs are checked even when the Monster platform URL is blocked.
+
+**Expired-post redirect false positive.** When a Greenhouse job closes, Greenhouse
+often redirects to a company "Join our Talent Network" page (HTTP 200). Earlier
+versions of the checker included `/join (our|the) team/i` as an active-signal
+pattern, which caused these redirect pages to be misclassified as active. That
+pattern was removed; the remaining active patterns (`apply now`,
+`submit your application`, `we're hiring`) are specific enough to avoid the
+false positive.
+
 ## Data Model
 
 Migration `0035_browser_board_job_provenance` adds:

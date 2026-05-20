@@ -94,7 +94,7 @@ Use Claude in Chrome to navigate the requested board:
 1. Open the board start URL from the table above.
 2. For each title in `target_roles_json`, search with the title as keywords and the first location from `preferred_locations_json` as location.
 3. Apply visible filters that match saved preferences when the board exposes them:
-   - **Date posted:** Past week, if available.
+   - **Date posted:** Past week, if available. For Monster specifically, set the date filter to **Past 3 days** (Monster's search results include many stale/expired listings that survive a week-wide filter).
    - **Remote:** If `remote_preference` is `"remote-only"`, filter to Remote only when available.
 4. Sort by **Most Recent** when the board exposes sorting.
 
@@ -105,6 +105,8 @@ For each visible job listing:
 - Use `originalPostingUrl` only when a visible job-specific employer/ATS apply URL exists.
 - Set `url` to `originalPostingUrl` when present; otherwise use the platform job URL.
 - Apply `negative_json` filters and skip excluded titles.
+- **Monster only — skip expired listings:** Monster keeps filled or closed postings in its search results. Skip any listing that shows "No longer accepting applications", "This position has been filled", "Application closed", or any similar expiry indicator — either on the search results page or on the job detail page. Also skip any listing with no visible "Posted" date, as undated Monster listings are typically months old.
+- **Monster only — capture the ATS apply URL:** On each Monster job detail page, look for a button or link labelled "Apply on company site", "Apply now" (pointing to an external domain), or similar. If one exists and leads to a job-specific URL on a third-party ATS (Greenhouse, Lever, Ashby, Workday, etc.), record that URL as `originalPostingUrl`. This allows the liveness checker to verify the posting directly, bypassing Monster's bot protection.
 
 Scan up to 3 pages of results or 50 jobs, whichever comes first. Pause 1–2 seconds between page loads and detail views.
 
