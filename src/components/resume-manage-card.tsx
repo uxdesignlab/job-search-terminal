@@ -30,6 +30,7 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
   // Upload
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [uploadError, setUploadError] = useState("");
+  const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
   const [currentWords, setCurrentWords] = useState(wordCount);
 
   // Remove
@@ -62,14 +63,16 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
   async function uploadFile(file: File) {
     setUploadStatus("uploading");
     setUploadError("");
+    setUploadWarnings([]);
     setShowConfirm(false);
     const form = new FormData();
     form.append("file", file);
     try {
       const res = await fetch(`/api/resume/${id}/upload`, { method: "POST", body: form });
-      const data = (await res.json()) as { ok?: boolean; wordCount?: number; error?: string };
+      const data = (await res.json()) as { ok?: boolean; wordCount?: number; error?: string; warnings?: string[] };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "Upload failed");
       setCurrentWords(data.wordCount ?? currentWords);
+      setUploadWarnings(data.warnings ?? []);
       setUploadStatus("done");
       router.refresh();
       setTimeout(() => setUploadStatus("idle"), 3000);
@@ -136,8 +139,14 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
         {uploadStatus === "error" && (
           <p className="mt-2 text-xs text-danger">{uploadError}</p>
         )}
-        {uploadStatus === "done" && (
+        {uploadStatus === "done" && uploadWarnings.length === 0 && (
           <p className="mt-2 text-xs text-success">PDF uploaded and text extracted — {currentWords} words.</p>
+        )}
+        {uploadStatus === "done" && uploadWarnings.length > 0 && (
+          <p className="mt-2 text-xs text-warning">
+            Uploaded ({currentWords} words). Some sections could not be detected: {uploadWarnings.join("; ")}.
+            You can add them manually in the resume builder.
+          </p>
         )}
       </div>
     );
@@ -295,8 +304,14 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
       {uploadStatus === "error" && (
         <p className="mt-2 text-xs text-danger">{uploadError}</p>
       )}
-      {uploadStatus === "done" && (
+      {uploadStatus === "done" && uploadWarnings.length === 0 && (
         <p className="mt-2 text-xs text-success">PDF uploaded and text extracted — {currentWords} words.</p>
+      )}
+      {uploadStatus === "done" && uploadWarnings.length > 0 && (
+        <p className="mt-2 text-xs text-warning">
+          Uploaded ({currentWords} words). Some sections could not be detected: {uploadWarnings.join("; ")}.
+          You can add them manually in the resume builder.
+        </p>
       )}
     </div>
   );
