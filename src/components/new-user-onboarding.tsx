@@ -22,11 +22,14 @@ export function NewUserOnboarding() {
   const hasConfirmedPreferences = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
   const hasAdzunaKeys = Boolean(settings.adzunaAppId && settings.adzunaApiKey);
   const hasBraveKey = Boolean(settings.braveSearchApiKey);
+  // currentSearchGoal is only populated by AI extraction, not by resume upload
+  const hasExtractedProfile = Boolean(profile.currentSearchGoal);
 
   return (
     <OnboardingWizardModal
       hasAdzunaKeys={hasAdzunaKeys}
       hasBraveKey={hasBraveKey}
+      hasExtractedProfile={hasExtractedProfile}
       hasKey={hasKey}
       hasLocationPreferences={hasLocationPreferences}
       hasConfirmedPreferences={hasConfirmedPreferences}

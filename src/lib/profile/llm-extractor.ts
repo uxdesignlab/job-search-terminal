@@ -68,52 +68,72 @@ export async function extractProfileWithAI(): Promise<{ profileSaved: boolean; s
   const resumes = getResumes().filter((r) => r.extractedText && r.extractedText.length > 100);
 
   if (resumes.length === 0) {
-    throw new Error("No resume text found. Run profile extraction from the terminal first (npm run profile:extract).");
+    throw new Error("No resume text found. Upload a resume PDF first, then run extraction.");
   }
 
+  // Keep each resume's text short so the combined prompt stays manageable.
   const resumeText = resumes
-    .map((r) => `=== ${r.name} ===\n${r.extractedText.slice(0, 4000)}`)
+    .map((r) => `=== ${r.name} ===\n${r.extractedText.slice(0, 3000)}`)
     .join("\n\n")
-    .slice(0, 12000);
+    .slice(0, 8000);
 
   const provider = getActiveProvider();
+  const systemMsg: AIMessage = {
+    role: "system",
+    content: "You are a career profile extractor. Given resume text, extract structured career intelligence. Be accurate — do not invent facts not present in the resume."
+  };
 
-  const messages: AIMessage[] = [
-    {
-      role: "system",
-      content: `You are a career profile extractor. Given resume text, extract structured career intelligence for a job search dashboard. Be accurate and specific — do not invent facts not in the resume.`
-    },
+  // ── Call 1: profile fields only (no skills list) ─────────────────────────
+  // Keeping the response under ~800 chars prevents Gemini JSON-mode truncation.
+  const profileMessages: AIMessage[] = [
+    systemMsg,
     {
       role: "user",
-      content: `Extract a career profile from these resume(s). Return a JSON object with two top-level keys.
+      content: `Extract a career profile from this resume. Return ONLY a JSON object with these exact keys — no skills, no extra keys.
 
-Keep each skills[].evidenceSource concise (under ~200 characters). Include at most 60 skills so the response stays complete.
-
-"profile": {
-  "name": "full name exactly as shown at the top of the resume (required if present in text)",
-  "location": "city/region/country from resume header or contact section; empty string if unknown",
-  "portfolio": "personal site or portfolio URL if listed; empty string if none",
-  "strongestSkills": ["5-10 concise strengths that headline this candidate; taken from resume"],
-  "currentSearchGoal": "one sentence describing what this person is looking for",
-  "urgency": "exactly one of: actively searching | open to opportunities | passively looking | not searching — infer from tone if needed",
-  "direction": "one phrase describing career direction",
-  "targetRoles": ["role 1", "role 2", ...],
-  "desiredIndustries": ["industry 1", ...],
-  "compensationNeeds": "salary expectation if mentioned, else empty string",
-  "workPreferences": ["Remote", "Hybrid", etc.],
-  "constraints": ["constraint 1", ...],
-  "dealBreakers": ["deal breaker 1", ...],
+{
+  "name": "full name from resume header",
+  "location": "city/region from header; empty string if unknown",
+  "portfolio": "personal site URL if listed; empty string if none",
+  "strongestSkills": ["up to 6 concise headline strengths"],
+  "currentSearchGoal": "one sentence on what this person is looking for",
+  "urgency": "exactly one of: actively searching | open to opportunities | passively looking | not searching",
+  "direction": "one short phrase describing career direction",
+  "targetRoles": ["role 1", "role 2"],
+  "desiredIndustries": ["industry 1"],
+  "compensationNeeds": "salary expectation if stated; empty string if not",
+  "workPreferences": ["Remote", "Hybrid", or "On-site"],
+  "constraints": ["constraint 1"],
+  "dealBreakers": ["deal breaker 1"],
   "careerIntent": "one sentence on what they want from their career",
-  "careerChangeInterest": "none / slight / moderate / strong",
-  "confidenceLevel": "high / medium / low",
-  "skillsToUseMore": ["skill 1", ...],
-  "skillsToUseLess": ["skill 1", ...]
-},
-"skills": [
+  "careerChangeInterest": "none | slight | moderate | strong",
+  "confidenceLevel": "high | medium | low",
+  "skillsToUseMore": ["skill 1"],
+  "skillsToUseLess": ["skill 1"]
+}
+
+Resume text:
+${resumeText}`
+    }
+  ];
+
+  const profileResult = await withRetry(() =>
+    provider.generateJSON<ExtractedProfile>(profileMessages, '{}', { maxTokens: 4096 })
+  );
+
+  // ── Call 2: skills list only ──────────────────────────────────────────────
+  // Capped at 20 skills with short evidenceSource to keep the JSON under ~1500 chars.
+  const skillsMessages: AIMessage[] = [
+    systemMsg,
+    {
+      role: "user",
+      content: `Extract a skills list from this resume. Return ONLY a JSON array of up to 20 skill objects. Keep evidenceSource under 50 characters.
+
+[
   {
     "skillName": "string",
     "skillCategory": "Core leadership | Specialized capability | Adjacent direction | Tool / platform",
-    "evidenceSource": "short quote or paraphrase from resume text",
+    "evidenceSource": "brief phrase from resume (max 50 chars)",
     "strengthLevel": "Expert | Proficient | Familiar",
     "marketRelevance": "High | Medium | Low",
     "userInterestLevel": "High | Medium | Low",
@@ -126,12 +146,14 @@ ${resumeText}`
     }
   ];
 
-  const result = await withRetry(() =>
-    provider.generateJSON<ExtractionResult>(messages, '{"profile":{},"skills":[]}', {
-      // Profile + many skills can exceed 4k output tokens; truncation yields invalid JSON from Gemini.
-      maxTokens: 8192
-    })
+  const skillsResult = await withRetry(() =>
+    provider.generateJSON<ExtractedSkill[]>(skillsMessages, '[]', { maxTokens: 4096 })
   );
+
+  const result: ExtractionResult = {
+    profile: profileResult,
+    skills: Array.isArray(skillsResult) ? skillsResult : [],
+  };
 
   const topSkillNames = (result.skills ?? [])
     .map((s) => s.skillName?.trim())

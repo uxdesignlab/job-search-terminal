@@ -33,16 +33,26 @@ export function ExtractProfileButton({ disabled = false, onExtracted }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <Button disabled={disabled || isPending} onClick={handle} variant="secondary">
-        {isPending ? "Extracting…" : "Extract with AI"}
-      </Button>
-      {result && (
-        <span className="text-xs text-[var(--color-success)]">
-          Done — {result.skillCount} skills extracted
-        </span>
+    <div className="grid gap-2">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button disabled={disabled || isPending} onClick={handle} variant="secondary">
+          {isPending ? "Extracting…" : "Extract with AI"}
+        </Button>
+        {result && (
+          <span className="text-xs text-[var(--color-success)]">
+            Done — {result.skillCount} skills extracted
+          </span>
+        )}
+        {error && <span className="text-xs text-[var(--color-danger)]">{error}</span>}
+      </div>
+      {isPending && (
+        <div className="grid gap-1.5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
+            <div className="h-full w-1/3 animate-progress rounded-full bg-accent" />
+          </div>
+          <p className="text-xs text-muted">Analyzing your resume with AI — this takes 10–30 seconds…</p>
+        </div>
       )}
-      {error && <span className="text-xs text-[var(--color-danger)]">{error}</span>}
     </div>
   );
 }

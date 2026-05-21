@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui";
 import type { ResumeBuilderVersionStatus } from "@/lib/db/types";
@@ -32,6 +31,9 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
   const [uploadError, setUploadError] = useState("");
   const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
   const [currentWords, setCurrentWords] = useState(wordCount);
+
+  // Editor navigation
+  const [editorLoading, setEditorLoading] = useState(false);
 
   // Remove
   const [removeStatus, setRemoveStatus] = useState<"idle" | "removing" | "error">("idle");
@@ -251,12 +253,14 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
         )}
 
         {/* Builder link — always shown for all resumes */}
-        <Link
-          className="text-xs font-medium text-accent hover:underline"
-          href={`/profile/resumes/${id}/builder`}
+        <button
+          className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
+          disabled={editorLoading}
+          onClick={() => { setEditorLoading(true); router.push(`/profile/resumes/${id}/builder`); }}
+          type="button"
         >
-          {builderStatus === "approved" ? "Edit approved version" : "Edit resume"}
-        </Link>
+          {editorLoading ? "Opening…" : builderStatus === "approved" ? "Edit approved version" : "Edit resume"}
+        </button>
 
         {/* Remove lane — always shown */}
         {!showConfirm ? (
