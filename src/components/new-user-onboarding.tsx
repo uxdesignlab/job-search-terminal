@@ -16,7 +16,7 @@ export function NewUserOnboarding() {
   const profile = getUserProfile();
   const titleFilters = getTitleFilters();
   const hasKey = Boolean(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
-  const hasResume = resumes.some((resume) => resume.wordCount > 0);
+  const hasResume = resumes.some((r) => Boolean(r.sourceFile));
   const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
   const hasLocationPreferences = profile.workModes.length > 0;
   const hasConfirmedPreferences = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
