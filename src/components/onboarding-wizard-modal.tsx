@@ -80,6 +80,8 @@ export function OnboardingWizardModal({
 
   useEffect(() => {
     if (statuses.ready) return;
+    // Resume step: never auto-advance — user must review extraction and click Continue
+    if (activeStep === "resume") return;
     if (statuses[activeStep]) setActiveStep(firstIncompleteStep);
   }, [activeStep, firstIncompleteStep, statuses]);
 
@@ -321,6 +323,13 @@ export function OnboardingWizardModal({
                       <form action={addResumeLane}>
                         <SubmitButton label="Add another lane" pendingLabel="Adding…" savedLabel="Lane added ✓" variant="secondary" />
                       </form>
+                    )}
+                    {hasResume && (
+                      <div className="flex justify-end border-t border-border pt-4">
+                        <Button onClick={() => setActiveStep("preferences")} type="button" variant="primary">
+                          Continue to job preferences →
+                        </Button>
+                      </div>
                     )}
                   </section>
                 )}
