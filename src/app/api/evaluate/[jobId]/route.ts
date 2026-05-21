@@ -1,6 +1,20 @@
 import { runAndSaveJobWithAI } from "@/lib/evaluation/llm-evaluator";
 import type { BlockUpdate } from "@/lib/evaluation/llm-evaluator";
 
+function toUserMessage(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (msg.includes("429") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("rate limit")) {
+    return "AI quota exceeded — you've hit the free-tier limit. Check your plan or try again in a few minutes.";
+  }
+  if (msg.includes("401") || msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("invalid key")) {
+    return "Invalid API key — check your AI provider settings and re-enter the key.";
+  }
+  if (msg.toLowerCase().includes("network") || msg.toLowerCase().includes("fetch")) {
+    return "Network error reaching the AI provider. Check your connection and try again.";
+  }
+  return "Evaluation failed. Check your AI provider settings and try again.";
+}
+
 export const dynamic = "force-dynamic";
 
 export async function GET(
@@ -36,9 +50,10 @@ export async function GET(
           done: true
         });
       } catch (error) {
+        console.error("[evaluate] error:", error);
         send({
           block: "error",
-          error: error instanceof Error ? error.message : "Evaluation failed",
+          error: toUserMessage(error),
           done: true
         });
       } finally {

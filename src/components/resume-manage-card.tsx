@@ -174,7 +174,7 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
             <button
               className="shrink-0 text-xs text-muted hover:text-ink"
               onClick={() => setEditing(true)}
-              title="Rename lane"
+              title="Rename resume"
               type="button"
             >
               ✎

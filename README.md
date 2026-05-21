@@ -118,7 +118,7 @@ Full setup guide: [docs/getting-started.md](docs/getting-started.md)
 | Node.js | Version 18 or later |
 | Git | Required to clone the repo |
 | AI API key | OpenAI, Anthropic, or Google Gemini |
-| Google Chrome | Required for local PDF generation |
+| Google Chrome | Recommended for PDF generation — falls back to bundled Chromium if not found |
 
 ---
 

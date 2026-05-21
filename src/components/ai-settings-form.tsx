@@ -116,7 +116,10 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
       modelOptions: [
         "gemini-2.5-flash",
         "gemini-2.5-pro",
-        "gemini-2.5-flash-lite"
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
       ]
     },
     {
@@ -175,7 +178,10 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
               <div className="flex gap-2">
                 <input
                   className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono"
-                  onChange={(e) => p.setKey(e.target.value)}
+                  onChange={(e) => {
+                    p.setKey(e.target.value);
+                    if (e.target.value && activeProvider !== p.id) setActiveProvider(p.id);
+                  }}
                   placeholder={`${p.id === "anthropic" ? "sk-ant-…" : p.id === "gemini" ? "AIza…" : "sk-…"}`}
                   type={visible ? "text" : "password"}
                   value={p.keyState}

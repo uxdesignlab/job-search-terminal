@@ -473,7 +473,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
                         <textarea
                           className={textareaCls}
                           placeholder={"email@example.com\n(555) 123-4567\nlinkedin.com/in/yourname\nPortfolio: yoursite.com"}
-                          rows={4}
+                          rows={Math.max(4, (section.header?.contactItems ?? []).length + 1)}
                           value={itemsToText(section.header?.contactItems)}
                           onChange={(event) => updateSection(index, {
                             ...section,

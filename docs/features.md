@@ -14,7 +14,7 @@ The Shell header provides two navigation groups:
 **Account dropdown** (hover on "Account"): Profile · Strategy · Settings
 
 **Help link** appears immediately after Account and opens the in-app help site at
-`/help`.
+`/help` in a **new browser tab** (`target="_blank"`) so the user doesn't lose their current context.
 
 The Account menu shows a live AI provider health dot:
 - Green: active provider has a key configured
@@ -79,7 +79,9 @@ The modal has 5 steps — 4 required and 1 optional:
 1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key inline.
 2. **Resume lanes** — uses the normal multi-lane resume upload cards. Uploading a
    PDF seeds desired positions and positive title filters from extracted resume
-   titles, and AI extraction can enrich the full profile.
+   titles, and AI extraction can enrich the full profile. The "Add another lane"
+   button only appears once all existing lanes have a file uploaded (to prevent
+   accidentally adding duplicate empty lanes).
 3. **Job preferences** — requires the user to review and explicitly save desired
    positions, include/exclude title filters, and location work modes. Resume
    upload or extraction may prefill these values, but the step does not become
@@ -102,8 +104,10 @@ The modal has 5 steps — 4 required and 1 optional:
    Settings, run Scan for new jobs on the Dashboard, then review and evaluate
    imported matches.
 
-The normal dashboard and scan button are gated until an AI key exists, at least
-one resume lane has extracted text, and job preferences have been confirmed.
+The resume step is considered complete as soon as a PDF has been uploaded to any
+lane (regardless of whether AI extraction succeeded). Job preferences and the
+dashboard are gated until an AI key, at least one uploaded resume, and confirmed
+preferences all exist.
 The Integrations step is never a gate — completing it only enables optional
 features.
 

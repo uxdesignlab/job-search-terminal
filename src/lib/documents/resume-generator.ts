@@ -458,9 +458,6 @@ export function validateResumeExtraction(parsed: ParsedResumeSections, sourceTex
   if (wordCount < 120) {
     issues.push("PDF text layer is too short to be a complete resume");
   }
-  if (parsed.summary.split(/\s+/).filter(Boolean).length < 12) {
-    issues.push("missing or incomplete summary section");
-  }
   if (parsed.experience.length === 0) {
     issues.push("missing experience section");
   } else if (parsed.experience.every((entry) => entry.bullets.length === 0)) {
