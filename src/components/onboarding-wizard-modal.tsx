@@ -72,11 +72,12 @@ export function OnboardingWizardModal({
 
   const statuses = useMemo<Record<StepId, boolean>>(() => ({
     ai: hasKey,
-    resume: hasResume,
+    // Resume step is only complete once the file is uploaded AND AI extraction has run
+    resume: hasResume && hasExtractedProfile,
     preferences: hasConfirmedPreferences,
     integrations: hasAdzunaKeys || hasBraveKey,
-    ready: hasKey && hasResume && hasConfirmedPreferences,
-  }), [hasAdzunaKeys, hasBraveKey, hasConfirmedPreferences, hasKey, hasResume]);
+    ready: hasKey && hasResume && hasExtractedProfile && hasConfirmedPreferences,
+  }), [hasAdzunaKeys, hasBraveKey, hasConfirmedPreferences, hasExtractedProfile, hasKey, hasResume]);
 
   const firstIncompleteStep = (Object.keys(statuses) as StepId[]).find((step) => !statuses[step]) ?? "ready";
   const [activeStep, setActiveStep] = useState<StepId>(firstIncompleteStep);
