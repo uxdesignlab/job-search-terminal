@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AISettingsForm } from "@/components/ai-settings-form";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
@@ -81,11 +81,17 @@ export function OnboardingWizardModal({
   const firstIncompleteStep = (Object.keys(statuses) as StepId[]).find((step) => !statuses[step]) ?? "ready";
   const [activeStep, setActiveStep] = useState<StepId>(firstIncompleteStep);
 
+  // Track previous statuses so we only auto-advance when a step transitions
+  // false → true (just completed), not when the user manually navigates back to it.
+  const prevStatuses = useRef(statuses);
   useEffect(() => {
+    const prev = prevStatuses.current;
+    prevStatuses.current = statuses;
     if (statuses.ready) return;
-    // Resume step: never auto-advance — user must review extraction and click Continue
+    // Resume step: never auto-advance — user must run extraction and click Continue
     if (activeStep === "resume") return;
-    if (statuses[activeStep]) setActiveStep(firstIncompleteStep);
+    // Only advance when this specific step just became complete
+    if (!prev[activeStep] && statuses[activeStep]) setActiveStep(firstIncompleteStep);
   }, [activeStep, firstIncompleteStep, statuses]);
 
   const steps: Array<{ id: StepId; title: string; description: string; optional?: boolean }> = [
@@ -187,14 +193,16 @@ export function OnboardingWizardModal({
                 Complete each step here before using the dashboard. Your data stays on this machine.
               </p>
             </div>
-            <button
-              aria-label="Close onboarding"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control border border-border text-lg leading-none text-muted transition-colors hover:border-accent hover:text-ink"
-              onClick={requestClose}
-              type="button"
-            >
-              ×
-            </button>
+            {statuses.ready && (
+              <button
+                aria-label="Close onboarding"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control border border-border text-lg leading-none text-muted transition-colors hover:border-accent hover:text-ink"
+                onClick={requestClose}
+                type="button"
+              >
+                ×
+              </button>
+            )}
           </div>
 
           {confirmClose ? (
@@ -212,8 +220,7 @@ export function OnboardingWizardModal({
                 </ul>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Button onClick={() => setConfirmClose(false)} variant="primary">Continue setup</Button>
-                <Button onClick={() => setOpen(false)} variant="secondary">Close anyway</Button>
+                <Button onClick={() => setConfirmClose(false)} variant="primary">Back to setup</Button>
               </div>
             </div>
           ) : (
@@ -303,16 +310,25 @@ export function OnboardingWizardModal({
                     {/* Step A: Upload (no resume yet) */}
                     {!hasResume && (
                       <div className="grid gap-3">
-                        {visibleResumes.map((resume) => (
-                          <ResumeManageCard
-                            evidence={resume.evidence}
-                            id={resume.id}
-                            key={resume.id}
-                            name={resume.name}
-                            wordCount={resume.wordCount}
-                            onUploaded={() => router.push(`/profile/resumes/${resume.id}/builder?from=onboarding`)}
-                          />
-                        ))}
+                        {visibleResumes.length === 0 ? (
+                          <div className="grid gap-3">
+                            <p className="text-sm text-muted">No resume lanes yet. Add one to get started.</p>
+                            <form action={addResumeLane}>
+                              <SubmitButton label="Add resume lane" pendingLabel="Adding…" savedLabel="Lane added ✓" />
+                            </form>
+                          </div>
+                        ) : (
+                          visibleResumes.map((resume) => (
+                            <ResumeManageCard
+                              evidence={resume.evidence}
+                              id={resume.id}
+                              key={resume.id}
+                              name={resume.name}
+                              wordCount={resume.wordCount}
+                              onUploaded={() => router.push(`/profile/resumes/${resume.id}/builder?from=onboarding`)}
+                            />
+                          ))
+                        )}
                       </div>
                     )}
 
