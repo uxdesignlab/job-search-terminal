@@ -48,15 +48,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const profile = getUserProfile();
   const parsedResume = parseSourceResume(extractedText, profile);
-  const extractionIssues = validateResumeExtraction(parsedResume, extractedText);
-  if (extractionIssues.length > 0) {
-    return NextResponse.json(
-      { error: `Resume extraction is incomplete: ${extractionIssues.join("; ")}` },
-      { status: 422 }
-    );
-  }
+  const extractionWarnings = validateResumeExtraction(parsedResume, extractedText);
 
-  // Slugify filename and save to assets/ only after the PDF passes extraction checks.
+  // Always save the resume — extraction gaps are surfaced as warnings, not blockers.
   const slug = id.replace(/[^a-z0-9]/gi, "-").toLowerCase();
   const filename = `resume-${slug}.pdf`;
   const relPath = `assets/${filename}`;
@@ -78,6 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({
     ok: true,
     wordCount,
+    warnings: extractionWarnings,
     positions: extractedPositions,
     sections: {
       summary: Boolean(parsedResume.summary),
