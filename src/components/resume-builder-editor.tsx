@@ -12,6 +12,8 @@ type Props = {
   version: ResumeBuilderVersionRecord;
   isNew?: boolean;
   backHref?: string;
+  /** When provided, Back/Approve/Delete call this instead of navigating (used for wizard inline mode). */
+  onDone?: () => void;
 };
 
 const inputCls = "w-full rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent";
@@ -92,7 +94,7 @@ function canImproveWithAI(type: ResumeBuilderSectionType): boolean {
   return ["summary", "impact", "skills", "recognition", "custom", "experience"].includes(type);
 }
 
-export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = false, backHref = "/resumes" }: Props) {
+export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = false, backHref = "/resumes", onDone }: Props) {
   const router = useRouter();
   const [sections, setSections] = useState<ResumeBuilderSection[]>(() => cloneSections(version.sections));
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
@@ -271,7 +273,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
       if (afterSave) {
         afterSave();
       } else if (nextStatus === "approved") {
-        router.push("/resumes");
+        onDone ? onDone() : router.push("/resumes");
       } else {
         router.refresh();
       }
@@ -287,7 +289,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
     try {
       const res = await fetch(`/api/resume/${resumeId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
-      router.push("/resumes");
+      onDone ? onDone() : router.push("/resumes");
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : String(err));
       setIsDeleting(false);
@@ -341,7 +343,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
               if (isNew && !hasSaved) {
                 setShowLeaveDialog(true);
               } else {
-                router.push(backHref);
+                onDone ? onDone() : router.push(backHref);
               }
             }}
             type="button"
@@ -841,7 +843,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
                 disabled={status === "saving"}
                 onClick={() => save("needs_review", () => {
                   setShowLeaveDialog(false);
-                  router.push(backHref);
+                  onDone ? onDone() : router.push(backHref);
                 })}
                 type="button"
               >
@@ -862,7 +864,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
                 className="w-full rounded-control border border-border px-4 py-2 text-sm text-muted hover:text-ink"
                 onClick={() => {
                   setShowLeaveDialog(false);
-                  router.push(backHref);
+                  onDone ? onDone() : router.push(backHref);
                 }}
                 type="button"
               >

@@ -1,5 +1,6 @@
 import { OnboardingWizardModal } from "@/components/onboarding-wizard-modal";
 import { getAISettings, getResumes, getTitleFilters, getUserProfile } from "@/lib/db/queries";
+import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 
 function maskSettings(settings: ReturnType<typeof getAISettings>) {
   return {
@@ -10,7 +11,7 @@ function maskSettings(settings: ReturnType<typeof getAISettings>) {
   };
 }
 
-export function NewUserOnboarding() {
+export async function NewUserOnboarding() {
   const settings = getAISettings();
   const resumes = getResumes();
   const profile = getUserProfile();
@@ -25,6 +26,13 @@ export function NewUserOnboarding() {
   // currentSearchGoal is only populated by AI extraction, not by resume upload
   const hasExtractedProfile = Boolean(profile.currentSearchGoal);
 
+  // Load builder versions for all uploaded resumes so the wizard can show the builder inline
+  const uploadedResumes = resumes.filter((r) => Boolean(r.sourceFile));
+  const versionPairs = await Promise.all(
+    uploadedResumes.map(async (r) => [r.id, await ensureResumeBuilderVersion(r, profile)] as const)
+  );
+  const resumeVersions = Object.fromEntries(versionPairs);
+
   return (
     <OnboardingWizardModal
       hasAdzunaKeys={hasAdzunaKeys}
@@ -37,6 +45,7 @@ export function NewUserOnboarding() {
       hasRolePreferences={hasRolePreferences}
       profile={profile}
       resumes={resumes}
+      resumeVersions={resumeVersions}
       settings={maskSettings(settings)}
       titleFilters={titleFilters}
     />
