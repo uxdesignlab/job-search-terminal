@@ -12,12 +12,14 @@ type Props = {
   evidence: string[];
   initialUploadOnly?: boolean;
   builderStatus?: ResumeBuilderVersionStatus;
+  /** Called after a successful PDF upload — use to navigate to the builder. */
+  onUploaded?: () => void;
 };
 
 const inputCls =
   "w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent";
 
-export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadOnly = false, builderStatus }: Props) {
+export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadOnly = false, builderStatus, onUploaded }: Props) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -77,7 +79,11 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
       setUploadWarnings(data.warnings ?? []);
       setUploadStatus("done");
       router.refresh();
-      setTimeout(() => setUploadStatus("idle"), 3000);
+      if (onUploaded) {
+        onUploaded();
+      } else {
+        setTimeout(() => setUploadStatus("idle"), 3000);
+      }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
       setUploadStatus("error");
