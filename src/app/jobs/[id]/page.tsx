@@ -493,7 +493,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                             />
                             <div>
                               <p className="text-sm font-medium text-ink">{r.name}</p>
-                              <p className="text-xs text-muted">{r.wordCount} words</p>
+                              <p className="text-xs text-muted">{r.wordCount > 0 ? `${r.wordCount} words` : r.sourceFile ? "Uploaded" : "Not uploaded"}</p>
                             </div>
                             {isRec && (
                               <span className="ml-auto shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-accent">

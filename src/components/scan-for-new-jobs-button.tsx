@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ScanRunSummaryBody } from "@/components/scan-run-summary-body";
+import { disableScanSource } from "@/app/actions/scan-source-actions";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 
 type Props = {
@@ -108,6 +109,10 @@ export function ScanForNewJobsButton({ runScan }: Props) {
                 showJobsLink
                 summary={summary}
                 onClose={close}
+                onDisableSource={async (name) => {
+                  await disableScanSource(name);
+                  router.refresh();
+                }}
               />
             )}
           </div>

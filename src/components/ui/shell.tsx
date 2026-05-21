@@ -121,17 +121,14 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
                 </ul>
               </li>
               <li>
-                <Link
-                  aria-current={isHelpActive ? "page" : undefined}
-                  className={
-                    isHelpActive
-                      ? "relative inline-flex items-center px-3 py-4 text-sm font-medium text-accent after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-accent after:content-['']"
-                      : "inline-flex items-center px-3 py-4 text-sm font-medium text-muted transition-colors hover:text-ink"
-                  }
+                <a
+                  className="inline-flex items-center px-3 py-4 text-sm font-medium text-muted transition-colors hover:text-ink"
                   href="/help"
+                  rel="noreferrer"
+                  target="_blank"
                 >
                   Help
-                </Link>
+                </a>
               </li>
             </ul>
           </nav>
@@ -188,7 +185,7 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
               <Image alt="" aria-hidden height={16} src="/images/UXDL-logo.svg" width={16} />
               Made with care by <span className="font-medium text-ink">UX Design Lab, LLC</span>
             </p>
-            <p className="text-xs text-muted">© {new Date().getFullYear()} · Local-first. No accounts required.</p>
+            <p className="text-xs text-muted">© {new Date().getFullYear()} · Local-first. No app account or subscription required.</p>
           </div>
         </div>
       </footer>

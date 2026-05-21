@@ -1,9 +1,21 @@
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright-core";
 import { normalizeTextForAts } from "./ats-normalize";
 
-const defaultChromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const macChromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
+function resolveChromiumPath(): string {
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+    return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+  }
+  if (existsSync(macChromePath)) {
+    return macChromePath;
+  }
+  // Fall back to the Chromium bundled with playwright
+  return chromium.executablePath();
+}
 
 export type PdfRenderResult = {
   htmlPath: string;
@@ -26,7 +38,7 @@ export async function renderHtmlToPdf(input: {
   await writeFile(input.htmlPath, normalized.html, "utf-8");
 
   const browser = await chromium.launch({
-    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? defaultChromePath,
+    executablePath: resolveChromiumPath(),
     headless: true
   });
 

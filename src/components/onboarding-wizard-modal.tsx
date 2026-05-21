@@ -317,9 +317,11 @@ export function OnboardingWizardModal({
                         <ExtractProfileButton disabled={!hasResume || !hasKey} onExtracted={() => router.refresh()} />
                       </div>
                     </div>
-                    <form action={addResumeLane}>
-                      <SubmitButton label="Add resume lane" pendingLabel="Adding…" savedLabel="Lane added ✓" variant="secondary" />
-                    </form>
+                    {visibleResumes.every((r) => r.sourceFile) && (
+                      <form action={addResumeLane}>
+                        <SubmitButton label="Add another lane" pendingLabel="Adding…" savedLabel="Lane added ✓" variant="secondary" />
+                      </form>
+                    )}
                   </section>
                 )}
 

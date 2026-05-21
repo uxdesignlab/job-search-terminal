@@ -91,7 +91,7 @@ export default function DashboardPage() {
   const settings = getAISettings();
   const profile = getUserProfile();
   const titleFilters = getTitleFilters();
-  const hasResume = resumes.some((r) => r.wordCount > 0);
+  const hasResume = resumes.some((r) => r.sourceFile != null);
   const hasKey = Boolean(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
   const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
   const hasLocationPreferences = profile.workModes.length > 0;

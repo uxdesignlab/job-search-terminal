@@ -32,7 +32,7 @@ a job or generate content.
 | **Node.js** | Version 18 or later — download from [nodejs.org](https://nodejs.org) |
 | **Git** | Download from [git-scm.com](https://git-scm.com) |
 | **An AI API key** | At least one of: OpenAI, Anthropic, or Google Gemini (free tier available) |
-| **Google Chrome** | Required for PDF generation — most computers already have it |
+| **Google Chrome** | Recommended for PDF generation — the app falls back to a bundled Chromium if Chrome is not found |
 
 You do not need to know how to code. You just need to be comfortable opening a
 terminal (the black or white window where you type commands).
@@ -322,6 +322,8 @@ npm run db:reset
 Use with caution — this cannot be undone unless you have a backup.
 
 ---
+
+<a id="ai-setup-prompt"></a>
 
 ## Prompt for Claude Code or Codex (self-service setup)
 

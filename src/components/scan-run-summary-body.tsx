@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +13,8 @@ type Props = {
   showJobsLink?: boolean;
   /** When false, omit the bottom Close button (e.g. when the dialog already has a header close control). */
   showFooterClose?: boolean;
+  /** Called with the source name when the user clicks "Disable" on an error row. */
+  onDisableSource?: (company: string) => Promise<void>;
 };
 
 export function ScanRunSummaryBody({
@@ -17,7 +22,11 @@ export function ScanRunSummaryBody({
   onClose,
   showJobsLink,
   showFooterClose = true,
+  onDisableSource,
 }: Props) {
+  const [disabledSources, setDisabledSources] = useState<Set<string>>(new Set());
+  const [disabling, setDisabling] = useState<string | null>(null);
+
   const { companyName } = summary;
   const jobsShown = summary.jobs.length;
   const jobsTotal = summary.jobsTotal ?? jobsShown;
@@ -58,12 +67,34 @@ export function ScanRunSummaryBody({
       </div>
 
       {summary.errors.length > 0 && (
-        <ul className="mb-4 list-inside list-disc space-y-1 rounded-md border border-border bg-surface/50 p-3 text-sm text-danger">
-          {summary.errors.map((e, i) => (
-            <li key={`${e.company}-${i}`}>
-              <span className="font-medium text-ink">{e.company}:</span> {e.error}
-            </li>
-          ))}
+        <ul className="mb-4 space-y-1.5 rounded-md border border-border bg-surface/50 p-3 text-sm text-danger">
+          {summary.errors.map((e, i) => {
+            const isDisabled = disabledSources.has(e.company);
+            const isDisabling = disabling === e.company;
+            return (
+              <li className="flex items-start justify-between gap-2" key={`${e.company}-${i}`}>
+                <span className="leading-5">
+                  <span className="font-medium text-ink">{e.company}:</span> {e.error}
+                </span>
+                {onDisableSource && (
+                  <button
+                    className="shrink-0 rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-50"
+                    disabled={isDisabled || isDisabling}
+                    onClick={async () => {
+                      setDisabling(e.company);
+                      await onDisableSource(e.company);
+                      setDisabledSources((prev) => new Set([...prev, e.company]));
+                      setDisabling(null);
+                    }}
+                    style={isDisabled ? { color: "var(--color-muted)" } : { color: "var(--color-danger)" }}
+                    type="button"
+                  >
+                    {isDisabled ? "Disabled" : isDisabling ? "Disabling…" : "Disable"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
