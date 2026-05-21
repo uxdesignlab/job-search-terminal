@@ -294,51 +294,78 @@ export function OnboardingWizardModal({
                     <div>
                       <h3 className="text-lg font-semibold text-ink">Upload resume lanes</h3>
                       <p className="mt-1 text-sm leading-6 text-muted">
-                        Upload a PDF to at least one lane. Keep separate lanes for different career angles.
+                        {!hasResume
+                          ? "Upload your resume PDF. You'll be taken to the resume builder to review the structure before continuing."
+                          : "Resume uploaded. Extract your full profile with AI, then continue to set job preferences."}
                       </p>
                     </div>
-                    <div className="grid gap-3">
-                      {visibleResumes.map((resume) => (
-                        <ResumeManageCard
-                          evidence={resume.evidence}
-                          id={resume.id}
-                          key={resume.id}
-                          name={resume.name}
-                          wordCount={resume.wordCount}
-                        />
-                      ))}
-                    </div>
-                    <div className="rounded-control border border-border bg-surface p-4">
-                      <p className="text-sm font-semibold text-ink">Extract full profile details</p>
-                      <p className="mt-1 text-sm leading-6 text-muted">
-                        Uploading a resume seeds positions and title filters. Run AI extraction to fill skills and richer profile details.
-                      </p>
-                      <div className="mt-3">
-                        <ExtractProfileButton
-                          disabled={!hasResume || !hasKey}
-                          onExtracted={() => { setExtractionDone(true); router.refresh(); }}
-                        />
+
+                    {/* Step A: Upload (no resume yet) */}
+                    {!hasResume && (
+                      <div className="grid gap-3">
+                        {visibleResumes.map((resume) => (
+                          <ResumeManageCard
+                            evidence={resume.evidence}
+                            id={resume.id}
+                            key={resume.id}
+                            name={resume.name}
+                            wordCount={resume.wordCount}
+                            onUploaded={() => router.push(`/profile/resumes/${resume.id}/builder?from=onboarding`)}
+                          />
+                        ))}
                       </div>
-                    </div>
-                    {visibleResumes.every((r) => r.sourceFile) && (
-                      <form action={addResumeLane}>
-                        <SubmitButton label="Add another lane" pendingLabel="Adding…" savedLabel="Lane added ✓" variant="secondary" />
-                      </form>
                     )}
+
+                    {/* Step B: Resume uploaded — extract + review */}
                     {hasResume && (
-                      <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
-                        {!extractionDone && (
-                          <p className="text-xs text-muted">Run &ldquo;Extract with AI&rdquo; above to populate your profile before continuing.</p>
+                      <>
+                        <div className="grid gap-3">
+                          {visibleResumes.map((resume) => (
+                            <ResumeManageCard
+                              evidence={resume.evidence}
+                              id={resume.id}
+                              key={resume.id}
+                              name={resume.name}
+                              wordCount={resume.wordCount}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="rounded-control border border-border bg-surface p-4">
+                          <p className="text-sm font-semibold text-ink">Extract full profile details</p>
+                          <p className="mt-1 text-sm leading-6 text-muted">
+                            Run AI extraction to populate skills, target roles, and career intelligence from your resume.
+                          </p>
+                          <div className="mt-3">
+                            <ExtractProfileButton
+                              disabled={!hasKey}
+                              onExtracted={() => { setExtractionDone(true); router.refresh(); }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Optional: add more lanes — only after extraction done */}
+                        {extractionDone && visibleResumes.every((r) => r.sourceFile) && (
+                          <form action={addResumeLane}>
+                            <SubmitButton label="Add another lane (optional)" pendingLabel="Adding…" savedLabel="Lane added ✓" variant="secondary" />
+                          </form>
                         )}
-                        <Button
-                          disabled={!extractionDone}
-                          onClick={() => setActiveStep("preferences")}
-                          type="button"
-                          variant="primary"
-                        >
-                          Continue to job preferences →
-                        </Button>
-                      </div>
+
+                        <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+                          {!extractionDone && (
+                            <p className="text-xs text-muted">Run &ldquo;Extract with AI&rdquo; above to populate your profile before continuing.</p>
+                          )}
+                          <Button
+                            className="ml-auto"
+                            disabled={!extractionDone}
+                            onClick={() => setActiveStep("preferences")}
+                            type="button"
+                            variant="primary"
+                          >
+                            Continue to job preferences →
+                          </Button>
+                        </div>
+                      </>
                     )}
                   </section>
                 )}

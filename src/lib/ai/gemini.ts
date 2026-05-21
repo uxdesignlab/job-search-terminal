@@ -58,19 +58,29 @@ export class GeminiProvider implements AIProvider {
       systemInstruction: this.getSystemInstruction(messages)
     });
 
+    // Do NOT use responseMimeType: "application/json" — Gemini's constrained-decoding
+    // JSON mode silently caps output at ~128 tokens regardless of maxOutputTokens, causing
+    // truncation on any moderately-sized response. Plain-text mode respects maxOutputTokens.
     const result = await model.generateContent({
       contents: this.buildContents(messages),
       generationConfig: {
-        responseMimeType: "application/json",
-        maxOutputTokens: config?.maxTokens ?? 4096,
+        maxOutputTokens: config?.maxTokens ?? 8192,
         temperature: config?.temperature
       }
     });
 
+    const candidate = result.response.candidates?.[0];
+    const finishReason = candidate?.finishReason as string | undefined;
+    if (finishReason === "MAX_TOKENS") {
+      throw new Error(
+        "Gemini output was cut off (MAX_TOKENS). Try a model with a larger output window, or reduce the amount of text being processed."
+      );
+    }
+
     const raw = result.response.text()?.trim() ?? "";
     if (!raw) {
       throw new Error(
-        "Gemini returned empty output for JSON mode (check safety blocks or retry). If this persists, try another model or shorten the resume text."
+        "Gemini returned empty output. Check for safety blocks or try a different model."
       );
     }
     const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -79,11 +89,8 @@ export class GeminiProvider implements AIProvider {
       return JSON.parse(jsonText) as T;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      const preview =
-        jsonText.length > 500 ? `${jsonText.slice(0, 500)}…` : jsonText;
-      throw new Error(
-        `Gemini returned invalid JSON (${msg}). Length ${jsonText.length} chars. Often caused by output truncation — increase max tokens or reduce extraction size. Preview: ${preview}`
-      );
+      const preview = jsonText.length > 300 ? `${jsonText.slice(0, 300)}…` : jsonText;
+      throw new Error(`Gemini returned invalid JSON (${msg}). Preview: ${preview}`);
     }
   }
 
