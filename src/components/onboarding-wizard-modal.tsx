@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AISettingsForm } from "@/components/ai-settings-form";
 import { ExtractProfileButton } from "@/components/extract-profile-button";
+import { ResumeBuilderEditor } from "@/components/resume-builder-editor";
 import { ResumeManageCard } from "@/components/resume-manage-card";
 import { Button, Input, SubmitButton, Textarea } from "@/components/ui";
 import {
@@ -13,7 +14,7 @@ import {
   saveOnboardingPreferencesAction,
 } from "@/app/dashboard/onboarding-actions";
 import { cn } from "@/lib/utils";
-import type { AISettingsRecord, ResumeRecord, UserProfileRecord, WorkMode } from "@/lib/db/types";
+import type { AISettingsRecord, ResumeBuilderVersionRecord, ResumeRecord, UserProfileRecord, WorkMode } from "@/lib/db/types";
 
 type StepId = "ai" | "resume" | "preferences" | "integrations" | "ready";
 
@@ -33,6 +34,7 @@ type OnboardingWizardModalProps = {
   hasAdzunaKeys: boolean;
   hasBraveKey: boolean;
   hasExtractedProfile: boolean;
+  resumeVersions: Record<string, ResumeBuilderVersionRecord | undefined>;
 };
 
 const WORK_MODES: WorkMode[] = ["remote", "hybrid", "onsite"];
@@ -64,11 +66,14 @@ export function OnboardingWizardModal({
   hasAdzunaKeys,
   hasBraveKey,
   hasExtractedProfile,
+  resumeVersions,
 }: OnboardingWizardModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(true);
   const [confirmClose, setConfirmClose] = useState(false);
   const [extractionDone, setExtractionDone] = useState(hasExtractedProfile);
+  // When set, shows the resume builder inline (full-screen within the modal overlay)
+  const [builderResumeId, setBuilderResumeId] = useState<string | null>(null);
 
   const statuses = useMemo<Record<StepId, boolean>>(() => ({
     ai: hasKey,
@@ -157,6 +162,31 @@ export function OnboardingWizardModal({
       return;
     }
     setConfirmClose(true);
+  }
+
+  // Inline resume builder — takes over the full overlay while the user reviews structure
+  if (builderResumeId) {
+    const inlineVersion = resumeVersions[builderResumeId];
+    const inlineResume = resumes.find((r) => r.id === builderResumeId);
+    return (
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-panel" role="dialog" aria-modal="true" aria-label="Resume builder">
+        <div className="p-5">
+          {!inlineVersion || !inlineResume ? (
+            <div className="flex min-h-[60vh] items-center justify-center">
+              <p className="text-sm text-muted">Preparing resume builder…</p>
+            </div>
+          ) : (
+            <ResumeBuilderEditor
+              resumeId={inlineResume.id}
+              resumeName={inlineResume.name}
+              version={inlineVersion}
+              isNew={true}
+              onDone={() => { setBuilderResumeId(null); router.refresh(); }}
+            />
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (!open) {
@@ -326,7 +356,7 @@ export function OnboardingWizardModal({
                               key={resume.id}
                               name={resume.name}
                               wordCount={resume.wordCount}
-                              onUploaded={() => router.push(`/profile/resumes/${resume.id}/builder?from=onboarding`)}
+                              onUploaded={() => { setBuilderResumeId(resume.id); router.refresh(); }}
                             />
                           ))
                         )}
