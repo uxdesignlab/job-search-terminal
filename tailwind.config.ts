@@ -28,7 +28,16 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-sans)", "Arial", "sans-serif"]
-      }
+      },
+      keyframes: {
+        progress: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(200%)" },
+        },
+      },
+      animation: {
+        progress: "progress 1.4s ease-in-out infinite",
+      },
     }
   },
   plugins: []

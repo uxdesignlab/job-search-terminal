@@ -32,6 +32,7 @@ type OnboardingWizardModalProps = {
   hasConfirmedPreferences: boolean;
   hasAdzunaKeys: boolean;
   hasBraveKey: boolean;
+  hasExtractedProfile: boolean;
 };
 
 const WORK_MODES: WorkMode[] = ["remote", "hybrid", "onsite"];
@@ -62,10 +63,12 @@ export function OnboardingWizardModal({
   hasConfirmedPreferences,
   hasAdzunaKeys,
   hasBraveKey,
+  hasExtractedProfile,
 }: OnboardingWizardModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(true);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [extractionDone, setExtractionDone] = useState(hasExtractedProfile);
 
   const statuses = useMemo<Record<StepId, boolean>>(() => ({
     ai: hasKey,
@@ -124,13 +127,8 @@ export function OnboardingWizardModal({
   }
 
   async function savePreferences(formData: FormData) {
-    const canContinue = Boolean(
-      String(formData.get("targetRoles") ?? "").trim() &&
-      String(formData.get("titlePositive") ?? "").trim() &&
-      formData.getAll("workModes").length > 0
-    );
     await saveOnboardingPreferencesAction(formData);
-    if (canContinue) setActiveStep("integrations");
+    setActiveStep("integrations");
     router.refresh();
   }
 
@@ -316,7 +314,10 @@ export function OnboardingWizardModal({
                         Uploading a resume seeds positions and title filters. Run AI extraction to fill skills and richer profile details.
                       </p>
                       <div className="mt-3">
-                        <ExtractProfileButton disabled={!hasResume || !hasKey} onExtracted={() => router.refresh()} />
+                        <ExtractProfileButton
+                          disabled={!hasResume || !hasKey}
+                          onExtracted={() => { setExtractionDone(true); router.refresh(); }}
+                        />
                       </div>
                     </div>
                     {visibleResumes.every((r) => r.sourceFile) && (
@@ -325,8 +326,16 @@ export function OnboardingWizardModal({
                       </form>
                     )}
                     {hasResume && (
-                      <div className="flex justify-end border-t border-border pt-4">
-                        <Button onClick={() => setActiveStep("preferences")} type="button" variant="primary">
+                      <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+                        {!extractionDone && (
+                          <p className="text-xs text-muted">Run &ldquo;Extract with AI&rdquo; above to populate your profile before continuing.</p>
+                        )}
+                        <Button
+                          disabled={!extractionDone}
+                          onClick={() => setActiveStep("preferences")}
+                          type="button"
+                          variant="primary"
+                        >
                           Continue to job preferences →
                         </Button>
                       </div>
@@ -392,7 +401,7 @@ export function OnboardingWizardModal({
                         </p>
                       </fieldset>
                       <div>
-                        <SubmitButton label="Save and continue" pendingLabel="Saving…" savedLabel="Preferences saved ✓" />
+                        <SubmitButton label="Save and continue →" pendingLabel="Saving…" savedLabel="Saved ✓" />
                       </div>
                     </form>
                   </section>
