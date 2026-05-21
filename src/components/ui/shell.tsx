@@ -49,7 +49,6 @@ function ProviderHealthDot() {
 
 export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
   const isAccountActive = ACCOUNT_ITEMS.some((i) => i.label === activeItem);
-  const isHelpActive = activeItem === "Help";
 
   return (
     <div className="min-h-screen bg-surface">
