@@ -177,7 +177,7 @@ ${resumeText}`
     desiredIndustries: result.profile.desiredIndustries || [],
     compensationNeeds: result.profile.compensationNeeds || "",
     workPreferences: result.profile.workPreferences || [],
-    workModes: [],
+    workModes: previous.workModes.length > 0 ? previous.workModes : [],
     constraints: result.profile.constraints || [],
     dealBreakers: result.profile.dealBreakers || [],
     careerIntent: result.profile.careerIntent || "",
@@ -185,8 +185,8 @@ ${resumeText}`
     confidenceLevel: result.profile.confidenceLevel || "high",
     skillsToUseMore: result.profile.skillsToUseMore || [],
     skillsToUseLess: result.profile.skillsToUseLess || [],
-    preferredLocations: [],
-    remotePreference: "all"
+    preferredLocations: previous.preferredLocations.length > 0 ? previous.preferredLocations : [],
+    remotePreference: previous.remotePreference ?? "all"
   };
 
   updateUserProfile(profileUpdate);
