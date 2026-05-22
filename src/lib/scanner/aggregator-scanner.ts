@@ -115,16 +115,13 @@ export async function runAggregatorScan(
           const adzunaId = String(job.id);
           if (seen.has(adzunaId)) continue;
           seen.add(adzunaId);
-          // Use the stable Adzuna job page URL instead of the session-scoped redirect_url,
-          // so the same job always maps to the same DB id across scan runs.
-          const stableUrl = `https://www.adzuna.com/land/ad/${adzunaId}`;
           jobs.push({
             id: randomUUID(),
             company: job.company.display_name,
             position: job.title,
             jobDescription: job.description,
-            url: stableUrl,
-            sourceUrl: stableUrl,
+            url: job.redirect_url,
+            sourceUrl: job.redirect_url,
             originalPostingUrl: "",
             discoveredAt: new Date(job.created).toISOString(),
             location: job.location.display_name,
