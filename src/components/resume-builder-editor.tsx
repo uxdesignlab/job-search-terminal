@@ -273,7 +273,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
       if (afterSave) {
         afterSave();
       } else if (nextStatus === "approved") {
-        onDone ? onDone() : router.push("/resumes");
+        if (onDone) { onDone(); } else { router.push("/resumes"); }
       } else {
         router.refresh();
       }
@@ -289,7 +289,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
     try {
       const res = await fetch(`/api/resume/${resumeId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
-      onDone ? onDone() : router.push("/resumes");
+      if (onDone) { onDone(); } else { router.push("/resumes"); }
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : String(err));
       setIsDeleting(false);
@@ -343,7 +343,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
               if (isNew && !hasSaved) {
                 setShowLeaveDialog(true);
               } else {
-                onDone ? onDone() : router.push(backHref);
+                if (onDone) { onDone(); } else { router.push(backHref); }
               }
             }}
             type="button"
@@ -843,7 +843,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
                 disabled={status === "saving"}
                 onClick={() => save("needs_review", () => {
                   setShowLeaveDialog(false);
-                  onDone ? onDone() : router.push(backHref);
+                  if (onDone) { onDone(); } else { router.push(backHref); }
                 })}
                 type="button"
               >
@@ -864,7 +864,7 @@ export function ResumeBuilderEditor({ resumeId, resumeName, version, isNew = fal
                 className="w-full rounded-control border border-border px-4 py-2 text-sm text-muted hover:text-ink"
                 onClick={() => {
                   setShowLeaveDialog(false);
-                  onDone ? onDone() : router.push(backHref);
+                  if (onDone) { onDone(); } else { router.push(backHref); }
                 }}
                 type="button"
               >
