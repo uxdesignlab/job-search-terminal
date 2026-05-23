@@ -61,21 +61,27 @@ through the legacy LinkedIn directory or route.
 ## Per-Source Liveness Notes
 
 The liveness checker (`src/lib/scanner/liveness-checker.ts`) fetches `jobs.url`
-and scans the response body for expiry/active-signal patterns. Two Monster-specific
-limitations affect liveness:
+and scans the response body for expiry/active-signal patterns.
 
-**Monster blocks automated HTTP requests.** Monster's CDN (Cloudflare) returns
-HTTP 403 for all non-browser user-agents. The liveness checker detects
-`monster.com` URLs and short-circuits with `"uncertain"` rather than wasting a
-network request. Monster jobs will never be automatically marked expired; the
-user must manually archive or delete them.
+**Monster — fetch attempted, result classified conservatively.**
+Monster's CDN (Cloudflare) can return HTTP 200 with a bot-challenge page that
+contains no job content and no expiry or active signals. To avoid misclassifying
+those pages as live job postings, `monster.com` is in the
+`UNCERTAIN_ON_AMBIGUOUS_HOSTS` list. For these hosts a pattern-free HTTP 200
+falls back to `"uncertain"` rather than `"active"`. Explicit pattern matches are
+still trusted in both directions:
 
-**Workaround — capture ATS URLs during scan.** When a Monster job detail page
-shows an "Apply on company site" button pointing to a third-party ATS (Greenhouse,
-Lever, Ashby, etc.), the scanner records that ATS URL as `original_posting_url`.
-The liveness route (`src/app/api/jobs/liveness/route.ts`) falls back to
-`original_posting_url` when the primary URL check returns `"uncertain"`, so ATS
-URLs are checked even when the Monster platform URL is blocked.
+- `"Sorry, that job has expired"` (Monster's exact expiry heading) → `"expired"`
+- `"Apply now"` / `"Submit your application"` / `"We're hiring"` → `"active"`
+- No pattern match on HTTP 200, or HTTP 4xx other than 404/410 → `"uncertain"`
+
+**Capture ATS URLs during scan for reliable liveness.**
+When a Monster job detail page shows an "Apply on company site" button pointing
+to a third-party ATS (Greenhouse, Lever, Ashby, etc.), the scanner records that
+ATS URL as `original_posting_url`. The liveness route
+(`src/app/api/jobs/liveness/route.ts`) falls back to `original_posting_url` when
+the primary URL check returns `"uncertain"`, so ATS URLs are checked even when
+the Monster platform URL returns an ambiguous response.
 
 **Expired-post redirect false positive.** When a Greenhouse job closes, Greenhouse
 often redirects to a company "Join our Talent Network" page (HTTP 200). Earlier

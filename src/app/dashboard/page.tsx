@@ -32,6 +32,7 @@ export default function DashboardPage() {
 
     const settings = getAISettings();
     const profile = getUserProfile();
+    const titleFilters = getTitleFilters();
     const hasAdzuna = Boolean(settings.adzunaAppId && settings.adzunaApiKey);
 
     const [careerOps, adzuna] = await Promise.all([
@@ -43,6 +44,7 @@ export default function DashboardPage() {
             titles: profile.targetRoles,
             locations: profile.preferredLocations,
             remotePreference: profile.remotePreference,
+            titleFilters,
           })
         : null,
     ]);

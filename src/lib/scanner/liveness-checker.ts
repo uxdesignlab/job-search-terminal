@@ -12,6 +12,7 @@ const EXPIRED_PATTERNS = [
   /this posting has (expired|been removed|been filled|been closed)/i,
   /we('re| are) not (currently )?hiring/i,
   /sorry[,.]? this (job|role|position) is no longer/i,
+  /sorry[,.]?\s*that job has expired/i,
   /application deadline (has )?passed/i,
   /requisition.*closed/i,
   /opening.*closed/i,
@@ -32,14 +33,19 @@ export type LivenessResult = {
   checkedAt: string;
 };
 
-const BLOCKED_HOSTS = [
+// Hosts whose bot-detection or CDN can return HTTP 200 with page content that
+// contains no expiry or active signals (e.g. a Cloudflare challenge or error page).
+// For these hosts a pattern-free 200 falls back to "uncertain" rather than "active"
+// so that challenge pages are never misclassified as live job postings.
+// Explicit expiry or active pattern matches are still trusted.
+const UNCERTAIN_ON_AMBIGUOUS_HOSTS = [
   "monster.com",
 ];
 
-function isBlockedHost(url: string): boolean {
+function isUncertainOnAmbiguous(url: string): boolean {
   try {
     const { hostname } = new URL(url);
-    return BLOCKED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`));
+    return UNCERTAIN_ON_AMBIGUOUS_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`));
   } catch {
     return false;
   }
@@ -52,9 +58,7 @@ export async function checkJobLiveness(url: string): Promise<LivenessResult> {
     return { status: "uncertain", reason: "No URL on file", checkedAt };
   }
 
-  if (isBlockedHost(url)) {
-    return { status: "uncertain", reason: "Host blocks automated checks", checkedAt };
-  }
+  const uncertainOnAmbiguous = isUncertainOnAmbiguous(url);
 
   let res: Response;
   try {
@@ -100,6 +104,9 @@ export async function checkJobLiveness(url: string): Promise<LivenessResult> {
     }
   }
 
-  // HTTP 200 with no clear signal — treat as active but uncertain
+  // HTTP 200 with no clear signal
+  if (uncertainOnAmbiguous) {
+    return { status: "uncertain", reason: "HTTP 200 — no signals; host unreliable without real browser", checkedAt };
+  }
   return { status: "active", reason: "HTTP 200 — no expiry signals detected", checkedAt };
 }
