@@ -29,27 +29,138 @@ all running locally on the user's machine with no cloud storage.
 ## Browser Job Board Scanner
 
 Codex can use the Codex Chrome Extension for signed-in or session-dependent job
-boards. Claude Desktop can use Claude in Chrome. Both runners must follow the
-same local import contract:
+boards. Claude Desktop can use Claude in Chrome. Both runners follow this
+contract exactly.
 
-1. Read target roles, preferred locations, remote preference, and title filters
-   from `data/job-search-terminal.sqlite`.
-2. Browse only visible job-board results in Chrome for LinkedIn, Wellfound,
-   Work at a Startup, Glassdoor, Indeed, or Monster.
-3. Extract company, title, location, description, platform URL, and a visible
-   job-specific employer/ATS apply URL when one exists.
-4. Prefer the employer/ATS URL as the job URL; otherwise use the platform job
-   URL. Preserve the platform URL as source provenance.
-5. Write JSON to `data/job-board-imports/` using a `.tmp` file first, then
-   rename to the final `.json` file. Legacy LinkedIn files may still be written
-   to `data/linkedin-imports/`.
+### Step 1 — Read Search Criteria
 
-Supported `metadata.source` values are `linkedin`, `wellfound`,
-`workatastartup`, `glassdoor`, `indeed`, and `monster`. Never click Apply,
-submit forms, log in for the user, message
-recruiters, bypass bot detection, or continue after CAPTCHA/login walls. Use the
-in-app browser for local Job Search Terminal verification; use Chrome only when
-the task needs the user's browser session.
+Database path: `data/job-search-terminal.sqlite` (or `$JST_DATABASE_PATH`).
+
+```sql
+SELECT target_roles_json, preferred_locations_json, remote_preference
+FROM user_profile ORDER BY updated_at DESC LIMIT 1;
+
+SELECT positive_json, negative_json FROM title_filters WHERE id = 'singleton';
+```
+
+- `target_roles_json` → job titles to search
+- `preferred_locations_json` → locations
+- `remote_preference` → `"remote-only"` | `"local-or-remote"` | `"all"`
+- `positive_json` / `negative_json` → title keyword filters
+
+If `target_roles_json` is empty, ask the user to set target roles in the app
+under Profile → Preferences before scanning.
+
+### Step 2 — Search the Board
+
+Supported boards:
+
+| Board | `metadata.source` | Start URL |
+| --- | --- | --- |
+| LinkedIn | `linkedin` | `https://www.linkedin.com/jobs/search/` |
+| Wellfound | `wellfound` | `https://wellfound.com/jobs` |
+| Work at a Startup | `workatastartup` | `https://www.workatastartup.com/companies` |
+| Glassdoor | `glassdoor` | `https://www.glassdoor.com/Job/index.htm` |
+| Indeed | `indeed` | `https://www.indeed.com/jobs` |
+| Monster | `monster` | `https://www.monster.com/jobs/search` |
+
+For each title in `target_roles_json`, search with the title and first location.
+Apply visible filters matching preferences:
+- **Date posted:** Past week (all boards). **Monster: Past 3 days** — Monster's
+  results include many stale listings that survive a week-wide filter.
+- **Remote:** Remote only when `remote_preference` is `"remote-only"`.
+- **Sort:** Most Recent when available.
+
+For each visible listing:
+
+1. Open the job detail page.
+2. **Monster only — expiry check first:** Before extracting anything, read the
+   page heading. If it says "Sorry, that job has expired" or shows any expiry
+   indicator ("No longer accepting applications", "This position has been filled",
+   "Application closed", no visible Posted date), **skip this listing
+   immediately.** Do not extract any data. Move to the next listing.
+3. Extract `company`, `position`, `location`, `jobDescription`, `sourceUrl`,
+   `originalPostingUrl`, and `discoveredAt`.
+4. `originalPostingUrl` — set only when a visible job-specific employer/ATS apply
+   URL exists (Greenhouse, Lever, Ashby, Workday, etc.). Leave empty otherwise.
+   **Monster:** always look for an "Apply on company site" button pointing to a
+   third-party ATS and record that URL — it lets the liveness checker verify the
+   posting without relying on Monster's bot-protected URLs.
+5. Set `url` to `originalPostingUrl` when present; otherwise use `sourceUrl`.
+6. Apply `negative_json` title filters and skip excluded titles.
+
+Scan up to 3 pages or 50 jobs, whichever comes first. Pause 1–2 seconds between
+page loads and detail views. **Stop immediately** on CAPTCHA, bot detection, or
+login prompt — report to the user.
+
+### Step 3 — Build the Output JSON
+
+```json
+{
+  "metadata": {
+    "source": "<source>",
+    "scanTimestamp": "<ISO 8601 UTC>",
+    "scanDurationSeconds": 120,
+    "totalJobsDiscovered": 12,
+    "totalJobsValid": 10,
+    "totalJobsSkipped": 2,
+    "searchCriteria": {
+      "titles": ["<title1>"],
+      "locations": ["<location1>"],
+      "remotePreference": "<value>"
+    },
+    "generatedBy": "Codex Browser Board Scanner v1.0"
+  },
+  "jobs": [
+    {
+      "id": "<uuid v4>",
+      "company": "<company name>",
+      "position": "<job title>",
+      "jobDescription": "<full description text>",
+      "url": "<ATS/employer URL, or platform URL>",
+      "sourceUrl": "<platform job URL>",
+      "originalPostingUrl": "<job-specific ATS/employer URL, or empty string>",
+      "discoveredAt": "<ISO 8601 UTC>",
+      "location": "<location string>",
+      "salaryNotes": "<visible salary/equity text, or empty string>"
+    }
+  ]
+}
+```
+
+Skip any job where `company`, `position`, or `url` is empty.
+
+### Step 4 — Write the File
+
+Directory: `data/job-board-imports/`
+Filename: `<source>-jobs-<timestamp>.json` (timestamp format: `2026-05-07T14-30-45Z`)
+
+Write to a `.tmp` file first, then rename to `.json`:
+
+```
+data/job-board-imports/monster-jobs-2026-05-07T14-30-45Z.json.tmp  →  .json
+```
+
+The file watcher detects the renamed `.json` and auto-imports it.
+
+### Step 5 — Report
+
+```
+Scan complete. Found X jobs matching your criteria.
+Saved to: data/job-board-imports/<source>-jobs-<timestamp>.json
+Job Search Terminal will import them automatically within 30 seconds.
+```
+
+If jobs were skipped for missing data or excluded keywords, mention the count.
+
+### Constraints
+
+- **Never click Apply**, submit forms, log in for the user, or message recruiters.
+- **Maximum 50 jobs per scan.**
+- **Stop on CAPTCHA or bot detection** — report immediately, do not continue.
+- **Do not transmit job data** to any service other than the local JSON file.
+- Use Chrome only when the task needs the user's browser session; use the in-app
+  browser for local Job Search Terminal verification.
 
 ## Resume Lanes
 
