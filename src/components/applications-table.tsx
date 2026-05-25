@@ -23,15 +23,25 @@ const TERMINAL_STATUSES = new Set(["Rejected", "Archived", "Skipped", "Offer"]);
 
 export type ApplicationTableRow = ApplicationRecord & { jobExists: boolean };
 
-type SortCol = "company" | "role" | "status" | "followUp" | "fit";
+type SortCol = "company" | "role" | "status" | "applied" | "followUp" | "fit";
 
 const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "company", label: "Company" },
   { col: "role", label: "Role" },
   { col: "status", label: "Status" },
+  { col: "applied", label: "Applied" },
   { col: "followUp", label: "Follow-up" },
   { col: "fit", label: "Fit" },
 ];
+
+const COL_WIDTHS: Record<SortCol, string> = {
+  company: "16%",
+  role: "31%",
+  status: "14%",
+  applied: "12%",
+  followUp: "18%",
+  fit: "9%",
+};
 
 function isOverdue(followUpDate: string, status: string, todayIso: string): boolean {
   if (TERMINAL_STATUSES.has(status) || !followUpDate) return false;
@@ -59,6 +69,8 @@ function getColValue(row: ApplicationTableRow, col: SortCol): string {
       return row.role;
     case "status":
       return row.status;
+    case "applied":
+      return row.appliedDate || "Not set";
     case "followUp":
       return row.followUpDate || "Not set";
     case "fit":
@@ -130,6 +142,9 @@ export function ApplicationsTable({ rows, todayIso }: Props) {
         case "status":
           cmp = a.status.localeCompare(b.status);
           break;
+        case "applied":
+          cmp = (a.appliedDate || "").localeCompare(b.appliedDate || "");
+          break;
         case "followUp":
           cmp = (a.followUpDate || "").localeCompare(b.followUpDate || "");
           break;
@@ -169,69 +184,82 @@ export function ApplicationsTable({ rows, todayIso }: Props) {
       )}
 
       <div className="w-full max-w-full" role="region" aria-label="Applications table">
-        <table className={cn(dataTableClass, dataTableStickyHeadClass, "min-w-max")}>
-            <thead>
-              <tr>
-                {COL_DEFS.map(({ col, label }) => (
-                  <DataTableColHeader
-                    key={col}
-                    col={col}
-                    filter={filters[col]}
-                    isOpen={openFilterCol === col}
-                    label={label}
-                    onOpen={openFilter}
-                    sort={sort}
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {displayRows.map((application) => {
-                const overdue = isOverdue(application.followUpDate, application.status, todayIso);
-                const days = overdue ? daysDue(application.followUpDate, todayIso) : 0;
+        <table className={cn(dataTableClass, dataTableStickyHeadClass, "table-fixed")}>
+          <colgroup>
+            {COL_DEFS.map(({ col }) => (
+              <col key={col} style={{ width: COL_WIDTHS[col] }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              {COL_DEFS.map(({ col, label }) => (
+                <DataTableColHeader
+                  key={col}
+                  col={col}
+                  filter={filters[col]}
+                  isOpen={openFilterCol === col}
+                  label={label}
+                  onOpen={openFilter}
+                  sort={sort}
+                />
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {displayRows.map((application) => {
+              const overdue = isOverdue(application.followUpDate, application.status, todayIso);
+              const days = overdue ? daysDue(application.followUpDate, todayIso) : 0;
 
-                return (
-                  <tr key={application.id}>
-                    <td className="py-3 pr-4 text-muted">{application.company}</td>
-                    <td className="py-3 pr-4">
-                      {application.jobExists ? (
-                        <Link
-                          className="font-medium text-accent hover:underline"
-                          href={`/jobs/${application.jobId}`}
-                        >
-                          {application.role}
-                        </Link>
-                      ) : (
-                        application.role
+              return (
+                <tr key={application.id}>
+                  <td className="py-3 pr-4 text-muted">{application.company}</td>
+                  <td className="break-words py-3 pr-4 leading-5">
+                    {application.jobExists ? (
+                      <Link
+                        className="font-medium text-accent hover:underline"
+                        href={`/jobs/${application.jobId}`}
+                      >
+                        {application.role}
+                      </Link>
+                    ) : (
+                      application.role
+                    )}
+                  </td>
+                  <td className="py-3 pr-4">
+                    <Badge
+                      className="max-w-full whitespace-normal py-1 leading-4"
+                      tone={statusTone(application.status)}
+                    >
+                      {application.status}
+                    </Badge>
+                  </td>
+                  <td className="whitespace-nowrap py-3 pr-4 text-ink">
+                    {application.appliedDate || "Not set"}
+                  </td>
+                  <td className="py-3 pr-4">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={overdue ? "text-warning" : "text-ink"}>
+                        {application.followUpDate || "Not set"}
+                      </span>
+                      {overdue && (
+                        <Badge aria-label={`Overdue by ${days} day${days !== 1 ? "s" : ""}`} tone="warning">
+                          Overdue {days}d
+                        </Badge>
                       )}
-                    </td>
-                    <td className="py-3 pr-4">
-                      <Badge tone={statusTone(application.status)}>{application.status}</Badge>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={overdue ? "text-warning" : "text-ink"}>
-                          {application.followUpDate || "Not set"}
-                        </span>
-                        {overdue && (
-                          <Badge aria-label={`Overdue by ${days} day${days !== 1 ? "s" : ""}`} tone="warning">
-                            Overdue {days}d
-                          </Badge>
+                      {!overdue &&
+                        application.followUpDate &&
+                        application.followUpDate >= todayIso &&
+                        !TERMINAL_STATUSES.has(application.status) && (
+                          <Badge tone="neutral">Upcoming</Badge>
                         )}
-                        {!overdue &&
-                          application.followUpDate &&
-                          application.followUpDate >= todayIso &&
-                          !TERMINAL_STATUSES.has(application.status) && (
-                            <Badge tone="neutral">Upcoming</Badge>
-                          )}
-                      </div>
-                    </td>
-                    <td className="py-3 pr-4 font-medium">{application.fitScore}%</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  </td>
+                  <td className="py-3 pr-4 font-medium">{application.fitScore}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {openFilterCol && (
