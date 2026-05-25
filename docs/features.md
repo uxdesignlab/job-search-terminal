@@ -286,7 +286,7 @@ user profile. Shows character count. User copies the message manually.
 Application funnel tracker with two view modes:
 
 - **Table view** — sortable list of all active applications with status, company,
-  role, score, follow-up date, and overdue indicator.
+  role, applied date, score, follow-up date, and overdue indicator.
 - **Kanban view** — drag-and-drop board organized by status column.
 
 **Features:**

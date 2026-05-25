@@ -801,7 +801,7 @@ export const helpPages: HelpPage[] = [
         id: "applications-page",
         title: "Use the Applications page",
         bullets: [
-          "Table view is best for sorting, filtering, and bulk review.",
+          "Table view is best for sorting, filtering, and reviewing applied dates.",
           "Kanban view is best for understanding funnel shape.",
           "Overdue indicators show when follow-up dates have passed.",
           "Saved filters help you reuse recurring views.",
