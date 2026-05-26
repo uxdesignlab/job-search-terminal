@@ -62,32 +62,47 @@ Supported boards:
 | Work at a Startup | `workatastartup` | `https://www.workatastartup.com/companies` |
 | Glassdoor | `glassdoor` | `https://www.glassdoor.com/Job/index.htm` |
 | Indeed | `indeed` | `https://www.indeed.com/jobs` |
-| Monster | `monster` | `https://www.monster.com/jobs/search` |
+| Monster | `monster` | `https://www.monster.com/jobs/search?recency=3&sort=newest` (append `&q=<title>&where=<location>` for each search) |
 
 For each title in `target_roles_json`, search with the title and first location.
+
+**Monster search URL:** Construct the URL directly with the recency filter baked
+in — do **not** rely on the UI filter alone. Use:
+`https://www.monster.com/jobs/search?q=<URL-encoded title>&where=<URL-encoded location>&recency=3&sort=newest`
+This ensures freshness even when Monster's UI filter fails to apply.
+
 Apply visible filters matching preferences:
-- **Date posted:** Past week (all boards). **Monster: Past 3 days** — Monster's
-  results include many stale listings that survive a week-wide filter.
+- **Date posted:** Past week (all boards). Monster uses the `recency=3` URL param
+  above — no need to also set the UI filter.
 - **Remote:** Remote only when `remote_preference` is `"remote-only"`.
 - **Sort:** Most Recent when available.
 
 For each visible listing:
 
+0. **Monster only — card-level pre-check:** Before clicking into any Monster job
+   detail, read the "Posted" date on the search result card. If it shows a date
+   older than 3 days (e.g. "Posted 5 days ago", "Posted 2 weeks ago") OR no
+   visible post date at all, **skip that listing without opening it.**
 1. Open the job detail page.
 2. **Monster only — expiry check first:** Before extracting anything, read the
    page heading. If it says "Sorry, that job has expired" or shows any expiry
    indicator ("No longer accepting applications", "This position has been filled",
    "Application closed", no visible Posted date), **skip this listing
    immediately.** Do not extract any data. Move to the next listing.
-3. Extract `company`, `position`, `location`, `jobDescription`, `sourceUrl`,
+3. **Monster only — early abort:** After opening the first 5 Monster detail pages
+   for a given search query, if 4 or more were expired, **stop scanning further
+   pages for that query.** Monster is serving predominantly stale results. Move to
+   the next title in `target_roles_json` if one exists, and note the abort in
+   your final report.
+4. Extract `company`, `position`, `location`, `jobDescription`, `sourceUrl`,
    `originalPostingUrl`, and `discoveredAt`.
-4. `originalPostingUrl` — set only when a visible job-specific employer/ATS apply
+5. `originalPostingUrl` — set only when a visible job-specific employer/ATS apply
    URL exists (Greenhouse, Lever, Ashby, Workday, etc.). Leave empty otherwise.
    **Monster:** always look for an "Apply on company site" button pointing to a
    third-party ATS and record that URL — it lets the liveness checker verify the
    posting without relying on Monster's bot-protected URLs.
-5. Set `url` to `originalPostingUrl` when present; otherwise use `sourceUrl`.
-6. Apply `negative_json` title filters and skip excluded titles.
+6. Set `url` to `originalPostingUrl` when present; otherwise use `sourceUrl`.
+7. Apply `negative_json` title filters and skip excluded titles.
 
 Scan up to 3 pages or 50 jobs, whichever comes first. Pause 1–2 seconds between
 page loads and detail views. **Stop immediately** on CAPTCHA, bot detection, or

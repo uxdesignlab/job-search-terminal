@@ -75,6 +75,22 @@ still trusted in both directions:
 - `"Apply now"` / `"Submit your application"` / `"We're hiring"` → `"active"`
 - No pattern match on HTTP 200, or HTTP 4xx other than 404/410 → `"uncertain"`
 
+**Monster search URL bakes in the recency filter.**
+Monster's UI date filter is unreliable — even "Past 3 days" often surfaces
+expired listings. The scanner now constructs the search URL with `recency=3`
+and `sort=newest` as URL parameters rather than relying on UI interaction:
+`https://www.monster.com/jobs/search?q=<title>&where=<location>&recency=3&sort=newest`
+
+**Card-level pre-check before opening Monster detail pages.**
+Monster search result cards show "Posted X days ago". Before clicking into a
+detail page, the scanner checks that date: cards older than 3 days or with no
+visible date are skipped without opening the detail page.
+
+**Early-abort on predominantly-expired Monster results.**
+After opening the first 5 Monster detail pages for a given search query, if 4+
+are expired the scanner aborts that query immediately rather than scanning 3 full
+pages of stale results. This is reported in the scan summary.
+
 **Capture ATS URLs during scan for reliable liveness.**
 When a Monster job detail page shows an "Apply on company site" button pointing
 to a third-party ATS (Greenhouse, Lever, Ashby, etc.), the scanner records that

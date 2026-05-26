@@ -49,7 +49,7 @@ Supported boards:
 | Work at a Startup | `workatastartup` | `https://www.workatastartup.com/companies` |
 | Glassdoor | `glassdoor` | `https://www.glassdoor.com/Job/index.htm` |
 | Indeed | `indeed` | `https://www.indeed.com/jobs` |
-| Monster | `monster` | `https://www.monster.com/jobs/search` |
+| Monster | `monster` | `https://www.monster.com/jobs/search?recency=3&sort=newest` (append `&q=<title>&where=<location>` for each search) |
 
 ---
 
@@ -92,20 +92,23 @@ If `target_roles_json` is empty, ask the user to set their target roles in Job S
 Use Claude in Chrome to navigate the requested board:
 
 1. Open the board start URL from the table above.
+   - **Monster:** Construct the URL directly with the recency filter baked in — do **not** rely on the UI filter alone. Use: `https://www.monster.com/jobs/search?q=<URL-encoded title>&where=<URL-encoded location>&recency=3&sort=newest`. This ensures freshness even when Monster's UI filter fails to apply.
 2. For each title in `target_roles_json`, search with the title as keywords and the first location from `preferred_locations_json` as location.
 3. Apply visible filters that match saved preferences when the board exposes them:
-   - **Date posted:** Past week, if available. For Monster specifically, set the date filter to **Past 3 days** (Monster's search results include many stale/expired listings that survive a week-wide filter).
+   - **Date posted:** Past week, if available. For Monster specifically, the `recency=3` URL param (above) handles this — no need to also set the UI filter.
    - **Remote:** If `remote_preference` is `"remote-only"`, filter to Remote only when available.
 4. Sort by **Most Recent** when the board exposes sorting.
 
 For each visible job listing:
 
+- **Monster only — card-level pre-check:** Before clicking into any Monster job detail page, read the "Posted" date visible on the job card in the search results list. If the card shows a post date older than 3 days (e.g. "Posted 5 days ago", "Posted 2 weeks ago") OR shows no visible post date at all, skip that listing without opening it. Undated and old cards are nearly always expired.
 - Open the job detail view.
 - Extract `company`, `position`, `sourceUrl`, `originalPostingUrl`, `url`, `location`, `jobDescription`, and `discoveredAt`.
 - Use `originalPostingUrl` only when a visible job-specific employer/ATS apply URL exists.
 - Set `url` to `originalPostingUrl` when present; otherwise use the platform job URL.
 - Apply `negative_json` filters and skip excluded titles.
 - **Monster only — expiry check BEFORE extracting data:** When you open a Monster job detail page, the very first thing to check is whether the page heading or main content area says "Sorry, that job has expired" or shows any expiry indicator ("No longer accepting applications", "This position has been filled", "Application closed"). Also skip any listing with no visible "Posted" date — undated Monster listings are typically months old. **If any expiry indicator is present, skip this listing immediately and move to the next one. Do not extract company, title, description, or any other field from an expired page.**
+- **Monster only — early abort:** After opening the first 5 Monster job detail pages for a given search query, count how many were expired. If 4 or more were expired, stop scanning further pages for that query — Monster is serving predominantly stale results for this search. Move to the next title in `target_roles_json` if one exists. Note the abort in your final report.
 - **Monster only — capture the ATS apply URL:** On each active Monster job detail page, look for a button or link labelled "Apply on company site", "Apply now" (pointing to an external domain), or similar. If one exists and leads to a job-specific URL on a third-party ATS (Greenhouse, Lever, Ashby, Workday, etc.), record that URL as `originalPostingUrl`. This allows the liveness checker to verify the posting directly, bypassing Monster's bot-protection on its own URLs.
 
 Scan up to 3 pages of results or 50 jobs, whichever comes first. Pause 1–2 seconds between page loads and detail views.
