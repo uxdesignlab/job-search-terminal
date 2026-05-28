@@ -1,7 +1,7 @@
-import Link from "next/link";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, SubmitButton, Textarea } from "@/components/ui";
+import { Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, SubmitButton, Textarea } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { VoicePractice } from "@/components/voice-practice";
+import { StoryBankList } from "@/components/story-bank-list";
 import { getStories } from "@/lib/db/queries";
 import { deleteStoryAction, saveStoryAction } from "./actions";
 
@@ -74,75 +74,7 @@ export default function InterviewPrepPage() {
             <CardDescription>{stories.length} {stories.length === 1 ? "story" : "stories"} saved</CardDescription>
           </CardHeader>
           {stories.length > 0 ? (
-            <div className="grid gap-4">
-              {stories.map((story) => (
-                <div className="rounded-control border border-border bg-surface p-4" key={story.id}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <h3 className="text-base font-semibold text-ink">{story.title}</h3>
-                    <div className="flex gap-3">
-                      {story.sourceJobId && (
-                        <Link className="text-xs text-accent hover:underline" href={`/jobs/${story.sourceJobId}`}>
-                          From job eval
-                        </Link>
-                      )}
-                      {story.sourceBlockF === "evaluation" && (
-                        <Badge tone="neutral">AI evaluation</Badge>
-                      )}
-                      {story.sourceBlockF === "voice-practice" && (
-                        <span className="text-xs text-muted">Voice practice</span>
-                      )}
-                      <form action={deleteStoryAction.bind(null, story.id)}>
-                        <button className="text-xs text-muted hover:text-ink" type="submit">Delete</button>
-                      </form>
-                    </div>
-                  </div>
-
-                  <dl className="mt-3 grid gap-2 text-sm">
-                    {story.situation && (
-                      <div>
-                        <dt className="font-medium text-muted">Situation</dt>
-                        <dd className="mt-0.5 text-ink">{story.situation}</dd>
-                      </div>
-                    )}
-                    {story.task && (
-                      <div>
-                        <dt className="font-medium text-muted">Task</dt>
-                        <dd className="mt-0.5 text-ink">{story.task}</dd>
-                      </div>
-                    )}
-                    {story.action && (
-                      <div>
-                        <dt className="font-medium text-muted">Action</dt>
-                        <dd className="mt-0.5 text-ink">{story.action}</dd>
-                      </div>
-                    )}
-                    {story.result && (
-                      <div>
-                        <dt className="font-medium text-muted">Result</dt>
-                        <dd className="mt-0.5 text-ink">{story.result}</dd>
-                      </div>
-                    )}
-                    {story.reflection && (
-                      <div>
-                        <dt className="font-medium text-muted">Reflection</dt>
-                        <dd className="mt-0.5 text-ink">{story.reflection}</dd>
-                      </div>
-                    )}
-                  </dl>
-
-                  {(story.skills.length > 0 || story.themes.length > 0) && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {story.skills.map((skill) => (
-                        <Badge key={skill} tone="neutral">{skill}</Badge>
-                      ))}
-                      {story.themes.map((theme) => (
-                        <Badge key={theme}>{theme}</Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <StoryBankList stories={stories} deleteStoryAction={deleteStoryAction} />
           ) : (
             <EmptyState
               description="Record your first answer above or add a story manually. Stories from Block F evaluations also appear here."

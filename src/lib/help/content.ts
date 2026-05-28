@@ -855,20 +855,20 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
-        id: "voice",
-        title: "Practice by voice",
+        id: "practice",
+        title: "Draft or record stories",
         steps: [
           {
-            title: "Record an answer",
-            body: "Use the browser microphone to answer a prompt out loud.",
+            title: "Select input method",
+            body: "Choose Type draft to write your raw thoughts or notes, or Record audio to practice speaking out loud.",
           },
           {
-            title: "Transcribe and parse",
-            body: "The app transcribes the answer and turns it into STAR structure.",
+            title: "Convert with AI",
+            body: "Click Convert to STAR to let the AI transcribe and structure your experience into standard Situation, Task, Action, Result, and Reflection categories.",
           },
           {
-            title: "Save and tag",
-            body: "Review the story, edit it, and tag it with skills, themes, or target jobs.",
+            title: "Edit section-by-section",
+            body: "Review the structured output. Click Edit next to any section (e.g., Action or Result) to make precise adjustments, then click Save to commit that section directly to the database.",
           },
         ],
       },

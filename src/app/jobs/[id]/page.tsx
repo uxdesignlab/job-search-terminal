@@ -9,6 +9,7 @@ import { EditJobModal } from "@/components/EditJobModal";
 import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { AIProviderBadge } from "@/components/ai-provider-badge";
+import { InterviewPlanSection } from "@/components/interview-plan-section";
 import {
   Badge,
   Button,
@@ -670,8 +671,12 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                   <EvaluationSection title="B. Match with resume" items={evaluation.sections.matchWithResume} />
                   <EvaluationSection title="C. Level and strategy" items={evaluation.sections.levelStrategy} />
                   <EvaluationSection title="D. Comp and demand" items={evaluation.sections.compensationDemand} />
-                  <EvaluationSection title="E. Personalization plan" items={evaluation.sections.tailoringPlan} />
-                  <EvaluationSection title="F. Interview plan" items={evaluation.sections.interviewPlan} />
+                  <div className="lg:col-span-2">
+                    <EvaluationSection title="E. Personalization plan" items={evaluation.sections.tailoringPlan} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <InterviewPlanSection items={evaluation.sections.interviewPlan} jobId={id} />
+                  </div>
                   <EvaluationSection title="G. Posting legitimacy" items={evaluation.sections.postingLegitimacy} />
                   <EvaluationSection title="Keywords" items={evaluation.keywords} />
                 </section>
@@ -767,3 +772,5 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
     </Card>
   );
 }
+
+

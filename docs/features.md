@@ -419,17 +419,20 @@ Read-only HTML preview of the tailored resume.
 
 Tools to prepare for interviews using stored experience.
 
-**STAR story bank:**
-- Add stories manually or transcribe from voice recording.
-- Each story has: title, situation, task, action, result, reflection.
-- Tag stories with skills and themes.
-- Stories can be linked to a specific job for context.
+**Interactive Story Builder:**
+- **Type or Record:** Toggle between "Type draft" (typing a raw text response or notes) and "Record audio" (spoken practice transcribed by AI).
+- **AI STAR Structuring:** AI automatically parses the raw text or spoken recording transcript into the structured STAR + Reflection format (Title, Situation, Task, Action, Result, Reflection), identifying demonstrated skills and themes.
+- **Section-by-Section Editing:** Once structured, the story is displayed as separate sections. Each section can be independently edited and saved directly to the database, ensuring you can refine details piece-by-piece.
+- **Writing Voice Integration:** Optionally opt-in to update your writing voice style profile with your custom answers, refining future AI-generated drafts.
 
-**Voice practice:**
-- Record a spoken answer using the browser microphone.
-- AI transcribes the answer using Whisper (OpenAI) or Gemini.
-- AI parses the transcription into STAR structure.
-- Save the parsed story to the story bank.
+**STAR Story Bank:**
+- Collates and displays all saved stories with visual badges for S/T/A/R/Reflection components.
+- Support **inline editing** using the interactive section-by-section editor. Clicking Edit on any card launches the editor immediately.
+- Tags stories with skills and themes, and shows the origin (e.g. "From Job eval" or "Voice practice").
+
+**Job Evaluation Integration (Section F. Interview plan):**
+- Direct entry point from the **Job Detail → Analysis** page. Next to each suggested question in Section F, clicking `"Draft / Record Answer"` opens the interactive builder inline.
+- Allows preparing, structuring, and editing answers tailored to the job's context before saving them straight to the Story Bank.
 
 ---
 
