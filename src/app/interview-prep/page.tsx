@@ -85,6 +85,9 @@ export default function InterviewPrepPage() {
                           From job eval
                         </Link>
                       )}
+                      {story.sourceBlockF === "evaluation" && (
+                        <Badge tone="neutral">AI evaluation</Badge>
+                      )}
                       {story.sourceBlockF === "voice-practice" && (
                         <span className="text-xs text-muted">Voice practice</span>
                       )}

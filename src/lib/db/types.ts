@@ -96,6 +96,16 @@ export type ScannedJobInput = {
   firstSeenDate: string;
 };
 
+/** One STAR+Reflection story as returned by Block F before it is flattened to strings. */
+export type StructuredStory = {
+  question: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+  reflection: string;
+};
+
 export type EvaluationSections = {
   roleSummary: string[];
   matchWithResume: string[];
@@ -104,6 +114,8 @@ export type EvaluationSections = {
   tailoringPlan: string[];
   interviewPlan: string[];
   postingLegitimacy: string[];
+  /** Structured STAR stories preserved from Block F before flattening. Auto-saved to story_bank. */
+  storiesStructured?: StructuredStory[];
 };
 
 export type EvaluationRecord = {

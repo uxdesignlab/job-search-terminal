@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage, AIProvider } from "../ai/provider";
-import { getJobById, getRoleDirections, getResumes, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
-import type { EvaluationSections, JobEvaluationResultInput, JobRecord } from "../db/types";
+import { autoSaveEvaluationStories, getJobById, getRoleDirections, getResumes, getSkills, getStories, getUserProfile, saveJobEvaluation } from "../db/queries";
+import type { EvaluationSections, JobEvaluationResultInput, JobRecord, StructuredStory } from "../db/types";
 import { coerceResumeBaseToLane, pickResumeBase } from "./resume-lane-picker";
 import { buildJobContext, buildSystemPrompt, type ResumeExcerpt } from "./prompts";
 
@@ -183,14 +183,38 @@ Create a CV/LinkedIn personalization roadmap. Return JSON:
 
 // ─── Block F: Interview Plan ───────────────────────────────────────────────
 
-async function runBlockF(provider: AIProvider, systemPrompt: string, jobCtx: string, blockA: BlockAResult, blockE: BlockEResult): Promise<string[]> {
+type BlockFResult = {
+  lines: string[];
+  structured: StructuredStory[];
+};
+
+/**
+ * Generates 3-5 STAR+Reflection interview stories tailored to the role.
+ *
+ * @param existingStoryTitles - Question strings from the current story bank,
+ *   injected into the prompt so the LLM avoids exact duplicates and builds
+ *   on material already captured across prior evaluations.
+ */
+async function runBlockF(
+  provider: AIProvider,
+  systemPrompt: string,
+  jobCtx: string,
+  blockA: BlockAResult,
+  blockE: BlockEResult,
+  existingStoryTitles: string[]
+): Promise<BlockFResult> {
+  const bankContext =
+    existingStoryTitles.length > 0
+      ? `\n\nExisting stories already in the story bank (do not duplicate; build on or contrast these instead):\n${existingStoryTitles.map((t) => `- "${t}"`).join("\n")}`
+      : "";
+
   const messages: AIMessage[] = [
     { role: "system", content: systemPrompt },
     {
       role: "user",
       content: `${jobCtx}
 
-Role: ${blockA.archetype} | Key keywords: ${blockE.keywords.slice(0, 8).join(", ")}
+Role: ${blockA.archetype} | Key keywords: ${blockE.keywords.slice(0, 8).join(", ")}${bankContext}
 
 Generate 3-5 STAR+Reflection interview stories for this specific role. Return JSON: { "stories": [{ "question": "string", "points": ["S: ...", "T: ...", "A: ...", "R: ...", "Reflection: ..."] }] }
 
@@ -201,8 +225,26 @@ Each story should:
 - Include a Reflection on what was learned or what you'd do differently`
     }
   ];
+
   const result = await provider.generateJSON<{ stories: Array<{ question: string; points: string[] }> }>(messages, '{"stories":[]}');
-  return result.stories.flatMap((s) => [`Q: ${s.question}`, ...s.points, ""]).filter(Boolean);
+
+  // Parse the structured points into labelled fields before flattening
+  const structured: StructuredStory[] = result.stories.map((s) => {
+    const extract = (prefix: string) =>
+      s.points.find((p) => p.startsWith(prefix))?.replace(prefix, "").trim() ?? "";
+    return {
+      question: s.question,
+      situation: extract("S:"),
+      task: extract("T:"),
+      action: extract("A:"),
+      result: extract("R:"),
+      reflection: extract("Reflection:")
+    };
+  });
+
+  const lines = result.stories.flatMap((s) => [`Q: ${s.question}`, ...s.points, ""]).filter(Boolean);
+
+  return { lines, structured };
 }
 
 // ─── Block G: Posting Legitimacy ──────────────────────────────────────────
@@ -292,8 +334,14 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   const blockE = await withRetry(() => runBlockE(provider, systemPrompt, jobCtx, blockA, blockB));
   onBlock?.({ block: "e", label: "E. Personalization plan", content: blockE.plan });
 
-  const blockFContent = await withRetry(() => runBlockF(provider, systemPrompt, jobCtx, blockA, blockE));
-  onBlock?.({ block: "f", label: "F. Interview plan", content: blockFContent });
+  // Fetch existing story bank titles to feed as context into Block F
+  const existingStoryTitles = getStories()
+    .filter((s) => s.sourceBlockF !== "evaluation" || s.sourceJobId !== jobId)
+    .map((s) => s.title)
+    .slice(0, 8);
+
+  const blockFResult = await withRetry(() => runBlockF(provider, systemPrompt, jobCtx, blockA, blockE, existingStoryTitles));
+  onBlock?.({ block: "f", label: "F. Interview plan", content: blockFResult.lines });
 
   const blockGResult = await withRetry(() => runBlockG(provider, systemPrompt, jobCtx, job));
   onBlock?.({ block: "g", label: "G. Posting legitimacy", content: blockGResult.legitimacy });
@@ -304,8 +352,9 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
     levelStrategy: blockCContent,
     compensationDemand: blockDContent,
     tailoringPlan: blockE.plan,
-    interviewPlan: blockFContent,
-    postingLegitimacy: blockGResult.legitimacy
+    interviewPlan: blockFResult.lines,
+    postingLegitimacy: blockGResult.legitimacy,
+    storiesStructured: blockFResult.structured
   };
 
   const score = Math.max(10, Math.min(98, blockB.fitScore));
@@ -348,6 +397,10 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
 export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCallback): Promise<JobEvaluationResultInput> {
   const result = await evaluateJobWithAI(jobId, onBlock);
   saveJobEvaluation(result);
+  // Auto-populate story bank from Block F structured output (replaces prior auto-saved stories for this job)
+  if (result.sections.storiesStructured && result.sections.storiesStructured.length > 0) {
+    autoSaveEvaluationStories(jobId, result.sections.storiesStructured);
+  }
   const resumeNames = getResumes().map((r) => r.name);
   return {
     ...result,

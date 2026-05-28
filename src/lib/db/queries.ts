@@ -41,6 +41,7 @@ import type {
   SkillRecord,
   StoryInput,
   StoryRecord,
+  StructuredStory,
   UserProfileRecord,
   WorkMode,
   WritingStyleRecord,
@@ -2048,6 +2049,42 @@ export function saveStory(input: StoryInput) {
 export function deleteStory(id: string) {
   getDatabase().prepare("delete from story_bank where id = @id").run({ id });
   logActivity("story_bank", id, "Story deleted", {});
+}
+
+/**
+ * Replaces all auto-saved Block F stories for a job with the new set.
+ * Called automatically after every LLM evaluation via runAndSaveJobWithAI.
+ * Manually-added or voice-practice stories are never touched.
+ */
+export function autoSaveEvaluationStories(jobId: string, stories: StructuredStory[]) {
+  const db = getDatabase();
+  db.transaction(() => {
+    // Delete previously auto-saved stories for this job only
+    db.prepare("delete from story_bank where source_job_id = @jobId and source_block_f = 'evaluation'").run({ jobId });
+    const stmt = db.prepare(
+      `insert into story_bank (
+        id, title, situation, task, action, result, reflection,
+        skills_json, themes_json, source_job_id, source_block_f,
+        updated_at
+      ) values (
+        @id, @title, @situation, @task, @action, @result, @reflection,
+        '[]', '[]', @sourceJobId, 'evaluation',
+        current_timestamp
+      )`
+    );
+    for (const story of stories) {
+      stmt.run({
+        id: `eval-story-${jobId}-${randomUUID().slice(0, 8)}`,
+        title: story.question,
+        situation: story.situation,
+        task: story.task,
+        action: story.action,
+        result: story.result,
+        reflection: story.reflection,
+        sourceJobId: jobId
+      });
+    }
+  })();
 }
 
 // ─── Company Research ─────────────────────────────────────────────────────────
