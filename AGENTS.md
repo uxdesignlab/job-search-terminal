@@ -196,6 +196,11 @@ workflow into a single universal resume. Preserve the multi-lane model.
 
 ## Safety
 
+See [`DATA_CONTRACT.md`](DATA_CONTRACT.md) for the authoritative user-layer /
+system-layer boundary. In summary: never directly modify or delete SQLite data,
+uploaded resumes, generated outputs, or files in `data/job-board-imports/`
+except through the established application functions in `src/lib/db/queries.ts`.
+
 - Never submit applications, send emails, or message recruiters for the user
   without explicit approval.
 - Never expose implementation details like script names or file paths in the
