@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses } from "../applications/status";
 import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
 import { normalizePreferredLocations } from "../profile/locations";
+import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
 import type {
   AIProviderName,
@@ -1707,7 +1708,7 @@ function mapScanRun(row: ScanRunRow): ScanRunRecord {
     filteredCount: row.filtered_count,
     duplicateCount: row.duplicate_count,
     newJobsCount: row.new_jobs_count,
-    errors: parseJson<Array<{ company: string; error: string }>>(row.errors_json),
+    errors: parseJson<ScanRunErrorEntry[]>(row.errors_json),
     scanType: (row.scan_type ?? "careerops") as ScanRunRecord["scanType"]
   };
 }

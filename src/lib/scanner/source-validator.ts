@@ -1,9 +1,14 @@
-import { safeFetch } from "@/lib/safe-fetch";
+import { safeFetch } from "../safe-fetch";
 import { buildApiUrl, type AtsProvider } from "./source-discovery";
 
-const VALIDATE_TIMEOUT_MS = 10_000;
-const VALIDATE_CONCURRENCY = 8;
-const INTER_BATCH_DELAY_MS = 300;
+/** Same order of magnitude as CareerOps job-list fetch — validation reads the full JSON body. */
+const VALIDATE_TIMEOUT_MS = 45_000;
+/** Fewer parallel calls reduces Ashby / CDN 429s when validating hundreds of boards. */
+const VALIDATE_CONCURRENCY = 5;
+const INTER_BATCH_DELAY_MS = 900;
+
+const VALIDATION_ATTEMPTS = 3;
+const TRANSIENT_HTTP = new Set([408, 425, 429, 500, 502, 503, 504, 520, 521, 522]);
 
 export type SourceValidationStatus = "valid" | "dead" | "unknown";
 
@@ -46,30 +51,95 @@ function countJobs(json: unknown, apiType: "greenhouse" | "ashby" | "lever"): nu
   return Array.isArray(rec.jobs) ? (rec.jobs as unknown[]).length : null;
 }
 
+function isRetriableNetworkError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("abort") ||
+    m.includes("aborted") ||
+    m.includes("timeout") ||
+    m.includes("etimedout") ||
+    m.includes("econnreset") ||
+    m.includes("enotfound") ||
+    m.includes("socket") ||
+    m.includes("fetch failed") ||
+    m.includes("network")
+  );
+}
+
 async function validateSource(source: SourceInput): Promise<SourceValidationResult> {
   const checkedAt = new Date().toISOString();
   const apiUrl = getApiUrl(source);
   if (!apiUrl) {
     return { name: source.name, status: "unknown", jobCount: null, checkedAt, error: "Cannot determine API URL" };
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
-  try {
-    const res = await safeFetch(apiUrl, { signal: controller.signal });
-    const text = await res.text();
-    if (!res.ok) {
-      return { name: source.name, status: res.status === 404 ? "dead" : "unknown", jobCount: null, checkedAt };
+
+  let lastResult: SourceValidationResult = {
+    name: source.name,
+    status: "unknown",
+    jobCount: null,
+    checkedAt,
+    error: "Validation failed",
+  };
+
+  for (let attempt = 0; attempt < VALIDATION_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 350 * (1 << attempt)));
     }
-    let jobCount: number | null = null;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
+
     try {
-      jobCount = source.apiType ? countJobs(JSON.parse(text) as unknown, source.apiType) : null;
-    } catch { /* non-JSON */ }
-    return { name: source.name, status: "valid", jobCount, checkedAt };
-  } catch (err) {
-    return { name: source.name, status: "unknown", jobCount: null, checkedAt, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timer);
+      const res = await safeFetch(apiUrl, {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (compatible; JobSearchTerminal/1.0; careers-board-validate)",
+        },
+      });
+      const text = await res.text();
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          return { name: source.name, status: "dead", jobCount: null, checkedAt };
+        }
+        lastResult = {
+          name: source.name,
+          status: "unknown",
+          jobCount: null,
+          checkedAt,
+          error: `HTTP ${res.status}`,
+        };
+        const canRetry = attempt < VALIDATION_ATTEMPTS - 1 && TRANSIENT_HTTP.has(res.status);
+        if (canRetry) continue;
+        return lastResult;
+      }
+
+      let jobCount: number | null = null;
+      try {
+        jobCount = source.apiType ? countJobs(JSON.parse(text) as unknown, source.apiType) : null;
+      } catch {
+        /* non-JSON */
+      }
+      return { name: source.name, status: "valid", jobCount, checkedAt };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      lastResult = {
+        name: source.name,
+        status: "unknown",
+        jobCount: null,
+        checkedAt,
+        error: msg,
+      };
+      const canRetry = attempt < VALIDATION_ATTEMPTS - 1 && isRetriableNetworkError(msg);
+      if (canRetry) continue;
+      return lastResult;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  return lastResult;
 }
 
 export async function validateAllSources(

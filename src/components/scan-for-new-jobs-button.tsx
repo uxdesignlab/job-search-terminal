@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ScanRunSummaryBody } from "@/components/scan-run-summary-body";
-import { disableScanSource } from "@/app/actions/scan-source-actions";
+import { disableScanSources } from "@/app/actions/scan-source-actions";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 
 type Props = {
@@ -55,8 +55,8 @@ export function ScanForNewJobsButton({ runScan }: Props) {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm sm:p-6"
           role="dialog"
         >
-          <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-panel p-6 shadow-2xl">
-            <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="flex max-h-[90vh] w-full max-w-2xl min-h-0 flex-col overflow-hidden rounded-2xl bg-panel p-6 shadow-2xl">
+            <div className="mb-4 shrink-0 flex items-start justify-between gap-3">
               <h2 className="text-lg font-semibold text-ink" id="scan-dialog-title">
                 {phase === "running" ? "Scan in progress" : "Scan results — All enabled sources"}
               </h2>
@@ -75,7 +75,7 @@ export function ScanForNewJobsButton({ runScan }: Props) {
             </div>
 
             {phase === "running" && (
-              <div className="flex flex-col items-center gap-4 py-10">
+              <div className="flex shrink-0 flex-col items-center gap-4 py-10">
                 <div
                   aria-hidden
                   className="h-11 w-11 animate-spin rounded-full border-2 border-accent border-t-transparent"
@@ -105,12 +105,13 @@ export function ScanForNewJobsButton({ runScan }: Props) {
 
             {phase === "done" && summary && (
               <ScanRunSummaryBody
+                className="min-h-0 flex-1"
                 showFooterClose={false}
                 showJobsLink
                 summary={summary}
                 onClose={close}
-                onDisableSource={async (name) => {
-                  await disableScanSource(name);
+                onDisableSources={async (names) => {
+                  await disableScanSources(names);
                   router.refresh();
                 }}
               />

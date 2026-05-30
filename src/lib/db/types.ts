@@ -173,6 +173,8 @@ export type EvaluationFeedbackRecord = {
   createdAt: string;
 };
 
+import type { ScanRunErrorEntry } from "../scan-error-category";
+
 export type ScanRunRecord = {
   id: string;
   status: "completed" | "completed_with_errors" | "failed";
@@ -184,7 +186,7 @@ export type ScanRunRecord = {
   filteredCount: number;
   duplicateCount: number;
   newJobsCount: number;
-  errors: Array<{ company: string; error: string }>;
+  errors: ScanRunErrorEntry[];
   scanType:
     | "careerops"
     | "linkedin-claude-scan"

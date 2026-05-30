@@ -5,12 +5,20 @@ import yaml from "js-yaml";
 import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, getUserProfile, insertScannedJobs, recordScanRun } from "../db/queries";
 import type { ScannedJobInput, ScanRunRecord } from "../db/types";
 import { buildJobPreferenceFilter, type JobPreferenceProfile } from "../jobs/preference-fit";
+import { classifyScanErrorMessage } from "../scan-error-category";
 import { safeFetch } from "../safe-fetch";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
 const FALLBACK_CONFIG_PATH = "config/portals.example.yml";
-const CONCURRENCY = 10;
-const FETCH_TIMEOUT_MS = 30_000;
+const CONCURRENCY = 20;
+/**
+ * Upper bound for ATS job-list `fetch` + full JSON parse. Ashby boards with
+ * many postings often exceed a short header-only budget because `response.json()`
+ * waits on the full body.
+ */
+const ATS_JOB_LIST_FETCH_MS = 60_000;
+/** After a timeout/abort, retry once (transient saturation or slow CDN). */
+const ATS_JOB_LIST_FETCH_RETRIES = 1;
 
 type PortalCompany = {
   name: string;
@@ -48,6 +56,7 @@ type ScanTarget = PortalCompany & {
 type ScanError = {
   company: string;
   error: string;
+  category: ReturnType<typeof classifyScanErrorMessage>;
 };
 
 type ScanOptions = {
@@ -105,9 +114,11 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   if (filterCompanyExactLower) {
     const match = mergedCompanies.find((c) => c.name.toLowerCase() === filterCompanyExactLower);
     if (!match) {
+      const msg = "Company not found in scan sources.";
       preflightErrors.push({
         company: filterCompanyExact ?? filterCompanyExactLower,
-        error: "Company not found in scan sources.",
+        error: msg,
+        category: classifyScanErrorMessage(msg),
       });
       companiesForTargets = [];
     } else {
@@ -138,10 +149,12 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     targets.length === 0 &&
     preflightErrors.length === 0
   ) {
+    const msg =
+      "Careers URL is missing or this portal is not a supported ATS (Greenhouse, Ashby, or Lever).";
     errors.push({
       company: companiesForTargets[0].name,
-      error:
-        "Careers URL is missing or this portal is not a supported ATS (Greenhouse, Ashby, or Lever).",
+      error: msg,
+      category: classifyScanErrorMessage(msg),
     });
   }
   let totalJobsFound = 0;
@@ -192,9 +205,9 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     } catch (error) {
       let message = error instanceof Error ? error.message : "Unknown scanner error";
       if (message === "This operation was aborted" || message === "The operation was aborted." || message.toLowerCase().includes("abort")) {
-        message = `Fetch timed out after ${FETCH_TIMEOUT_MS / 1000}s — the careers API may be slow or down`;
+        message = `Fetch timed out after ${ATS_JOB_LIST_FETCH_MS / 1000}s — the careers API may be slow or the job list is very large`;
       }
-      errors.push({ company: company.name, error: message });
+      errors.push({ company: company.name, error: message, category: classifyScanErrorMessage(message) });
     }
   });
 
@@ -358,18 +371,44 @@ function parseJobs(type: DetectedApi["type"], json: unknown, companyName: string
   return parseLever(json, companyName);
 }
 
-async function fetchJson(url: string) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+function isLikelyFetchTimeout(error: unknown): boolean {
+  const m = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return m.includes("abort") || m.includes("aborted") || m.includes("timeout") || m.includes("etimedout");
+}
 
+async function fetchJsonOnce(url: string): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ATS_JOB_LIST_FETCH_MS);
   try {
-    const response = await safeFetch(url, { signal: controller.signal });
+    const response = await safeFetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; JobSearchTerminal/1.0; careers-board-fetch)",
+      },
+    });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     return await response.json();
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fetchJsonOnce(url);
+    } catch (e) {
+      if (attempt < ATS_JOB_LIST_FETCH_RETRIES && isLikelyFetchTimeout(e)) {
+        attempt++;
+        await new Promise((r) => setTimeout(r, 350));
+        continue;
+      }
+      throw e;
+    }
   }
 }
 

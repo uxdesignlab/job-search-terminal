@@ -318,7 +318,7 @@ History of job scan executions.
 | `filtered_count` | Jobs removed by title filters or profile preference filters |
 | `duplicate_count` | Duplicate jobs skipped |
 | `new_jobs_count` | Net new jobs added |
-| `errors_json` | Array of per-company error objects |
+| `errors_json` | Array of `{ company, error, category? }` — `category` is `dead_or_unreachable`, `timeout_or_slow`, or `other` when set (CareerOps / Adzuna); older rows may omit it |
 | `scan_type` | `careerops`, `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, or `monster-browser-scan` |
 
 ### evaluation_feedback
