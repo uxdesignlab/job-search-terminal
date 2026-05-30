@@ -90,7 +90,7 @@ export function PreferredLocationsInput({ defaultLocations }: PreferredLocations
           className="min-h-11 w-full rounded-control border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted"
           id="preferred-location-search"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Start typing a city, for example Nashville or Minsk"
+          placeholder="Start typing a city, state, or country (for example Nashville, Tennessee, or Canada)"
           type="search"
           value={query}
         />
@@ -114,7 +114,7 @@ export function PreferredLocationsInput({ defaultLocations }: PreferredLocations
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs leading-5 text-muted">
-          Choose exact city, state, and country values used by filtering.
+          Choose exact city, state, or country values used by filtering.
         </p>
         {query.trim() ? (
           <Button onClick={() => addLocation(query)} type="button" variant="quiet">
@@ -123,7 +123,7 @@ export function PreferredLocationsInput({ defaultLocations }: PreferredLocations
         ) : null}
       </div>
       <p className="text-xs leading-5 text-muted">
-        City lookup uses OpenStreetMap Nominatim data.
+        Location suggestions use OpenStreetMap Nominatim data.
       </p>
     </div>
   );

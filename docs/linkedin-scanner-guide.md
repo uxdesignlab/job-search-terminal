@@ -23,7 +23,7 @@ Search criteria are read directly from your Job Search Terminal profile. The age
 
 1. Open Job Search Terminal and go to **Profile → Preferences**
 2. Set your **target roles** — the job titles to search for (e.g., "Product Manager", "UX Designer")
-3. Set your **preferred locations** — e.g., "Remote", "Nashville, TN"
+3. Set your **preferred locations** — e.g., "Remote", "Nashville, Tennessee, United States", "Tennessee, United States", or "Canada"
 4. Set your **remote preference** — Remote only, Local or remote, or All
 5. Optionally configure **positive title filters** (titles must contain these words) and **negative title filters** (titles containing these words are skipped) in **Settings → Scan Sources**
 
