@@ -1,5 +1,5 @@
 import { getAISettings } from "@/lib/db/queries";
-import type { AIProviderName } from "@/lib/db/types";
+import type { AISettingsRecord, AIProviderName } from "@/lib/db/types";
 import { AnthropicProvider } from "./anthropic";
 import { FallbackProvider } from "./fallback-provider";
 import { GeminiProvider } from "./gemini";
@@ -19,82 +19,60 @@ export function createProvider(name: AIProviderName, config: AIProviderConfig): 
   }
 }
 
-export function getActiveProvider(): AIProvider {
-  const settings = getAISettings();
+function providerKey(settings: AISettingsRecord, name: AIProviderName): string {
+  if (name === "anthropic") return settings.anthropicApiKey;
+  if (name === "gemini") return settings.geminiApiKey;
+  return settings.openaiApiKey;
+}
 
-  const providerKey = (name: AIProviderName): string => {
-    if (name === "anthropic") return settings.anthropicApiKey;
-    if (name === "gemini") return settings.geminiApiKey;
-    return settings.openaiApiKey;
-  };
+function providerModel(settings: AISettingsRecord, name: AIProviderName): string {
+  if (name === "anthropic") return settings.anthropicModel;
+  if (name === "gemini") return settings.geminiModel;
+  return settings.openaiModel;
+}
 
-  const providerModel = (name: AIProviderName): string => {
-    if (name === "anthropic") return settings.anthropicModel;
-    if (name === "gemini") return settings.geminiModel;
-    return settings.openaiModel;
-  };
-
+/**
+ * Resolves the ordered list of providers with a configured API key: active
+ * provider first, then the explicit fallback, then the remaining defaults.
+ */
+function resolveCandidates(settings: AISettingsRecord): AIProviderName[] {
   const candidates: AIProviderName[] = [];
-  if (providerKey(settings.activeProvider)) {
+  if (providerKey(settings, settings.activeProvider)) {
     candidates.push(settings.activeProvider);
   }
   if (settings.fallbackProvider && settings.fallbackProvider !== settings.activeProvider) {
     const fb = settings.fallbackProvider as AIProviderName;
-    if (providerKey(fb)) candidates.push(fb);
+    if (providerKey(settings, fb)) candidates.push(fb);
   }
   for (const name of FALLBACK_ORDER) {
-    if (!candidates.includes(name) && providerKey(name)) {
+    if (!candidates.includes(name) && providerKey(settings, name)) {
       candidates.push(name);
     }
   }
+  return candidates;
+}
 
-  if (candidates.length === 0) {
+function buildProvider(settings: AISettingsRecord, candidates: AIProviderName[]): AIProvider | null {
+  if (candidates.length === 0) return null;
+  const providers = candidates.map((name) =>
+    createProvider(name, { apiKey: providerKey(settings, name), model: providerModel(settings, name) })
+  );
+  return providers.length === 1 ? providers[0] : new FallbackProvider(providers);
+}
+
+export function getActiveProvider(): AIProvider {
+  const settings = getAISettings();
+  const provider = buildProvider(settings, resolveCandidates(settings));
+  if (!provider) {
     throw new Error(
       "No AI provider configured. Add an API key in Settings → AI Provider."
     );
   }
-
-  const providers = candidates.map((name) =>
-    createProvider(name, { apiKey: providerKey(name), model: providerModel(name) })
-  );
-  return providers.length === 1 ? providers[0] : new FallbackProvider(providers);
+  return provider;
 }
 
 /** Same resolution as {@link getActiveProvider}, but returns null when no API key is configured. */
 export function tryGetActiveProvider(): AIProvider | null {
   const settings = getAISettings();
-
-  const providerKey = (name: AIProviderName): string => {
-    if (name === "anthropic") return settings.anthropicApiKey;
-    if (name === "gemini") return settings.geminiApiKey;
-    return settings.openaiApiKey;
-  };
-
-  const providerModel = (name: AIProviderName): string => {
-    if (name === "anthropic") return settings.anthropicModel;
-    if (name === "gemini") return settings.geminiModel;
-    return settings.openaiModel;
-  };
-
-  const candidates: AIProviderName[] = [];
-  if (providerKey(settings.activeProvider)) {
-    candidates.push(settings.activeProvider);
-  }
-  if (settings.fallbackProvider && settings.fallbackProvider !== settings.activeProvider) {
-    const fb = settings.fallbackProvider as AIProviderName;
-    if (providerKey(fb)) candidates.push(fb);
-  }
-  for (const name of FALLBACK_ORDER) {
-    if (!candidates.includes(name) && providerKey(name)) {
-      candidates.push(name);
-    }
-  }
-
-  const chosen = candidates[0];
-  if (!chosen) return null;
-
-  return createProvider(chosen, {
-    apiKey: providerKey(chosen),
-    model: providerModel(chosen)
-  });
+  return buildProvider(settings, resolveCandidates(settings));
 }
