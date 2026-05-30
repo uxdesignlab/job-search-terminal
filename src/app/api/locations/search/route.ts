@@ -7,6 +7,9 @@ type NominatimResult = {
     town?: string;
     village?: string;
     municipality?: string;
+    state_district?: string;
+    county?: string;
+    region?: string;
     state?: string;
     country?: string;
   };
@@ -27,8 +30,7 @@ export async function GET(req: Request) {
   upstream.searchParams.set("q", query);
   upstream.searchParams.set("format", "jsonv2");
   upstream.searchParams.set("addressdetails", "1");
-  upstream.searchParams.set("featureType", "city");
-  upstream.searchParams.set("limit", "6");
+  upstream.searchParams.set("limit", "12");
   upstream.searchParams.set("accept-language", "en");
 
   try {
@@ -56,9 +58,31 @@ export async function GET(req: Request) {
 
 function formatLocation(result: NominatimResult) {
   const address = result.address;
-  if (!address) return result.display_name;
+  if (!address) return null;
 
   const city = address.city ?? address.town ?? address.village ?? address.municipality;
-  const parts = [city, address.state, address.country].filter(Boolean);
-  return parts.length > 0 ? parts.join(", ") : result.display_name;
+  const region = address.state ?? address.state_district ?? address.county ?? address.region;
+  const country = address.country;
+
+  if (city) return joinParts([city, region, country]);
+  if (region && country) return joinParts([region, country]);
+  if (country) return country;
+
+  return null;
+}
+
+function joinParts(values: Array<string | undefined>) {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(trimmed);
+  }
+
+  return parts.join(", ");
 }

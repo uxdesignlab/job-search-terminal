@@ -491,12 +491,13 @@ Resumes tab shows an upload banner when no extracted resumes exist.
 - Edit form: location mode checkboxes (`Remote`, `Hybrid`, `On-site`),
   preferred locations, desired industries, compensation needs, and free-form
   work preferences.
-- Preferred locations use a city lookup field backed by OpenStreetMap
-  Nominatim. The selected saved value should include city, state/region when
-  available, and country, for example `Nashville, Tennessee, United States` or
-  `Minsk, Belarus`. Each saved place displays as one label; legacy split values
-  such as `Nashville`, `Tennessee`, `United States` are normalized back into one
-  preferred-location label.
+- Preferred locations use an OpenStreetMap Nominatim lookup that supports city,
+  state/region, and country selections. You can save precise locations such as
+  `Nashville, Tennessee, United States`, broader targets such as
+  `Tennessee, United States`, or country-only values such as `Canada`. Each
+  saved place displays as one label; legacy split values such as `Nashville`,
+  `Tennessee`, `United States` are normalized back into one preferred-location
+  label.
 - Work preferences are reserved for non-location preferences such as `small
   team`, `async-first`, or `mission-driven`; location modes are stored
   separately.
