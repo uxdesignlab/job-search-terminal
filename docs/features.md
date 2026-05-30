@@ -578,9 +578,16 @@ Three configuration tabs:
   Crawl (requires Brave Search API key in AI Provider settings). Merges new
   findings into `data/discovered-sources.json` without overwriting existing
   entries.
-- "Validate sources" checks live job counts for all tracked sources; shows a
-  "Live / N jobs", "Dead", or "Unknown" badge in a per-row column. A
-  "Re-validate sources" button re-runs the check after the first run.
+- "Validate sources" opens a **modal** (progress, then summary counts and a scrollable list of dead/unknown boards — same interaction pattern as **Scan for new jobs** on the Dashboard). It checks each tracked board’s public ATS JSON URL (same
+  host as CareerOps scans). Results: **Live** / **N jobs** when HTTP 200 and JSON
+  parse succeeds, **Dead** on HTTP 404, **Unknown** for other HTTP codes, timeouts,
+  or non-JSON. The validator uses a **45s** per-source ceiling, browser-like
+  `User-Agent` / `Accept` headers, **up to three attempts** with backoff on
+  transient errors (HTTP 429 / 5xx / network aborts), **lower concurrency** (5),
+  and **longer pauses between batches** so Ashby and other hosts are less likely
+  to rate-limit when hundreds of sources are validated at once. Hover an
+  **Unknown** badge to see the last error string (for example `HTTP 429`).
+  **Re-validate sources** re-runs the full check.
 
 ### Preferences
 - Edit title include / exclude filters.
@@ -634,6 +641,8 @@ custom URLs configured in Settings.
 8. A `scan_runs` record is created with metrics.
 9. The Dashboard updates with a combined scan summary (ATS + Adzuna totals merged).
 
+**Scan results dialog** (Dashboard “Scan for new jobs” and Settings → Sources per-company scan): the modal is scrollable when there are many errors or new listings. Each error shows a **category badge** — *Dead or missing* (404/410, bad URL, unknown host), *Timed out* (no response within the fetch limit; the board may still be live), or *Other error*. A summary line counts how many sources reported issues, how many can be disabled as YAML/custom career sources, and a breakdown by category. **Select all** / **Clear selection** / **Disable selected** bulk-update `scan_source_overrides`; per-row **Disable** does the same for one company. Aggregator-only rows (e.g. **Adzuna**) are not disabled as career sources — the UI points to AI Provider settings instead.
+
 The Jobs page can also verify whether saved postings still exist. The liveness
 check updates `liveness_status` but does not automatically archive or delete
 anything. Expired jobs with no user activity are shown for confirmation before
@@ -658,6 +667,24 @@ Location matching uses the selected Location mode checkboxes:
 - Title filters: positive list (must match) and negative list (exclude if matched).
 - Profile filters: selected location modes and preferred locations constrain
   scan inserts.
+- **Settings → Sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; until **Validate sources** has been run, Live shows **Not validated** for each row.
+
+**Performance tuning constants** (in `src/lib/scanner/careerops-scanner.ts`):
+- `CONCURRENCY = 20` — parallel ATS API requests.
+- `ATS_JOB_LIST_FETCH_MS = 60_000` — per-source ceiling for the full job-list
+  request: HTTP response **and** `response.json()` parsing. Large Ashby boards
+  often need far more than a few seconds to download JSON; the previous 12s
+  budget could mark live boards as timed out. (`jd-fetcher.ts` still uses
+  `FETCH_TIMEOUT_MS = 12_000` for individual job-description fetches.)
+- `ATS_JOB_LIST_FETCH_RETRIES = 1` — on timeout/abort, one immediate retry after
+  a short pause (transient CDN saturation).
+
+**Pruning dead sources:** `npx tsx scripts/prune-dead-sources.ts` validates
+every enabled source (YAML + custom) and writes `scan_source_overrides` rows
+to disable any that return HTTP 404 in pass 1, plus any that are unreachable
+in both passes. Disabling is non-destructive — sources can be re-enabled
+from Settings → Job Sources. Useful after a bulk source-discovery import,
+which tends to add many slugs that do not actually exist on the ATS host.
 
 ---
 

@@ -26,7 +26,6 @@ import { DiscoveredSourcesButton } from "@/components/discovered-sources-button"
 import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
 import { AggregatorScanButton } from "@/components/aggregator-scan-button";
-import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 import { runSourceDiscovery, runSearchDiscovery } from "@/lib/scanner/source-discovery";
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
@@ -251,25 +250,22 @@ export default async function SettingsPage({
 
   async function scanCompanyJobsAction(companyName: string): Promise<CompanyScanResultSummary> {
     "use server";
+    const { careerOpsRunToJobSummary } = await import("@/lib/careerops-scan-to-summary");
     const result = await runCareerOpsScanner({ companyExact: companyName });
     revalidatePath("/settings");
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
-    const jobs = result.jobs;
-    const max = SCAN_RESULT_JOBS_PREVIEW_MAX;
-    return {
-      companyName,
-      status: result.status,
-      newJobsCount: result.newJobsCount,
-      totalJobsFound: result.totalJobsFound,
-      filteredCount: result.filteredCount,
-      duplicateCount: result.duplicateCount,
-      companiesScanned: result.companiesScanned,
-      skippedCompanies: result.skippedCompanies,
-      errors: result.errors,
-      jobs: jobs.slice(0, max).map((j) => ({ title: j.title, url: j.url, company: j.company })),
-      jobsTotal: jobs.length > max ? jobs.length : undefined,
-    };
+    return careerOpsRunToJobSummary(result, companyName);
+  }
+
+  async function scanAllEnabledCareerSourcesAction(): Promise<CompanyScanResultSummary> {
+    "use server";
+    const { careerOpsRunToJobSummary } = await import("@/lib/careerops-scan-to-summary");
+    const result = await runCareerOpsScanner();
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
+    revalidatePath("/jobs");
+    return careerOpsRunToJobSummary(result, "All enabled sources");
   }
 
   async function importDiscoveredAction(formData: FormData) {
@@ -378,6 +374,7 @@ export default async function SettingsPage({
                 onRemove={removeSourceAction}
                 onSaveIndustry={saveIndustryAction}
                 onScanCompany={scanCompanyJobsAction}
+                onScanAllEnabled={scanAllEnabledCareerSourcesAction}
                 onValidateAll={validateAllSourcesAction}
               />
             </Card>
