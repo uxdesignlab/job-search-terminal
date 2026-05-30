@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage, AIProvider } from "../ai/provider";
@@ -214,7 +213,7 @@ async function runBlockF(
       role: "user",
       content: `${jobCtx}
 
-Role: ${blockA.archetype} | Key keywords: ${blockE.keywords.slice(0, 8).join(", ")}${bankContext}
+Role: ${blockA.archetype} | Key keywords: ${blockE.keywords.slice(0, 8).map((k) => k.keyword).join(", ")}${bankContext}
 
 Generate 3-5 STAR+Reflection interview stories for this specific role. Return JSON: { "stories": [{ "question": "string", "points": ["S: ...", "T: ...", "A: ...", "R: ...", "Reflection: ..."] }] }
 
@@ -420,6 +419,3 @@ function scoreLabelFor(score: number) {
   if (score >= 55) return "Selective";
   return "Weak fit";
 }
-
-// Keeps the randomUUID import used (for future batch IDs)
-export { randomUUID };

@@ -226,8 +226,8 @@ AI-generated evaluation output for a job, stored separately from `jobs`.
 | `legitimacy_label` | Job legitimacy signal |
 | `keywords_json` | Extracted keywords |
 | `user_correction_json` | User-applied corrections to evaluation |
-| `provider_used` | AI provider that ran the evaluation |
-| `model_used` | Model ID used |
+| `provider_used` | AI provider that ran the evaluation. When the fallback chain is active, this reflects the provider that actually served the last block, not necessarily the configured active provider. |
+| `model_used` | Model ID used (matches `provider_used`) |
 | `tokens_used` | Token count for the evaluation run |
 | `generation_ms` | Wall-clock generation time in ms |
 | `created_at` | ISO timestamp |

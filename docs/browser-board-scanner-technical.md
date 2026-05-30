@@ -153,6 +153,35 @@ Minimum job fields:
 }
 ```
 
+## Network and Import Safety
+
+**SSRF-safe egress (`src/lib/safe-fetch.ts`).** Every outbound fetch made by the
+scanners, the JD fetcher, source discovery, and the liveness checker goes through
+`safeFetch`. It enforces an `http(s)` protocol allow-list and blocks requests to
+loopback, RFC-1918 private ranges, CGNAT (100.64.0.0/10), and link-local
+(169.254.x.x / AWS IMDS) targets, plus their IPv6 equivalents (`::1`, `fc00::/7`,
+`fe80::/10`, and IPv4-mapped forms). Protection is layered:
+
+1. A synchronous literal-host check on the URL (IPv6 hosts are unwrapped from
+   their `[…]` brackets before matching).
+2. DNS resolution of the hostname — every resolved address is checked, so a
+   public hostname that points at an internal IP is rejected.
+3. Manual redirect following — each redirect hop is re-validated, so a remote
+   server cannot 3xx-redirect into an internal address. Callers that pass
+   `redirect: "manual"`/`"error"` receive the first redirect response untouched.
+
+A residual DNS-rebinding (TOCTOU) window between the resolution check and the
+socket connect is not fully closed, but the resolution check raises the bar well
+above a hostname-only filter.
+
+**Import path containment.** The import API routes
+(`src/app/api/job-board/import` and `src/app/api/linkedin/import`) accept an
+optional caller-supplied `filePath`. That path is resolved through
+`resolveImportFilePathWithin()` (`src/lib/scanner/import-path.ts`) and rejected
+with HTTP 400 unless it lands inside an allowed import directory
+(`data/job-board-imports/` or the legacy `data/linkedin-imports/`). This prevents
+a local request from reading arbitrary files off disk via the import endpoint.
+
 ## Verification
 
 Use `npm run scanner:check` for parser and dedupe fixtures, then run the standard

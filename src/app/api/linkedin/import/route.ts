@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { importLinkedInJobs } from "@/lib/scanner/linkedin-importer";
+import { resolveImportFilePathWithin } from "@/lib/scanner/import-path";
 
 const WATCH_DIR = path.join(process.cwd(), "data", "linkedin-imports");
 const FILE_PATTERN = /^linkedin-jobs-.+\.json$/;
@@ -12,7 +13,11 @@ export async function POST(req: Request) {
 
     let filePath: string;
     if (body.filePath) {
-      filePath = body.filePath;
+      const safePath = resolveImportFilePathWithin([WATCH_DIR], body.filePath);
+      if (!safePath) {
+        return NextResponse.json({ error: "filePath must be inside the import directory" }, { status: 400 });
+      }
+      filePath = safePath;
     } else {
       if (!existsSync(WATCH_DIR)) {
         return NextResponse.json({ error: "No import directory found" }, { status: 404 });

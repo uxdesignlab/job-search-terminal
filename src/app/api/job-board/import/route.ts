@@ -1,9 +1,11 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "@/lib/scanner/browser-board-importer";
+import { getBrowserBoardImportDirectory, getLinkedInImportDirectory, importBrowserBoardJobs } from "@/lib/scanner/browser-board-importer";
+import { resolveImportFilePathWithin } from "@/lib/scanner/import-path";
 
 const WATCH_DIR = getBrowserBoardImportDirectory();
+const ALLOWED_DIRS = [WATCH_DIR, getLinkedInImportDirectory()];
 const FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster)-jobs-.+\.json$/;
 
 export async function POST(req: Request) {
@@ -12,7 +14,11 @@ export async function POST(req: Request) {
 
     let filePath: string;
     if (body.filePath) {
-      filePath = body.filePath;
+      const safePath = resolveImportFilePathWithin(ALLOWED_DIRS, body.filePath);
+      if (!safePath) {
+        return NextResponse.json({ error: "filePath must be inside an import directory" }, { status: 400 });
+      }
+      filePath = safePath;
     } else {
       if (!existsSync(WATCH_DIR)) {
         return NextResponse.json({ error: "No import directory found" }, { status: 404 });
