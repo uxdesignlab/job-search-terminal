@@ -64,3 +64,10 @@ export function getRawDatabase() {
 export function getDatabasePath() {
   return databasePath;
 }
+
+/** Close the shared connection before a controlled local restore replaces the database file. */
+export function closeDatabase() {
+  if (!db) return;
+  db.close();
+  db = undefined;
+}

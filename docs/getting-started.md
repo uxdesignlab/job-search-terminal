@@ -17,10 +17,10 @@ your computer. It helps you:
 - Track every application through the full funnel.
 - Prepare for interviews with a STAR story bank and voice practice.
 
-Your data never leaves your machine. There are no accounts, no subscriptions,
-and no cloud storage. The only time the app contacts the internet is when you
-ask it to use an AI provider (OpenAI, Anthropic, or Google Gemini) to evaluate
-a job or generate content.
+Your stored account data stays on your machine. There are no accounts, no
+subscriptions, and no cloud storage. The app contacts the internet only for the
+features you run: AI-provider requests, job scans, source discovery, and
+browser-board scanning.
 
 ---
 
@@ -157,8 +157,8 @@ will be running.
 
 ### 7. First-time setup in the app
 
-When you first open the app at http://localhost:3000, the dashboard shows a
-3-step setup guide:
+When you first open the app at http://localhost:3000, the dashboard opens a
+guided setup flow:
 
 **Step 1: Add an AI API key**
 Click the provider you want to use to expand the instructions. Pick one — you
@@ -170,8 +170,8 @@ only need one:
 - **Anthropic (Claude)**: go to console.anthropic.com/settings/keys, sign in,
   click Create Key. Copy the key.
 
-Then click "Go to Settings → AI Providers", select your provider, paste the key,
-and save. Return to the Dashboard — Step 1 shows ✓.
+Choose one provider, paste its key, test the connection if needed, and save.
+Model selection and discovery integrations remain optional advanced settings.
 
 **Step 2: Upload your resume**
 Click "Go to Profile → Resumes". On the Resumes tab, each lane represents a
@@ -183,9 +183,10 @@ reads your resume and populates your skills, target roles, preferences, and
 experience. Review each tab (Skills & Roles, Preferences, Constraints) and make
 any corrections.
 
-**Step 3: Scan for jobs**
-Return to the Dashboard. The setup wizard is gone — you're ready. Click "Scan
-for new jobs" to start discovering opportunities.
+**Step 3: Confirm preferences and start scanning**
+Confirm desired roles, title filters, and location mode. The Ready step offers
+an optional six-hour scan schedule while the local app is running. Open the
+Dashboard and click "Scan for new jobs" for an immediate scan.
 
 ---
 
@@ -209,9 +210,10 @@ for new jobs" to start discovering opportunities.
 | Add an AI key | Account → Settings → AI Providers |
 | Add Adzuna or Brave Search keys | Account → Settings → AI Providers → Discovery & Aggregators |
 | Discover new ATS sources | Settings → Sources → Scan for new sources or Search discover |
-| Bulk-add validated discovered sources | Settings → Sources → Import all valid |
+| Review and approve discovered sources | Settings → Sources → Discovered sources |
 | Check which sources are still live | Settings → Sources → Validate sources |
 | See role fit strategy | Account → Strategy |
+| Back up or restore the local account | Account → Settings → Data & Backup |
 
 ---
 
@@ -273,13 +275,28 @@ npm run dev
 
 ## Backing up your data
 
-All your data is in `data/job-search-terminal.sqlite`. Back it up at any time:
+Open **Account → Settings → Data & Backup** to create a portable `.jst-backup`
+archive before migrations, cleanup, or moving the app to another machine. The
+archive includes the database, resume files referenced by your resume lanes,
+generated documents, approved source configuration, and scanner import
+history. Every other file under `assets/` is ignored.
+
+Password protection is optional. If you create an unencrypted archive, the app
+asks you to acknowledge that it contains private resume data and locally stored
+provider credentials.
+
+To restore an archive, choose the file in the same screen and click **Inspect
+backup**. The app validates and previews the archive first. After you confirm,
+it creates an automatic rollback backup before replacing managed local account
+data. Unrelated files under `assets/` remain untouched.
+
+For a database-only SQLite snapshot, run:
 
 ```bash
 npm run data:backup
 ```
 
-Backups are saved to `output/backups/`. Export a readable JSON snapshot:
+Snapshots are saved to `output/backups/`. Export a readable JSON snapshot:
 
 ```bash
 npm run data:export

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Shell } from "@/components/ui/shell";
-import { getGeneratedDocumentById, getEvaluationByJobId } from "@/lib/db/queries";
+import { getGeneratedDocumentById, getEvaluationByJobId, getJobGapResponses, getProfileSupplements, getResumes } from "@/lib/db/queries";
 import { ResumeDraftEditor } from "@/components/resume-draft-editor";
 import type { ResumeTemplateInput } from "@/lib/documents/resume-template";
 import { keywordCoverageFor } from "@/lib/documents/keyword-coverage";
@@ -30,6 +30,16 @@ export default async function EditResumePage({ params }: EditPageProps) {
   const keywordCoverage = evaluation?.keywords?.length
     ? keywordCoverageFor(draft, evaluation.keywords)
     : doc.keywordCoverage;
+  const resumes = getResumes();
+  const lane = resumes.find((resume) => resume.id === doc.baseResumeId)
+    ?? resumes.find((resume) => resume.name === doc.baseResume);
+  const gapEvidence = getJobGapResponses(doc.jobId)
+    .filter((response) => response.qualityStatus === "addressed")
+    .map((response) => response.polishedResponse || response.rawResponse);
+  const evidenceText = [lane?.extractedText ?? "", ...getProfileSupplements().filter((supplement) => supplement.qualityStatus === "addressed").map((supplement) => supplement.content), ...gapEvidence]
+    .join(" ")
+    .toLowerCase();
+  const supportedKeywords = (evaluation?.keywords ?? []).filter((keyword) => evidenceText.includes(keyword.toLowerCase()));
 
   return (
     <Shell activeItem="Resumes">
@@ -41,6 +51,9 @@ export default async function EditResumePage({ params }: EditPageProps) {
         baseResume={doc.baseResume}
         keywordCoverage={keywordCoverage}
         keywords={evaluation?.keywords ?? []}
+        supportedKeywords={supportedKeywords}
+        tailoringStatus={doc.tailoringStatus}
+        fallbackReason={doc.fallbackReason}
       />
     </Shell>
   );

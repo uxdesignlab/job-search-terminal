@@ -33,6 +33,15 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["pdf-parse", "better-sqlite3"],
+  async redirects() {
+    return [
+      {
+        source: "/favicon.ico",
+        destination: "/logo.svg",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

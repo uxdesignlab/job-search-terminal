@@ -1,6 +1,8 @@
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export type WorkMode = "remote" | "hybrid" | "onsite";
+export type FreshnessWindowHours = 24 | 72 | 168;
+export type ScanTrigger = "manual" | "scheduled";
 
 export type UserProfileRecord = {
   id: string;
@@ -187,6 +189,11 @@ export type ScanRunRecord = {
   duplicateCount: number;
   newJobsCount: number;
   errors: ScanRunErrorEntry[];
+  trigger?: ScanTrigger;
+  freshnessWindowHours?: FreshnessWindowHours;
+  freshCount?: number;
+  unknownDateCount?: number;
+  staleFilteredCount?: number;
   scanType:
     | "careerops"
     | "linkedin-claude-scan"
@@ -202,6 +209,9 @@ export type ImportResult = {
   success: boolean;
   imported: number;
   duplicates: number;
+  fresh: number;
+  unknownDate: number;
+  staleFiltered: number;
   errors: string[];
   summary: string;
   jobIds: string[];
@@ -352,6 +362,10 @@ export type GeneratedDocumentRecord = {
   keywordCoverage: number;
   tailoringPlan: string[];
   draftJson: string;
+  baseResumeId: string;
+  tailoringStatus: string;
+  evidenceAuditJson: string;
+  fallbackReason: string;
 };
 
 export type GeneratedDocumentInput = {
@@ -369,6 +383,19 @@ export type GeneratedDocumentInput = {
   keywordCoverage: number;
   tailoringPlan: string[];
   draftJson: string;
+  baseResumeId?: string;
+  tailoringStatus?: string;
+  evidenceAuditJson?: string;
+  fallbackReason?: string;
+};
+
+export type ScanScheduleRecord = {
+  enabled: boolean;
+  intervalHours: number;
+  freshnessWindowHours: FreshnessWindowHours;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  runningSince: string | null;
 };
 
 export type ApplicationRecord = {

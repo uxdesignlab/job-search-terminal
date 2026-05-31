@@ -14,4 +14,7 @@ export type ScanJobResultSummary = {
   jobs: Array<{ title: string; url: string; company: string }>;
   /** When set and greater than `jobs.length`, the UI notes that the list is truncated. */
   jobsTotal?: number;
+  freshCount?: number;
+  unknownDateCount?: number;
+  staleFilteredCount?: number;
 };

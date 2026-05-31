@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAISettings, getUserProfile, getTitleFilters } from "@/lib/db/queries";
+import { getAISettings, getScanSchedule, getUserProfile, getTitleFilters } from "@/lib/db/queries";
 import { runAggregatorScan } from "@/lib/scanner/aggregator-scanner";
 
 export async function POST() {
@@ -7,6 +7,7 @@ export async function POST() {
     const settings = getAISettings();
     const profile = getUserProfile();
     const titleFilters = getTitleFilters();
+    const schedule = getScanSchedule();
     const result = await runAggregatorScan({
       adzunaAppId: settings.adzunaAppId,
       adzunaApiKey: settings.adzunaApiKey,
@@ -14,6 +15,7 @@ export async function POST() {
       locations: profile.preferredLocations,
       remotePreference: profile.remotePreference,
       titleFilters,
+      freshnessWindowHours: schedule.freshnessWindowHours,
     });
     return NextResponse.json(result);
   } catch (e) {

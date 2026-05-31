@@ -4,7 +4,7 @@ import type { ResumeBuilderSectionType } from "@/lib/db/types";
 export const dynamic = "force-dynamic";
 
 const SYSTEM_PROMPT =
-  "You are a professional resume writer. Improve the provided resume section content to be more impactful, ATS-friendly, and professional. Return ONLY the improved content with no preamble, explanation, or formatting marks. Use strong action verbs and quantified achievements where applicable.";
+  "You are a truthful professional resume writer. Improve only the provided source content. Never add metrics, tools, domains, credentials, responsibilities, or claims that are not already present. Return ONLY the improved content with no preamble, explanation, or formatting marks.";
 
 function keywordInstruction(jobKeywords: string[]): string {
   if (!jobKeywords.length) return "";
@@ -17,7 +17,7 @@ function buildPrompt(type: ResumeBuilderSectionType, content: string, jobKeyword
     case "summary":
       return `Improve this professional summary. Make it concise (3–4 sentences), compelling, and keyword-rich. Focus on the candidate's unique value proposition${kw}:\n\n${content}`;
     case "experience":
-      return `Improve these experience bullet points. Use strong action verbs, quantify achievements where possible (add placeholder numbers if none exist), and remove weak phrases like "responsible for" or "helped with". Keep one bullet per line${kw}:\n\n${content}`;
+      return `Improve these experience bullet points. Use strong action verbs, preserve only existing quantified achievements, and remove weak phrases like "responsible for" or "helped with". Keep one bullet per line${kw}:\n\n${content}`;
     case "impact":
       return `Improve these key achievement bullets using the CAR (Challenge–Action–Result) framework. Each bullet should be measurable and specific. Keep one bullet per line${kw}:\n\n${content}`;
     case "skills":

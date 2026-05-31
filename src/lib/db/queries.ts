@@ -4,6 +4,8 @@ import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
 import { normalizePreferredLocations } from "../profile/locations";
 import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
+import { freshnessLabelFor } from "../scanner/freshness";
+import { filterFreshScanMatches } from "../jobs/fresh-match-dedupe";
 import type {
   AIProviderName,
   AIPromptId,
@@ -50,7 +52,10 @@ import type {
   JobGapResponseInput,
   ProfileSupplementRecord,
   ProfileSupplementInput,
-  ActionQueueData
+  ActionQueueData,
+  FreshnessWindowHours,
+  ScanScheduleRecord,
+  ScanTrigger
 } from "./types";
 
 const parseJson = <T>(value: string): T => JSON.parse(value) as T;
@@ -132,6 +137,11 @@ type ScanRunRow = {
   new_jobs_count: number;
   errors_json: string;
   scan_type: string;
+  trigger?: string;
+  freshness_window_hours?: number;
+  fresh_count?: number;
+  unknown_date_count?: number;
+  stale_filtered_count?: number;
 };
 
 type ResumeBuilderVersionRow = {
@@ -187,6 +197,10 @@ type GeneratedDocumentRow = {
   keywordCoverage: number;
   tailoringPlanJson: string;
   draftJson: string;
+  baseResumeId: string;
+  tailoringStatus: string;
+  evidenceAuditJson: string;
+  fallbackReason: string;
 };
 
 type ApplicationAnswerDraftRow = {
@@ -432,6 +446,89 @@ export function getLatestScanRun(): ScanRunRecord | undefined {
     .get() as ScanRunRow | undefined;
 
   return row ? mapScanRun(row) : undefined;
+}
+
+export function getScanSchedule(): ScanScheduleRecord {
+  const row = getDatabase()
+    .prepare("select * from scan_schedule where id = 'singleton'")
+    .get() as {
+      enabled: number;
+      interval_hours: number;
+      freshness_window_hours: number;
+      last_run_at: string | null;
+      next_run_at: string | null;
+      running_since: string | null;
+    };
+  return {
+    enabled: row.enabled === 1,
+    intervalHours: row.interval_hours,
+    freshnessWindowHours: row.freshness_window_hours as FreshnessWindowHours,
+    lastRunAt: row.last_run_at,
+    nextRunAt: row.next_run_at,
+    runningSince: row.running_since
+  };
+}
+
+export function saveScanSchedule(input: Pick<ScanScheduleRecord, "enabled" | "intervalHours" | "freshnessWindowHours">) {
+  const nextRunAt = input.enabled
+    ? new Date(Date.now() + input.intervalHours * 60 * 60 * 1000).toISOString()
+    : null;
+  getDatabase()
+    .prepare(
+      `update scan_schedule set
+        enabled = @enabled,
+        interval_hours = @intervalHours,
+        freshness_window_hours = @freshnessWindowHours,
+        next_run_at = @nextRunAt,
+        updated_at = current_timestamp
+      where id = 'singleton'`
+    )
+    .run({ ...input, enabled: input.enabled ? 1 : 0, nextRunAt });
+}
+
+export function tryStartScheduledScan(now = new Date()): boolean {
+  const result = getDatabase()
+    .prepare(
+      `update scan_schedule set running_since = @now, updated_at = current_timestamp
+       where id = 'singleton'
+         and enabled = 1
+         and (next_run_at is null or next_run_at <= @now)
+         and (running_since is null or running_since < @staleBefore)`
+    )
+    .run({
+      now: now.toISOString(),
+      staleBefore: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString()
+    });
+  return Number(result.changes) === 1;
+}
+
+export function completeScheduledScan(now = new Date()) {
+  const schedule = getScanSchedule();
+  getDatabase()
+    .prepare(
+      `update scan_schedule set
+        last_run_at = @now,
+        next_run_at = @nextRunAt,
+        running_since = null,
+        updated_at = current_timestamp
+      where id = 'singleton'`
+    )
+    .run({
+      now: now.toISOString(),
+      nextRunAt: new Date(now.getTime() + schedule.intervalHours * 60 * 60 * 1000).toISOString()
+    });
+}
+
+export function releaseScheduledScan() {
+  getDatabase()
+    .prepare("update scan_schedule set running_since = null, updated_at = current_timestamp where id = 'singleton'")
+    .run();
+}
+
+export function getFreshMatches(windowHours: FreshnessWindowHours = 72): JobRecord[] {
+  const applicationJobIds = new Set(getApplications().map((application) => application.jobId));
+  return filterFreshScanMatches(getJobs(), applicationJobIds, windowHours)
+    .slice(0, 12);
 }
 
 export function getResumes(): ResumeRecord[] {
@@ -777,7 +874,11 @@ export function getGeneratedDocuments(): GeneratedDocumentRecord[] {
         generated_documents.tailoring_summary as tailoringSummary,
         generated_documents.keyword_coverage as keywordCoverage,
         generated_documents.tailoring_plan_json as tailoringPlanJson,
-        generated_documents.draft_json as draftJson
+        generated_documents.draft_json as draftJson,
+        generated_documents.base_resume_id as baseResumeId,
+        generated_documents.tailoring_status as tailoringStatus,
+        generated_documents.evidence_audit_json as evidenceAuditJson,
+        generated_documents.fallback_reason as fallbackReason
       from generated_documents
       left join jobs on jobs.id = generated_documents.job_id
       order by generated_documents.created_at desc`
@@ -806,7 +907,11 @@ export function getGeneratedDocumentById(id: string): GeneratedDocumentRecord | 
         generated_documents.tailoring_summary as tailoringSummary,
         generated_documents.keyword_coverage as keywordCoverage,
         generated_documents.tailoring_plan_json as tailoringPlanJson,
-        generated_documents.draft_json as draftJson
+        generated_documents.draft_json as draftJson,
+        generated_documents.base_resume_id as baseResumeId,
+        generated_documents.tailoring_status as tailoringStatus,
+        generated_documents.evidence_audit_json as evidenceAuditJson,
+        generated_documents.fallback_reason as fallbackReason
       from generated_documents
       left join jobs on jobs.id = generated_documents.job_id
       where generated_documents.id = ?`
@@ -1185,7 +1290,11 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
         tailoring_summary,
         keyword_coverage,
         tailoring_plan_json,
-        draft_json
+        draft_json,
+        base_resume_id,
+        tailoring_status,
+        evidence_audit_json,
+        fallback_reason
       ) values (
         @id,
         @jobId,
@@ -1200,12 +1309,20 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
         @tailoringSummary,
         @keywordCoverage,
         @tailoringPlanJson,
-        @draftJson
+        @draftJson,
+        @baseResumeId,
+        @tailoringStatus,
+        @evidenceAuditJson,
+        @fallbackReason
       )`
     )
     .run({
       ...input,
-      tailoringPlanJson: JSON.stringify(input.tailoringPlan)
+      tailoringPlanJson: JSON.stringify(input.tailoringPlan),
+      baseResumeId: input.baseResumeId ?? "",
+      tailoringStatus: input.tailoringStatus ?? "source-only",
+      evidenceAuditJson: input.evidenceAuditJson ?? "{}",
+      fallbackReason: input.fallbackReason ?? ""
     });
 
   getDatabase()
@@ -1334,7 +1451,7 @@ export function insertScannedJobs(jobs: ScannedJobInput[]) {
       const result = insert.run({
         ...job,
         remoteType: inferRemoteType(job.location),
-        freshnessLabel: "New today",
+        freshnessLabel: freshnessLabelFor(job.datePosted),
         rawDescription: "",
         parsedDescription: "",
         status: "Found",
@@ -1403,7 +1520,7 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
       is_duplicate, duplicate_of
     ) values (
       @id, @company, @title, @url, @sourceUrl, @originalPostingUrl, @originalPostingKey, @source, @location, @remoteType,
-      @datePosted, @firstSeenDate, 'New today', @rawDescription,
+      @datePosted, @firstSeenDate, @freshnessLabel, @rawDescription,
       '', 'Found', 0, 'Unreviewed', 'Needs review',
       @summary,
       'Pending evaluation against profile, resume lanes, and constraints.',
@@ -1419,6 +1536,7 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
     for (const job of items) {
       const result = insert.run({
         ...job,
+        freshnessLabel: freshnessLabelFor(job.datePosted),
         remoteType: inferRemoteType(job.location),
         summary: `Discovered via ${sourceNameForSummary(job.source)} browser scan. Evaluate this role before acting.`,
         salaryNotes: job.salaryNotes || "Not captured by scanner.",
@@ -1597,7 +1715,12 @@ export function recordScanRun(run: ScanRunRecord) {
         duplicate_count,
         new_jobs_count,
         errors_json,
-        scan_type
+        scan_type,
+        trigger,
+        freshness_window_hours,
+        fresh_count,
+        unknown_date_count,
+        stale_filtered_count
       ) values (
         @id,
         @status,
@@ -1610,13 +1733,23 @@ export function recordScanRun(run: ScanRunRecord) {
         @duplicateCount,
         @newJobsCount,
         @errorsJson,
-        @scanType
+        @scanType,
+        @trigger,
+        @freshnessWindowHours,
+        @freshCount,
+        @unknownDateCount,
+        @staleFilteredCount
       )`
     )
     .run({
       ...run,
       errorsJson: JSON.stringify(run.errors),
-      scanType: run.scanType ?? "careerops"
+      scanType: run.scanType ?? "careerops",
+      trigger: run.trigger ?? "manual",
+      freshnessWindowHours: run.freshnessWindowHours ?? 72,
+      freshCount: run.freshCount ?? run.newJobsCount,
+      unknownDateCount: run.unknownDateCount ?? 0,
+      staleFilteredCount: run.staleFilteredCount ?? 0
     });
 
   logActivity("scan", run.id, scanActivityLabel(run), {
@@ -1709,7 +1842,12 @@ function mapScanRun(row: ScanRunRow): ScanRunRecord {
     duplicateCount: row.duplicate_count,
     newJobsCount: row.new_jobs_count,
     errors: parseJson<ScanRunErrorEntry[]>(row.errors_json),
-    scanType: (row.scan_type ?? "careerops") as ScanRunRecord["scanType"]
+    scanType: (row.scan_type ?? "careerops") as ScanRunRecord["scanType"],
+    trigger: (row.trigger ?? "manual") as ScanTrigger,
+    freshnessWindowHours: (row.freshness_window_hours ?? 72) as FreshnessWindowHours,
+    freshCount: row.fresh_count ?? row.new_jobs_count,
+    unknownDateCount: row.unknown_date_count ?? 0,
+    staleFilteredCount: row.stale_filtered_count ?? 0
   };
 }
 
@@ -1769,7 +1907,11 @@ function mapGeneratedDocument(row: GeneratedDocumentRow): GeneratedDocumentRecor
     tailoringSummary: row.tailoringSummary,
     keywordCoverage: row.keywordCoverage,
     tailoringPlan: parseJson<string[]>(row.tailoringPlanJson || "[]"),
-    draftJson: row.draftJson || "{}"
+    draftJson: row.draftJson || "{}",
+    baseResumeId: row.baseResumeId || "",
+    tailoringStatus: row.tailoringStatus || "source-only",
+    evidenceAuditJson: row.evidenceAuditJson || "{}",
+    fallbackReason: row.fallbackReason || ""
   };
 }
 

@@ -668,5 +668,37 @@ export const migrations = [
       alter table ai_settings add column adzuna_app_id text not null default '';
       alter table ai_settings add column adzuna_api_key text not null default '';
     `
+  },
+  {
+    id: "0038_daily_scan_and_resume_audit",
+    sql: `
+      create table if not exists scan_schedule (
+        id text primary key default 'singleton',
+        enabled integer not null default 0,
+        interval_hours integer not null default 6,
+        freshness_window_hours integer not null default 72,
+        last_run_at text,
+        next_run_at text,
+        running_since text,
+        updated_at text not null default current_timestamp
+      );
+      insert or ignore into scan_schedule (id) values ('singleton');
+
+      alter table scan_runs add column trigger text not null default 'manual';
+      alter table scan_runs add column freshness_window_hours integer not null default 72;
+      alter table scan_runs add column fresh_count integer not null default 0;
+      alter table scan_runs add column unknown_date_count integer not null default 0;
+      alter table scan_runs add column stale_filtered_count integer not null default 0;
+
+      alter table generated_documents add column tailoring_status text not null default 'source-only';
+      alter table generated_documents add column evidence_audit_json text not null default '{}';
+      alter table generated_documents add column fallback_reason text not null default '';
+    `
+  },
+  {
+    id: "0039_generated_document_resume_lane_id",
+    sql: `
+      alter table generated_documents add column base_resume_id text not null default '';
+    `
   }
 ];

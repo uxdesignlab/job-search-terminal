@@ -10,10 +10,12 @@ import {
   getCustomScanSources,
   getProfileSupplements,
   getScanSourceOverrides,
+  getScanSchedule,
   getTitleFilters,
   getUserProfile,
   saveTitleFilters,
   setScanSourceEnabled,
+  saveScanSchedule,
   syncCompanyProfilesFromYaml,
   upsertCompanyProfile,
 } from "@/lib/db/queries";
@@ -30,6 +32,7 @@ import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/ca
 import { runSourceDiscovery, runSearchDiscovery } from "@/lib/scanner/source-discovery";
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
 import { cn } from "@/lib/utils";
+import { AccountBackupPanel } from "@/components/account-backup-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +67,7 @@ const TABS = [
   { id: "ai", label: "AI Provider" },
   { id: "sources", label: "Sources" },
   { id: "preferences", label: "Preferences" },
+  { id: "data", label: "Data & Backup" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -102,6 +106,7 @@ export default async function SettingsPage({
   const overrides = getScanSourceOverrides();
   const customSources = getCustomScanSources();
   const supplements = getProfileSupplements();
+  const scanSchedule = getScanSchedule();
 
   const yamlNames = new Set(yamlCompanies.map((c) => c.name));
 
@@ -144,8 +149,9 @@ export default async function SettingsPage({
   const importableDiscovered = allDiscovered.filter(
     (e) => e.validationStatus === "valid" && !existingNames.has(e.slug.toLowerCase())
   );
-  const validDiscoveredCount = importableDiscovered.length;
-
+  const cleanupCandidates = allCompanies.filter(
+    (company) => company.removable && (!company.enabled || !company.apiType)
+  );
   // ── Server actions ──────────────────────────────────────────────────────────
 
   async function discoverSourcesAction() {
@@ -153,24 +159,6 @@ export default async function SettingsPage({
     await runSourceDiscovery((msg) => {
       console.info(`[discover-sources] ${msg}`);
     });
-    revalidatePath("/settings");
-  }
-
-  async function importAllValidAction() {
-    "use server";
-    const discovered = loadDiscoveredSources();
-    const cfg = loadScanConfig();
-    const cfgNames = new Set((cfg.tracked_companies ?? []).map((c) => c.name.toLowerCase()));
-    const custom = getCustomScanSources();
-    const customNames = new Set(custom.map((c) => c.name.toLowerCase()));
-    const existing = new Set([...cfgNames, ...customNames]);
-    const toImport = discovered.filter(
-      (e) => e.validationStatus === "valid" && !existing.has(e.slug.toLowerCase())
-    );
-    for (const entry of toImport) {
-      addCustomScanSource(entry.slug, entry.careersUrl, entry.apiUrl ?? "");
-      if (entry.industry) upsertCompanyProfile(entry.slug, entry.industry);
-    }
     revalidatePath("/settings");
   }
 
@@ -203,6 +191,7 @@ export default async function SettingsPage({
       titles: profile.targetRoles,
       locations: profile.preferredLocations,
       remotePreference: profile.remotePreference,
+      freshnessWindowHours: getScanSchedule().freshnessWindowHours,
     });
   }
 
@@ -222,6 +211,14 @@ export default async function SettingsPage({
 
   async function removeSourceAction(name: string) {
     "use server";
+    deleteCustomScanSource(name);
+    revalidatePath("/settings");
+  }
+
+  async function removeCleanupCandidateAction(formData: FormData) {
+    "use server";
+    const name = String(formData.get("name") ?? "").trim();
+    if (!name) return;
     deleteCustomScanSource(name);
     revalidatePath("/settings");
   }
@@ -246,6 +243,19 @@ export default async function SettingsPage({
     "use server";
     saveTitleFilters(positive, negative);
     revalidatePath("/settings");
+  }
+
+  async function saveScheduleAction(formData: FormData) {
+    "use server";
+    const freshness = Number(formData.get("freshnessWindowHours"));
+    const freshnessWindowHours = freshness === 24 || freshness === 168 ? freshness : 72;
+    saveScanSchedule({
+      enabled: formData.get("enabled") === "on",
+      intervalHours: 6,
+      freshnessWindowHours,
+    });
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
   }
 
   async function scanCompanyJobsAction(companyName: string): Promise<CompanyScanResultSummary> {
@@ -343,15 +353,6 @@ export default async function SettingsPage({
                   </CardDescription>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {validDiscoveredCount > 0 && (
-                    <form action={importAllValidAction}>
-                      <SubmitButton
-                        label={`Import all valid (${validDiscoveredCount})`}
-                        pendingLabel="Importing…"
-                        variant="primary"
-                      />
-                    </form>
-                  )}
                   <DiscoveredSourcesButton entries={importableDiscovered} onImport={importDiscoveredAction} />
                   <ScanJobsForm
                     action={discoverSourcesAction}
@@ -411,6 +412,35 @@ export default async function SettingsPage({
               </form>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle>Cleanup review</CardTitle>
+                <CardDescription>
+                  Review disabled or malformed user-added sources. Nothing is removed automatically.
+                </CardDescription>
+              </CardHeader>
+              {cleanupCandidates.length > 0 ? (
+                <ul className="grid gap-2">
+                  {cleanupCandidates.map((source) => (
+                    <li className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface px-3 py-2" key={source.name}>
+                      <div>
+                        <p className="text-sm font-medium text-ink">{source.name}</p>
+                        <p className="text-xs text-muted">
+                          {!source.apiType ? "Unsupported or malformed ATS URL" : "Disabled user-added source"}
+                        </p>
+                      </div>
+                      <form action={removeCleanupCandidateAction}>
+                        <input name="name" type="hidden" value={source.name} />
+                        <SubmitButton label="Remove source" savedLabel="Removed" variant="secondary" />
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted">No user-added sources need cleanup review.</p>
+              )}
+            </Card>
+
             {/* Job aggregators */}
             <Card>
               <div className="mb-4 flex items-start justify-between gap-4">
@@ -466,6 +496,46 @@ export default async function SettingsPage({
                   followUpQuestion: s.followUpQuestion,
                 }))}
               />
+            </Card>
+          </>
+        )}
+
+        {activeTab === "data" && (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>Automatic job scans</CardTitle>
+                <CardDescription>
+                  While the app is running, check approved sources every six hours and surface newly posted roles.
+                </CardDescription>
+              </CardHeader>
+              <form action={saveScheduleAction} className="grid gap-4">
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input defaultChecked={scanSchedule.enabled} name="enabled" type="checkbox" />
+                  Enable scans every six hours
+                </label>
+                <label className="grid max-w-xs gap-1 text-sm text-ink">
+                  Fresh posting window
+                  <select className="rounded-control border border-border bg-surface px-3 py-2" defaultValue={scanSchedule.freshnessWindowHours} name="freshnessWindowHours">
+                    <option value="24">Last 24 hours</option>
+                    <option value="72">Last 72 hours</option>
+                    <option value="168">Last 7 days</option>
+                  </select>
+                </label>
+                <p className="text-xs text-muted">
+                  {scanSchedule.nextRunAt ? `Next scheduled scan: ${scanSchedule.nextRunAt}` : "Scheduling is currently off."}
+                </p>
+                <div><SubmitButton label="Save schedule" savedLabel="Schedule saved" /></div>
+              </form>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Account backup and restore</CardTitle>
+                <CardDescription>
+                  Save one portable archive before migrations, cleanup, or moving this local account to another machine.
+                </CardDescription>
+              </CardHeader>
+              <AccountBackupPanel />
             </Card>
           </>
         )}

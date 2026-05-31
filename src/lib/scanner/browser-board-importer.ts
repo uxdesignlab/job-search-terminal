@@ -8,7 +8,7 @@ import {
   recordScanRun,
   type BrowserBoardJobInput
 } from "@/lib/db/queries";
-import type { BrowserBoardScanFile, ImportResult } from "@/lib/db/types";
+import type { BrowserBoardScanFile, FreshnessWindowHours, ImportResult } from "@/lib/db/types";
 import {
   BROWSER_BOARD_SOURCES,
   browserBoardSourceLabel,
@@ -16,9 +16,11 @@ import {
   type BrowserBoardSource,
   isBrowserBoardSource
 } from "./browser-board-sources";
+import { classifyFreshness } from "./freshness";
 
 const GENERIC_IMPORT_DIR = path.join(process.cwd(), "data", "job-board-imports");
 const LINKEDIN_IMPORT_DIR = path.join(process.cwd(), "data", "linkedin-imports");
+const BROWSER_BOARD_FRESHNESS_WINDOW_HOURS: FreshnessWindowHours = 168;
 
 type RawBrowserBoardJob = BrowserBoardScanFile["jobs"][number];
 
@@ -31,6 +33,7 @@ export type NormalizedBrowserBoardScan = {
 type PrepareOptions = {
   now?: Date;
   dedup?: ReturnType<typeof getJobDedupKeys>;
+  freshnessWindowHours?: FreshnessWindowHours;
 };
 
 export function getBrowserBoardImportDirectory(): string {
@@ -76,12 +79,15 @@ export function parseBrowserBoardScanFile(raw: unknown, fallbackSource?: Browser
 export function prepareBrowserBoardJobs(
   scan: NormalizedBrowserBoardScan,
   options: PrepareOptions = {}
-): { jobs: BrowserBoardJobInput[]; skipped: number; duplicates: number } {
+): { jobs: BrowserBoardJobInput[]; skipped: number; duplicates: number; fresh: number; unknownDate: number; staleFiltered: number } {
   const dedup = options.dedup ?? getJobDedupKeys();
   const firstSeenDate = (options.now ?? new Date()).toISOString().slice(0, 10);
   const jobs: BrowserBoardJobInput[] = [];
   let skipped = 0;
   let duplicates = 0;
+  let fresh = 0;
+  let unknownDate = 0;
+  let staleFiltered = 0;
 
   for (const raw of scan.jobs) {
     const company = stringValue(raw.company).trim();
@@ -98,6 +104,14 @@ export function prepareBrowserBoardJobs(
       skipped++;
       continue;
     }
+    const datePosted = stringValue(raw.datePosted) || null;
+    const freshness = classifyFreshness(datePosted, options.freshnessWindowHours ?? BROWSER_BOARD_FRESHNESS_WINDOW_HOURS, options.now);
+    if (freshness === "stale") {
+      staleFiltered++;
+      continue;
+    }
+    if (freshness === "unknown-date") unknownDate++;
+    else fresh++;
 
     const location = (stringValue(raw.location) || "Not specified").trim();
     const originalPostingUrl = externalUrl;
@@ -133,7 +147,7 @@ export function prepareBrowserBoardJobs(
       source: browserBoardSourceToScanType(scan.source),
       location,
       rawDescription: (stringValue(raw.jobDescription) || stringValue(raw.description)).trim(),
-      datePosted: stringValue(raw.datePosted) || null,
+      datePosted,
       firstSeenDate: stringValue(raw.discoveredAt)?.slice(0, 10) || firstSeenDate,
       salaryNotes: stringValue(raw.salaryNotes) || "Not captured by scanner.",
       isDuplicate,
@@ -141,12 +155,12 @@ export function prepareBrowserBoardJobs(
     });
   }
 
-  return { jobs, skipped, duplicates };
+  return { jobs, skipped, duplicates, fresh, unknownDate, staleFiltered };
 }
 
 export async function importBrowserBoardJobs(
   jsonFilePath: string,
-  options: { source?: BrowserBoardSource } = {}
+  options: { source?: BrowserBoardSource; freshnessWindowHours?: FreshnessWindowHours } = {}
 ): Promise<ImportResult> {
   const scanRunId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
@@ -160,6 +174,9 @@ export async function importBrowserBoardJobs(
       success: false,
       imported: 0,
       duplicates: 0,
+      fresh: 0,
+      unknownDate: 0,
+      staleFiltered: 0,
       errors: [String(e)],
       summary: "Failed to parse job board import file.",
       jobIds: [],
@@ -168,7 +185,8 @@ export async function importBrowserBoardJobs(
     };
   }
 
-  const prepared = prepareBrowserBoardJobs(scan);
+  const freshnessWindowHours = options.freshnessWindowHours ?? BROWSER_BOARD_FRESHNESS_WINDOW_HOURS;
+  const prepared = prepareBrowserBoardJobs(scan, { freshnessWindowHours });
   const { inserted, jobIds } = insertBrowserBoardJobs(prepared.jobs);
   const insertedJobIds = new Set(jobIds);
   const importedJobs = prepared.jobs
@@ -194,7 +212,11 @@ export async function importBrowserBoardJobs(
     duplicateCount: prepared.duplicates,
     newJobsCount: inserted,
     errors: errors.map((e) => ({ company: scan.source, error: e })),
-    scanType: browserBoardSourceToScanType(scan.source)
+    scanType: browserBoardSourceToScanType(scan.source),
+    freshnessWindowHours,
+    freshCount: prepared.fresh,
+    unknownDateCount: prepared.unknownDate,
+    staleFilteredCount: prepared.staleFiltered
   });
 
   const label = browserBoardSourceLabel(scan.source);
@@ -209,7 +231,19 @@ export async function importBrowserBoardJobs(
   const ds = prepared.duplicates !== 1 ? "s" : "";
   const summary = `Imported ${inserted} ${label} job${s}. ${prepared.duplicates} duplicate${ds} detected.`;
 
-  return { success: true, imported: inserted, duplicates: prepared.duplicates, errors, summary, jobIds, importedJobs, scanRunId };
+  return {
+    success: true,
+    imported: inserted,
+    duplicates: prepared.duplicates,
+    fresh: prepared.fresh,
+    unknownDate: prepared.unknownDate,
+    staleFiltered: prepared.staleFiltered,
+    errors,
+    summary,
+    jobIds,
+    importedJobs,
+    scanRunId
+  };
 }
 
 function archiveImportFile(jsonFilePath: string) {

@@ -271,9 +271,13 @@ type ImportResult = {
   success: boolean;
   imported: number;
   duplicates: number;
+  fresh: number;
+  unknownDate: number;
+  staleFiltered: number;
   errors: string[];
   summary: string;
   jobIds: string[];
+  importedJobs: Array<{ id: string; title: string; url: string; company: string }>;
   scanRunId: string;
 };
 

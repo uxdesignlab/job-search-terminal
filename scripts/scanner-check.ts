@@ -187,6 +187,32 @@ assert.equal(monsterJobs.jobs[0].url, "https://www.monster.com/job-openings/seni
 assert.equal(monsterJobs.jobs[0].sourceUrl, "https://www.monster.com/job-openings/senior-product-designer-remote-us--987654");
 assert.equal(monsterJobs.jobs[0].originalPostingKey, "monster:senior-product-designer-remote-us--987654");
 
+const fiveDayOldBrowserScan = parseBrowserBoardScanFile({
+  metadata: {
+    source: "linkedin",
+    scanTimestamp: "2026-05-31T12:00:00Z",
+    scanDurationSeconds: 10,
+    totalJobsDiscovered: 1,
+    searchCriteria: {},
+  },
+  jobs: [{
+    company: "Past Week Company",
+    position: "Product Designer",
+    sourceUrl: "https://www.linkedin.com/jobs/view/9000000999/",
+    discoveredAt: "2026-05-31T12:00:00Z",
+    datePosted: "2026-05-26T12:00:00Z",
+  }],
+});
+assert.equal(prepareBrowserBoardJobs(fiveDayOldBrowserScan, {
+  dedup: emptyDedupKeys(),
+  now: new Date("2026-05-31T12:00:00Z"),
+}).jobs.length, 1);
+assert.equal(prepareBrowserBoardJobs(fiveDayOldBrowserScan, {
+  dedup: emptyDedupKeys(),
+  freshnessWindowHours: 72,
+  now: new Date("2026-05-31T12:00:00Z"),
+}).staleFiltered, 1);
+
 async function main() {
   const result = await runCareerOpsScanner({
     persist: false,

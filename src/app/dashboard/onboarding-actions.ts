@@ -8,6 +8,7 @@ import {
   saveAISettings,
   saveTitleFilters,
   setOnboardingPreferencesConfirmed,
+  saveScanSchedule,
   updateUserProfile,
 } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
@@ -106,4 +107,9 @@ export async function dismissOnboardingAction() {
     onboardingPreferencesConfirmed: settings.onboardingPreferencesConfirmed,
   });
   revalidatePath("/dashboard");
+}
+
+export async function saveOnboardingScheduleAction(enabled: boolean) {
+  saveScanSchedule({ enabled, intervalHours: 6, freshnessWindowHours: 72 });
+  revalidateOnboardingSurfaces();
 }

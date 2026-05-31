@@ -12,6 +12,7 @@ import {
   dismissOnboardingAction,
   saveOnboardingIntegrationsAction,
   saveOnboardingPreferencesAction,
+  saveOnboardingScheduleAction,
 } from "@/app/dashboard/onboarding-actions";
 import { cn } from "@/lib/utils";
 import type { AISettingsRecord, ResumeBuilderVersionRecord, ResumeRecord, UserProfileRecord, WorkMode } from "@/lib/db/types";
@@ -74,6 +75,7 @@ export function OnboardingWizardModal({
   const [extractionDone, setExtractionDone] = useState(hasExtractedProfile);
   // When set, shows the resume builder inline (full-screen within the modal overlay)
   const [builderResumeId, setBuilderResumeId] = useState<string | null>(null);
+  const [scheduleEnabled, setScheduleEnabled] = useState(true);
 
   const statuses = useMemo<Record<StepId, boolean>>(() => ({
     ai: hasKey,
@@ -151,6 +153,7 @@ export function OnboardingWizardModal({
   }
 
   async function dismissOnboarding() {
+    await saveOnboardingScheduleAction(scheduleEnabled);
     await dismissOnboardingAction();
     setOpen(false);
     router.refresh();
@@ -320,6 +323,7 @@ export function OnboardingWizardModal({
                       </p>
                     </div>
                     <AISettingsForm
+                      compact
                       onSaved={() => router.refresh()}
                       settings={settings}
                       submitLabel={hasKey ? "Save API settings" : "Save and continue"}
@@ -601,6 +605,10 @@ export function OnboardingWizardModal({
                         <li>3. Review imported jobs, evaluate promising matches, and generate tailored resumes only for roles you want to pursue.</li>
                       </ol>
                     </div>
+                    <label className="flex items-start gap-2 rounded-panel border border-border bg-surface p-4 text-sm leading-6 text-ink">
+                      <input checked={scheduleEnabled} className="mt-1" onChange={(event) => setScheduleEnabled(event.target.checked)} type="checkbox" />
+                      Scan approved sources every six hours while this app is running. Fresh matches will appear on the Dashboard.
+                    </label>
                     <Button onClick={() => void dismissOnboarding()} variant="primary">Open dashboard</Button>
                   </section>
                 )}
