@@ -3,10 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, getUserProfile, insertScannedJobs, recordScanRun } from "../db/queries";
-import type { ScannedJobInput, ScanRunRecord } from "../db/types";
+import type { FreshnessWindowHours, ScannedJobInput, ScanRunRecord, ScanTrigger } from "../db/types";
 import { buildJobPreferenceFilter, type JobPreferenceProfile } from "../jobs/preference-fit";
 import { classifyScanErrorMessage } from "../scan-error-category";
 import { safeFetch } from "../safe-fetch";
+import { classifyFreshness, DEFAULT_FRESHNESS_WINDOW_HOURS } from "./freshness";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
 const FALLBACK_CONFIG_PATH = "config/portals.example.yml";
@@ -69,6 +70,8 @@ type ScanOptions = {
   persist?: boolean;
   now?: Date;
   profile?: JobPreferenceProfile;
+  freshnessWindowHours?: FreshnessWindowHours;
+  trigger?: ScanTrigger;
 };
 
 export type ScanResult = ScanRunRecord & {
@@ -160,6 +163,9 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   let totalJobsFound = 0;
   let filteredCount = 0;
   let duplicateCount = 0;
+  let freshCount = 0;
+  let unknownDateCount = 0;
+  let staleFilteredCount = 0;
 
   const tasks = targets.map((company) => async () => {
     try {
@@ -182,6 +188,14 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
           filteredCount++;
           continue;
         }
+
+        const freshness = classifyFreshness(job.datePosted, options.freshnessWindowHours ?? DEFAULT_FRESHNESS_WINDOW_HOURS, options.now);
+        if (freshness === "stale") {
+          staleFilteredCount++;
+          continue;
+        }
+        if (freshness === "unknown-date") unknownDateCount++;
+        else freshCount++;
 
         const companyRoleKey = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
         if (dedup.urls.has(job.url) || dedup.companyRoles.has(companyRoleKey)) {
@@ -228,6 +242,11 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     newJobsCount: insertedCount,
     errors,
     scanType: "careerops"
+    , trigger: options.trigger ?? "manual"
+    , freshnessWindowHours: options.freshnessWindowHours ?? DEFAULT_FRESHNESS_WINDOW_HOURS
+    , freshCount
+    , unknownDateCount
+    , staleFilteredCount
   };
 
   if (persist) {

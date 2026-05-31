@@ -21,8 +21,9 @@ explicit user instruction.
 | `data/job-board-imports/` | Import drop zone — agents may write new `.json` files here, but must never delete existing files |
 | `data/linkedin-imports/` | Legacy import directory — same write-only rule |
 | `data/discovered-sources.json` | User-curated source discovery results |
-| Any file in `data/resumes/` | Uploaded resume PDFs — never delete or overwrite |
-| Any file in `data/generated/` | Generated resume HTML/PDF outputs — never delete |
+| Any file in `assets/` | Uploaded resume PDFs and user assets — never delete or overwrite. Portable backups include and restore only database-referenced resume files; every other asset is always ignored. |
+| Top-level HTML/PDF files in `output/` | Generated resume HTML/PDF outputs — never delete |
+| Any file in `output/backups/` | SQLite snapshots and portable account archives — never delete |
 
 ### Safe schema changes (additive only)
 
@@ -33,6 +34,13 @@ An agent may propose a new DB migration that:
 An agent must **never** drop tables, drop columns, or run `DELETE` / `UPDATE`
 statements against user data tables outside of established `queries.ts`
 functions.
+
+The account restore workflow is the deliberate exception for snapshot recovery.
+It may replace managed User Layer files only through
+`src/lib/backups/account-backup.ts`, only after archive validation, explicit
+confirmation, and automatic creation of a rollback archive. Inside `assets/`,
+restore may replace only resume files referenced by the restored database and
+must preserve every unrelated file.
 
 ---
 

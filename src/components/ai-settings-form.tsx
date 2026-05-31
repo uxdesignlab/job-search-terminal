@@ -17,9 +17,10 @@ type Props = {
   settings: AISettingsRecord;
   onSaved?: () => void;
   submitLabel?: string;
+  compact?: boolean;
 };
 
-export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings" }: Props) {
+export function AISettingsForm({ compact = false, onSaved, settings, submitLabel = "Save settings" }: Props) {
   const router = useRouter();
   const [activeProvider, setActiveProvider] = useState<AIProviderName>(settings.activeProvider);
   const [anthropicKey, setAnthropicKey] = useState(settings.anthropicApiKey);
@@ -40,6 +41,7 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
   });
   const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [showAdvanced, setShowAdvanced] = useState(!compact);
 
   const currentKey = (p: AIProviderName) => (p === "anthropic" ? anthropicKey : p === "gemini" ? geminiKey : openaiKey);
   const currentModel = (p: AIProviderName) => (p === "anthropic" ? anthropicModel : p === "gemini" ? geminiModel : openaiModel);
@@ -137,6 +139,7 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
       ]
     }
   ];
+  const visibleProviders = compact && !showAdvanced ? providers.filter((provider) => provider.id === activeProvider) : providers;
 
   return (
     <form className="grid gap-6" onSubmit={handleSubmit}>
@@ -161,7 +164,7 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
       </div>
 
       {/* Per-provider key + model + test */}
-      {providers.map((p) => {
+      {visibleProviders.map((p) => {
         const ts = testStates[p.id];
         const visible = showKeys[p.id];
         return (
@@ -196,7 +199,7 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
               </div>
             </div>
 
-            <div className="grid gap-2">
+            {showAdvanced && <div className="grid gap-2">
               <label className="text-xs text-muted">Model</label>
               <select
                 className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
@@ -207,7 +210,7 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
-            </div>
+            </div>}
 
             <div className="flex items-center gap-3">
               <button
@@ -231,7 +234,14 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
         );
       })}
 
+      {compact && !showAdvanced && (
+        <button className="w-fit text-xs font-medium text-accent hover:underline" onClick={() => setShowAdvanced(true)} type="button">
+          Show optional model and integration settings
+        </button>
+      )}
+
       {/* Fallback provider */}
+      {showAdvanced && <>
       <div className="grid gap-2">
         <label className="text-xs text-muted">Fallback provider (optional)</label>
         <select
@@ -287,6 +297,7 @@ export function AISettingsForm({ onSaved, settings, submitLabel = "Save settings
         </div>
         <p className="text-xs text-muted/70">Free Adzuna keys: <span className="font-mono">developer.adzuna.com</span>. Free Brave Search keys: <span className="font-mono">brave.com/search/api</span>.</p>
       </div>
+      </>}
 
       <div className="flex items-center gap-3">
         <Button disabled={isPending} type="submit" variant="primary">

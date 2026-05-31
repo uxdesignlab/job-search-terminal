@@ -126,7 +126,7 @@ export const helpPages: HelpPage[] = [
         ],
         callout: {
           title: "Already tracking 50+ ATS sources",
-          body: "The app ships with ~50 curated companies in portals.yml. Use Settings → Sources → Scan for new sources (Common Crawl) or Search discover (Brave) to find more, then Validate sources to confirm which are live and Import all valid to add them in bulk.",
+          body: "The app ships with ~50 curated companies in portals.yml. Use Settings → Sources → Scan for new sources (Common Crawl) or Search discover (Brave) to find more, then review and explicitly approve the validated companies you want to add.",
         },
       },
       {
@@ -472,6 +472,14 @@ export const helpPages: HelpPage[] = [
             title: "Read the scan summary",
             body: "The Dashboard reports companies scanned, new jobs (ATS + Adzuna combined), filtered jobs, duplicates, skipped sources, and any source errors.",
           },
+          {
+            title: "Review Fresh matches",
+            body: "Fresh matches is the scan inbox at the top of the Dashboard. It only shows newly discovered scan results inside your selected freshness window. Manually added jobs and anything already applied to or rejected stay out.",
+          },
+          {
+            title: "Choose the freshness schedule",
+            body: "Open Account → Settings → Data & Backup to enable optional six-hour scans while the local app is running and select a fresh-posting window: 24 hours, 72 hours by default, or 7 days. CareerOps and Adzuna scans use that selected window.",
+          },
         ],
       },
       {
@@ -486,7 +494,8 @@ export const helpPages: HelpPage[] = [
           "Click Validate sources to check which career portals are still live — each row shows a live job count, Dead, or Unknown badge.",
           "Use Scan for new sources to discover new Ashby, Greenhouse, and Lever companies via Common Crawl.",
           "Use Search discover (requires Brave Search API key in AI Provider settings) to find new companies from live web search results instead of the crawl archive.",
-          "Click Import all valid (N) to add all validated discovered sources in one step — no need to review each one individually.",
+          "Review discovered sources and explicitly select the validated companies you want to add. Discovery never enables every result automatically.",
+          "Use Cleanup review for disabled or malformed user-added sources. The app never removes an existing source automatically.",
         ],
       },
       {
@@ -530,7 +539,7 @@ export const helpPages: HelpPage[] = [
         ],
         callout: {
           title: "What Adzuna covers",
-          body: "Adzuna aggregates from many sources and reaches jobs that may not appear in direct ATS portals or browser-board searches. Use it alongside other scan methods for broader coverage. Jobs posted in the last 14 days, up to 50 results per title/location pair.",
+          body: "Adzuna aggregates from many sources and reaches jobs that may not appear in direct ATS portals or browser-board searches. Use it alongside other scan methods for broader coverage. It uses your selected fresh-posting window: 24 hours, 72 hours by default, or 7 days, with up to 50 results per title/location pair.",
         },
       },
       {
@@ -730,15 +739,15 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Review keyword coverage",
-            body: "Coverage is a guide, not a guarantee. Use it to see whether important job-language is represented truthfully.",
+            body: "Coverage is a guide, not a guarantee. Add already-supported keywords directly. For a missing keyword, select the roles where you applied it, optionally add context, then review distinct rewrites of the most relevant existing bullets. Edit or remove any change before approval.",
           },
           {
             title: "Edit the draft",
-            body: "Open the resume editor to refine summary, bullets, skills, and emphasis before exporting.",
+            body: "Open the resume editor to refine summary, bullets, skills, and emphasis before exporting. The app checks metrics and substantive claims against the approved resume lane plus confirmed gap answers and supplements.",
           },
           {
             title: "Export PDF",
-            body: "Download the final PDF after review. Use the employer's requested format if the application instructions specify something else.",
+            body: "Download the final PDF after review. Export is blocked if edits still contain unsupported metrics or substantive claims. Use the employer's requested format if the application instructions specify something else.",
           },
         ],
       },
@@ -811,7 +820,7 @@ export const helpPages: HelpPage[] = [
         id: "dashboard-queue",
         title: "Keep the Dashboard useful",
         intro:
-          "The Dashboard action queue depends on accurate statuses and follow-up dates. If a job needs attention, update its status instead of leaving it as Found.",
+          "Use Fresh matches for newly discovered scan results, Apply next for evaluated priority roles, and In flight for submitted applications. Accurate statuses and follow-up dates keep each list focused on the next action.",
       },
       {
         id: "archive-delete",
@@ -935,9 +944,13 @@ export const helpPages: HelpPage[] = [
         id: "backup",
         title: "Backups and exports",
         bullets: [
-          "Use the app's data backup workflow before large cleanup or migration work.",
+          "Open Account → Settings → Data & Backup to create one portable archive before large cleanup, migration work, or moving machines.",
+          "A portable backup includes the database, resume files referenced by your resume lanes, generated documents, source configuration, and scanner import history. Other files under assets are always ignored.",
+          "Password protection is optional. Unencrypted archives require a privacy acknowledgment because they contain locally stored provider credentials.",
+          "Backup creation shows a progress dialog while files are packaged locally. Keep the window open until the browser download starts.",
+          "Restore validates the archive in a bounded disk staging area, shows a preview, and creates an automatic rollback backup before replacing managed local data. Unrelated files under assets stay untouched.",
           "Use export when you need a readable snapshot outside the database.",
-          "Keep backups private because they may contain resume and application data.",
+          "Keep backups private because they may contain resume, application, and credential data.",
         ],
       },
     ],

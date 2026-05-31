@@ -34,11 +34,16 @@
     "profile:extract": "tsx scripts/profile-extract.ts",
     "profile:check": "tsx scripts/profile-check.ts",
     "scanner:check": "tsx scripts/scanner-check.ts",
+    "fresh-matches:check": "tsx scripts/fresh-match-check.ts",
     "evaluation:check": "tsx scripts/evaluation-check.ts",
     "document:check": "tsx scripts/document-check.ts",
+    "evidence-audit:check": "tsx scripts/evidence-audit-check.ts",
     "application:check": "tsx scripts/application-check.ts",
     "quality:check": "tsx scripts/quality-check.ts",
     "data:backup": "tsx scripts/data-backup.ts",
+    "account:backup": "tsx scripts/account-backup.ts",
+    "account:restore": "tsx scripts/account-restore.ts",
+    "account:check": "tsx scripts/account-backup-check.ts",
     "data:export": "tsx scripts/data-export.ts",
     "discover:sources": "tsx scripts/discover-sources.ts"
   },
@@ -59,7 +64,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "yauzl": "^3.3.1",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
@@ -68,6 +75,8 @@
     "@types/node": "^22.15.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/yauzl": "^2.10.3",
+    "@types/yazl": "^3.3.1",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.25.0",
     "eslint-config-next": "^15.3.5",

@@ -22,6 +22,8 @@ The Account menu shows a live AI provider health dot:
 - Red: no AI keys configured at all
 
 The app redirects `/` to `/dashboard` on load.
+The app also serves `/favicon.ico` (redirected to the shared `logo.svg`) so
+browser default favicon requests resolve without 404 noise.
 
 ---
 
@@ -113,14 +115,26 @@ features.
 
 **Normal dashboard** (after full setup):
 
-- **Stat cards** — priority matches, applications sent, new jobs this week (from
-  scans vs. manually added).
-- **Action queue** — two lists: "Apply next" (high-score jobs not yet applied to)
-  and "In flight" (active applications: interviewing, follow-up needed). Each card
-  shows company, title, fit score, and recommended next action.
-- **Latest scan card** — companies scanned, new jobs found, duplicates skipped,
-  status badge. Per-source error list with inline "Disable source" button.
-- **Recent activity log** — timestamped list of user actions.
+- **Top dashboard tiles** — metric cards appear before "Fresh matches" and
+  "Apply next". "Priority matches", "Applications sent", "Follow-ups due", and
+  "Interviews active" are pinned in a two-row half-width block, with "This
+  week" occupying the other half.
+- **Fresh matches** — only unprocessed jobs discovered by scheduled or manually
+  triggered scans inside the selected freshness window. Applied, rejected,
+  manually added, stale, archived, and duplicate jobs stay out. Each row badge
+  shows `Posted <date>` when a publish date exists, otherwise `Fetched <date>`
+  from the discovery timestamp. Rows use the same compact list treatment as
+  "Apply next" for consistent scanning, and row text wraps (no ellipsis
+  truncation) so full titles and location lines remain visible on narrower
+  viewports.
+- **Action queue** — "Apply next" shows high-score jobs not yet applied to and
+  "In flight" shows active applications (interviewing, follow-up needed). Each
+  card shows company, title, fit score, and recommended next action.
+- **Stat cards** — supporting metrics for priority matches, applications sent,
+  new jobs this week, generated PDFs, follow-ups, interviews, and skipped jobs.
+- **Recent activity log** — "Latest scan" summary appears first (status badges
+  and per-source errors with inline "Disable source"), followed by the
+  timestamped list of user actions.
 - **Scan for new jobs** button in page header (hidden for new users).
 
 ---
@@ -379,6 +393,8 @@ standard resume layout conventions.
 
 **Generated documents** — tailored resumes produced for specific jobs:
 - Table showing job, lane used, keyword coverage %, generation date, and status.
+- Generated documents keep a stable link to their source resume lane, so PDF
+  export continues to work after the lane is renamed.
 - Column filters and saved filter presets on the generated documents table.
 - Links to preview HTML and download PDF.
 - Delete document action.
@@ -399,13 +415,26 @@ approved-resume builder experience with identical section controls on every sect
 - Education is always shown last and is display-only (pulled from the base resume).
 - **Keyword coverage panel** — collapsible panel between the help text and the first
   section showing all job keywords as chips. Green ✓ chips = exact phrase or strong
-  term-overlap coverage in the current resume text; muted ○ chips = not yet strongly
-  represented. Updates instantly as the user types (no debounce — pure JS computation).
+  term-overlap coverage in the current resume text; `+` chips = supported by existing
+  evidence and ready to add; `!` chips = missing evidence. Clicking a `+` chip adds the
+  keyword to Skills. Clicking a `!` chip opens a guided wizard: select the companies
+  and roles where the skill was used, optionally add context, then review distinct
+  resume-writer suggestions grounded in each role's existing bullets. Each suggestion
+  rewrites the strongest relevant bullet instead of appending a generic line. The user
+  can edit or remove any change before approval. Company confirmation is required;
+  writing is optional. When AI is unavailable or returns an unsafe suggestion, the app
+  uses a claim-preserving fallback rewrite. Updates instantly as the user types (no
+  debounce — pure JS computation).
   Starts expanded when coverage is below 70%. Collapses to just the `covered/total`
   counter when the user has seen enough. The page header uses the same live matcher.
 - **Job-aware AI improvement** — ✨ Improve (and ✨ Improve bullets for experience)
   include the job keywords in the API call. The AI naturally incorporates missing
   keywords into suggestions without forcing them.
+- **Evidence guard** — AI-proposed headline, summary, impact, skill,
+  recognition, experience, and extra-section claims are checked against the
+  approved resume lane plus confirmed gap answers and supplements. Unsupported
+  AI changes revert to source wording. PDF export is blocked if manual edits
+  still introduce an unsupported metric or substantive claim.
 - Live preview pane updates automatically with a 400 ms debounce; Refresh button
   forces an immediate update.
 - Keyword coverage percentage shown in the page header (color-coded green/yellow/red).
@@ -551,7 +580,7 @@ Search performance metrics drawn from actual evaluation and application data.
 
 ## Settings `/settings`
 
-Three configuration tabs:
+Four configuration tabs:
 
 ### AI Providers
 - Set active AI provider: Anthropic (Claude), OpenAI (GPT), or Google (Gemini).
@@ -572,9 +601,10 @@ Three configuration tabs:
   Lever are auto-detected.
 - "Scan for new sources" queries the Common Crawl index to discover additional
   ATS boards automatically.
-- "Import all valid (N)" bulk-imports all currently valid discovered sources
-  into the tracked list in one click (only shown when there are valid
-  unimported entries).
+- Discovered sources stay pending until the user reviews and explicitly selects
+  the validated companies to add.
+- Cleanup review lists disabled or malformed user-added sources for explicit
+  removal. Existing sources are never removed automatically.
 - "Search discover" queries Brave Search API for ATS job boards not in Common
   Crawl (requires Brave Search API key in AI Provider settings). Merges new
   findings into `data/discovered-sources.json` without overwriting existing
@@ -596,6 +626,15 @@ Three configuration tabs:
   role, project, action, and outcome detail before they are treated as confirmed
   resume-tailoring context.
 - Adjust other search preferences.
+
+### Data & Backup
+- Enable or disable automatic scans every six hours while the local app is
+  running.
+- Select the fresh-posting window: 24 hours, 72 hours by default, or 7 days.
+  CareerOps and Adzuna scans use the selected window.
+- Create a portable `.jst-backup` archive with optional password protection.
+- Restore only after archive validation, preview, explicit confirmation, and an
+  automatic rollback backup.
 
 ---
 
@@ -637,10 +676,11 @@ custom URLs configured in Settings.
 3. If Adzuna credentials are configured (Settings → AI Provider → Discovery & Aggregators), an Adzuna aggregator scan runs in parallel alongside the ATS scan.
 4. Title filters remove irrelevant roles.
 5. Profile location and remote preferences remove listings outside the user's constraints.
-6. Duplicate URLs are skipped.
-7. New jobs are written to the `jobs` table with `status = found`.
-8. A `scan_runs` record is created with metrics.
-9. The Dashboard updates with a combined scan summary (ATS + Adzuna totals merged).
+6. Listings outside the selected fresh-posting window are filtered out.
+7. Duplicate URLs are skipped.
+8. New jobs are written to the `jobs` table with `status = found`.
+9. A `scan_runs` record is created with metrics.
+10. The Dashboard updates with a combined scan summary (ATS + Adzuna totals merged).
 
 **Scan results dialog** (Dashboard “Scan for new jobs” and Settings → Sources per-company scan): the modal is scrollable when there are many errors or new listings. Each error shows a **category badge** — *Dead or missing* (404/410, bad URL, unknown host), *Timed out* (no response within the fetch limit; the board may still be live), or *Other error*. A summary line counts how many sources reported issues, how many can be disabled as YAML/custom career sources, and a breakdown by category. **Select all** / **Clear selection** / **Disable selected** bulk-update `scan_source_overrides`; per-row **Disable** does the same for one company. Aggregator-only rows (e.g. **Adzuna**) are not disabled as career sources — the UI points to AI Provider settings instead.
 
@@ -716,7 +756,7 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 
 **What it covers:** Adzuna aggregates from multiple sources and covers roles that may not appear in direct ATS portals or browser-board searches. It is best used alongside browser-board and CareerOps ATS scans.
 
-**Limits:** Up to 5 target roles × 3 locations per scan, 50 results per query, jobs posted within the last 14 days only. Adzuna's coverage varies by country (default: `us`).
+**Limits:** Up to 5 target roles × 3 locations per scan, 50 results per query, and the selected fresh-posting window (24 hours, 72 hours by default, or 7 days). Adzuna's coverage varies by country (default: `us`).
 
 **Scan type recorded:** `adzuna-api-scan`. Jobs appear in the Jobs table with an **Adzuna** source badge.
 
@@ -749,6 +789,16 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 - No data is sent to any server except AI provider API calls (evaluation,
   generation, etc.).
 - The database file is excluded from git.
-- Backup: `npm run data:backup` writes a SQLite snapshot to `output/backups/`.
+- Portable account backup: Account → Settings → Data & Backup creates a `.jst-backup`
+  archive with the database, database-referenced resume lane files, generated documents, source
+  configuration, and scanner history. Optional password protection encrypts the
+  complete payload. Creation streams files into the archive and shows a progress
+  dialog while the local snapshot is packaged. Other files under `assets/` are
+  always ignored.
+- Restore: Account → Settings → Data & Backup validates the archive, previews its
+  contents in a bounded disk staging area, creates a rollback backup, then
+  replaces the managed local snapshot after explicit confirmation.
+- Database-only backup: `npm run data:backup` writes a SQLite snapshot to
+  `output/backups/`.
 - Export: `npm run data:export` writes a JSON snapshot to `output/exports/`.
 - To reset all data: `npm run db:reset` (drops local data and initializes an empty profile).

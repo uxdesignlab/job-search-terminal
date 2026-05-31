@@ -7,6 +7,7 @@ import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
 import { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
+import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics } from "./evidence-audit";
 
 export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
 
@@ -41,19 +42,23 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
   let aiTailoring: TailoredResumeSections | null = null;
+  let fallbackReason = "";
+  const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
+  const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
   if (hasAIKey) {
     try {
-      const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
-      const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
       const missing = missingKeywordsFor(sourceDraft, evaluation.keywords);
       aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, missing);
-    } catch {
-      // Fall through to approved source content.
+    } catch (error) {
+      fallbackReason = error instanceof Error ? error.message : String(error);
     }
   }
 
-  const content = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
+  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+  const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
+  const verified = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
+  const content = verified.draft;
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -82,7 +87,11 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     tailoringSummary: `Generated from ${baseResume.name}. ${keywordCoverage}% of evaluation keywords appear in the tailored resume.`,
     keywordCoverage,
     tailoringPlan,
-    draftJson: JSON.stringify(content)
+    draftJson: JSON.stringify(content),
+    baseResumeId: baseResume.id,
+    tailoringStatus: aiTailoring ? verified.audit.status : "source-only",
+    evidenceAuditJson: JSON.stringify(verified.audit),
+    fallbackReason
   };
 
   saveGeneratedDocument(document);
@@ -97,6 +106,9 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
 export async function generateResumeDraft(jobId: string, resumeId?: string | null, sectionModes: ResumeSectionModeInput[] = []): Promise<{
   documentId: string;
   draft: ResumeTemplateInput;
+  tailoringStatus: string;
+  evidenceAudit: ReturnType<typeof auditDraftAgainstEvidence>;
+  fallbackReason: string;
 }> {
   const job = getJobById(jobId);
   if (!job) throw new Error(`Job not found: ${jobId}`);
@@ -124,17 +136,23 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
   let aiTailoring: TailoredResumeSections | null = null;
+  let fallbackReason = "";
+  const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
+  const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
   if (hasAIKey) {
     try {
-      const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
-      const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
       const missing = missingKeywordsFor(sourceDraft, evaluation.keywords);
       aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, missing);
-    } catch { /* fall through to source resume summary */ }
+    } catch (error) {
+      fallbackReason = error instanceof Error ? error.message : String(error);
+    }
   }
 
-  const draft = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
+  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+  const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
+  const verified = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
+  const draft = verified.draft;
   const keywordCoverage = keywordCoverageFor(draft, evaluation.keywords);
   const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
   const date = new Date().toISOString().slice(0, 10);
@@ -155,9 +173,13 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     keywordCoverage,
     tailoringPlan,
     draftJson: JSON.stringify(draft),
+    baseResumeId: baseResume.id,
+    tailoringStatus: aiTailoring ? verified.audit.status : "source-only",
+    evidenceAuditJson: JSON.stringify(verified.audit),
+    fallbackReason,
   });
 
-  return { documentId, draft };
+  return { documentId, draft, tailoringStatus: aiTailoring ? verified.audit.status : "source-only", evidenceAudit: verified.audit, fallbackReason };
 }
 
 export async function createPdfForDocument(documentId: string, draft: ResumeTemplateInput): Promise<{ pdfUrl: string }> {
@@ -168,6 +190,21 @@ export async function createPdfForDocument(documentId: string, draft: ResumeTemp
   if (!job) throw new Error(`Job not found: ${doc.jobId}`);
 
   const profile = getUserProfile();
+  const baseResume = resolveDocumentResumeLane(doc, getResumes());
+  if (!baseResume) throw new Error(`Base resume lane not found: ${doc.baseResume}`);
+  const sourceResumeText = await loadSourceResumeText(baseResume);
+  const approvedVersion = getApprovedResumeVersion(baseResume);
+  const sourceDraft = templateFromApprovedSections(approvedVersion.sections, profile, job, resolveSectionModes(approvedVersion.sections, []));
+  const evidenceText = buildEvidenceText(
+    sourceResumeText,
+    sourceDraft,
+    getJobGapResponses(doc.jobId).filter((response) => response.qualityStatus === "addressed"),
+    getProfileSupplements().filter((supplement) => supplement.qualityStatus === "addressed")
+  );
+  const audit = auditDraftAgainstEvidence(draft, evidenceText);
+  if (audit.status === "unsupported-claims") {
+    throw new Error(`PDF export blocked: remove or confirm unsupported claims (${audit.issues.map((issue) => issue.claim).join(", ")}).`);
+  }
   const html = renderResumeHtml(draft);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
   const date = new Date().toISOString().slice(0, 10);
@@ -180,6 +217,25 @@ export async function createPdfForDocument(documentId: string, draft: ResumeTemp
   updateDocumentPdf(documentId, html, render.htmlPath, render.pdfPath);
 
   return { pdfUrl: render.pdfPath };
+}
+
+function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume" | "baseResumeId">, resumes: ResumeRecord[]) {
+  return resumes.find((resume) => resume.id === doc.baseResumeId)
+    ?? resumes.find((resume) => resume.name === doc.baseResume);
+}
+
+function buildEvidenceText(
+  sourceResumeText: string,
+  sourceDraft: ResumeTemplateInput,
+  gapResponses: Array<{ rawResponse: string; polishedResponse: string }>,
+  supplements: Array<{ content: string }>
+) {
+  return [
+    sourceResumeText,
+    evidenceTextForDraft(sourceDraft),
+    ...gapResponses.flatMap((response) => [response.rawResponse, response.polishedResponse]),
+    ...supplements.map((supplement) => supplement.content),
+  ].join("\n");
 }
 
 function selectBaseResume(evaluation: EvaluationRecord, resumes: ResumeRecord[]) {

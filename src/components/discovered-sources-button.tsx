@@ -27,6 +27,8 @@ type DiscoveredEntry = {
   careersUrl: string;
   /** Pre-filled from discovery when AI classification ran */
   industry?: string | null;
+  relevanceScore?: number;
+  reviewReasons?: string[];
 };
 
 type Props = {
@@ -34,7 +36,7 @@ type Props = {
   onImport: (formData: FormData) => Promise<void>;
 };
 
-type SortCol = "slug" | "ats";
+type SortCol = "slug" | "ats" | "score";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +50,9 @@ function entryKey(e: DiscoveredEntry) {
 }
 
 function getColValue(entry: DiscoveredEntry, col: SortCol): string {
-  return col === "slug" ? entry.slug : atsLabel(entry.provider);
+  if (col === "slug") return entry.slug;
+  if (col === "score") return String(entry.relevanceScore ?? 0).padStart(3, "0");
+  return atsLabel(entry.provider);
 }
 
 function getColOptions(entries: DiscoveredEntry[], col: SortCol): string[] {
@@ -60,6 +64,7 @@ function getColOptions(entries: DiscoveredEntry[], col: SortCol): string[] {
 const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "slug", label: "Slug" },
   { col: "ats", label: "ATS" },
+  { col: "score", label: "Review score" },
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -80,7 +85,7 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
     setOpenFilterCol,
     activeFilterCount,
   } = useDataTableSortFilterState<SortCol>(
-    { col: "slug", dir: "asc" },
+    { col: "score", dir: "desc" },
     undefined,
     TABLE_SORT_FILTER_STATE_STORAGE_KEYS.discoveredSources,
   );
@@ -92,7 +97,7 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
     [],
   );
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
-    () => new Set(entries.map(entryKey))
+    () => new Set()
   );
   const [industryMap, setIndustryMap] = useState<Map<string, string>>(() => new Map());
   const [pending, startTransition] = useTransition();
@@ -200,7 +205,7 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
               <div>
                 <h2 className="text-base font-semibold text-ink">Discovered sources</h2>
                 <p className="mt-0.5 text-xs text-muted">
-                  Found via Common Crawl and validated. Select which to add to your scan list.
+                  Validated candidates remain pending until you explicitly approve them.
                 </p>
               </div>
               <button
@@ -276,6 +281,9 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
                       <th className="pb-3 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-muted">
                         Industry
                       </th>
+                      <th className="pb-3 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                        Why review
+                      </th>
                       <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted w-12">
                         Link
                       </th>
@@ -298,6 +306,7 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
                           <td className="py-3 pr-4">
                             <Badge>{atsLabel(entry.provider)}</Badge>
                           </td>
+                          <td className="py-3 pr-4 text-sm text-ink">{entry.relevanceScore ?? 0}</td>
                           <td className="py-3 pr-4">
                             <input
                               className="w-32 rounded border border-border bg-surface px-2 py-0.5 text-xs placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
@@ -308,6 +317,7 @@ export function DiscoveredSourcesButton({ entries, onImport }: Props) {
                               }
                             />
                           </td>
+                          <td className="max-w-xs py-3 pr-4 text-xs text-muted">{entry.reviewReasons?.join(" · ") || "Validated ATS candidate"}</td>
                           <td className="py-3">
                             <a
                               href={entry.careersUrl}

@@ -11,7 +11,8 @@ type ShellProps = {
 const ACCOUNT_ITEMS = [
   { label: "Profile", href: "/profile" },
   { label: "Strategy", href: "/strategy" },
-  { label: "Settings", href: "/settings" }
+  { label: "Settings", href: "/settings" },
+  { label: "Data & Backup", href: "/settings?tab=data" }
 ];
 
 const PRIMARY_ITEMS = [

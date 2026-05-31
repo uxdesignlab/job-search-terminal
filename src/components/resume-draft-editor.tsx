@@ -37,6 +37,16 @@ type EditorState = {
   extraSections: Array<{ id: string; title: string; itemsText: string }>;
 };
 
+type KeywordProposal = {
+  experienceIndex: number;
+  sourceBulletIndex: number;
+  organization: string;
+  title: string;
+  originalText: string;
+  text: string;
+  included: boolean;
+};
+
 function draftToState(draft: ResumeTemplateInput): EditorState {
   return {
     name: draft.name,
@@ -113,6 +123,9 @@ type Props = {
   baseResume: string;
   keywordCoverage: number;
   keywords: string[];
+  supportedKeywords: string[];
+  tailoringStatus: string;
+  fallbackReason: string;
 };
 
 function extractStateText(state: EditorState): string {
@@ -136,7 +149,7 @@ const inputCls = "w-full rounded-control border border-border bg-surface px-3 py
 const textareaCls = `${inputCls} resize-y leading-5`;
 const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted";
 
-export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords }: Props) {
+export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, supportedKeywords, tailoringStatus, fallbackReason }: Props) {
   const router = useRouter();
   const [state, setState] = useState<EditorState>(() => draftToState(initialDraft));
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => {
@@ -152,6 +165,20 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
   const [pdfError, setPdfError] = useState("");
   const [previewHtml, setPreviewHtml] = useState(() => renderResumeHtml(initialDraft));
   const [kwExpanded, setKwExpanded] = useState(() => keywordCoverage < 70);
+  const [confirmedKeywords, setConfirmedKeywords] = useState<string[]>([]);
+  const [keywordToConfirm, setKeywordToConfirm] = useState("");
+  const [keywordWizardStep, setKeywordWizardStep] = useState<"select" | "review">("select");
+  const [selectedKeywordExperienceIndexes, setSelectedKeywordExperienceIndexes] = useState<number[]>([]);
+  const [keywordExplanation, setKeywordExplanation] = useState("");
+  const [keywordProposals, setKeywordProposals] = useState<KeywordProposal[]>([]);
+  const [keywordEvidenceConfirmed, setKeywordEvidenceConfirmed] = useState(false);
+  const [keywordConfirmationStatus, setKeywordConfirmationStatus] = useState("");
+  const [keywordConfirmationBusy, setKeywordConfirmationBusy] = useState(false);
+  const keywordCompanyOptions = useMemo(() =>
+    state.experience
+      .map((experience, experienceIndex) => ({ ...experience, experienceIndex }))
+      .filter((experience) => experience.organization.trim() && experience.bulletsText.trim())
+  , [state.experience]);
 
   const keywordDetails = useMemo(() => {
     if (!keywords.length) return { covered: [], missing: [], total: 0, percentage: keywordCoverage };
@@ -159,6 +186,132 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
     return keywordCoverageDetailsForText(text, keywords);
   }, [state, keywords, keywordCoverage]);
   const { covered: coveredKw, missing: missingKw, total: keywordTotal, percentage: liveKeywordCoverage } = keywordDetails;
+  const supportedKeywordSet = new Set([...supportedKeywords, ...confirmedKeywords].map((keyword) => keyword.toLowerCase()));
+  const missingSupportedKw = missingKw.filter((keyword) => supportedKeywordSet.has(keyword.toLowerCase()));
+  const unsupportedGapKw = missingKw.filter((keyword) => !supportedKeywordSet.has(keyword.toLowerCase()));
+
+  function addKeywordToSkills(keyword: string) {
+    setState((previous) => {
+      if (previous.skills.toLowerCase().includes(keyword.toLowerCase())) return previous;
+      return { ...previous, skills: [previous.skills.trim(), keyword].filter(Boolean).join("\n") };
+    });
+    setKeywordConfirmationStatus(`Added "${keyword}" to Skills.`);
+  }
+
+  function beginKeywordConfirmation(keyword: string) {
+    setKeywordToConfirm(keyword);
+    setKeywordWizardStep("select");
+    setSelectedKeywordExperienceIndexes([]);
+    setKeywordExplanation("");
+    setKeywordProposals([]);
+    setKeywordEvidenceConfirmed(false);
+    setKeywordConfirmationStatus("");
+  }
+
+  function closeKeywordConfirmation() {
+    setKeywordToConfirm("");
+    setKeywordWizardStep("select");
+    setSelectedKeywordExperienceIndexes([]);
+    setKeywordExplanation("");
+    setKeywordProposals([]);
+    setKeywordEvidenceConfirmed(false);
+  }
+
+  function toggleKeywordCompany(experienceIndex: number) {
+    setSelectedKeywordExperienceIndexes((current) => current.includes(experienceIndex)
+      ? current.filter((index) => index !== experienceIndex)
+      : [...current, experienceIndex]);
+  }
+
+  async function prepareKeywordProposals() {
+    if (!keywordToConfirm || selectedKeywordExperienceIndexes.length === 0) return;
+    setKeywordConfirmationBusy(true);
+    setKeywordConfirmationStatus("");
+    try {
+      const experiences = selectedKeywordExperienceIndexes.map((experienceIndex) => {
+        const experience = state.experience[experienceIndex];
+        return {
+          experienceIndex,
+          title: experience.title,
+          organization: experience.organization,
+          bullets: experience.bulletsText.split("\n").map((bullet) => bullet.trim()).filter(Boolean),
+        };
+      });
+      const response = await fetch(`/api/gaps/${jobId}/proposals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          keyword: keywordToConfirm,
+          explanation: keywordExplanation.trim(),
+          experiences,
+        }),
+      });
+      const result = await response.json() as { error?: string; proposals?: Omit<KeywordProposal, "included">[] };
+      if (!response.ok || !result.proposals?.length) throw new Error(result.error ?? "Could not prepare resume suggestions.");
+      setKeywordProposals(result.proposals.map((proposal) => ({ ...proposal, included: true })));
+      setKeywordEvidenceConfirmed(false);
+      setKeywordWizardStep("review");
+    } catch (error) {
+      setKeywordConfirmationStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setKeywordConfirmationBusy(false);
+    }
+  }
+
+  async function confirmKeywordEvidence() {
+    if (!keywordToConfirm || selectedKeywordExperienceIndexes.length === 0 || !keywordEvidenceConfirmed) return;
+    setKeywordConfirmationBusy(true);
+    setKeywordConfirmationStatus("");
+    try {
+      const approvedResumeLines = keywordProposals
+        .filter((proposal) => proposal.included && proposal.text.trim())
+        .map((proposal) => ({ organization: proposal.organization, text: proposal.text.trim() }));
+      const response = await fetch(`/api/gaps/${jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gapText: keywordToConfirm,
+          confirmation: {
+            companies: keywordProposals.map((proposal) => proposal.organization),
+            explanation: keywordExplanation.trim(),
+            approvedResumeLines,
+          },
+        }),
+      });
+      const result = await response.json() as {
+        error?: string;
+        followUpQuestion?: string;
+        qualityStatus?: "addressed" | "needs_followup";
+      };
+      if (!response.ok) throw new Error(result.error ?? "Could not confirm keyword evidence.");
+      if (result.qualityStatus !== "addressed") {
+        setKeywordConfirmationStatus(result.followUpQuestion || "Add more detail before using this keyword.");
+        return;
+      }
+      setConfirmedKeywords((current) => [...new Set([...current, keywordToConfirm])]);
+      setState((previous) => ({
+        ...previous,
+        skills: previous.skills.toLowerCase().includes(keywordToConfirm.toLowerCase())
+          ? previous.skills
+          : [previous.skills.trim(), keywordToConfirm].filter(Boolean).join("\n"),
+        experience: previous.experience.map((experience, index) => {
+          const bullets = experience.bulletsText.split("\n").map((bullet) => bullet.trim()).filter(Boolean);
+          for (const proposal of keywordProposals.filter((item) => item.included && item.experienceIndex === index && item.text.trim())) {
+            if (proposal.sourceBulletIndex >= 0 && proposal.sourceBulletIndex < bullets.length) {
+              bullets[proposal.sourceBulletIndex] = proposal.text.trim();
+            }
+          }
+          return { ...experience, bulletsText: bullets.join("\n") };
+        }),
+      }));
+      setKeywordConfirmationStatus(`Added "${keywordToConfirm}" to Skills and approved experience lines.`);
+      closeKeywordConfirmation();
+    } catch (error) {
+      setKeywordConfirmationStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setKeywordConfirmationBusy(false);
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -551,6 +704,11 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           <p className="mb-4 text-xs text-muted">
             Edit any section below. Use ✨ Improve to refine content with AI — it will incorporate job keywords into suggestions. The preview updates automatically.
           </p>
+          {tailoringStatus === "source-only" && (
+            <p className="mb-4 rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-xs leading-5 text-muted">
+              This draft uses approved source content only{fallbackReason ? ` because AI tailoring could not complete: ${fallbackReason}` : ""}.
+            </p>
+          )}
 
           {/* Keyword coverage panel */}
           {keywords.length > 0 && (
@@ -597,19 +755,40 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                       ))}
                     </div>
                   )}
-                  {missingKw.length > 0 && (
+                  {missingSupportedKw.length > 0 && (
                     <div className={`flex flex-wrap gap-1.5 ${coveredKw.length > 0 ? "mt-1.5" : ""}`}>
-                      {missingKw.map((kw) => (
-                        <span
+                      {missingSupportedKw.map((kw) => (
+                        <button
                           key={kw}
-                          className="inline-flex items-center gap-1 rounded-full border border-border bg-panel px-2 py-0.5 text-xs text-muted"
-                          title="Not yet strongly represented in the resume — try editing or use ✨ Improve"
+                          className="inline-flex items-center gap-1 rounded-full border border-border bg-panel px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-accent"
+                          onClick={() => addKeywordToSkills(kw)}
+                          title="Supported by your evidence. Add this keyword to Skills."
+                          type="button"
                         >
-                          ○ {kw}
-                        </span>
+                          + {kw}
+                        </button>
                       ))}
                     </div>
                   )}
+                  {unsupportedGapKw.length > 0 && (
+                    <div className="mt-2">
+                      <p className="mb-1 text-xs font-medium text-muted">Needs confirmed evidence before use</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {unsupportedGapKw.map((keyword) => (
+                          <button
+                            className="rounded-full border border-warning/30 bg-warning/8 px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-accent"
+                            key={keyword}
+                            onClick={() => beginKeywordConfirmation(keyword)}
+                            title="Confirm evidence before adding this keyword."
+                            type="button"
+                          >
+                            ! {keyword}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {keywordConfirmationStatus && <p aria-live="polite" className="mt-2 text-xs text-muted">{keywordConfirmationStatus}</p>}
                   {missingKw.length === 0 && (
                     <p className="text-xs font-medium text-success">All keywords covered!</p>
                   )}
@@ -786,6 +965,108 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           title="Resume preview"
         />
       </div>
+      {keywordToConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 px-4">
+          <section
+            aria-labelledby="keyword-wizard-title"
+            aria-modal="true"
+            className="w-full max-w-lg rounded-panel border border-border bg-panel p-5 shadow-lg"
+            role="dialog"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted">Add keyword</p>
+                <h2 className="mt-1 text-base font-semibold text-ink" id="keyword-wizard-title">{keywordToConfirm}</h2>
+              </div>
+              <button className="text-sm text-muted hover:text-ink" onClick={closeKeywordConfirmation} type="button">Close</button>
+            </div>
+            {keywordWizardStep === "select" ? (
+              <div className="mt-4 grid gap-4">
+                <div>
+                  <p className="text-sm font-medium text-ink">Where did you apply this skill?</p>
+                  <p className="mt-1 text-xs leading-5 text-muted">Select every company that applies. No writing is required.</p>
+                </div>
+                {keywordCompanyOptions.length > 0 ? (
+                  <div className="grid max-h-56 gap-2 overflow-y-auto">
+                    {keywordCompanyOptions.map((experience) => (
+                      <label className="flex items-start gap-2 rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink" key={`${experience.organization}-${experience.experienceIndex}`}>
+                        <input
+                          checked={selectedKeywordExperienceIndexes.includes(experience.experienceIndex)}
+                          className="mt-0.5"
+                          onChange={() => toggleKeywordCompany(experience.experienceIndex)}
+                          type="checkbox"
+                        />
+                        <span>
+                          <span className="block font-medium">{experience.organization}</span>
+                          <span className="block text-xs text-muted">{experience.title}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-xs leading-5 text-muted">This resume lane has no companies to choose from. Add experience before confirming this keyword.</p>
+                )}
+                <label className="grid gap-1 text-sm text-ink">
+                  Optional explanation
+                  <textarea
+                    className={textareaCls}
+                    onChange={(event) => setKeywordExplanation(event.target.value)}
+                    placeholder="Add context only when it makes the resume line more specific."
+                    rows={3}
+                    value={keywordExplanation}
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={selectedKeywordExperienceIndexes.length === 0 || keywordConfirmationBusy} onClick={prepareKeywordProposals}>
+                    {keywordConfirmationBusy ? "Writing resume suggestions…" : "Review resume edit"}
+                  </Button>
+                  <Button onClick={closeKeywordConfirmation} variant="quiet">Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4">
+                <div>
+                  <p className="text-sm font-medium text-ink">Review the proposed resume edit</p>
+                  <p className="mt-1 text-xs leading-5 text-muted">Each suggestion rewrites an existing bullet for that role. Edit or remove any change before approving.</p>
+                </div>
+                <div className="grid max-h-72 gap-3 overflow-y-auto">
+                  {keywordProposals.map((proposal, index) => (
+                    <div className="grid gap-2 rounded-control border border-border bg-surface p-3" key={`${proposal.organization}-${index}`}>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                        <input
+                          checked={proposal.included}
+                          onChange={(event) => setKeywordProposals((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, included: event.target.checked } : item))}
+                          type="checkbox"
+                        />
+                        Replace bullet · {proposal.organization} · {proposal.title}
+                      </label>
+                      <p className="text-xs leading-5 text-muted">Current: {proposal.originalText}</p>
+                      <textarea
+                        className={textareaCls}
+                        disabled={!proposal.included}
+                        onChange={(event) => setKeywordProposals((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item))}
+                        rows={3}
+                        value={proposal.text}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <label className="flex items-start gap-2 text-xs leading-5 text-muted">
+                  <input checked={keywordEvidenceConfirmed} onChange={(event) => setKeywordEvidenceConfirmed(event.target.checked)} type="checkbox" />
+                  I confirm the selected companies and approved wording are accurate.
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={!keywordEvidenceConfirmed || keywordConfirmationBusy} onClick={confirmKeywordEvidence}>
+                    {keywordConfirmationBusy ? "Adding keyword…" : "Approve and add to resume"}
+                  </Button>
+                  <Button onClick={() => setKeywordWizardStep("select")} variant="secondary">Back</Button>
+                  <Button onClick={closeKeywordConfirmation} variant="quiet">Cancel</Button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }

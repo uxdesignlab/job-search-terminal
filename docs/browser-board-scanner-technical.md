@@ -30,6 +30,10 @@ importBrowserBoardJobs()
   └─ archives the import file
 ```
 
+Browser-board imports retain jobs posted during the past week. Callers such as
+Adzuna that use a user-selected freshness window pass that window through the
+shared importer so the final insertion filter matches the upstream query.
+
 ## Supported Sources
 
 | Source | `metadata.source` | Stored `jobs.source` / `scan_runs.scan_type` |

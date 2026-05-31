@@ -34,6 +34,8 @@ export type DiscoveredEntry = {
   companyDisplayName: string | null;
   /** Short industry label from AI classification when an API key is configured. */
   industry: string | null;
+  relevanceScore?: number;
+  reviewReasons?: string[];
 };
 
 export type DiscoveredSources = {
@@ -87,6 +89,7 @@ function extractSlug(rawUrl: string): string | null {
     const segment = parsed.pathname.split("/").filter(Boolean)[0];
     if (!segment) return null;
     if (["jobs", "api", "v0", "v1", "boards", "postings", "job-board"].includes(segment.toLowerCase())) return null;
+    if (segment.length < 3 || /^\d+$/.test(segment) || !/[a-z]/i.test(segment)) return null;
     return segment.toLowerCase();
   } catch {
     return null;
@@ -176,6 +179,28 @@ function classificationLabel(entry: DiscoveredEntry): string {
   const name = entry.companyDisplayName?.trim();
   if (name) return name;
   return labelFromSlug(entry.slug);
+}
+
+function addReviewRanking(entry: DiscoveredEntry): DiscoveredEntry {
+  const reasons: string[] = [];
+  let relevanceScore = 0;
+  if (entry.validationStatus === "valid") {
+    relevanceScore += 60;
+    reasons.push("ATS endpoint is live");
+  }
+  if (entry.companyDisplayName && entry.companyDisplayName.toLowerCase() !== entry.slug.toLowerCase()) {
+    relevanceScore += 20;
+    reasons.push("Employer name confirmed by ATS");
+  }
+  if (entry.industry) {
+    relevanceScore += 10;
+    reasons.push(`Industry: ${entry.industry}`);
+  }
+  if (/[-_]/.test(entry.slug)) {
+    relevanceScore += 5;
+    reasons.push("Readable employer slug");
+  }
+  return { ...entry, relevanceScore, reviewReasons: reasons };
 }
 
 /** Cheap fallback when AI is unavailable or returns nothing for a row. */
@@ -418,7 +443,7 @@ export async function runSourceDiscovery(
     const companyDisplayName =
       e.companyDisplayName?.trim() ||
       (e.validationStatus === "valid" ? labelFromSlug(e.slug) : null);
-    return { ...e, companyDisplayName, industry };
+    return addReviewRanking({ ...e, companyDisplayName, industry });
   });
 
   const output: DiscoveredSources = {
@@ -562,7 +587,7 @@ export async function runSearchDiscovery(
     const companyDisplayName =
       e.companyDisplayName?.trim() ||
       (e.validationStatus === "valid" ? labelFromSlug(e.slug) : null);
-    return { ...e, companyDisplayName, industry };
+    return addReviewRanking({ ...e, companyDisplayName, industry });
   });
 
   // Merge with existing entries — new entries added, existing untouched

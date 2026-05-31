@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { safeFetch } from "@/lib/safe-fetch";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
+import type { FreshnessWindowHours } from "@/lib/db/types";
 
 export type AggregatorScanOptions = {
   adzunaAppId: string;
@@ -12,12 +13,16 @@ export type AggregatorScanOptions = {
   remotePreference: string;
   country?: string;
   titleFilters?: { positive: string[]; negative: string[] };
+  freshnessWindowHours?: FreshnessWindowHours;
 };
 
 export type AggregatorScanResult = {
   status: "ok" | "error" | "no-credentials";
   imported: number;
   duplicates: number;
+  fresh: number;
+  unknownDate: number;
+  staleFiltered: number;
   totalFound: number;
   errors: string[];
   jobs: Array<{ title: string; url: string; company: string }>;
@@ -46,6 +51,7 @@ async function searchAdzuna(
   what: string,
   where: string,
   country: string,
+  freshnessWindowHours: FreshnessWindowHours,
 ): Promise<AdzunaJob[]> {
   const params = new URLSearchParams({
     app_id: appId,
@@ -53,7 +59,7 @@ async function searchAdzuna(
     what,
     results_per_page: "50",
     sort_by: "date",
-    max_days_old: "14",
+    max_days_old: String(Math.ceil(freshnessWindowHours / 24)),
   });
   if (where) params.set("where", where);
   const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params}`;
@@ -79,13 +85,14 @@ export async function runAggregatorScan(
   onProgress?: (msg: string) => void,
 ): Promise<AggregatorScanResult> {
   if (!opts.adzunaAppId || !opts.adzunaApiKey) {
-    return { status: "no-credentials", imported: 0, duplicates: 0, totalFound: 0, errors: ["Adzuna App ID and API Key are required — configure them in Settings → AI Provider"], jobs: [] };
+    return { status: "no-credentials", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors: ["Adzuna App ID and API Key are required — configure them in Settings → AI Provider"], jobs: [] };
   }
   if (opts.titles.length === 0) {
-    return { status: "error", imported: 0, duplicates: 0, totalFound: 0, errors: ["No target roles configured — add them in Profile"], jobs: [] };
+    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors: ["No target roles configured — add them in Profile"], jobs: [] };
   }
 
   const country = opts.country ?? "us";
+  const freshnessWindowHours = opts.freshnessWindowHours ?? 72;
   const scanTimestamp = new Date().toISOString();
   const isRemoteOnly = opts.remotePreference === "remote-only";
   const locations = opts.locations.length > 0 ? opts.locations : [""];
@@ -110,7 +117,7 @@ export async function runAggregatorScan(
       const where = isRemoteOnly ? "remote" : location;
       onProgress?.(`Searching Adzuna: "${title}"${where ? ` in "${where}"` : ""}…`);
       try {
-        const results = await searchAdzuna(opts.adzunaAppId, opts.adzunaApiKey, title, where, country);
+        const results = await searchAdzuna(opts.adzunaAppId, opts.adzunaApiKey, title, where, country, freshnessWindowHours);
         for (const job of results) {
           const adzunaId = String(job.id);
           if (seen.has(adzunaId)) continue;
@@ -134,7 +141,7 @@ export async function runAggregatorScan(
         errors.push(msg);
         onProgress?.(`Warning: ${msg}`);
         if (msg.includes("credentials")) {
-          return { status: "error", imported: 0, duplicates: 0, totalFound: 0, errors, jobs: [] };
+          return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors, jobs: [] };
         }
       }
       await new Promise((r) => setTimeout(r, 200));
@@ -142,7 +149,7 @@ export async function runAggregatorScan(
   }
 
   if (jobs.length === 0) {
-    return { status: "ok", imported: 0, duplicates: 0, totalFound: 0, errors, jobs: [] };
+    return { status: "ok", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors, jobs: [] };
   }
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
@@ -158,7 +165,7 @@ export async function runAggregatorScan(
   if (skipped > 0) onProgress?.(`Filtered out ${skipped} jobs that didn't match title filters`);
 
   if (filteredJobs.length === 0) {
-    return { status: "ok", imported: 0, duplicates: 0, totalFound, errors, jobs: [] };
+    return { status: "ok", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound, errors, jobs: [] };
   }
 
   const ts = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "Z");
@@ -208,17 +215,20 @@ export async function runAggregatorScan(
 
   const preview = filteredJobs.map((j) => ({ title: j.position, url: j.url, company: j.company }));
   try {
-    const importResult = await importBrowserBoardJobs(finalPath);
+    const importResult = await importBrowserBoardJobs(finalPath, { freshnessWindowHours });
     return {
       status: "ok",
       imported: importResult.imported,
       duplicates: importResult.duplicates,
+      fresh: importResult.fresh,
+      unknownDate: importResult.unknownDate,
+      staleFiltered: importResult.staleFiltered,
       totalFound: jobs.length,
       errors: [...errors, ...importResult.errors],
       jobs: importResult.importedJobs.map((job) => ({ title: job.title, url: job.url, company: job.company })),
     };
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
-    return { status: "error", imported: 0, duplicates: 0, totalFound, errors, jobs: preview };
+    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound, errors, jobs: preview };
   }
 }
