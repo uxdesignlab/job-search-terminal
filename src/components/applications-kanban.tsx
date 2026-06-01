@@ -542,6 +542,7 @@ export function ApplicationsKanban({ rows, todayIso }: Props) {
       </div>
 
       <DndContext
+        id="applications-kanban"
         sensors={sensors}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}

@@ -12,9 +12,42 @@ Job Search Terminal is in early public development.
 - Improve resume tailoring controls
 - Improve accessibility and keyboard navigation
 
+## Next phase — Fresh search scanner
+
+Add a hybrid fresh-job discovery lane modeled on the Google searches at
+[pavel.ux.business/24h](https://pavel.ux.business/24h/).
+
+- Run unattended Brave Search scans for jobs indexed in the past 24 hours.
+- Add an agent-assisted Chrome workflow for exact Google 12-hour searches.
+- Start with Greenhouse, Lever, Ashby, Workday, and jobs/careers subdomains.
+- Route confidently parsed jobs through the existing local import, freshness,
+  dedupe, notification, and liveness pipeline.
+- Keep unresolved or low-confidence links in a local review queue.
+- Preserve the local-first boundary: never auto-apply, click Apply, or send job
+  data anywhere except the configured search API and local dashboard.
+
+## Next phase — Public ATS source bank
+
+Add a curated, release-versioned catalog of Greenhouse, Lever, and Ashby sources
+so users can choose relevant companies instead of scanning a broad default list.
+See [docs/source-bank.md](docs/source-bank.md) for the saved implementation
+approach.
+
+- Recommend sources from profile industries and preferred countries while
+  keeping the full catalog available for browsing.
+- Let users filter the catalog by industry, hiring coverage, and ATS provider.
+- Add an onboarding source-selection step for new installs and preserve existing
+  local portal configurations.
+- When a manually added job reveals a supported ATS board, offer to track that
+  company for future scans after explicit confirmation.
+- Keep Common Crawl and Brave Search discoveries separate from the curated
+  public catalog.
+
 ## Planned improvements
 
-- Better source discovery for Greenhouse, Lever, and Ashby
+- Expand fresh-search coverage beyond the initial ATS and careers-domain set
+- Consider optional hosted read-only source-bank refreshes after the bundled
+  local-first catalog workflow is proven
 - More transparent fit scoring explanations
 - Stronger application funnel analytics
 - Safer rejection/archive handling
