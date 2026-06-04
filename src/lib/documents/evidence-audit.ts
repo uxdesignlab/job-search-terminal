@@ -60,6 +60,7 @@ function hasRelatedMetricEvidence(text: string, metric: string, evidenceLines: s
   });
 }
 
+// Full check: metrics + vocabulary terms. Used at generation time to revert AI-fabricated content.
 function issuesForText(path: string, text: string, evidenceText: string): EvidenceAuditIssue[] {
   const evidenceLines = evidenceLinesFor(evidenceText);
   const evidenceTerms = claimTermsIn(evidenceText);
@@ -79,6 +80,23 @@ function issuesForText(path: string, text: string, evidenceText: string): Eviden
         path,
         claim: term,
         reason: "This substantive claim term is not present in the approved resume lane or confirmed profile evidence.",
+      });
+    }
+  }
+  return issues;
+}
+
+// Metrics-only check: used at PDF export time so that manual edits to draft text are not blocked
+// by vocabulary words the user legitimately typed that happen not to appear in the evidence corpus.
+function metricIssuesForText(path: string, text: string, evidenceText: string): EvidenceAuditIssue[] {
+  const evidenceLines = evidenceLinesFor(evidenceText);
+  const issues: EvidenceAuditIssue[] = [];
+  for (const metric of metricsIn(text)) {
+    if (!hasRelatedMetricEvidence(text, metric, evidenceLines)) {
+      issues.push({
+        path,
+        claim: metric,
+        reason: "This quantified claim is not present in a related approved resume line or confirmed evidence.",
       });
     }
   }
@@ -109,7 +127,7 @@ export function evidenceTextForDraft(draft: ResumeTemplateInput): string {
 export function auditDraftAgainstEvidence(draft: ResumeTemplateInput, evidenceText: string): EvidenceAudit {
   const issues: EvidenceAuditIssue[] = [];
   const inspect = (path: string, text: string) => {
-    issues.push(...issuesForText(path, text, evidenceText));
+    issues.push(...metricIssuesForText(path, text, evidenceText));
   };
 
   inspect("headline", draft.headline);

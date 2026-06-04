@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, LinkButton } from "@/components/ui";
-import { keywordCoverageDetailsForText } from "@/lib/documents/keyword-coverage";
+import { keywordStrengthDetailsForText } from "@/lib/documents/keyword-coverage";
 import { renderResumeHtml, type ResumeTemplateInput } from "@/lib/documents/resume-template";
 
 type SectionAIState = {
@@ -143,6 +143,72 @@ function extractStateText(state: EditorState): string {
     .join(" ");
 }
 
+// ---------- Keyword highlight helpers ----------
+
+const HL_STOP = new Set(["a","an","and","are","as","at","be","by","for","from","in","is","of","on","or","the","to","with","that","this","or"]);
+
+function extractHighlightTerms(keyword: string): string[] {
+  return keyword
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && !HL_STOP.has(t));
+}
+
+// Script injected into the preview iframe srcDoc so the parent can drive text highlighting via
+// postMessage. Never included in renderResumeHtml — purely a UI concern.
+//
+// Two highlight tiers:
+//   kw-hl-phrase — bright yellow + outline: the full keyword phrase appears together here
+//   kw-hl-term  — faint yellow: an individual keyword word appears here (partial coverage)
+const HIGHLIGHT_SCRIPT = `
+<style>
+mark.kw-hl-phrase{background:#fef08a;color:inherit;border-radius:2px;padding:0 1px;outline:1.5px solid #ca8a04;}
+mark.kw-hl-term{background:#fef9c3;color:inherit;border-radius:2px;padding:0 1px;}
+</style>
+<script>
+(function(){
+  function clear(){
+    document.querySelectorAll('mark.kw-hl-phrase,mark.kw-hl-term').forEach(function(m){
+      var p=m.parentNode; while(m.firstChild) p.insertBefore(m.firstChild,m); p.removeChild(m); p.normalize();
+    });
+  }
+  function walk(node,phrase,terms){
+    if(node.nodeType===3){
+      var t=node.textContent,l=t.toLowerCase(),frag=document.createDocumentFragment(),rem=t,remL=l,changed=false;
+      while(rem.length){
+        var candidates=phrase?[phrase].concat(terms):terms;
+        var best=-1,bLen=0,bIsPhrase=false;
+        for(var i=0;i<candidates.length;i++){
+          var pos=remL.indexOf(candidates[i]);
+          if(pos!==-1&&(best===-1||pos<best||(pos===best&&candidates[i].length>bLen))){
+            best=pos;bLen=candidates[i].length;bIsPhrase=!!(phrase&&candidates[i]===phrase);
+          }
+        }
+        if(best===-1){frag.appendChild(document.createTextNode(rem));break;}
+        if(best>0) frag.appendChild(document.createTextNode(rem.slice(0,best)));
+        var mk=document.createElement('mark');
+        mk.className=bIsPhrase?'kw-hl-phrase':'kw-hl-term';
+        mk.textContent=rem.slice(best,best+bLen);
+        frag.appendChild(mk);
+        rem=rem.slice(best+bLen);remL=rem.toLowerCase();changed=true;
+      }
+      if(changed) node.parentNode.replaceChild(frag,node);
+    } else if(node.nodeType===1&&!/^(MARK|SCRIPT|STYLE)$/.test(node.tagName)){
+      Array.from(node.childNodes).forEach(function(c){walk(c,phrase,terms);});
+    }
+  }
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.type!=='highlight-keyword') return;
+    clear();
+    var phrase=e.data.phrase||'',terms=e.data.terms||[];
+    if(phrase||terms.length) walk(document.body,phrase,terms);
+    var first=document.querySelector('mark.kw-hl-phrase')||document.querySelector('mark.kw-hl-term');
+    if(first) first.scrollIntoView({behavior:'smooth',block:'center'});
+  });
+})();
+<\/script>`;
+
 // ---------- Styles ----------
 
 const inputCls = "w-full rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent";
@@ -164,6 +230,10 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
   const [pdfStatus, setPdfStatus] = useState<"idle" | "generating" | "done" | "error">("idle");
   const [pdfError, setPdfError] = useState("");
   const [previewHtml, setPreviewHtml] = useState(() => renderResumeHtml(initialDraft));
+  const [activeHighlightKeyword, setActiveHighlightKeyword] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const activeHighlightRef = useRef<string | null>(null);
+  activeHighlightRef.current = activeHighlightKeyword;
   const [kwExpanded, setKwExpanded] = useState(() => keywordCoverage < 70);
   const [confirmedKeywords, setConfirmedKeywords] = useState<string[]>([]);
   const [keywordToConfirm, setKeywordToConfirm] = useState("");
@@ -180,15 +250,24 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
       .filter((experience) => experience.organization.trim() && experience.bulletsText.trim())
   , [state.experience]);
 
-  const keywordDetails = useMemo(() => {
-    if (!keywords.length) return { covered: [], missing: [], total: 0, percentage: keywordCoverage };
-    const text = extractStateText(state);
-    return keywordCoverageDetailsForText(text, keywords);
+  const kwStrength = useMemo(() => {
+    if (!keywords.length) {
+      return { exact: [], partial: [], missing: [], total: 0, exactScore: keywordCoverage, broadScore: keywordCoverage };
+    }
+    return keywordStrengthDetailsForText(extractStateText(state), keywords);
   }, [state, keywords, keywordCoverage]);
-  const { covered: coveredKw, missing: missingKw, total: keywordTotal, percentage: liveKeywordCoverage } = keywordDetails;
-  const supportedKeywordSet = new Set([...supportedKeywords, ...confirmedKeywords].map((keyword) => keyword.toLowerCase()));
-  const missingSupportedKw = missingKw.filter((keyword) => supportedKeywordSet.has(keyword.toLowerCase()));
-  const unsupportedGapKw = missingKw.filter((keyword) => !supportedKeywordSet.has(keyword.toLowerCase()));
+
+  const liveKeywordCoverage = kwStrength.broadScore;
+  const keywordTotal = kwStrength.total;
+  // All keywords not present as exact phrases or partial matches
+  const missingKw = kwStrength.missing;
+  const supportedKeywordSet = new Set([...supportedKeywords, ...confirmedKeywords].map((kw) => kw.toLowerCase()));
+  // Partial-match keywords supported by evidence — user should add as exact phrase
+  const partialSupportedKw = kwStrength.partial.filter((kw) => supportedKeywordSet.has(kw.toLowerCase()));
+  const partialUnsupportedKw = kwStrength.partial.filter((kw) => !supportedKeywordSet.has(kw.toLowerCase()));
+  // Missing keywords
+  const missingSupportedKw = missingKw.filter((kw) => supportedKeywordSet.has(kw.toLowerCase()));
+  const unsupportedGapKw = missingKw.filter((kw) => !supportedKeywordSet.has(kw.toLowerCase()));
 
   function addKeywordToSkills(keyword: string) {
     setState((previous) => {
@@ -323,6 +402,21 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
   const refreshPreview = useCallback(() => {
     setPreviewHtml(renderResumeHtml(stateToDraft(state, initialDraft, sectionOrder)));
   }, [state, initialDraft, sectionOrder]);
+
+  // Stable function — reads keyword from ref so it can be used in onLoad without stale closures
+  const postHighlight = useCallback(() => {
+    if (!iframeRef.current?.contentWindow) return;
+    const kw = activeHighlightRef.current;
+    const phrase = kw
+      ? kw.toLowerCase().replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, " ").trim()
+      : "";
+    const terms = kw ? extractHighlightTerms(kw) : [];
+    iframeRef.current.contentWindow.postMessage({ type: "highlight-keyword", phrase, terms }, "*");
+  }, []);
+
+  useEffect(() => {
+    postHighlight();
+  }, [activeHighlightKeyword, postHighlight]);
 
   // --- Section ordering helpers ---
 
@@ -669,11 +763,14 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           <h1 className="text-lg font-semibold text-ink">{documentTitle}</h1>
           <p className="mt-0.5 text-xs text-muted">
             Base: {baseResume} ·{" "}
-            <span className={liveKeywordCoverage >= 70 ? "text-success font-medium" : liveKeywordCoverage >= 40 ? "text-warning font-medium" : "text-danger font-medium"}>
-              {liveKeywordCoverage}% keyword coverage
+            <span className={kwStrength.exactScore >= 70 ? "text-success font-medium" : kwStrength.exactScore >= 40 ? "text-warning font-medium" : "text-danger font-medium"}>
+              {kwStrength.exactScore}% ATS coverage
             </span>
-            {liveKeywordCoverage < 70 && (
-              <span className="ml-1 text-muted">(target: 70%+)</span>
+            {kwStrength.partial.length > 0 && (
+              <span className="ml-1 text-warning font-medium">· {kwStrength.partial.length} partial</span>
+            )}
+            {kwStrength.exactScore < 70 && (
+              <span className="ml-1 text-muted">(target: 70%+ exact phrases)</span>
             )}
           </p>
         </div>
@@ -721,65 +818,123 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted">Keyword Coverage</span>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-semibold tabular-nums ${
-                    keywordTotal > 0 && coveredKw.length / keywordTotal >= 0.7
-                      ? "text-success"
-                      : keywordTotal > 0 && coveredKw.length / keywordTotal >= 0.4
-                      ? "text-warning"
-                      : "text-danger"
+                    kwStrength.exactScore >= 70 ? "text-success"
+                    : kwStrength.exactScore >= 40 ? "text-warning"
+                    : "text-danger"
                   }`}>
-                    {coveredKw.length}/{keywordTotal}
+                    {kwStrength.exact.length}/{keywordTotal}
                   </span>
                   <svg
                     aria-hidden="true"
                     className={`h-3 w-3 text-muted transition-transform ${kwExpanded ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2.5}
-                    viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
                   >
                     <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
               </button>
               {kwExpanded && (
-                <div className="border-t border-border px-3 pb-3 pt-2">
-                  {coveredKw.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {coveredKw.map((kw) => (
-                        <span
-                          key={kw}
-                          className="inline-flex items-center gap-1 rounded-full border border-success/25 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
-                        >
-                          ✓ {kw}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {missingSupportedKw.length > 0 && (
-                    <div className={`flex flex-wrap gap-1.5 ${coveredKw.length > 0 ? "mt-1.5" : ""}`}>
-                      {missingSupportedKw.map((kw) => (
-                        <button
-                          key={kw}
-                          className="inline-flex items-center gap-1 rounded-full border border-border bg-panel px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-accent"
-                          onClick={() => addKeywordToSkills(kw)}
-                          title="Supported by your evidence. Add this keyword to Skills."
-                          type="button"
-                        >
-                          + {kw}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {unsupportedGapKw.length > 0 && (
-                    <div className="mt-2">
-                      <p className="mb-1 text-xs font-medium text-muted">Needs confirmed evidence before use</p>
+                <div className="border-t border-border px-3 pb-3 pt-2 grid gap-2.5">
+
+                  {/* Exact phrase matches — ATS safe */}
+                  {kwStrength.exact.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-success/80">
+                        Exact phrase match — ATS safe
+                      </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {unsupportedGapKw.map((keyword) => (
+                        {kwStrength.exact.map((kw) => {
+                          const isActive = activeHighlightKeyword === kw;
+                          return (
+                            <button
+                              key={kw}
+                              type="button"
+                              title={isActive ? "Click to clear highlight" : "Phrase appears verbatim — ATS will score this"}
+                              onClick={() => setActiveHighlightKeyword(isActive ? null : kw)}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                                isActive
+                                  ? "border-success bg-success text-white"
+                                  : "border-success/25 bg-success/10 text-success hover:border-success/60 hover:bg-success/20"
+                              }`}
+                            >
+                              ✓ {kw}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Partial matches — individual words present but not as phrase */}
+                  {kwStrength.partial.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-warning/80">
+                        Words present, not as a phrase — ATS may miss
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {kwStrength.partial.map((kw) => {
+                          const isActive = activeHighlightKeyword === kw;
+                          const isSupported = supportedKeywordSet.has(kw.toLowerCase());
+                          return (
+                            <button
+                              key={kw}
+                              type="button"
+                              title={isActive ? "Click to clear" : isSupported ? "Your evidence supports this — add it as an exact phrase" : "Confirm evidence, then add as exact phrase"}
+                              onClick={() => {
+                                setActiveHighlightKeyword(isActive ? null : kw);
+                              }}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                                isActive
+                                  ? "border-warning bg-warning text-white"
+                                  : "border-warning/35 bg-warning/10 text-warning hover:border-warning/60"
+                              }`}
+                            >
+                              ~ {kw}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted leading-4">
+                        Click a keyword to highlight where the words appear, then weave the exact phrase into that sentence.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Missing — supported by evidence, easy wins */}
+                  {missingSupportedKw.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        Add to resume — evidence confirmed
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {missingSupportedKw.map((kw) => (
                           <button
-                            className="rounded-full border border-warning/30 bg-warning/8 px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-accent"
+                            key={kw}
+                            className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-xs text-accent hover:border-accent hover:bg-accent/10"
+                            onClick={() => addKeywordToSkills(kw)}
+                            title="Evidence confirmed — click to add to Skills"
+                            type="button"
+                          >
+                            + {kw}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Partial unsupported + missing unsupported — need evidence */}
+                  {(partialUnsupportedKw.length > 0 || unsupportedGapKw.length > 0) && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                        Needs confirmed evidence before use
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[...partialUnsupportedKw, ...unsupportedGapKw].map((keyword) => (
+                          <button
+                            className="rounded-full border border-border bg-panel px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-accent"
                             key={keyword}
                             onClick={() => beginKeywordConfirmation(keyword)}
-                            title="Confirm evidence before adding this keyword."
+                            title="Confirm evidence before adding this keyword"
                             type="button"
                           >
                             ! {keyword}
@@ -788,9 +943,12 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                       </div>
                     </div>
                   )}
-                  {keywordConfirmationStatus && <p aria-live="polite" className="mt-2 text-xs text-muted">{keywordConfirmationStatus}</p>}
-                  {missingKw.length === 0 && (
-                    <p className="text-xs font-medium text-success">All keywords covered!</p>
+
+                  {keywordConfirmationStatus && (
+                    <p aria-live="polite" className="text-xs text-muted">{keywordConfirmationStatus}</p>
+                  )}
+                  {kwStrength.exact.length === keywordTotal && keywordTotal > 0 && (
+                    <p className="text-xs font-medium text-success">All keywords present as exact phrases — strong ATS coverage.</p>
                   )}
                 </div>
               )}
@@ -941,17 +1099,26 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
         <div className="hidden flex-col bg-surface lg:flex">
           <div className="flex items-center justify-between border-b border-border px-4 py-2">
             <span className="text-xs text-muted">Preview</span>
-            <button
-              className="rounded px-2 py-1 text-xs text-muted hover:bg-border hover:text-ink transition-colors"
-              onClick={refreshPreview}
-              type="button"
-            >
-              ↻ Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              {activeHighlightKeyword && (
+                <span className="text-xs text-success font-medium">
+                  Highlighting: {activeHighlightKeyword}
+                </span>
+              )}
+              <button
+                className="rounded px-2 py-1 text-xs text-muted hover:bg-border hover:text-ink transition-colors"
+                onClick={refreshPreview}
+                type="button"
+              >
+                ↻ Refresh
+              </button>
+            </div>
           </div>
           <iframe
+            ref={iframeRef}
             className="min-h-0 flex-1 w-full border-0"
-            srcDoc={previewHtml}
+            onLoad={postHighlight}
+            srcDoc={previewHtml.replace("</body>", HIGHLIGHT_SCRIPT + "</body>")}
             title="Resume preview"
           />
         </div>

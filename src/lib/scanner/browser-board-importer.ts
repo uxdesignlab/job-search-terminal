@@ -397,7 +397,9 @@ function stableJobId(source: BrowserBoardSource, url: string): string {
             ? "gd"
             : source === "indeed"
               ? "ind"
-              : "mon";
+              : source === "adzuna"
+                ? "adz"
+                : "mon";
   const stableInput = source === "linkedin" ? url : `${source}:${url}`;
   return `${prefix}-${createHash("sha1").update(stableInput).digest("hex").slice(0, 16)}`;
 }

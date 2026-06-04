@@ -6,7 +6,7 @@ import { evaluateJob } from "../evaluation/job-evaluator";
 import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
-import { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
+import { keywordCoverageFor, missingKeywordsFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
 import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics } from "./evidence-audit";
 
 export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
@@ -46,19 +46,27 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
   const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
+  // Build evidence before the AI call so we can classify keywords into confirmed vs candidate.
+  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+
   if (hasAIKey) {
     try {
-      const missing = missingKeywordsFor(sourceDraft, evaluation.keywords);
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, missing);
+      const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
+        evidenceTextForDraft(sourceDraft), evaluation.keywords
+      );
+      // Keywords whose words are already in the full evidence corpus → safe to use verbatim.
+      const confirmedKws = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
+      const notExactInDraft = [...partialInDraft, ...missingFromDraft];
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws);
     } catch (error) {
       fallbackReason = error instanceof Error ? error.message : String(error);
     }
   }
 
-  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+  const confirmedKwsForInjection = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
-  const verified = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const content = verified.draft;
+  const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
+  const content = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection);
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -89,8 +97,8 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     tailoringPlan,
     draftJson: JSON.stringify(content),
     baseResumeId: baseResume.id,
-    tailoringStatus: aiTailoring ? verified.audit.status : "source-only",
-    evidenceAuditJson: JSON.stringify(verified.audit),
+    tailoringStatus: aiTailoring ? reverted.audit.status : "source-only",
+    evidenceAuditJson: JSON.stringify(reverted.audit),
     fallbackReason
   };
 
@@ -140,19 +148,25 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
   const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
+  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+
   if (hasAIKey) {
     try {
-      const missing = missingKeywordsFor(sourceDraft, evaluation.keywords);
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, missing);
+      const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
+        evidenceTextForDraft(sourceDraft), evaluation.keywords
+      );
+      const confirmedKws = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
+      const notExactInDraft = [...partialInDraft, ...missingFromDraft];
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws);
     } catch (error) {
       fallbackReason = error instanceof Error ? error.message : String(error);
     }
   }
 
-  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+  const confirmedKwsForInjection = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
-  const verified = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const draft = verified.draft;
+  const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
+  const draft = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection);
   const keywordCoverage = keywordCoverageFor(draft, evaluation.keywords);
   const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
   const date = new Date().toISOString().slice(0, 10);
@@ -174,12 +188,12 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     tailoringPlan,
     draftJson: JSON.stringify(draft),
     baseResumeId: baseResume.id,
-    tailoringStatus: aiTailoring ? verified.audit.status : "source-only",
-    evidenceAuditJson: JSON.stringify(verified.audit),
+    tailoringStatus: aiTailoring ? reverted.audit.status : "source-only",
+    evidenceAuditJson: JSON.stringify(reverted.audit),
     fallbackReason,
   });
 
-  return { documentId, draft, tailoringStatus: aiTailoring ? verified.audit.status : "source-only", evidenceAudit: verified.audit, fallbackReason };
+  return { documentId, draft, tailoringStatus: aiTailoring ? reverted.audit.status : "source-only", evidenceAudit: reverted.audit, fallbackReason };
 }
 
 export async function createPdfForDocument(documentId: string, draft: ResumeTemplateInput): Promise<{ pdfUrl: string }> {
@@ -222,6 +236,32 @@ export async function createPdfForDocument(documentId: string, draft: ResumeTemp
 function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume" | "baseResumeId">, resumes: ResumeRecord[]) {
   return resumes.find((resume) => resume.id === doc.baseResumeId)
     ?? resumes.find((resume) => resume.name === doc.baseResume);
+}
+
+// After AI tailoring, inject any confirmed keywords that are still not present as exact phrases
+// directly into the skills list. This handles cases where the AI placed the concept correctly
+// but used a slight paraphrase. Only injects short phrases (≤3 words) to avoid awkward skill entries.
+function injectMissingConfirmedKeywordsIntoSkills(
+  draft: ResumeTemplateInput,
+  confirmedKeywords: string[]
+): ResumeTemplateInput {
+  if (confirmedKeywords.length === 0) return draft;
+  const { partial: stillPartial, missing: stillMissing } = keywordStrengthDetailsForText(
+    evidenceTextForDraft(draft), confirmedKeywords
+  );
+  const toInject = [...stillPartial, ...stillMissing].filter((kw) => {
+    const wordCount = kw.trim().split(/\s+/).length;
+    return wordCount <= 3;
+  });
+  if (toInject.length === 0) return draft;
+  // keywordStrengthDetailsForText returns lowercased labels; restore original casing.
+  const originalCasing = new Map(confirmedKeywords.map((kw) => [kw.trim().toLowerCase(), kw.trim()]));
+  const existingSkillsLower = new Set(draft.skills.map((s) => s.toLowerCase()));
+  const newSkills = toInject
+    .map((kw) => originalCasing.get(kw.toLowerCase()) ?? kw)
+    .filter((kw) => !existingSkillsLower.has(kw.toLowerCase()));
+  if (newSkills.length === 0) return draft;
+  return { ...draft, skills: [...draft.skills, ...newSkills] };
 }
 
 function buildEvidenceText(

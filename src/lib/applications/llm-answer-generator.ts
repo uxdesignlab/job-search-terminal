@@ -7,6 +7,7 @@ import {
   getApplicationAnswerDrafts,
   getEvaluationByJobId,
   getJobById,
+  getJobGapResponses,
   getStories,
   getUserProfile,
   getWritingStyle,
@@ -30,6 +31,7 @@ export async function prepareApplicationAnswersWithAI(jobId: string, customQuest
   const profile = getUserProfile();
   const stories = getStories().slice(0, 5);
   const writingStyle = getWritingStyle();
+  const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
 
   const provider = getActiveProvider();
 
@@ -39,6 +41,10 @@ export async function prepareApplicationAnswersWithAI(jobId: string, customQuest
 
   const styleContext = writingStyle.toneProfile
     ? `\n\n${formatStyleForPrompt(writingStyle.toneProfile)}`
+    : "";
+
+  const gapContext = gapResponses.length > 0
+    ? `\n\nAddressed gaps and red flags (use these to strengthen answers where relevant — treat as verified evidence the candidate can speak to):\n${gapResponses.map((r) => `- Gap: "${r.gapText}"\n  Response: ${r.polishedResponse || r.rawResponse}`).join("\n")}`
     : "";
 
   const systemPrompt = `You are an experienced career coach helping a candidate write authentic, compelling job application answers. Your goal is to craft responses that sound genuinely human — not AI-generated — and are specific enough to earn an interview callback.
@@ -60,7 +66,7 @@ Compensation target: ${profile.compensationNeeds || "flexible"}
 Work preferences: ${profile.workPreferences.join(", ")}
 Role evaluation: ${evaluation.summary}
 Top strengths for this role: ${evaluation.strengths.slice(0, 4).join("; ")}
-Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyContext}${styleContext}`;
+Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyContext}${gapContext}${styleContext}`;
 
   const commonQuestions = [
     "Why are you interested in this role?",

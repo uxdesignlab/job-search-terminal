@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(
@@ -19,6 +21,7 @@ export async function POST(
     gapText: string;
     rawResponse?: string;
     polish?: boolean;
+    wasPolished?: boolean;
     confirmation?: {
       companies?: string[];
       explanation?: string;
@@ -53,10 +56,13 @@ export async function POST(
     return Response.json({ error: "Gap text and response are required" }, { status: 400 });
   }
 
-  const { saveJobGapResponse } = await import("@/lib/db/queries");
+  const { saveJobGapResponse, saveProfileSupplement } = await import("@/lib/db/queries");
   const { assessGapAnswer, assessmentToJson } = await import("@/lib/gaps/gap-answer-assessor");
 
   const id = `gap-${jobId}-${Buffer.from(body.gapText).toString("base64url").slice(0, 16)}`;
+  // Stable ID for the global experience bank — keyed on gap text, not job.
+  // SHA1 of the full gap text avoids the prefix-collision risk of truncated base64.
+  const globalId = `gap-evidence-${createHash("sha1").update(body.gapText).digest("hex")}`;
 
   const assessment = isKeywordConfirmation
     ? {
@@ -69,31 +75,63 @@ export async function POST(
     : await assessGapAnswer(body.gapText, rawResponse);
   let polishedResponse = "";
 
-  if (assessment.status === "addressed" && body.polish && rawResponse.trim()) {
-    try {
-      const { polishGapResponse } = await import("@/lib/gaps/llm-gap-polisher");
-      polishedResponse = await polishGapResponse(body.gapText, rawResponse);
-    } catch {
-      // Polish failure is non-fatal; raw response is still saved
+  if (assessment.status === "addressed" && rawResponse.trim()) {
+    if (body.wasPolished) {
+      // Content was already polished client-side via /api/gaps/polish; store as-is.
+      polishedResponse = rawResponse;
+    } else if (body.polish) {
+      try {
+        const { polishGapResponse } = await import("@/lib/gaps/llm-gap-polisher");
+        polishedResponse = await polishGapResponse(body.gapText, rawResponse);
+      } catch {
+        // Polish failure is non-fatal; raw response is still saved
+      }
     }
   }
 
-  saveJobGapResponse({
-    id,
-    jobId,
-    gapText: body.gapText,
-    rawResponse,
-    polishedResponse,
-    qualityStatus: assessment.status,
-    followUpQuestion: assessment.followUpQuestion,
-    assessment: assessmentToJson(assessment),
-  });
+  try {
+    saveJobGapResponse({
+      id,
+      jobId,
+      gapText: body.gapText,
+      rawResponse,
+      polishedResponse,
+      qualityStatus: assessment.status,
+      followUpQuestion: assessment.followUpQuestion,
+      assessment: assessmentToJson(assessment),
+    });
+  } catch (err) {
+    return Response.json(
+      { error: `Failed to save gap response: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 500 }
+    );
+  }
+
+  // Promote addressed responses to the global experience bank (non-fatal).
+  let savedToBank = false;
+  if (assessment.status === "addressed") {
+    const evidenceContent = (polishedResponse.trim() || rawResponse.trim());
+    if (evidenceContent) {
+      try {
+        saveProfileSupplement({
+          id: globalId,
+          content: evidenceContent,
+          tags: ["gap-evidence", body.gapText],
+          qualityStatus: "addressed",
+        });
+        savedToBank = true;
+      } catch {
+        // Non-fatal — job-specific record is already saved above.
+      }
+    }
+  }
 
   return Response.json({
     polishedResponse,
     saved: true,
     qualityStatus: assessment.status,
     followUpQuestion: assessment.followUpQuestion,
+    savedToBank,
   });
 }
 
