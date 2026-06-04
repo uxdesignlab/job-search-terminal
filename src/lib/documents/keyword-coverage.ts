@@ -45,8 +45,56 @@ export type KeywordCoverageDetails = {
   percentage: number;
 };
 
+// Three-tier ATS coverage: exact phrase > partial word match > missing entirely.
+// "exact"   = the full phrase appears verbatim → ATS will reliably score this.
+// "partial" = individual terms appear but not as a phrase → ATS may miss it.
+// "missing" = not present at all.
+export type KeywordStrengthDetails = {
+  exact: string[];
+  partial: string[];
+  missing: string[];
+  total: number;
+  exactScore: number;   // % of keywords with full phrase — the honest ATS number
+  broadScore: number;   // % with exact OR partial — the loose legacy number
+};
+
 export function keywordCoverageFor(content: ResumeTemplateInput, keywords: string[]) {
   return keywordCoverageDetailsForText(extractTextValues(content), keywords).percentage;
+}
+
+export function keywordStrengthDetailsForText(text: string, keywords: string[]): KeywordStrengthDetails {
+  const normalizedText = normalizeForKeywordMatching(text);
+  const relevant = uniqueKeywordEntries(keywords);
+  if (relevant.length === 0) {
+    return { exact: [], partial: [], missing: [], total: 0, exactScore: 0, broadScore: 0 };
+  }
+  const exact: string[] = [];
+  const partial: string[] = [];
+  const missing: string[] = [];
+  for (const entry of relevant) {
+    if (exactPhraseHit(normalizedText, entry.normalized)) {
+      exact.push(entry.label);
+    } else if (keywordHit(normalizedText, entry.normalized)) {
+      partial.push(entry.label);
+    } else {
+      missing.push(entry.label);
+    }
+  }
+  return {
+    exact,
+    partial,
+    missing,
+    total: relevant.length,
+    exactScore: Math.round((exact.length / relevant.length) * 100),
+    broadScore: Math.round(((exact.length + partial.length) / relevant.length) * 100),
+  };
+}
+
+// Whether a keyword phrase (or any of its "or"-alternatives) is present verbatim.
+export function isKeywordInText(text: string, keyword: string): boolean {
+  const normalizedText = normalizeForKeywordMatching(text);
+  const normalizedKeyword = normalizeForKeywordMatching(keyword);
+  return keywordHit(normalizedText, normalizedKeyword);
 }
 
 export function missingKeywordsFor(content: ResumeTemplateInput, keywords: string[]): string[] {
@@ -78,6 +126,17 @@ function extractTextValues(value: unknown): string {
     return Object.values(value as Record<string, unknown>).map(extractTextValues).join(" ");
   }
   return "";
+}
+
+// Exact phrase match only — no term-by-term fallback.
+function exactPhraseHit(normalizedText: string, normalizedKeyword: string): boolean {
+  if (!normalizedKeyword) return false;
+  if (containsPhrase(normalizedText, normalizedKeyword)) return true;
+  const alternatives = normalizedKeyword
+    .split(/\s+or\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return alternatives.some((alt) => containsPhrase(normalizedText, alt));
 }
 
 function keywordHit(normalizedText: string, normalizedKeyword: string): boolean {

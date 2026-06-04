@@ -142,7 +142,7 @@ Include: estimated base salary band for this role/seniority/location, total comp
 export type KeywordEntry = {
   keyword: string;
   priority: "required" | "preferred";
-  category: "technical" | "soft" | "domain" | "tool" | "methodology";
+  category: "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential";
 };
 
 type BlockEResult = {
@@ -161,10 +161,24 @@ Archetype: ${blockA.archetype} | Gaps: ${blockB.gaps.slice(0, 3).join("; ")}
 
 Create a CV/LinkedIn personalization roadmap. Return JSON:
 - "plan": up to 6 bullet strings — specific summary rewrites, bullet reorders, skills to emphasize, LinkedIn headline changes
-- "keywords": 10-15 ATS keyword objects extracted from the job posting, each with:
-  - "keyword": the exact term or phrase from the posting
-  - "priority": "required" if it appears in must-have or required qualifications, "preferred" if it is a nice-to-have or bonus
-  - "category": one of "technical" | "soft" | "domain" | "tool" | "methodology"`
+- "keywords": 20-25 ATS keyword objects. ATS systems do exact-phrase scanning — precision matters more than breadth.
+
+EXTRACTION RULES (follow strictly):
+1. Use the verbatim phrase from the job posting — never paraphrase or invent a synonym.
+2. ALWAYS include the target job title and its closest 1-2 variants as "title" category keywords (e.g. "Senior Product Designer", "Product Design Lead"). These carry the highest ATS weight.
+3. Extract every named tool, platform, certification, and framework exactly as written (Figma, Workday, AWS, PMP, etc.) — these are exact-match signals.
+4. Pull hard-skill phrases from Required/Qualifications sections; mark those "required".
+5. Pull soft-skill and context phrases from Preferred/Nice-to-have; mark those "preferred".
+6. For "X+ years of [skill]" requirements, extract the skill phrase (e.g. "product design leadership", "enterprise UX") — not the years number itself.
+7. Include domain phrases that distinguish this role from generic ones (e.g. "healthcare SaaS", "B2B enterprise", "design operations").
+8. Do NOT include standalone adjectives ("strong", "excellent") — only include them inside a meaningful phrase.
+9. Do NOT duplicate semantically identical phrases — pick the longer/more specific one.
+10. Aim for 20-25 keywords covering: title variants, hard skills, soft skills, tools, domain context, and methodology.
+
+Each keyword object:
+- "keyword": verbatim phrase (1-6 words; single-word tools/certs are fine)
+- "priority": "required" (in Required/Must-have section or stated multiple times) | "preferred" (Preferred/Nice-to-have or mentioned once)
+- "category": "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential"`
     }
   ];
   const raw = await provider.generateJSON<{ plan: string[]; keywords: unknown[] }>(messages, '{"plan":[],"keywords":[]}');
@@ -173,7 +187,7 @@ Create a CV/LinkedIn personalization roadmap. Return JSON:
     .map((k) => ({
       keyword: String((k as KeywordEntry).keyword),
       priority: (k as KeywordEntry).priority === "preferred" ? "preferred" : "required",
-      category: (["technical", "soft", "domain", "tool", "methodology"] as const).includes((k as KeywordEntry).category)
+      category: (["title", "technical", "soft", "domain", "tool", "methodology", "credential"] as const).includes((k as KeywordEntry).category)
         ? (k as KeywordEntry).category
         : "technical"
     }));

@@ -4,17 +4,21 @@ import {
   getEvaluationByJobId,
   getGeneratedDocumentById,
   getJobById,
+  getJobGapResponses,
   getUserProfile,
   saveApplicationAnswerDrafts
 } from "../db/queries";
 import type { ApplicationAnswerDraftInput, EvaluationRecord, JobRecord, UserProfileRecord } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
 
+type AddressedGap = { gapText: string; response: string };
+
 type AnswerContext = {
   job: JobRecord;
   evaluation: EvaluationRecord;
   profile: UserProfileRecord;
   generatedResumeTitle: string;
+  addressedGaps: AddressedGap[];
 };
 
 const commonQuestions = [
@@ -43,11 +47,13 @@ export function prepareApplicationAnswers(jobId: string, customQuestions: string
 
   const profile = getUserProfile();
   const generatedDocument = getGeneratedDocumentById(`document-${jobId}`);
+  const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
   const context: AnswerContext = {
     job,
     evaluation,
     profile,
-    generatedResumeTitle: generatedDocument?.title ?? "No generated resume is attached yet"
+    generatedResumeTitle: generatedDocument?.title ?? "No generated resume is attached yet",
+    addressedGaps: gapResponses.map((r) => ({ gapText: r.gapText, response: r.polishedResponse || r.rawResponse })),
   };
   const questions = [
     ...commonQuestions,
@@ -103,12 +109,15 @@ function whyRole({ job, evaluation }: AnswerContext) {
   return `I am interested in ${job.company}'s ${job.title} role because it aligns with the kind of strategic product and experience work I am prioritizing. The role appears to connect ${proof.toLowerCase()} with ${signal.toLowerCase()}. That combination is where I can bring senior product design judgment, systems thinking, and practical execution without treating the role as a generic design opening.`;
 }
 
-function whyFit({ job, evaluation }: AnswerContext) {
+function whyFit({ job, evaluation, addressedGaps }: AnswerContext) {
   const strengths = evaluation.strengths.slice(0, 3);
   const evidence = evaluation.resumeEvidence.slice(0, 2);
   const proof = [...strengths, ...evidence].slice(0, 4).join(" ");
+  const gapSuffix = addressedGaps.length > 0
+    ? ` I can also speak directly to ${addressedGaps[0].gapText}: ${firstSentence(addressedGaps[0].response)}.`
+    : "";
 
-  return `I am a strong fit for ${job.title} because my background maps directly to the role's core needs: ${proof || evaluation.summary}. I would bring a mix of product strategy, UX leadership, research-informed decision making, and design-system rigor, while staying focused on measurable product outcomes rather than presentation-only design work.`;
+  return `I am a strong fit for ${job.title} because my background maps directly to the role's core needs: ${proof || evaluation.summary}.${gapSuffix} I would bring a mix of product strategy, UX leadership, research-informed decision making, and design-system rigor, while staying focused on measurable product outcomes rather than presentation-only design work.`;
 }
 
 function aboutCandidate({ profile, evaluation }: AnswerContext) {
@@ -127,8 +136,16 @@ function workPreferences({ job, profile }: AnswerContext) {
 
 function customAnswer(context: AnswerContext, question: string) {
   const proof = [...context.evaluation.strengths, ...context.evaluation.resumeEvidence].slice(0, 3).join(" ");
+  const relevantGap = context.addressedGaps.find((g) =>
+    question.toLowerCase().includes(g.gapText.toLowerCase().split(" ").slice(0, 3).join(" "))
+  );
+  const gapNote = relevantGap
+    ? ` Relevant addressed gap: "${relevantGap.gapText}" — ${relevantGap.response}.`
+    : context.addressedGaps.length > 0
+    ? ` Addressed gaps available as supporting evidence: ${context.addressedGaps.map((g) => g.gapText).join(", ")}.`
+    : "";
 
-  return `For "${question}", I would answer by connecting the role's needs to the strongest saved evidence: ${proof || context.evaluation.summary}. I would keep the response specific to ${context.job.company}, avoid unsupported claims, and reference the tailored resume context: ${context.generatedResumeTitle}.`;
+  return `For "${question}", I would answer by connecting the role's needs to the strongest saved evidence: ${proof || context.evaluation.summary}.${gapNote} I would keep the response specific to ${context.job.company}, avoid unsupported claims, and reference the tailored resume context: ${context.generatedResumeTitle}.`;
 }
 
 function cleanQuestion(question?: string) {
@@ -145,5 +162,10 @@ function first(values: string[], fallback: string) {
 
 function hasAny(value: string, terms: string[]) {
   return terms.some((term) => value.includes(term));
+}
+
+function firstSentence(text: string, maxLength = 180): string {
+  const line = text.split(/[\n.!?]/)[0].trim();
+  return line.length <= maxLength ? line : `${line.slice(0, maxLength - 1)}…`;
 }
 

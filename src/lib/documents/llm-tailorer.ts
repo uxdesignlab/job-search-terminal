@@ -99,7 +99,47 @@ ${formatted}`;
 
 function buildMissingKeywordsBlock(missingKeywords: string[]): string {
   if (missingKeywords.length === 0) return "";
-  return `\n\nKeywords ABSENT from the current draft — weave in naturally where the source resume supports them, but do NOT fabricate:\n${missingKeywords.map((k) => `- ${k}`).join("\n")}`;
+  return `\n\nKeywords absent from current draft — prioritize weaving these in:\n${missingKeywords.map((k) => `- ${k}`).join("\n")}`;
+}
+
+function buildKeywordStrategyBlock(
+  allKeywords: string[],
+  confirmedKeywords: string[],
+  missingFromDraft: string[]
+): string {
+  const confirmedSet = new Set(confirmedKeywords.map((k) => k.toLowerCase()));
+  const missingSet = new Set(missingFromDraft.map((k) => k.toLowerCase()));
+
+  const confirmedList = confirmedKeywords;
+  const candidateList = allKeywords.filter((k) => !confirmedSet.has(k.toLowerCase()));
+  const confirmedMissing = confirmedKeywords.filter((k) => missingSet.has(k.toLowerCase()));
+
+  const parts: string[] = [];
+
+  if (confirmedList.length > 0) {
+    parts.push(
+      `### CONFIRMED keywords — MUST appear as exact verbatim phrases:\n` +
+      `These are verified in the candidate's evidence. You MUST include each one as an exact phrase somewhere in the output. ` +
+      `Weave them naturally — place domain/soft phrases in the summary, tools in skills or the relevant bullet, methodologies in context.\n` +
+      confirmedList.map((k) => `- ${k}`).join("\n")
+    );
+  }
+
+  if (candidateList.length > 0) {
+    parts.push(
+      `### CANDIDATE keywords — include only if source evidence clearly supports:\n` +
+      candidateList.map((k) => `- ${k}`).join("\n")
+    );
+  }
+
+  if (confirmedMissing.length > 0) {
+    parts.push(
+      `### Confirmed keywords ABSENT from current draft — highest priority to add:\n` +
+      confirmedMissing.map((k) => `- ${k}`).join("\n")
+    );
+  }
+
+  return parts.length > 0 ? `## ATS Keywords\n${parts.join("\n\n")}` : "";
 }
 
 function buildJobGapsBlock(gaps: string[], redFlags: string[]): string {
@@ -125,13 +165,16 @@ export async function tailorResumeWithAI(
   gapResponses?: GapResponseContext[],
   supplements?: SupplementContext[],
   skills?: SkillRecord[],
-  missingKeywords?: string[]
+  missingKeywords?: string[],
+  confirmedKeywords?: string[]
 ): Promise<TailoredResumeSections> {
   const provider = getActiveProvider();
-  // Required keywords first so the tailorer treats them with higher priority
-  const sortedKeywords = evaluation.keywords.slice(0, 12);
-  const keywordLines = buildKeywordsBlock(sortedKeywords);
-  const missingKeywordsBlock = buildMissingKeywordsBlock(missingKeywords ?? []);
+  const sortedKeywords = evaluation.keywords;
+  const confirmed = confirmedKeywords ?? [];
+  const keywordStrategyBlock = buildKeywordStrategyBlock(sortedKeywords, confirmed, missingKeywords ?? []);
+  // Legacy blocks kept for fallback path when no confirmed keywords are supplied
+  const keywordLines = confirmed.length === 0 ? buildKeywordsBlock(sortedKeywords) : "";
+  const missingKeywordsBlock = confirmed.length === 0 ? buildMissingKeywordsBlock(missingKeywords ?? []) : "";
   const jobGapsBlock = buildJobGapsBlock(evaluation.gaps ?? [], evaluation.redFlags ?? []);
   const strengthLines = buildStrengthsBlock(evaluation.strengths.slice(0, 4));
   const archetype = evaluation.roleArchetype;
@@ -177,9 +220,9 @@ STRICT RULES — violating any rule is a failure:
 8. Do NOT move content from one job role, project, company, or time period to another.
 9. Do NOT describe the candidate as having held the target job title unless that title or equivalent seniority/domain is clearly supported by the resume.
 10. Do NOT use vague hype such as "visionary," "world-class," "rockstar," "guru," "unparalleled," "proven track record," or "results-driven" unless the phrase is directly supported and still necessary.
-11. ATS keywords, candidate strengths, archetype, and gap responses are suggestions only. You must verify each one against the source resume or user-confirmed gap responses before using it.
-12. If fewer than 3 ATS keywords are genuinely supported, use fewer than 3. Truth beats keyword stuffing.
-13. If the source evidence is thin, write conservative language rather than stretching the candidate's background.
+11. CONFIRMED keywords (listed in the user message as CONFIRMED) are evidence-verified and MUST appear as exact verbatim phrases in the output. Find a natural home for each one — summary for domain/soft phrases, skills or the relevant bullet for tools. CANDIDATE keywords require your own verification against the source evidence; only use them if clearly supported.
+12. Truth still governs everything else: never invent metrics, company names, titles, scope, seniority, credentials, or dates not in the evidence. A CONFIRMED keyword's terms are already in the candidate's background — you may use the phrase — but do not manufacture surrounding claims to support it.
+13. If a CONFIRMED keyword cannot be woven in without distorting the meaning, place it in the skills list rather than forcing it into a bullet.
 14. Every rewritten section must be grounded solely in the candidate's actual background from the source resume and user-confirmed gap responses.
 
 STYLE RULES:
@@ -189,6 +232,14 @@ STYLE RULES:
 - Keep it specific, plain, and recruiter-readable.
 - Prefer concrete domains, tools, methods, outcomes, and scope when supported.
 - Use natural ATS language, not keyword dumping.
+
+ATS KEYWORD PLACEMENT STRATEGY (apply only when evidence supports it):
+- "required" category keywords (especially title and domain phrases) should appear in the SUMMARY when they describe the candidate's overall positioning.
+- Tool and methodology keywords belong in SKILLS or within the experience bullet where that tool was actually used.
+- Soft skill phrases (e.g. "cross-functional leadership") fit best in the summary or a high-impact bullet — not just the skills list.
+- Every "required" keyword that is genuinely supported should appear at least once as an EXACT PHRASE, not split across words or paraphrased. ATS systems do phrase-level matching.
+- If the job title or a close variant is supported by the candidate's background, work it into the summary naturally.
+- Aim for each supported required keyword to appear 1-2 times across the resume (once is enough for ATS; twice reinforces for human reviewers).
 
 USER TUNING PROMPT:
 ${userTuningPrompt}${styleContextBlock}${skillsPreferenceBlock}`
@@ -202,9 +253,7 @@ ${userTuningPrompt}${styleContextBlock}${skillsPreferenceBlock}`
 	Company: ${job.company}
 	Archetype: ${archetype}
 
-## Candidate Signals to Verify Before Use
-ATS keywords to consider (use only if supported by the source resume or gap responses):
-${keywordLines}${missingKeywordsBlock}
+${keywordStrategyBlock}${keywordLines ? `\n\nATS keywords to consider (use only if supported):\n${keywordLines}${missingKeywordsBlock}` : ""}
 
 Candidate strengths to consider (use only if supported):
 ${strengthLines}

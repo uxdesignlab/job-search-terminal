@@ -3,7 +3,7 @@ import { Shell } from "@/components/ui/shell";
 import { getGeneratedDocumentById, getEvaluationByJobId, getJobGapResponses, getProfileSupplements, getResumes } from "@/lib/db/queries";
 import { ResumeDraftEditor } from "@/components/resume-draft-editor";
 import type { ResumeTemplateInput } from "@/lib/documents/resume-template";
-import { keywordCoverageFor } from "@/lib/documents/keyword-coverage";
+import { keywordCoverageFor, isKeywordInText } from "@/lib/documents/keyword-coverage";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,7 @@ export default async function EditResumePage({ params }: EditPageProps) {
   const evidenceText = [lane?.extractedText ?? "", ...getProfileSupplements().filter((supplement) => supplement.qualityStatus === "addressed").map((supplement) => supplement.content), ...gapEvidence]
     .join(" ")
     .toLowerCase();
-  const supportedKeywords = (evaluation?.keywords ?? []).filter((keyword) => evidenceText.includes(keyword.toLowerCase()));
+  const supportedKeywords = (evaluation?.keywords ?? []).filter((keyword) => isKeywordInText(evidenceText, keyword));
 
   return (
     <Shell activeItem="Resumes">

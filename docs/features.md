@@ -217,12 +217,22 @@ Tabbed view for a single job. Four tabs:
   not inferred from skill abstractions alone.
 
 **ATS keyword extraction (Block E):**
-- Extracts 10–15 keywords from the job posting.
-- Each keyword carries a priority (`required` or `preferred`) based on which section
-  of the JD it appears in, and a category (`technical`, `soft`, `domain`, `tool`,
-  `methodology`).
-- Keywords are stored in priority order (required first) and used during resume
-  tailoring to rank emphasis decisions.
+- Extracts **20–25 keywords** per job posting using verbatim-phrase discipline:
+  the LLM is instructed to pull the exact phrasing from the JD, never paraphrase.
+- The target **job title and close variants** are always extracted first as `"title"`
+  category keywords — these carry the highest ATS weight and drive summary positioning.
+- Named tools, platforms, certifications, and frameworks are extracted exactly as written
+  (Figma, Workday, AWS, PMP, etc.) for exact-match ATS signals.
+- Hard-skill phrases from Required/Qualifications sections → `priority: "required"`.
+- Soft-skill and context phrases from Preferred/Nice-to-have → `priority: "preferred"`.
+- Domain context phrases (e.g. "healthcare SaaS", "B2B enterprise") are captured to
+  distinguish the role from generic postings.
+- For "X+ years of [skill]" requirements, the skill phrase itself is captured (not the
+  number) so it can be verified against the candidate's resume.
+- Categories: `"title"` | `"technical"` | `"soft"` | `"domain"` | `"tool"` |
+  `"methodology"` | `"credential"`.
+- Keywords are stored in priority order (required first, title category first within
+  required) and used during resume tailoring.
 
 ### Resume tab
 - Generate tailored resume for this job: picks best base resume, produces
@@ -234,7 +244,8 @@ Tabbed view for a single job. Four tabs:
 **Tailored resume AI context:**
 - Source resume full text (up to 5,000 chars) — the AI must verify every keyword
   and strength against this text before using it.
-- Evaluation keywords in priority order (required first, then preferred).
+- All evaluation keywords in priority order (required first, then preferred); the
+  previous cap of 12 has been removed — all 20-25 extracted keywords are passed.
 - **Missing keywords** — keywords absent from the pre-AI source draft are identified
   before the AI call and passed as a separate priority list so the AI knows exactly
   which terms to weave in where the source resume provides supporting evidence.
@@ -243,14 +254,60 @@ Tabbed view for a single job. Four tabs:
   specific shortfalls identified for this position, not just generic keyword coverage.
 - Evaluation strengths (top 4) as suggested emphasis signals.
 - Gap responses — user-supplied notes addressing identified experience gaps.
+  Gaps and red flags are addressed via a structured modal (see below).
 - Profile supplements — any extra context the user has added.
 - Gap answer quality checks — vague gap responses and supplements are saved as
   drafts with a follow-up question, and only confirmed answers are used during
   resume tailoring.
+
+**Gap addressing modal** (on the job Overview tab, "Gaps and red flags" card):
+- Clicking **Address** (or **Edit**) opens a modal instead of an inline form.
+- **Company checkboxes** — loaded from the user's resume experience entries via
+  `/api/resume-companies`; selecting companies pre-structures the response as
+  "At Company A, Company B: [description]".
+- **What did you do?** — editable textarea, prefilled by parsing the gap text
+  into a first-person statement (strips "The posting requires…" boilerplate,
+  extracts the core activity).
+- **Key metrics or outcomes** — optional single-line field; appended as
+  "Key results: …" in the saved response.
+- **Polish with AI** — sends the structured response for AI polishing and quality
+  assessment in one step; closes the modal when `qualityStatus === "addressed"`.
+- **Save** — saves raw without polish; also closes on "addressed".
+- If the AI returns `needs_followup`, the modal transitions to a follow-up step
+  showing the AI question and the saved response, with a textarea for more detail.
+- Escape key closes the modal.
+- Modal slides up from the bottom on mobile, centers on desktop.
 - Job description excerpt (up to 3,000 chars) — allows the AI to verify keyword
   context and understand requirement weight, not just the extracted keyword list.
 - Skills preference flags — skills the user wants to emphasize or de-emphasize
   (derived from `use_more` / `use_less` preference on each skill record).
+
+**Keyword placement strategy (added to tailoring prompt):**
+- "required" and title-category keywords that are supported by the candidate's evidence
+  should appear at least once as an exact verbatim phrase — ATS systems do phrase-level
+  matching, so split words don't reliably score.
+- Tool/methodology keywords belong in Skills or within the experience bullet where
+  that tool was actually used.
+- Soft-skill phrases fit best in the summary or a high-impact bullet.
+- The target job title or a close variant is worked into the summary when supported.
+- Aim for supported required keywords to appear 1-2 times (once for ATS; twice for
+  human reviewers).
+
+**Three-tier keyword coverage (resume draft editor):**
+The keyword panel in the draft editor classifies each keyword into one of three tiers:
+
+| Tier | Display | Meaning |
+|------|---------|---------|
+| **Exact phrase** | ✓ green chip | Full verbatim phrase present — ATS will reliably score this |
+| **Partial** | ~ amber chip | Individual terms present but not as a phrase — ATS may miss; add as exact phrase |
+| **Missing** | + or ! chip | Not found; either add to Skills (if evidence confirmed) or confirm evidence first |
+
+- The header score shows **ATS coverage %** (exact phrases only) — this is the
+  realistic number an ATS parser would produce.
+- Clicking any chip highlights the keyword in the preview panel (exact phrase = bright
+  yellow outline; term occurrences = faint yellow).
+- `supportedKeywords` detection uses the same phrase-aware matching algorithm as
+  coverage (previously used raw `string.includes()` which gave false positives).
 
 **Keyword coverage metric:**
 - For each evaluation keyword, first tries an exact phrase match in the resume text; if that
@@ -275,6 +332,13 @@ Tabbed view for a single job. Four tabs:
   - After answers return, the question inputs reset to a single empty row and
     the drafts list refreshes in place — no page reload is required to submit
     another batch of questions.
+  - **Gap responses flow into answer generation**: all gap and red flag
+    responses with `qualityStatus === "addressed"` are loaded and injected into
+    the AI system prompt as verified evidence. The AI uses polished responses
+    (or raw if no polish) to strengthen "why fit" and custom answers. The
+    template fallback (no AI key) surfaces the most relevant addressed gap in
+    the "why fit" answer and lists all gaps as supporting evidence for custom
+    questions.
 - Application status selector: move the job through the 11-status funnel.
 - Follow-up date picker.
 - Contact field.

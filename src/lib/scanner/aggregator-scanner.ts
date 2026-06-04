@@ -73,6 +73,16 @@ async function searchAdzuna(
   return data.results ?? [];
 }
 
+function adzunaStableUrl(redirectUrl: string): string {
+  try {
+    const u = new URL(redirectUrl);
+    u.search = "";
+    return u.toString();
+  } catch {
+    return redirectUrl;
+  }
+}
+
 function formatSalary(min?: number, max?: number): string {
   if (!min && !max) return "";
   if (min && max) return `$${Math.round(min / 1000)}k–$${Math.round(max / 1000)}k/yr`;
@@ -122,14 +132,19 @@ export async function runAggregatorScan(
           const adzunaId = String(job.id);
           if (seen.has(adzunaId)) continue;
           seen.add(adzunaId);
+          // Strip volatile query params (e.g. `v=<hash>`) from the redirect URL so the
+          // sourceUrl — and the stable job ID derived from it — stays the same across scans.
+          const stableSourceUrl = adzunaStableUrl(job.redirect_url);
           jobs.push({
             id: randomUUID(),
             company: job.company.display_name,
             position: job.title,
             jobDescription: job.description,
             url: job.redirect_url,
-            sourceUrl: job.redirect_url,
-            originalPostingUrl: "",
+            sourceUrl: stableSourceUrl,
+            // Full redirect URL (with volatile v= param) preserved as the navigable apply URL.
+            // prepareBrowserBoardJobs uses originalPostingUrl → externalUrl → url in DB.
+            originalPostingUrl: job.redirect_url,
             discoveredAt: new Date(job.created).toISOString(),
             location: job.location.display_name,
             salaryNotes: formatSalary(job.salary_min, job.salary_max),
