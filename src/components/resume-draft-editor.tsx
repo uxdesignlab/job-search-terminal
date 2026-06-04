@@ -257,13 +257,10 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
     return keywordStrengthDetailsForText(extractStateText(state), keywords);
   }, [state, keywords, keywordCoverage]);
 
-  const liveKeywordCoverage = kwStrength.broadScore;
   const keywordTotal = kwStrength.total;
   // All keywords not present as exact phrases or partial matches
   const missingKw = kwStrength.missing;
   const supportedKeywordSet = new Set([...supportedKeywords, ...confirmedKeywords].map((kw) => kw.toLowerCase()));
-  // Partial-match keywords supported by evidence — user should add as exact phrase
-  const partialSupportedKw = kwStrength.partial.filter((kw) => supportedKeywordSet.has(kw.toLowerCase()));
   const partialUnsupportedKw = kwStrength.partial.filter((kw) => !supportedKeywordSet.has(kw.toLowerCase()));
   // Missing keywords
   const missingSupportedKw = missingKw.filter((kw) => supportedKeywordSet.has(kw.toLowerCase()));

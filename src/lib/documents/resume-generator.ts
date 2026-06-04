@@ -6,7 +6,7 @@ import { evaluateJob } from "../evaluation/job-evaluator";
 import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
-import { keywordCoverageFor, missingKeywordsFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
+import { keywordCoverageFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
 import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics } from "./evidence-audit";
 
 export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
