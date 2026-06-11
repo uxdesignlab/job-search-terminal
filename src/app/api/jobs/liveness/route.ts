@@ -6,6 +6,14 @@ import type { JobRecord } from "@/lib/db/types";
 
 const CONCURRENCY = 6;
 
+/** Cap the wall-clock time for a single liveness check; resolve as uncertain on timeout. */
+async function withLivenessTimeout(promise: Promise<import("@/lib/scanner/liveness-checker").LivenessResult>, ms: number) {
+  const timeout = new Promise<import("@/lib/scanner/liveness-checker").LivenessResult>((resolve) =>
+    setTimeout(() => resolve({ status: "uncertain", reason: `timed out after ${ms}ms`, checkedAt: new Date().toISOString() }), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
 type LivenessJobSummary = {
   id: string;
   title: string;
@@ -85,9 +93,9 @@ async function checkJobs(jobs: JobRecord[], titleFilters: { positive: string[]; 
         continue;
       }
 
-      let result = await checkJobLiveness(job.url);
+      let result = await withLivenessTimeout(checkJobLiveness(job.url), 15_000);
       if (result.status === "uncertain" && job.originalPostingUrl && job.originalPostingUrl !== job.url) {
-        const fallback = await checkJobLiveness(job.originalPostingUrl);
+        const fallback = await withLivenessTimeout(checkJobLiveness(job.originalPostingUrl), 15_000);
         if (fallback.status !== "uncertain") result = fallback;
       }
       saveJobLiveness(job.id, result.status, result.reason);

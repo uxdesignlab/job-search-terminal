@@ -72,6 +72,8 @@ function fmtPostedCell(iso: string | null | undefined): string {
 
 export type BatchEvaluateFormProps = {
   jobs: MainJobTableRecord[];
+  onApproveReview?: (jobId: string) => Promise<void>;
+  onDismissReview?: (jobId: string) => Promise<void>;
 };
 
 const COL_DEFS: Array<{ col: SortCol; label: string }> = [
@@ -87,7 +89,7 @@ const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "source", label: "Source" },
 ];
 
-export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
+export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: BatchEvaluateFormProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [jobStatus, setJobStatus] = useState<Record<string, JobRowStatus>>({});
@@ -192,8 +194,12 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
       prev.size === displayJobs.length ? new Set() : new Set(displayJobs.map((j) => j.id))
     );
 
-  const evaluate = useCallback(async () => {
-    const ids = [...selected];
+  const failedJobIds = useMemo(
+    () => new Set(Object.entries(jobStatus).filter(([, s]) => s === "error").map(([id]) => id)),
+    [jobStatus],
+  );
+
+  const evaluateIds = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
     setRunning(true);
     for (const id of ids) {
@@ -219,7 +225,11 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     setRunning(false);
     setSelected(new Set());
     router.refresh();
-  }, [selected, router]);
+  }, [router]);
+
+  const evaluate = useCallback(() => evaluateIds([...selected]), [selected, evaluateIds]);
+
+  const retryFailed = useCallback(() => evaluateIds([...failedJobIds]), [failedJobIds, evaluateIds]);
 
   const bulkAction = useCallback(async (action: "skip" | "archive" | "delete") => {
     const ids = [...selected];
@@ -310,6 +320,11 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                 <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
                   Link
                 </th>
+                {(onApproveReview ?? onDismissReview) ? (
+                  <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
+                    Review
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -411,6 +426,36 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                         </a>
                       )}
                     </td>
+                    {(onApproveReview ?? onDismissReview) ? (
+                      <td className="py-3">
+                        {job.reviewStatus === "pending_review" ? (
+                          <div className="flex items-center gap-1.5">
+                            {onApproveReview && (
+                              <button
+                                type="button"
+                                disabled={isRunning}
+                                onClick={() => void onApproveReview(job.id)}
+                                className="rounded border border-success/40 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/8"
+                                title="Approve — move to normal pipeline"
+                              >
+                                Approve
+                              </button>
+                            )}
+                            {onDismissReview && (
+                              <button
+                                type="button"
+                                disabled={isRunning}
+                                onClick={() => void onDismissReview(job.id)}
+                                className="rounded border border-danger/40 px-2 py-0.5 text-xs font-medium text-danger hover:bg-danger/8"
+                                title="Dismiss — archive this job"
+                              >
+                                Dismiss
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
@@ -436,48 +481,59 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
       )}
 
       {/* Bulk action bar */}
-      {selectedCount > 0 && (
+      {(selectedCount > 0 || (!isRunning && failedJobIds.size > 0)) && (
         <div className="sticky bottom-4 mt-4 flex items-center justify-between rounded-panel border border-accent/40 bg-panel px-4 py-3 shadow-lg">
           <p className="text-sm font-medium text-ink">
-            {selectedCount} job{selectedCount !== 1 ? "s" : ""} selected
+            {selectedCount > 0
+              ? `${selectedCount} job${selectedCount !== 1 ? "s" : ""} selected`
+              : `${failedJobIds.size} evaluation${failedJobIds.size !== 1 ? "s" : ""} failed`}
           </p>
           <div className="flex gap-2">
-            <Button disabled={isRunning} onClick={evaluate} type="button">
-              {running ? "Evaluating…" : `Evaluate ${selectedCount}`}
-            </Button>
-            <Button
-              disabled={isRunning}
-              onClick={() => bulkAction("skip")}
-              type="button"
-              variant="quiet"
-            >
-              Skip
-            </Button>
-            <Button
-              disabled={isRunning}
-              onClick={() => bulkAction("archive")}
-              type="button"
-              variant="quiet"
-            >
-              Archive
-            </Button>
-            <Button
-              className="text-danger hover:bg-danger/8 hover:text-danger"
-              disabled={isRunning}
-              onClick={() => bulkAction("delete")}
-              type="button"
-              variant="quiet"
-            >
-              Delete
-            </Button>
-            <Button
-              disabled={isRunning}
-              onClick={() => setSelected(new Set())}
-              type="button"
-              variant="quiet"
-            >
-              Clear
-            </Button>
+            {failedJobIds.size > 0 && !isRunning && (
+              <Button onClick={retryFailed} type="button" variant="quiet" className="text-danger border-danger/40 hover:bg-danger/8 hover:text-danger">
+                Retry failed ({failedJobIds.size})
+              </Button>
+            )}
+            {selectedCount > 0 && (
+              <>
+                <Button disabled={isRunning} onClick={evaluate} type="button">
+                  {running ? "Evaluating…" : `Evaluate ${selectedCount}`}
+                </Button>
+                <Button
+                  disabled={isRunning}
+                  onClick={() => bulkAction("skip")}
+                  type="button"
+                  variant="quiet"
+                >
+                  Skip
+                </Button>
+                <Button
+                  disabled={isRunning}
+                  onClick={() => bulkAction("archive")}
+                  type="button"
+                  variant="quiet"
+                >
+                  Archive
+                </Button>
+                <Button
+                  className="text-danger hover:bg-danger/8 hover:text-danger"
+                  disabled={isRunning}
+                  onClick={() => bulkAction("delete")}
+                  type="button"
+                  variant="quiet"
+                >
+                  Delete
+                </Button>
+                <Button
+                  disabled={isRunning}
+                  onClick={() => setSelected(new Set())}
+                  type="button"
+                  variant="quiet"
+                >
+                  Clear
+                </Button>
+              </>
+            )}
           </div>
         </div>
       )}

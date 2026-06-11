@@ -12,17 +12,18 @@ Job Search Terminal is in early public development.
 - Improve resume tailoring controls
 - Improve accessibility and keyboard navigation
 
-## Next phase — Fresh search scanner
+## Fresh search scanner — mostly complete
 
 Add a hybrid fresh-job discovery lane modeled on the Google searches at
 [pavel.ux.business/24h](https://pavel.ux.business/24h/).
 
-- Run unattended Brave Search scans for jobs indexed in the past 24 hours.
-- Add an agent-assisted Chrome workflow for exact Google 12-hour searches.
-- Start with Greenhouse, Lever, Ashby, Workday, and jobs/careers subdomains.
-- Route confidently parsed jobs through the existing local import, freshness,
+- ✅ Run unattended Brave Search scans for jobs indexed in the past 24 hours.
+- ✅ Start with Greenhouse, Lever, Ashby, Workday, and jobs/careers subdomains.
+- ✅ Route confidently parsed jobs through the existing local import, freshness,
   dedupe, notification, and liveness pipeline.
-- Keep unresolved or low-confidence links in a local review queue.
+- ✅ Low-confidence imports (missing/short description) land in a review queue
+  on the Jobs page — Approve to keep, Dismiss to archive.
+- Add an agent-assisted Chrome workflow for exact Google 12-hour searches (partial — documented in CLAUDE.md).
 - Preserve the local-first boundary: never auto-apply, click Apply, or send job
   data anywhere except the configured search API and local dashboard.
 

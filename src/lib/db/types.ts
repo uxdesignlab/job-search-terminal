@@ -82,6 +82,7 @@ export type JobRecord = {
   livenessStatus: string;
   livenessCheckedAt: string;
   scopeStatus: string;
+  reviewStatus: "none" | "pending_review";
   archived: boolean;
   isDuplicate: boolean;
   duplicateOf: string[] | null;

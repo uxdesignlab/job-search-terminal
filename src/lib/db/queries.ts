@@ -58,7 +58,15 @@ import type {
   ScanTrigger
 } from "./types";
 
-const parseJson = <T>(value: string): T => JSON.parse(value) as T;
+const parseJson = <T>(value: string | null | undefined, fallback?: T): T => {
+  if (value == null || value === "") return (fallback ?? null) as T;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    console.warn("[db] corrupt JSON column, returning fallback:", value.slice(0, 80));
+    return (fallback ?? null) as T;
+  }
+};
 
 const WORK_MODE_VALUES = new Set<WorkMode>(["remote", "hybrid", "onsite"]);
 
@@ -119,6 +127,7 @@ type JobRow = {
   liveness_status: string;
   liveness_checked_at: string;
   scope_status: string;
+  review_status: string;
   archived: number;
   is_duplicate: number;
   duplicate_of: string | null;
@@ -1499,6 +1508,7 @@ export type BrowserBoardJobInput = {
   salaryNotes: string;
   isDuplicate: boolean;
   duplicateOf: string[] | null;
+  reviewStatus?: "none" | "pending_review";
 };
 
 export type LinkedInJobInput = Omit<
@@ -1517,7 +1527,7 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
       parsed_description, status, fit_score, role_archetype, recommendation,
       summary, why_it_matches, main_concern, recommended_resume, salary_notes,
       requirement_match_json, resume_evidence_json, gaps_json, red_flags_json,
-      is_duplicate, duplicate_of
+      is_duplicate, duplicate_of, review_status
     ) values (
       @id, @company, @title, @url, @sourceUrl, @originalPostingUrl, @originalPostingKey, @source, @location, @remoteType,
       @datePosted, @firstSeenDate, @freshnessLabel, @rawDescription,
@@ -1526,7 +1536,7 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
       'Pending evaluation against profile, resume lanes, and constraints.',
       'Not evaluated yet.', 'To be selected', @salaryNotes,
       '[]', '[]', '[]', '[]',
-      @isDuplicate, @duplicateOf
+      @isDuplicate, @duplicateOf, @reviewStatus
     )`
   );
 
@@ -1541,7 +1551,8 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
         summary: `Discovered via ${sourceNameForSummary(job.source)} browser scan. Evaluate this role before acting.`,
         salaryNotes: job.salaryNotes || "Not captured by scanner.",
         isDuplicate: job.isDuplicate ? 1 : 0,
-        duplicateOf: job.duplicateOf ? JSON.stringify(job.duplicateOf) : null
+        duplicateOf: job.duplicateOf ? JSON.stringify(job.duplicateOf) : null,
+        reviewStatus: job.reviewStatus ?? "none"
       });
       if (Number(result.changes) > 0) {
         inserted++;
@@ -1809,6 +1820,7 @@ function mapJob(row: JobRow): JobRecord {
     livenessStatus: row.liveness_status ?? "",
     livenessCheckedAt: row.liveness_checked_at ?? "",
     scopeStatus: row.scope_status ?? "",
+    reviewStatus: (row.review_status === "pending_review" ? "pending_review" : "none") as "none" | "pending_review",
     archived: (row.archived ?? 0) === 1,
     isDuplicate: (row.is_duplicate ?? 0) === 1,
     duplicateOf: row.duplicate_of ? (parseJson<string[]>(row.duplicate_of)) : null
@@ -2382,6 +2394,19 @@ export function saveJobScopeStatus(id: string, scopeStatus: string) {
   getDatabase()
     .prepare("update jobs set scope_status = @scopeStatus where id = @id")
     .run({ id, scopeStatus });
+}
+
+export function setJobReviewStatus(id: string, status: "none" | "pending_review") {
+  getDatabase()
+    .prepare("update jobs set review_status = @status where id = @id")
+    .run({ id, status });
+}
+
+export function getReviewQueueCount(): number {
+  const row = getDatabase()
+    .prepare("select count(*) as n from jobs where review_status = 'pending_review' and archived = 0")
+    .get() as { n: number };
+  return row.n;
 }
 
 export function getScanSourceOverrides(): Record<string, boolean> {

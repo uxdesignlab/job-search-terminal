@@ -17,6 +17,7 @@ export function getDatabase() {
 
     db = new Database(databasePath);
     db.pragma("journal_mode = WAL");
+    db.pragma("busy_timeout = 5000");
     db.pragma("foreign_keys = ON");
     migrateDatabase(db);
     seedDatabaseIfEmpty(db);
@@ -57,6 +58,7 @@ export function getRawDatabase() {
   }
   const database = new Database(databasePath);
   database.pragma("journal_mode = WAL");
+  database.pragma("busy_timeout = 5000");
   database.pragma("foreign_keys = ON");
   return database;
 }
