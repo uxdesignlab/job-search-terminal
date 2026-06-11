@@ -107,7 +107,7 @@ If you don't see the notification, navigate to `/jobs` manually — the table wi
 
 If the automatic import does not trigger (for example, if Job Search Terminal was not running during the scan), you can import manually:
 
-**Option 1 — Restart the dev server.** The file watcher starts when the Next.js server starts. Any unprocessed `.json` files in `data/job-board-imports/` or the legacy `data/linkedin-imports/` directory will be picked up automatically.
+**Option 1 — Restart the dev server.** The file watcher performs a startup sweep on every launch: it scans both `data/job-board-imports/` and the legacy `data/linkedin-imports/` directory for any `.json` files that were dropped while the server was offline and imports them automatically. You do not need to do anything extra — just start the server and the files will be processed.
 
 **Option 2 — API trigger.** With the server running, call:
 ```bash
@@ -192,7 +192,7 @@ This is expected if you ran a scan that covered the same roles as a previous sca
 
 **The file watcher missed a file**
 
-This can happen if the file was placed in the import directory before the server started, or if the `.tmp` rename took longer than 200ms. Use the manual import API to process it:
+This should not happen with a running server — the watcher performs a startup sweep on launch and picks up files dropped while the server was offline. If a file is still not imported after restarting the server, use the manual import API:
 ```bash
 curl -X POST http://localhost:3000/api/job-board/import
 ```
