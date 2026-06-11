@@ -18,8 +18,9 @@ The Shell header provides two navigation groups:
 
 The Account menu shows a live AI provider health dot:
 - Green: active provider has a key configured
-- Yellow: a key exists but the active provider's key is missing
-- Red: no AI keys configured at all
+- Red: no key configured for the active provider
+
+(The documented yellow/partial state is not yet implemented; the indicator shows green or red only.)
 
 The app redirects `/` to `/dashboard` on load.
 The app also serves `/favicon.ico` (redirected to the shared `logo.svg`) so
@@ -160,6 +161,12 @@ status, posting maintenance, and bulk tools.
   parseable calendar date (no em dash or placeholder text).
 - Text search across company and title.
 - Bulk operations: change status on multiple jobs, archive, or delete in bulk.
+  Select jobs with the row checkboxes, then use the bulk action bar:
+  - **Evaluate selected** — runs AI evaluation on all selected jobs in sequence.
+    A per-row progress indicator shows `Pending`, `Evaluating`, `Done`, or `Error`.
+  - **Retry failed (N)** — appears after a batch run if any jobs returned an
+    evaluation error. Re-runs evaluation only on the jobs that failed, without
+    re-evaluating already-successful ones.
 - Marking a job **Skipped** (individually or in bulk) removes it from this list
   immediately — it is auto-archived and moves to the Archived page.
 - Bulk delete asks for confirmation. If selected jobs have user activity, the
@@ -177,6 +184,12 @@ status, posting maintenance, and bulk tools.
 - **Saved filter presets** — name and save up to 5 filter+sort combinations as
   reusable chips above the table. Presets are persisted to the database and
   survive page reloads. Click a chip to re-apply; click × to delete.
+- **Review queue banner** — when low-confidence imports are present (jobs with a
+  description under 100 characters), a yellow banner appears at the top of the
+  Jobs page showing the count of jobs pending review. Per-row **Approve** and
+  **Dismiss** buttons let you promote a low-confidence job into the normal
+  pipeline (clears `review_status`) or archive it. The banner auto-hides when
+  the queue is empty.
 
 ---
 
@@ -708,9 +721,9 @@ The app supports three AI providers interchangeably:
 
 | Provider | Default model | Used for |
 |---|---|---|
-| OpenAI | `gpt-5.4-mini` | Evaluation, answers, outreach, research, transcription |
+| OpenAI | `gpt-4o` | Evaluation, answers, outreach, research, transcription |
 | Anthropic | `claude-sonnet-4-6` | Evaluation, answers, outreach, research |
-| Google Gemini | `gemini-2.5-flash` | Evaluation, answers, outreach, research, transcription |
+| Google Gemini | `gemini-2.0-flash` | Evaluation, answers, outreach, research, transcription |
 
 The active provider is set in Settings. If the active provider fails, a fallback
 provider can be configured. All AI calls use the `src/lib/ai/` provider
