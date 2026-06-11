@@ -136,6 +136,8 @@ export function prepareBrowserBoardJobs(
 
     addDedupKeys({ dedup, id: stableJobId(scan.source, sourceUrl || url), url, originalPostingUrl, originalPostingKey, company, title, location });
 
+    const rawDescription = (stringValue(raw.jobDescription) || stringValue(raw.description)).trim();
+
     jobs.push({
       id: stableJobId(scan.source, sourceUrl || url),
       company,
@@ -146,12 +148,13 @@ export function prepareBrowserBoardJobs(
       originalPostingKey,
       source: browserBoardSourceToScanType(scan.source),
       location,
-      rawDescription: (stringValue(raw.jobDescription) || stringValue(raw.description)).trim(),
+      rawDescription,
       datePosted,
       firstSeenDate: stringValue(raw.discoveredAt)?.slice(0, 10) || firstSeenDate,
       salaryNotes: stringValue(raw.salaryNotes) || "Not captured by scanner.",
       isDuplicate,
-      duplicateOf: isDuplicate ? duplicateOf : null
+      duplicateOf: isDuplicate ? duplicateOf : null,
+      reviewStatus: rawDescription.length < 100 ? "pending_review" : "none"
     });
   }
 

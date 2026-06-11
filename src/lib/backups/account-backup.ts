@@ -12,6 +12,82 @@ import { migrations } from "@/lib/db/schema";
 const MAGIC = Buffer.from("JSTBACKUP1");
 const MANIFEST_PATH = "manifest.json";
 const DATABASE_ARCHIVE_PATH = "database/job-search-terminal.sqlite";
+
+const RECOVERY_MARKER_PATH = path.join(process.cwd(), "data", ".restore-recovery.json");
+
+type RecoveryMarker = { rollbackArchivePath: string; startedAt: string };
+
+function writeRecoveryMarker(rollbackArchivePath: string) {
+  const marker: RecoveryMarker = { rollbackArchivePath, startedAt: new Date().toISOString() };
+  mkdirSync(path.dirname(RECOVERY_MARKER_PATH), { recursive: true });
+  writeFileSync(RECOVERY_MARKER_PATH, JSON.stringify(marker), "utf-8");
+}
+
+function clearRecoveryMarker() {
+  try { rmSync(RECOVERY_MARKER_PATH, { force: true }); } catch { /* best effort */ }
+}
+
+/**
+ * Called at startup. If a recovery marker exists, the previous restore was interrupted.
+ * Check whether the database is healthy: if so, the restore likely completed and we just
+ * delete the stale marker. If the database is missing or unreadable, apply the rollback
+ * archive so the app returns to its pre-restore state.
+ */
+export function checkAndHandleRecoveryMarker() {
+  if (!existsSync(RECOVERY_MARKER_PATH)) return;
+  let marker: RecoveryMarker;
+  try {
+    marker = JSON.parse(readFileSync(RECOVERY_MARKER_PATH, "utf-8")) as RecoveryMarker;
+  } catch {
+    clearRecoveryMarker();
+    return;
+  }
+
+  const dbPath = getDatabasePath();
+  let dbHealthy = false;
+  if (existsSync(dbPath)) {
+    try {
+      const db = new Database(dbPath, { readonly: true });
+      db.prepare("select 1").get();
+      db.close();
+      dbHealthy = true;
+    } catch { /* fall through */ }
+  }
+
+  if (dbHealthy) {
+    console.warn("[restore] Recovery marker found but database is healthy — stale marker, removing.");
+    clearRecoveryMarker();
+    return;
+  }
+
+  console.error("[restore] Recovery marker found and database is unhealthy — applying rollback archive:", marker.rollbackArchivePath);
+  if (!existsSync(marker.rollbackArchivePath)) {
+    console.error("[restore] Rollback archive not found:", marker.rollbackArchivePath);
+    clearRecoveryMarker();
+    return;
+  }
+  try {
+    const rollbackDb = path.join(path.dirname(marker.rollbackArchivePath), ".rollback-db.sqlite");
+    // Extract just the database from the rollback archive using raw copy heuristic:
+    // The rollback is a folder-based swap root, not a .jst-backup. Copy the db directly.
+    const possibleDbPaths = [
+      path.join(marker.rollbackArchivePath, "database", "job-search-terminal.sqlite"),
+      path.join(marker.rollbackArchivePath, path.relative(process.cwd(), dbPath)),
+    ];
+    const src = possibleDbPaths.find(existsSync);
+    if (src) {
+      mkdirSync(path.dirname(dbPath), { recursive: true });
+      copyFileSync(src, rollbackDb);
+      renameSync(rollbackDb, dbPath);
+      console.warn("[restore] Rollback applied successfully from:", src);
+    } else {
+      console.error("[restore] Could not locate database inside rollback archive.");
+    }
+  } catch (e) {
+    console.error("[restore] Rollback failed:", e);
+  }
+  clearRecoveryMarker();
+}
 export const MAX_ACCOUNT_BACKUP_ARCHIVE_BYTES = 1024 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 1024 * 1024 * 1024;
 const MAX_ARCHIVE_FILES = 10_000;
@@ -533,6 +609,7 @@ export async function applyStagedRestore(token: string) {
     const restoredResumeAssets = validateIncomingDatabase(preparedDatabasePath);
     copyPreparedManagedFiles(staged, preparedRoot, restoredResumeAssets);
 
+    writeRecoveryMarker(rollback.filename);
     if (staged.root === process.cwd()) closeDatabase();
     rmSync(`${activeDatabasePath}-wal`, { force: true });
     rmSync(`${activeDatabasePath}-shm`, { force: true });
@@ -541,6 +618,7 @@ export async function applyStagedRestore(token: string) {
     } finally {
       if (staged.root === process.cwd()) getDatabase();
     }
+    clearRecoveryMarker();
     stagedRestores.delete(token);
     discardStagedRestore(staged);
     return { rollbackFilename: rollback.filename };

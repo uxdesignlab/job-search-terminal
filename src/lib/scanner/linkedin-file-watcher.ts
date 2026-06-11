@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, watch } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, watch } from "node:fs";
 import path from "node:path";
 import {
   getBrowserBoardImportDirectory,
@@ -22,8 +22,46 @@ export function startBrowserBoardFileWatcher() {
   watchDirectory(getBrowserBoardImportDirectory(), BROWSER_BOARD_FILE_PATTERN);
 }
 
+async function processFile(filePath: string, legacySource?: "linkedin") {
+  try {
+    await importBrowserBoardJobs(filePath, legacySource ? { source: legacySource } : {});
+  } catch (e) {
+    try {
+      const { logActivity } = await import("@/lib/db/queries");
+      logActivity("browser-board-import", "watcher-error", `File watcher error: ${String(e)}`, {});
+    } catch {
+      // Ignore secondary logging failure
+    }
+  }
+}
+
+/**
+ * Wait until the file size stabilises across two consecutive stat calls ~250ms apart.
+ * This guards against reading a file that is still being written directly (i.e. without
+ * the recommended .tmp → rename pattern). Returns false if the file disappears or we
+ * exhaust all retries without a stable size.
+ */
+async function waitForFileStable(filePath: string, maxRetries = 4): Promise<boolean> {
+  let prevSize = -1;
+  for (let i = 0; i < maxRetries; i++) {
+    await new Promise<void>((r) => setTimeout(r, 250));
+    if (!existsSync(filePath)) return false;
+    const size = statSync(filePath).size;
+    if (size > 0 && size === prevSize) return true;
+    prevSize = size;
+  }
+  return existsSync(filePath) && statSync(filePath).size === prevSize && prevSize > 0;
+}
+
 function watchDirectory(watchDir: string, filePattern: RegExp, legacySource?: "linkedin") {
   if (!existsSync(watchDir)) mkdirSync(watchDir, { recursive: true });
+
+  // Sweep for files that arrived while the app was stopped so nothing is silently missed.
+  for (const filename of readdirSync(watchDir)) {
+    if (!filename.endsWith(".tmp") && filePattern.test(filename)) {
+      void processFile(path.join(watchDir, filename), legacySource);
+    }
+  }
 
   const watcher = watch(watchDir, (_, filename) => {
     if (!filename) return;
@@ -32,22 +70,12 @@ function watchDirectory(watchDir: string, filePattern: RegExp, legacySource?: "l
 
     const filePath = path.join(watchDir, filename);
 
-    // Small delay to let the rename fully complete before reading
-    setTimeout(() => {
-      void (async () => {
-        if (!existsSync(filePath)) return;
-        try {
-          await importBrowserBoardJobs(filePath, legacySource ? { source: legacySource } : {});
-        } catch (e) {
-          try {
-            const { logActivity } = await import("@/lib/db/queries");
-            logActivity("browser-board-import", "watcher-error", `File watcher error: ${String(e)}`, {});
-          } catch {
-            // Ignore secondary logging failure
-          }
-        }
-      })();
-    }, 200);
+    void (async () => {
+      if (!existsSync(filePath)) return;
+      const stable = await waitForFileStable(filePath);
+      if (!stable || !existsSync(filePath)) return;
+      await processFile(filePath, legacySource);
+    })();
   });
 
   watcher.on("error", (err) => {

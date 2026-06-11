@@ -700,5 +700,11 @@ export const migrations = [
     sql: `
       alter table generated_documents add column base_resume_id text not null default '';
     `
+  },
+  {
+    id: "0040_job_review_status",
+    sql: `
+      alter table jobs add column review_status text not null default 'none';
+    `
   }
 ];
