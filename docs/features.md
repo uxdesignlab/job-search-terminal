@@ -661,7 +661,12 @@ classification or rationale to correct AI judgments.
 
 The page has two tabs:
 
-- **Strategy** (default) — role-fit map, search focus, how-to-use guide, and evaluation corrections.
+- **Strategy** (default) — role-fit map, search focus, AI-generated role
+  directions, how-to-use guide, and evaluation corrections. Use **Generate with
+  AI** when no role directions exist, or **Regenerate with AI** to rebuild them
+  from the current profile and skill inventory. The app replaces the current
+  role-direction set after generation and keeps the editable correction workflow
+  below each direction.
 - **AI Prompts** — prompt overrides for resume tailoring, application answers, and outreach. Prompt overrides are stored locally and can be reset to the app defaults; locked resume-safety rules remain enforced in code.
 
 ---

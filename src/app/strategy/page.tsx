@@ -1,10 +1,11 @@
 import { revalidatePath } from "next/cache";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, Input, PageHeader, SubmitButton, Textarea } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton, Textarea } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
-import { getAIPromptOverrides, getEvaluationFeedback, getRoleDirections, getUserProfile, resetAIPromptOverride, saveAIPromptOverride, updateRoleDirection } from "@/lib/db/queries";
+import { getAIPromptOverrides, getEvaluationFeedback, getRoleDirections, getSkills, getUserProfile, replaceRoleDirections, resetAIPromptOverride, saveAIPromptOverride, updateRoleDirection } from "@/lib/db/queries";
 import type { AIPromptId } from "@/lib/db/types";
 import { PROMPT_DEFINITIONS } from "@/lib/ai/prompt-registry";
 import { splitListValue } from "@/lib/profile/intelligence";
+import { generateRoleDirections } from "@/lib/strategy/llm-role-direction-generator";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,16 @@ export default async function StrategyPage({
   const roleDirections = getRoleDirections();
   const feedback = getEvaluationFeedback();
   const promptOverrides = new Map(getAIPromptOverrides().map((prompt) => [prompt.promptId, prompt.customPrompt]));
+
+  async function generateRoleDirectionsAction() {
+    "use server";
+    const p = getUserProfile();
+    const s = getSkills();
+    const directions = await generateRoleDirections(p, s);
+    replaceRoleDirections(directions);
+    revalidatePath("/strategy");
+    revalidatePath("/dashboard");
+  }
 
   async function updateRoleDirectionAction(formData: FormData) {
     "use server";
@@ -187,6 +198,16 @@ export default async function StrategyPage({
           )}
 	        </div>
 
+        {/* Generate / regenerate */}
+        <form action={generateRoleDirectionsAction}>
+          <SubmitButton
+            label={roleDirections.length > 0 ? "Regenerate with AI" : "Generate with AI"}
+            pendingLabel="Generating…"
+            savedLabel="Generated ✓"
+            variant={roleDirections.length > 0 ? "secondary" : "primary"}
+          />
+        </form>
+
         {/* Role direction cards */}
         {roleDirections.length > 0 ? (
           <section className="grid gap-4 lg:grid-cols-2">
@@ -247,10 +268,12 @@ export default async function StrategyPage({
             ))}
           </section>
         ) : (
-          <EmptyState
-            description="Role directions are generated from your profile and resume evidence. Go to Profile and run extraction to populate this."
-            title="No role directions yet"
-          />
+          <div className="rounded-panel border border-dashed border-border bg-surface px-4 py-6" role="status">
+            <p className="text-sm font-semibold text-ink">No role directions yet</p>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Click &ldquo;Generate with AI&rdquo; above to build your role-fit map from your profile and skills.
+            </p>
+          </div>
         )}
 
         {/* How to use this */}
