@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { getAISettings, saveAISettings, upsertCompanyProfile } from "@/lib/db/queries";
 import type { AIProviderName } from "@/lib/db/types";
 
-/** Keys are masked as ••••XXXX before reaching the client. Detect the sentinel
- *  and keep the stored value intact rather than overwriting with the mask. */
+/** Keys are masked as ••••XXXX before reaching the client. Compare against the exact
+ *  masked representation rather than a prefix so a key that happens to start with ••••
+ *  is not mistaken for the sentinel. */
 function resolveKey(submitted: string, stored: string): string {
-  if (submitted.startsWith("••••")) return stored;
+  const masked = stored ? `••••${stored.slice(-4)}` : "";
+  if (submitted === masked) return stored;
   return submitted;
 }
 

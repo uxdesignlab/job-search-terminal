@@ -53,6 +53,7 @@ and initializes an empty local profile if the database is empty.
 | `0037_discovery_and_aggregator_keys` | Adds `brave_search_api_key`, `adzuna_app_id`, and `adzuna_api_key` to `ai_settings` to support search-based source discovery (Brave) and the Adzuna job aggregator scanner |
 | `0038_daily_scan_and_resume_audit` | Adds scheduled-scan freshness metadata and generated-resume evidence audit fields |
 | `0039_generated_document_resume_lane_id` | Adds stable resume-lane IDs to generated documents so lane renames do not break export |
+| `0040_job_review_status` | Adds `review_status` text column to `jobs` (default `'none'`) for the low-confidence review queue |
 
 ---
 
@@ -192,6 +193,7 @@ Every job discovered by scanning or added manually.
 | `liveness_checked_at` | ISO timestamp of last liveness check |
 | `scope_status` | Maintenance label such as `out_of_scope` when a verified active posting no longer matches saved title filters |
 | `archived` | 0 = active, 1 = archived |
+| `review_status` | `none` (default) or `pending_review` — set to `pending_review` by the importer when a job's raw description is under 100 characters (low-confidence import); cleared to `none` when the user approves the job from the review queue banner |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
 
@@ -560,6 +562,32 @@ npm run data:backup       # SQLite backup → output/backups/
 npm run data:export       # JSON export → output/exports/
 npm run discover:sources  # discover new job posting sources
 ```
+
+---
+
+## Runtime Files
+
+In addition to the SQLite database, the app maintains several files under `data/`:
+
+| Path | Purpose |
+|---|---|
+| `data/job-search-terminal.sqlite` | Primary database (excluded from git) |
+| `data/job-board-imports/` | Drop zone for browser-board JSON scan files; processed and archived automatically by the file watcher |
+| `data/job-board-imports/archive/YYYY-MM-DD/` | Successfully imported scan files, organized by date |
+| `data/linkedin-imports/` | Legacy LinkedIn-only import directory, still watched for backward compatibility |
+| `data/.restore-recovery.json` | Transient restore-recovery marker. Written by `applyStagedRestore` before the file swap begins and deleted after a successful swap. If this file exists when the server starts and the database is unhealthy, the server automatically rolls back to the rollback archive recorded in the marker. Normally absent. |
+
+**`data/.restore-recovery.json` schema:**
+```json
+{ "rollbackArchivePath": "path/to/rollback.jst-backup", "startedAt": "ISO timestamp" }
+```
+
+---
+
+## Notes on Schema Values
+
+**`generated_documents.document_type`:** Accepts `'resume'` or `'cover_letter'`.
+The `'cover_letter'` value is reserved in the schema but no current pipeline writes it — only tailored resumes are generated. It is available for a future cover-letter generation feature.
 
 ---
 

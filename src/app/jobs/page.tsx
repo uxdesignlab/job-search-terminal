@@ -2,11 +2,12 @@ import Link from "next/link";
 import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
-import { getJobs, getUserProfile } from "@/lib/db/queries";
+import { getJobs, getReviewQueueCount, getUserProfile } from "@/lib/db/queries";
 import { OUTSIDE_PREFERENCES_LABEL, buildJobPreferenceFilter } from "@/lib/jobs/preference-fit";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import { AddJobModal } from "@/components/AddJobModal";
 import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
+import { approveReviewAction, dismissReviewAction } from "./actions";
 import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
 import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
@@ -22,6 +23,7 @@ function toneForRecommendation(recommendation: string) {
 export default async function JobsPage() {
   const profile = getUserProfile();
   const preferenceFilter = buildJobPreferenceFilter(profile);
+  const reviewQueueCount = getReviewQueueCount();
   const jobs = getJobs().map((job) => {
     const preferenceDecision = preferenceFilter(job);
     return {
@@ -53,6 +55,15 @@ export default async function JobsPage() {
         />
 
         {jobs.length > 0 ? <JobMaintenancePanel jobCount={jobs.length} /> : null}
+
+        {reviewQueueCount > 0 ? (
+          <div className="flex items-center justify-between rounded-panel border border-warning/40 bg-warning/8 px-4 py-3 text-sm">
+            <span className="font-medium text-ink">
+              {reviewQueueCount} job{reviewQueueCount !== 1 ? "s" : ""} need{reviewQueueCount === 1 ? "s" : ""} review — short or missing description
+            </span>
+            <span className="text-muted text-xs">Approve to keep · Dismiss to archive</span>
+          </div>
+        ) : null}
 
         {jobs.length === 0 ? (
           <EmptyState
@@ -96,7 +107,11 @@ export default async function JobsPage() {
         {/* Desktop table with column filters + batch actions */}
         {jobs.length > 0 ? (
           <div className="hidden lg:block">
-            <BatchEvaluateForm jobs={jobs} />
+            <BatchEvaluateForm
+              jobs={jobs}
+              onApproveReview={approveReviewAction}
+              onDismissReview={dismissReviewAction}
+            />
           </div>
         ) : null}
       </div>
