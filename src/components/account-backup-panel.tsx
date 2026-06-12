@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui";
+import { Button, ProgressModal } from "@/components/ui";
 
 type Manifest = {
   createdAt: string;
@@ -128,39 +128,15 @@ export function AccountBackupPanel() {
         )}
       </section>
       {status && <p aria-live="polite" className="text-xs text-muted">{status}</p>}
-      {backupDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 px-4">
-          <section
-            aria-labelledby="backup-progress-title"
-            aria-modal="true"
-            className="w-full max-w-md rounded-panel border border-border bg-panel p-5 shadow-lg"
-            role="dialog"
-          >
-            <h3 className="text-base font-semibold text-ink" id="backup-progress-title">
-              {backupDialog.state === "working" ? "Creating account backup" : "Backup could not be created"}
-            </h3>
-            {backupDialog.state === "working" ? (
-              <div className="mt-4 flex items-start gap-3" role="status">
-                <svg aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-accent" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-                </svg>
-                <div>
-                  <p className="text-sm font-medium text-ink">{BACKUP_PHASES[backupPhase]}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted">Keep this window open while the local archive is prepared.</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                <p className="mt-3 text-sm leading-5 text-danger">{backupDialog.message}</p>
-                <div className="mt-4">
-                  <Button onClick={() => setBackupDialog(null)} variant="secondary">Close</Button>
-                </div>
-              </>
-            )}
-          </section>
-        </div>
-      )}
+      <ProgressModal
+        open={!!backupDialog}
+        phase={backupDialog?.state === "working" ? "running" : "done"}
+        title={backupDialog?.state === "working" ? "Creating account backup" : "Backup could not be created"}
+        message={BACKUP_PHASES[backupPhase]}
+        subtitle="Keep this window open while the local archive is prepared."
+        error={backupDialog?.state === "error" ? (backupDialog.message ?? "Backup failed.") : null}
+        onClose={() => setBackupDialog(null)}
+      />
     </div>
   );
 }

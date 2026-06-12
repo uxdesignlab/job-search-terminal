@@ -4,8 +4,10 @@ export * from "./card";
 export * from "./data-table-sort-filter";
 export * from "./empty-state";
 export * from "./input";
+export * from "./modal";
 export * from "./page-header";
 export * from "./progress-bar";
+export * from "./progress-modal";
 export * from "./select";
 // Shell is server-only (imports DB queries) — import directly from "@/components/ui/shell"
 export * from "./stat-card";

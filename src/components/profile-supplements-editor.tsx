@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge } from "@/components/ui";
+import { Badge, Modal } from "@/components/ui";
 
 type QualityStatus = "addressed" | "needs_followup";
 type Supplement = {
@@ -225,18 +225,35 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
       ) : (
         <p className="text-sm text-muted">No supplements added yet. Add context that strengthens your profile across all jobs.</p>
       )}
-      {followUp && (
-        <div
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-          role="dialog"
-        >
-          <div className="w-full max-w-lg rounded-panel bg-panel shadow-2xl">
-            <div className="border-b border-border px-5 py-4">
-              <h3 className="text-sm font-semibold text-ink">Add evidence detail</h3>
-              <p className="mt-1 text-sm text-muted">{followUp.question}</p>
-            </div>
-            <div className="grid gap-3 px-5 py-4">
+      <Modal
+        open={!!followUp}
+        onClose={() => setFollowUp(null)}
+        title="Add evidence detail"
+        description={followUp?.question}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
+              onClick={() => setFollowUp(null)}
+              type="button"
+            >
+              Later
+            </button>
+            <button
+              className="h-9 rounded-control border border-accent bg-accent px-3 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!followUp?.draft?.trim() || !!followUp?.saving}
+              onClick={handleSaveFollowUp}
+              type="button"
+            >
+              {followUp?.saving ? "Saving…" : "Save detail"}
+            </button>
+          </div>
+        }
+      >
+        <div className="grid gap-3 px-5 py-4">
+          {followUp && (
+            <>
               <div className="rounded-control border border-border bg-surface px-3 py-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Saved draft</p>
                 <p className="mt-1 text-sm leading-6 text-ink">{followUp.baseContent}</p>
@@ -249,27 +266,10 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
                 placeholder="Add the role, project, your action, and the result..."
                 value={followUp.draft}
               />
-            </div>
-            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
-              <button
-                className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
-                onClick={() => setFollowUp(null)}
-                type="button"
-              >
-                Later
-              </button>
-              <button
-                className="h-9 rounded-control border border-accent bg-accent px-3 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={followUp.saving || !followUp.draft.trim()}
-                onClick={handleSaveFollowUp}
-                type="button"
-              >
-                {followUp.saving ? "Saving…" : "Save detail"}
-              </button>
-            </div>
-          </div>
+            </>
+          )}
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

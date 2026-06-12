@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { AggregatorScanResult } from "@/lib/scanner/aggregator-scanner";
+import { ProgressModal } from "@/components/ui/progress-modal";
 
 type Props = {
   onScan: () => Promise<AggregatorScanResult>;
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
+  const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle");
   const [result, setResult] = useState<AggregatorScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -16,14 +18,22 @@ export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
   function handleScan() {
     setResult(null);
     setError(null);
+    setPhase("running");
     startTransition(async () => {
       try {
         const r = await onScan();
         setResult(r);
+        setPhase("done");
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
+        setPhase("error");
       }
     });
+  }
+
+  function closeModal() {
+    setPhase("idle");
+    setError(null);
   }
 
   if (!hasCredentials) {
@@ -34,8 +44,16 @@ export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
     );
   }
 
+  const resultText = result && result.status === "ok"
+    ? `Found ${result.totalFound} listings — ${result.imported} new, ${result.duplicates} duplicates.`
+    : result?.status === "no-credentials"
+      ? "Adzuna credentials not configured."
+      : result?.errors?.[0] ?? null;
+
+  const isError = phase === "error" || result?.status === "error" || result?.status === "no-credentials";
+
   return (
-    <div className="flex flex-col items-end gap-2">
+    <>
       <button
         type="button"
         onClick={handleScan}
@@ -44,17 +62,18 @@ export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
       >
         {isPending ? "Scanning…" : "Scan with Adzuna"}
       </button>
-      {result && result.status !== "no-credentials" && (
-        <p className="text-xs text-muted">
-          {result.status === "ok"
-            ? `Done — ${result.imported} new, ${result.duplicates} duplicates (${result.totalFound} found)`
-            : `Error: ${result.errors[0] ?? "Unknown error"}`}
-        </p>
-      )}
-      {result?.status === "no-credentials" && (
-        <p className="text-xs text-danger">Adzuna credentials not configured.</p>
-      )}
-      {error && <p className="text-xs text-danger">{error}</p>}
-    </div>
+
+      <ProgressModal
+        open={phase === "running" || phase === "done" || phase === "error"}
+        phase={phase === "running" ? "running" : "done"}
+        title="Scanning Adzuna"
+        message="Searching job boards for new listings…"
+        subtitle="Applying your title and location filters."
+        error={isError ? (error ?? resultText ?? "Scan failed") : null}
+        onClose={closeModal}
+      >
+        <p className="text-sm text-success">{resultText}</p>
+      </ProgressModal>
+    </>
   );
 }
