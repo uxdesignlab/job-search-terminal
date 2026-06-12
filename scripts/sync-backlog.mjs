@@ -10,19 +10,19 @@
  *   - **Milestone:** lines in item bodies → create milestone if needed, assign issue
  *
  * Usage:
- *   node scripts/sync-backlog.js            # live run
- *   node scripts/sync-backlog.js --dry-run  # print what would happen
+ *   node scripts/sync-backlog.mjs            # live run
+ *   node scripts/sync-backlog.mjs --dry-run  # print what would happen
  *
  * Requires: gh CLI authenticated with repo + issues:write scope.
  * In GitHub Actions the GITHUB_TOKEN env var is used automatically.
  */
 
-"use strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const { spawnSync } = require("node:child_process");
-const fs = require("node:fs");
-const path = require("node:path");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const REPO = "uxdesignlab/job-search-terminal";
 const BACKLOG_PATH = path.join(__dirname, "../docs/backlog.md");
