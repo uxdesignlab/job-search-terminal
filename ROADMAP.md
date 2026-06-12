@@ -56,6 +56,8 @@ approach.
 - Improved generated resume editor
 - More interview prep workflows
 - Optional import/export flows
+- **Jooble API integration** — add Jooble as a second job aggregator source alongside Adzuna; free API key, same scan-and-import pattern, covers a broad range of listings from across the web
+- **Lensa browser-board source** — add Lensa as a browser-assisted scan target (Claude Desktop); no public API exists, so agent-driven browsing is the only viable path
 
 ## Not planned
 
