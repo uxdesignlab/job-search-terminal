@@ -131,6 +131,19 @@ Files go in `data/job-board-imports/` and must match
 `<source>-jobs-<timestamp>.json`. The watcher ignores `.tmp` files, so agents
 must write a `.tmp` file first and rename it when complete.
 
+**Startup sweep.** On server start, `startBrowserBoardFileWatcher()` performs a
+one-time `readdirSync` sweep of both watched directories before registering
+`fs.watch`. Any `.json` files already present (e.g., dropped while the server
+was offline) are imported immediately through the same `processFile` path used
+by live events. This ensures no scan file is silently missed.
+
+**Partial-write resilience.** When `fs.watch` fires for a new `.json` file, the
+watcher does not read it immediately. Instead it polls `stat().size` up to 4
+times at ~250ms intervals and only proceeds once the file size has been stable
+for two consecutive reads and is non-zero. If the file fails `JSON.parse` (a
+writer that aborted mid-write), the file is left in place and logged via
+`logActivity`. A subsequent startup sweep or manual API call will retry it.
+
 Minimum job fields:
 
 ```json
