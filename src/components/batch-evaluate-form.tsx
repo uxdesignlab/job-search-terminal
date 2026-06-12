@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ProgressModal } from "@/components/ui/progress-modal";
 import {
   DataTableActiveFiltersSummary,
   DataTableColHeader,
@@ -93,6 +94,11 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
   const [jobStatus, setJobStatus] = useState<Record<string, JobRowStatus>>({});
   const [running, setRunning] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [evalModal, setEvalModal] = useState<{ open: boolean; phase: "running" | "done"; total: number; current: number; doneCount: number; errorCount: number }>({
+    open: false, phase: "running", total: 0, current: 0, doneCount: 0, errorCount: 0,
+  });
+  const evalModalRef = useRef(evalModal);
+  evalModalRef.current = evalModal;
   const [duplicateGroupFilter, setDuplicateGroupFilter] = useState<{ company: string; title: string } | null>(null);
   // Build default filter: exclude non-actionable statuses unless the user clears it
   const statusOptions = getMainJobColOptions(jobs, "status");
@@ -196,7 +202,12 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     const ids = [...selected];
     if (!ids.length) return;
     setRunning(true);
-    for (const id of ids) {
+    setEvalModal({ open: true, phase: "running", total: ids.length, current: 0, doneCount: 0, errorCount: 0 });
+    let doneCount = 0;
+    let errorCount = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      setEvalModal((prev) => ({ ...prev, current: i + 1 }));
       setJobStatus((s) => ({ ...s, [id]: "loading" }));
       try {
         const res = await fetch(`/api/evaluate/${id}`);
@@ -212,12 +223,15 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
           }
         }
         setJobStatus((s) => ({ ...s, [id]: "done" }));
+        doneCount++;
       } catch {
         setJobStatus((s) => ({ ...s, [id]: "error" }));
+        errorCount++;
       }
     }
     setRunning(false);
     setSelected(new Set());
+    setEvalModal((prev) => ({ ...prev, phase: "done", doneCount, errorCount }));
     router.refresh();
   }, [selected, router]);
 
@@ -255,7 +269,27 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
 
   const selectedCount = selected.size;
 
+  const evalStatusLine = evalModal.phase === "running" && evalModal.total > 1
+    ? `Job ${evalModal.current} of ${evalModal.total}`
+    : undefined;
+
   return (
+    <>
+    <ProgressModal
+      open={evalModal.open}
+      phase={evalModal.phase}
+      title={`Evaluating ${evalModal.total} job${evalModal.total !== 1 ? "s" : ""}`}
+      message="Running AI evaluation on each selected job…"
+      subtitle="Scores will update in the table once complete."
+      statusLine={evalStatusLine}
+      onClose={() => setEvalModal((prev) => ({ ...prev, open: false }))}
+    >
+      <p className="text-sm text-success">
+        {evalModal.doneCount} evaluated successfully
+        {evalModal.errorCount > 0 ? `, ${evalModal.errorCount} failed` : ""}.
+      </p>
+    </ProgressModal>
+
     <div className="relative">
       <Card>
         {(activeFilterCount > 0 ||
@@ -482,5 +516,6 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
         </div>
       )}
     </div>
+    </>
   );
 }

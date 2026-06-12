@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button } from "@/components/ui";
+import { ProgressModal } from "@/components/ui/progress-modal";
 
 type LivenessJobSummary = {
   id: string;
@@ -27,6 +28,7 @@ const UNTOUCHED_STATUS = "Found";
 export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
+  const [verifyPhase, setVerifyPhase] = useState<"idle" | "running" | "done" | "error">("idle");
   const [deleting, setDeleting] = useState(false);
   const [deletingOutOfScope, setDeletingOutOfScope] = useState(false);
   const [summary, setSummary] = useState<LivenessSummary | null>(null);
@@ -34,6 +36,7 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
 
   async function verifyPostings() {
     setRunning(true);
+    setVerifyPhase("running");
     setError(null);
     setSummary(null);
     try {
@@ -41,9 +44,11 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
       const payload = await response.json() as LivenessSummary | { error?: string };
       if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "Posting verification failed");
       setSummary(payload as LivenessSummary);
+      setVerifyPhase("done");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Posting verification failed");
+      setVerifyPhase("error");
     } finally {
       setRunning(false);
     }
@@ -106,7 +111,42 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
     }
   }
 
+  const verifyModalOpen = verifyPhase === "running" || verifyPhase === "done" || verifyPhase === "error";
+
   return (
+    <>
+    <ProgressModal
+      open={verifyModalOpen}
+      phase={verifyPhase === "running" ? "running" : "done"}
+      title="Verifying active postings"
+      message="Checking each posting link for liveness…"
+      subtitle="This may take a minute for large job lists."
+      error={verifyPhase === "error" ? (error ?? "Verification failed") : null}
+      onClose={() => setVerifyPhase("idle")}
+    >
+      {summary && (
+        <div className="grid gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="neutral">{summary.checked} checked</Badge>
+            <Badge tone="success">{summary.active} active</Badge>
+            <Badge tone="warning">{summary.uncertain} uncertain</Badge>
+            <Badge tone={summary.expiredUntouched.length > 0 ? "danger" : "neutral"}>
+              {summary.expiredUntouched.length} expired untouched
+            </Badge>
+            <Badge tone={summary.expiredProtected.length > 0 ? "warning" : "neutral"}>
+              {summary.expiredProtected.length} expired with activity
+            </Badge>
+            <Badge tone={summary.outOfScope.length > 0 ? "warning" : "neutral"}>
+              {summary.outOfScope.length} out of scope
+            </Badge>
+          </div>
+          {(summary.expiredUntouched.length > 0 || summary.outOfScope.length > 0) && (
+            <p className="text-xs text-muted">Close to review and take action on expired or out-of-scope jobs below.</p>
+          )}
+        </div>
+      )}
+    </ProgressModal>
+
     <section className="rounded-panel border border-border bg-panel">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
@@ -119,12 +159,6 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
           {running ? "Verifying..." : "Verify active postings"}
         </Button>
       </div>
-
-      {error && (
-        <p className="border-t border-border px-5 py-3 text-sm text-danger" role="alert">
-          {error}
-        </p>
-      )}
 
       {summary && (
         <div className="border-t border-border px-5 py-4">
@@ -228,5 +262,6 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
         </div>
       )}
     </section>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle, EmptyState } from "@/components/ui";
+import { ProgressModal } from "@/components/ui/progress-modal";
 import type { CompanyResearchRecord } from "@/lib/db/types";
 
 type AxisKey = "aiStrategy" | "recentMovements" | "engineeringCulture" | "technicalChallenges" | "competitivePosition" | "candidateAngle";
@@ -97,6 +98,7 @@ export function ResearchClient({ jobId, saved }: Props) {
   );
   const [currentLabel, setCurrentLabel] = useState("");
   const [error, setError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => () => { esRef.current?.close(); }, []);
@@ -106,6 +108,7 @@ export function ResearchClient({ jobId, saved }: Props) {
     setStatus("loading");
     setError("");
     setCurrentLabel("Researching company...");
+    setModalOpen(true);
 
     esRef.current?.close();
     const es = new EventSource(`/api/research/${jobId}`);
@@ -150,11 +153,27 @@ export function ResearchClient({ jobId, saved }: Props) {
     esRef.current?.close();
     setStatus("idle");
     setCurrentLabel("");
+    setError("");
+    setModalOpen(false);
   };
 
   const hasAny = AXIS_ORDER.some((k) => axes[k]);
 
   return (
+    <>
+    <ProgressModal
+      open={modalOpen}
+      phase={status === "loading" ? "running" : "done"}
+      title="Researching company"
+      message="Running 6-axis AI analysis…"
+      subtitle="Covers AI strategy, culture, recent news, competitive position, and your personal angle."
+      statusLine={status === "loading" ? currentLabel : undefined}
+      error={status === "error" ? (error || "Research failed") : null}
+      onClose={() => setModalOpen(false)}
+    >
+      <p className="text-sm text-success">Research complete — scroll down to read all six sections.</p>
+    </ProgressModal>
+
     <div className="grid gap-6">
       <Card>
         <CardHeader>
@@ -174,13 +193,9 @@ export function ResearchClient({ jobId, saved }: Props) {
           ) : (
             <Button onClick={stop} type="button" variant="secondary">Cancel</Button>
           )}
-          {status === "loading" && (
-            <span className="animate-pulse text-sm text-muted">{currentLabel}</span>
-          )}
           {status === "done" && <Badge tone="success">Research complete</Badge>}
-          {status === "error" && <Badge tone="warning">Error</Badge>}
+          {status === "error" && <Badge tone="warning">Error — {error}</Badge>}
         </div>
-        {error && <p className="mt-2 text-sm text-warning">{error}</p>}
       </Card>
 
       {AXIS_ORDER.map((axisKey) => {
@@ -203,5 +218,6 @@ export function ResearchClient({ jobId, saved }: Props) {
         );
       })}
     </div>
+    </>
   );
 }

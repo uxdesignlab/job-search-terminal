@@ -167,7 +167,15 @@ status, posting maintenance, and bulk tools.
 - Maintenance tool to verify posting liveness, confirm deletion for expired
   untouched jobs, and identify active jobs whose titles no longer match saved
   title filters. Out-of-scope cleanup only bulk-deletes untouched jobs; jobs with
-  user activity must be removed through explicit selected-job actions.
+  user activity must be removed through explicit selected-job actions. Clicking
+  **Verify active postings** opens a blocking `ProgressModal` while the liveness
+  check runs; on completion the modal shows a badge summary (checked / active /
+  uncertain / expired counts) and prompts the user to close and take action on
+  expired jobs in the section below.
+- **Bulk evaluate** — selecting jobs and clicking **Evaluate N** opens a blocking
+  `ProgressModal` that tracks per-job progress ("Job X of N") while the AI
+  evaluation streams for each selected job. On completion the modal shows how
+  many evaluated successfully and how many failed.
 - Add job manually via modal (paste URL or fill in details). Jobs added this
   way are stored with `source = 'manual'` and display a **Manual** badge in
   the Source column.
@@ -324,11 +332,12 @@ The keyword panel in the draft editor classifies each keyword into one of three 
 ### Apply tab
 - Prepare application answers: paste common or custom application questions,
   generate AI answers for copy-paste. App never auto-submits anything.
-  - Pressing **Prepare answers** opens a blocking progress modal ("Drafting
-    answers grounded in your resume and evaluation…") while the request is in
-    flight, mirroring the resume generator modal. The modal closes
-    automatically when drafts are ready and shows an inline error dialog with
-    a Close button if generation fails (questions are preserved).
+  - Pressing **Prepare answers** opens a blocking `ProgressModal` ("Drafting
+    answers grounded in your resume and evaluation…" + spinner) while the
+    request is in flight. On success the modal transitions to a done state
+    ("Answers prepared — scroll down to review them.") with a Close button. On
+    error it transitions to an error state with the failure message and a Close
+    button (questions are preserved).
   - After answers return, the question inputs reset to a single empty row and
     the drafts list refreshes in place — no page reload is required to submit
     another batch of questions.
@@ -353,9 +362,21 @@ AI-generated company intelligence:
 - Technical and organizational challenges
 - Candidate positioning angle
 
+Clicking **Start research** (or **Re-research**) opens a blocking progress modal
+("Researching company" + spinner) that streams a live status line as each of the
+six axes completes. On completion the modal shows "Research complete — scroll
+down to read all six sections." The modal cannot be dismissed while the request
+is in flight; the page-level **Cancel** button stops the stream and closes the
+modal, and an X button and Close button appear only in the done state.
+
 ### Outreach `/jobs/[id]/outreach`
 Generate a recruiter or hiring manager outreach message tailored to the job and
 user profile. Shows character count. User copies the message manually.
+
+Clicking **Generate messages** (or **Regenerate**) opens a blocking progress
+modal ("Generating outreach messages" + spinner). On success the modal shows "3
+messages ready — scroll down to copy and send them." The modal cannot be
+dismissed while the request is in flight.
 
 ---
 
@@ -545,7 +566,10 @@ Resumes tab shows an upload banner when no extracted resumes exist.
 - **AI profile extraction card** — 2-step flow: Step 1 (upload) shows active/✓
   state; Step 2 (Extract with AI button) is disabled until at least one resume
   PDF is uploaded. Runs AI extraction on all uploaded resumes and populates
-  skills, role directions, and experience automatically.
+  skills, role directions, and experience automatically. Clicking **Extract with
+  AI** opens a blocking `ProgressModal` ("Analyzing your resume…" + spinner); on
+  success it shows the number of skills extracted; on error it shows the failure
+  message.
 - Edit form: current search goal, search direction, urgency (select), career
   intent, career change interest, confidence level.
 
@@ -814,9 +838,10 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 1. Register at [developer.adzuna.com](https://developer.adzuna.com) for a free App ID and API Key (free tier: 2,000 queries/month)
 2. Paste both keys in Settings → AI Provider → Discovery & Aggregators
 3. Open Settings → Sources — the Job aggregators card appears at the bottom
-4. Click **Scan with Adzuna**; the scanner queries Adzuna for each of your saved target roles and preferred locations
+4. Click **Scan with Adzuna**; clicking opens a blocking `ProgressModal`
+   ("Scanning Adzuna" + spinner). On completion the modal shows "Found N
+   listings — X new, Y duplicates." and can be dismissed with Close.
 5. New jobs enter the same import pipeline as browser-board scans — duplicate detection, title filtering, and source badges all apply
-6. The button shows imported count and duplicate count inline after the scan completes
 
 **What it covers:** Adzuna aggregates from multiple sources and covers roles that may not appear in direct ATS portals or browser-board searches. It is best used alongside browser-board and CareerOps ATS scans.
 
@@ -847,6 +872,69 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 
 ---
 
+## Shared UI Patterns
+
+### `Modal` (`src/components/ui/modal.tsx`)
+
+A reusable dialog shell used for form-entry and action-confirmation dialogs. It
+provides the overlay, dialog frame, header, scrollable body, optional sticky
+footer, Escape-key handling, and accessibility attributes so individual
+components don't repeat that boilerplate.
+
+**Props:** `open`, `onClose?`, `title`, `description?`, `size?` ("sm"|"md"|"lg"),
+`sheet?` (bottom-sheet on mobile, centered on desktop), `children`, `footer?`.
+
+- When `onClose` is provided, the X button appears in the header and Escape
+  closes the modal. When omitted (e.g. during a pending submission) neither is
+  active.
+- `sheet` produces `items-end sm:items-center` alignment with no padding on
+  mobile and `rounded-t-panel sm:rounded-panel` corners — the standard
+  bottom-drawer pattern.
+- Non-sheet modals are always centered with `rounded-2xl`.
+
+**Used by:**
+| Component | `size` | `sheet` | Purpose |
+|---|---|---|---|
+| `AddJobModal` | lg | — | Add job manually form |
+| `EditJobModal` | lg | — | Edit job details form |
+| `GapAddressingPanel` | md | ✓ | Address gap / add detail (two-phase modal) |
+| `GlobalGapAddressingPanel` | md | — | Follow-up evidence detail per top gap |
+| `ProfileSupplementsEditor` | md | — | Follow-up evidence detail per supplement |
+
+---
+
+### `ProgressModal` (`src/components/ui/progress-modal.tsx`)
+
+A reusable blocking progress dialog used by all AI generation and long-running
+data-fetch actions. It wraps the same visual pattern established by the "Scan
+for new jobs" modal.
+
+**States:**
+- **Running** (`phase="running"`): spinning border circle + title + primary
+  message + optional `statusLine` (animated pulse, used for streaming labels
+  like current research axis) + optional `subtitle` (smaller muted text).
+  The backdrop is not clickable; the modal cannot be dismissed.
+- **Done** (`phase="done"`): shows `children` (success content) or an `error`
+  string in a danger callout. An X button appears in the header and a Close
+  button appears in the footer; clicking either or the backdrop closes the
+  modal.
+
+**Props:** `open`, `phase`, `title`, `message`, `subtitle?`, `statusLine?`,
+`error?`, `children?`, `onClose`.
+
+**Used by:**
+| Action | Title | Success message |
+|---|---|---|
+| Evaluate N selected jobs | "Evaluating N jobs" | "{N} evaluated successfully" |
+| Verify active postings | "Verifying active postings" | Badge summary + "close to take action" |
+| Extract profile with AI | "Extracting profile with AI" | "{N} skills extracted" |
+| Scan with Adzuna | "Scanning Adzuna" | "Found N listings — X new, Y duplicates" |
+| Start/Re-research | "Researching company" | "Research complete — scroll down…" |
+| Generate/Regenerate outreach | "Generating outreach messages" | "3 messages ready — scroll down…" |
+| Prepare application answers | "Preparing application answers" | "Answers prepared — scroll down…" |
+
+---
+
 ## Data and Privacy
 
 - All data is stored locally in `data/job-search-terminal.sqlite` on the user's machine.
@@ -856,9 +944,9 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 - Portable account backup: Account → Settings → Data & Backup creates a `.jst-backup`
   archive with the database, database-referenced resume lane files, generated documents, source
   configuration, and scanner history. Optional password protection encrypts the
-  complete payload. Creation streams files into the archive and shows a progress
-  dialog while the local snapshot is packaged. Other files under `assets/` are
-  always ignored.
+  complete payload. Creation streams files into the archive and shows a
+  `ProgressModal` (cycling through three phase labels) while the local snapshot
+  is packaged. Other files under `assets/` are always ignored.
 - Restore: Account → Settings → Data & Backup validates the archive, previews its
   contents in a bounded disk staging area, creates a rollback backup, then
   replaces the managed local snapshot after explicit confirmation.

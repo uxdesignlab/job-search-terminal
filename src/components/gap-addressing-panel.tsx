@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Badge, Card, CardHeader, CardTitle } from "@/components/ui";
+import { Badge, Card, CardHeader, CardTitle, Modal } from "@/components/ui";
 
 type GapResponse = {
   rawResponse: string;
@@ -145,14 +145,6 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
       return changed ? next : prev;
     });
   }, [items, initialResponses]);
-
-  // Close modal on Escape
-  useEffect(() => {
-    if (!modal) return;
-    const handle = (e: KeyboardEvent) => { if (e.key === "Escape") setModal(null); };
-    window.addEventListener("keydown", handle);
-    return () => window.removeEventListener("keydown", handle);
-  }, [modal]);
 
   // Focus description on modal open
   useEffect(() => {
@@ -392,190 +384,168 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
       </Card>
 
       {/* ── Address gap modal ─────────────────────────────────────── */}
-      {modal && (
-        <div
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4 backdrop-blur-sm"
-          role="dialog"
-        >
-          <div className="w-full sm:max-w-lg rounded-t-panel sm:rounded-panel bg-panel shadow-2xl max-h-[92dvh] flex flex-col">
+      <Modal
+        open={!!modal}
+        onClose={() => setModal(null)}
+        title={modal?.phase === "followup" ? "Add more detail" : "Address this gap"}
+        description={modal?.gapText}
+        sheet
+        size="md"
+        footer={modal ? (
+          modal.phase === "main" ? (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
+                onClick={() => setModal(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="h-9 rounded-control border border-accent/50 bg-accent/5 px-3 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={modal.polishing || modal.saving || !canSubmit(modal)}
+                onClick={handlePolish}
+                type="button"
+              >
+                {modal.polishing ? "Polishing…" : "Polish with AI"}
+              </button>
+              <button
+                className="h-9 rounded-control border border-accent bg-accent px-4 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={modal.saving || modal.polishing || !canSubmit(modal)}
+                onClick={handleSave}
+                type="button"
+              >
+                {modal.saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          ) : (
+            <div className="flex justify-end gap-2">
+              <button
+                className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
+                onClick={() => setModal(null)}
+                type="button"
+              >
+                Later
+              </button>
+              <button
+                className="h-9 rounded-control border border-accent bg-accent px-4 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={modal.saving || !modal.followUpDraft.trim()}
+                onClick={submitFollowUp}
+                type="button"
+              >
+                {modal.saving ? "Saving…" : "Save detail"}
+              </button>
+            </div>
+          )
+        ) : null}
+      >
+        {modal && (
+          modal.phase === "main" ? (
+            <div className="grid gap-5 px-5 py-5">
+              {/* Companies */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">
+                  Where did you have this experience?
+                </p>
+                {!companiesLoaded ? (
+                  <p className="text-xs text-muted">Loading…</p>
+                ) : companies.length === 0 ? (
+                  <p className="text-xs text-muted italic">
+                    No resume companies found — add a resume lane under Profile to enable checkboxes.
+                  </p>
+                ) : (
+                  <div className="grid gap-1.5 max-h-40 overflow-y-auto pr-0.5">
+                    {companies.map((c) => (
+                      <label
+                        key={c.name}
+                        className={`flex items-center gap-3 rounded-control border px-3 py-2 cursor-pointer transition-colors ${
+                          modal.selectedCompanies.has(c.name)
+                            ? "border-accent/50 bg-accent/5"
+                            : "border-border bg-surface hover:border-accent/30"
+                        }`}
+                      >
+                        <input
+                          checked={modal.selectedCompanies.has(c.name)}
+                          className="shrink-0 accent-[rgb(var(--color-accent))] w-4 h-4"
+                          onChange={() => toggleCompany(c.name)}
+                          type="checkbox"
+                        />
+                        <span className="flex-1 text-sm font-medium text-ink">{c.name}</span>
+                        {c.dateRange && (
+                          <span className="text-xs text-muted tabular-nums">{c.dateRange}</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            {/* Header */}
-            <div className="border-b border-border px-5 py-4 shrink-0">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-ink">
-                    {modal.phase === "followup" ? "Add more detail" : "Address this gap"}
-                  </h3>
-                  <p className="mt-1 text-xs text-muted leading-5 line-clamp-2">{modal.gapText}</p>
+              {/* Description */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    What did you do?
+                  </p>
+                  {modal.wasPolished && (
+                    <span className="text-[10px] font-medium text-accent">✨ AI polished — review and Save</span>
+                  )}
                 </div>
-                <button
-                  aria-label="Close"
-                  className="shrink-0 mt-0.5 text-muted hover:text-ink text-base leading-none"
-                  onClick={() => setModal(null)}
-                  type="button"
-                >
-                  ✕
-                </button>
+                <textarea
+                  ref={descRef}
+                  aria-label="What did you do?"
+                  className={`min-h-[5.5rem] w-full rounded-control border px-3 py-2 text-sm text-ink placeholder:text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent bg-surface ${modal.wasPolished ? "border-accent/40" : "border-border"}`}
+                  onChange={(e) => setModal({ ...modal, description: e.target.value, wasPolished: false })}
+                  placeholder="Describe your relevant experience…"
+                  value={modal.description}
+                />
+              </div>
+
+              {/* Metrics */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-1.5">
+                  Key metrics or outcomes
+                  <span className="ml-1 font-normal normal-case text-muted">(optional)</span>
+                </p>
+                <input
+                  aria-label="Key metrics or outcomes"
+                  className="w-full rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                  onChange={(e) => setModal({ ...modal, metrics: e.target.value })}
+                  placeholder="e.g. $2M pipeline, 15 enterprise proposals, 3 clients onboarded"
+                  type="text"
+                  value={modal.metrics}
+                />
               </div>
             </div>
-
-            {modal.phase === "main" ? (
-              <>
-                <div className="grid gap-5 px-5 py-5 overflow-y-auto">
-
-                  {/* Companies */}
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">
-                      Where did you have this experience?
-                    </p>
-                    {!companiesLoaded ? (
-                      <p className="text-xs text-muted">Loading…</p>
-                    ) : companies.length === 0 ? (
-                      <p className="text-xs text-muted italic">
-                        No resume companies found — add a resume lane under Profile to enable checkboxes.
-                      </p>
-                    ) : (
-                      <div className="grid gap-1.5 max-h-40 overflow-y-auto pr-0.5">
-                        {companies.map((c) => (
-                          <label
-                            key={c.name}
-                            className={`flex items-center gap-3 rounded-control border px-3 py-2 cursor-pointer transition-colors ${
-                              modal.selectedCompanies.has(c.name)
-                                ? "border-accent/50 bg-accent/5"
-                                : "border-border bg-surface hover:border-accent/30"
-                            }`}
-                          >
-                            <input
-                              checked={modal.selectedCompanies.has(c.name)}
-                              className="shrink-0 accent-[rgb(var(--color-accent))] w-4 h-4"
-                              onChange={() => toggleCompany(c.name)}
-                              type="checkbox"
-                            />
-                            <span className="flex-1 text-sm font-medium text-ink">{c.name}</span>
-                            {c.dateRange && (
-                              <span className="text-xs text-muted tabular-nums">{c.dateRange}</span>
-                            )}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Description */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                        What did you do?
-                      </p>
-                      {modal.wasPolished && (
-                        <span className="text-[10px] font-medium text-accent">✨ AI polished — review and Save</span>
-                      )}
-                    </div>
-                    <textarea
-                      ref={descRef}
-                      aria-label="What did you do?"
-                      className={`min-h-[5.5rem] w-full rounded-control border px-3 py-2 text-sm text-ink placeholder:text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent bg-surface ${modal.wasPolished ? "border-accent/40" : "border-border"}`}
-                      onChange={(e) => setModal({ ...modal, description: e.target.value, wasPolished: false })}
-                      placeholder="Describe your relevant experience…"
-                      value={modal.description}
-                    />
-                  </div>
-
-                  {/* Metrics */}
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-1.5">
-                      Key metrics or outcomes
-                      <span className="ml-1 font-normal normal-case text-muted">(optional)</span>
-                    </p>
-                    <input
-                      aria-label="Key metrics or outcomes"
-                      className="w-full rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
-                      onChange={(e) => setModal({ ...modal, metrics: e.target.value })}
-                      placeholder="e.g. $2M pipeline, 15 enterprise proposals, 3 clients onboarded"
-                      type="text"
-                      value={modal.metrics}
-                    />
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4 shrink-0">
-                  <button
-                    className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
-                    onClick={() => setModal(null)}
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="h-9 rounded-control border border-accent/50 bg-accent/5 px-3 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={modal.polishing || modal.saving || !canSubmit(modal)}
-                    onClick={handlePolish}
-                    type="button"
-                  >
-                    {modal.polishing ? "Polishing…" : "Polish with AI"}
-                  </button>
-                  <button
-                    className="h-9 rounded-control border border-accent bg-accent px-4 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={modal.saving || modal.polishing || !canSubmit(modal)}
-                    onClick={handleSave}
-                    type="button"
-                  >
-                    {modal.saving ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* ── Follow-up step ──────────────────────────────────────── */
-              <>
-                <div className="grid gap-3 px-5 py-5 overflow-y-auto">
-                  <div className="rounded-control border border-warning/35 bg-warning/10 px-3 py-2.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-warning mb-1">
-                      AI needs more specifics
-                    </p>
-                    <p className="text-sm text-ink leading-6">
-                      {gapStates[modal.gapText]?.followUpQuestion ||
-                        "Can you add a specific example — role, actions you took, and the outcome?"}
-                    </p>
-                  </div>
-                  <div className="rounded-control border border-border bg-surface px-3 py-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">Your response so far</p>
-                    <p className="text-sm text-ink leading-6">
-                      {gapStates[modal.gapText]?.savedResponse}
-                    </p>
-                  </div>
-                  <textarea
-                    autoFocus
-                    aria-label="Additional detail"
-                    className="min-h-20 w-full rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent"
-                    onChange={(e) => setModal({ ...modal, followUpDraft: e.target.value })}
-                    placeholder="Add the specific role, project, your actions, and measurable result…"
-                    value={modal.followUpDraft}
-                  />
-                </div>
-                <div className="flex justify-end gap-2 border-t border-border px-5 py-4 shrink-0">
-                  <button
-                    className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
-                    onClick={() => setModal(null)}
-                    type="button"
-                  >
-                    Later
-                  </button>
-                  <button
-                    className="h-9 rounded-control border border-accent bg-accent px-4 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={modal.saving || !modal.followUpDraft.trim()}
-                    onClick={submitFollowUp}
-                    type="button"
-                  >
-                    {modal.saving ? "Saving…" : "Save detail"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+          ) : (
+            /* ── Follow-up step ──────────────────────────────────────── */
+            <div className="grid gap-3 px-5 py-5">
+              <div className="rounded-control border border-warning/35 bg-warning/10 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-warning mb-1">
+                  AI needs more specifics
+                </p>
+                <p className="text-sm text-ink leading-6">
+                  {gapStates[modal.gapText]?.followUpQuestion ||
+                    "Can you add a specific example — role, actions you took, and the outcome?"}
+                </p>
+              </div>
+              <div className="rounded-control border border-border bg-surface px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">Your response so far</p>
+                <p className="text-sm text-ink leading-6">
+                  {gapStates[modal.gapText]?.savedResponse}
+                </p>
+              </div>
+              <textarea
+                autoFocus
+                aria-label="Additional detail"
+                className="min-h-20 w-full rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent"
+                onChange={(e) => setModal({ ...modal, followUpDraft: e.target.value })}
+                placeholder="Add the specific role, project, your actions, and measurable result…"
+                value={modal.followUpDraft}
+              />
+            </div>
+          )
+        )}
+      </Modal>
     </>
   );
 }

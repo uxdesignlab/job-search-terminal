@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { Badge, Button, Card, CardDescription, CardHeader, CardTitle } from "@/components/ui";
+import { ProgressModal } from "@/components/ui/progress-modal";
 import type { OutreachDraftRecord } from "@/lib/db/types";
 
 type ContactType = "recruiter" | "hiring_manager" | "peer";
@@ -40,11 +41,13 @@ export function OutreachClient({ jobId, saved }: Props) {
   );
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const generate = useCallback(async () => {
     setStatus("loading");
     setError("");
     setDrafts([]);
+    setModalOpen(true);
 
     try {
       const res = await fetch(`/api/outreach/${jobId}`, { method: "POST" });
@@ -61,6 +64,10 @@ export function OutreachClient({ jobId, saved }: Props) {
     }
   }, [jobId]);
 
+  function closeModal() {
+    setModalOpen(false);
+  }
+
   const copyToClipboard = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text);
     setCopied(key);
@@ -71,6 +78,19 @@ export function OutreachClient({ jobId, saved }: Props) {
   const lastDate = saved[0]?.createdAt?.slice(0, 10);
 
   return (
+    <>
+    <ProgressModal
+      open={modalOpen}
+      phase={status === "loading" ? "running" : "done"}
+      title="Generating outreach messages"
+      message="Writing LinkedIn messages for recruiter, hiring manager, and peer…"
+      subtitle="Each message is kept under 300 characters for LinkedIn."
+      error={status === "error" ? (error || "Generation failed") : null}
+      onClose={closeModal}
+    >
+      <p className="text-sm text-success">3 messages ready — scroll down to copy and send them.</p>
+    </ProgressModal>
+
     <div className="grid gap-6">
       <Card>
         <CardHeader>
@@ -87,7 +107,6 @@ export function OutreachClient({ jobId, saved }: Props) {
           {status === "done" && <Badge tone="success">3 messages ready</Badge>}
           {status === "error" && <Badge tone="warning">Error</Badge>}
         </div>
-        {error && <p className="mt-2 text-sm text-warning">{error}</p>}
       </Card>
 
       {hasDrafts ? (
@@ -138,5 +157,6 @@ export function OutreachClient({ jobId, saved }: Props) {
         </Card>
       )}
     </div>
+    </>
   );
 }

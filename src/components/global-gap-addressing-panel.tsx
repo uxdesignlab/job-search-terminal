@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, Modal } from "@/components/ui";
 
 type TopGap = { gap: string; count: number };
 type QualityStatus = "addressed" | "needs_followup";
@@ -321,51 +321,47 @@ export function GlobalGapAddressingPanel({ topGaps, initialSupplements }: Props)
                     </div>
                   </div>
                 )}
-                {s.followUpOpen && (
-                  <div
-                    aria-modal="true"
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-                    role="dialog"
-                  >
-                    <div className="w-full max-w-lg rounded-panel bg-panel shadow-2xl">
-                      <div className="border-b border-border px-5 py-4">
-                        <h3 className="text-sm font-semibold text-ink">Add evidence detail</h3>
-                        <p className="mt-1 text-sm text-muted">{s.followUpQuestion || suggestedPromptFor(gap)}</p>
-                      </div>
-                      <div className="grid gap-3 px-5 py-4">
-                        <div className="rounded-control border border-border bg-surface px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Saved draft</p>
-                          <p className="mt-1 text-sm leading-6 text-ink">{s.savedContent || s.draft}</p>
-                        </div>
-                        <textarea
-                          aria-label="Follow-up detail"
-                          autoFocus
-                          className="min-h-24 w-full resize-none rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
-                          onChange={(event) => update(gap, { followUpDraft: event.target.value })}
-                          placeholder="Add the role, project, your action, and the result..."
-                          value={s.followUpDraft}
-                        />
-                      </div>
-                      <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
-                        <button
-                          className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
-                          onClick={() => update(gap, { followUpOpen: false, followUpDraft: "" })}
-                          type="button"
-                        >
-                          Later
-                        </button>
-                        <button
-                          className="h-9 rounded-control border border-accent bg-accent px-3 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={s.saving || !s.followUpDraft.trim()}
-                          onClick={() => handleFollowUpSave(gap)}
-                          type="button"
-                        >
-                          {s.saving ? "Saving…" : "Save detail"}
-                        </button>
-                      </div>
+                <Modal
+                  open={s.followUpOpen}
+                  onClose={() => update(gap, { followUpOpen: false, followUpDraft: "" })}
+                  title="Add evidence detail"
+                  description={s.followUpQuestion || suggestedPromptFor(gap)}
+                  size="md"
+                  footer={
+                    <div className="flex justify-end gap-2">
+                      <button
+                        className="h-9 rounded-control border border-transparent px-3 text-sm font-medium text-muted hover:bg-surface hover:text-ink"
+                        onClick={() => update(gap, { followUpOpen: false, followUpDraft: "" })}
+                        type="button"
+                      >
+                        Later
+                      </button>
+                      <button
+                        className="h-9 rounded-control border border-accent bg-accent px-3 text-sm font-medium text-white hover:bg-[rgb(var(--color-accent-strong))] disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={s.saving || !s.followUpDraft.trim()}
+                        onClick={() => handleFollowUpSave(gap)}
+                        type="button"
+                      >
+                        {s.saving ? "Saving…" : "Save detail"}
+                      </button>
                     </div>
+                  }
+                >
+                  <div className="grid gap-3 px-5 py-4">
+                    <div className="rounded-control border border-border bg-surface px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Saved draft</p>
+                      <p className="mt-1 text-sm leading-6 text-ink">{s.savedContent || s.draft}</p>
+                    </div>
+                    <textarea
+                      aria-label="Follow-up detail"
+                      autoFocus
+                      className="min-h-24 w-full resize-none rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                      onChange={(event) => update(gap, { followUpDraft: event.target.value })}
+                      placeholder="Add the role, project, your action, and the result..."
+                      value={s.followUpDraft}
+                    />
                   </div>
-                )}
+                </Modal>
               </li>
             );
           })}

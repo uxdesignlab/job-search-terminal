@@ -37,6 +37,7 @@ docs/archive/
 .claude/
 
 # Personal notes / resume text dumps
+memory/
 *.txt
 docs/links.txt
 
