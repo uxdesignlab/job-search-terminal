@@ -202,15 +202,15 @@ function listTrackedIssues() {
   return Object.values(Object.fromEntries(all.map((i) => [i.number, i])));
 }
 
-function createIssue(item, milestoneNumber) {
+function createIssue(item) {
   const labelArgs = labelsFor(item).flatMap((l) => ["--label", l]);
-  const milestoneArgs = milestoneNumber ? ["--milestone", String(milestoneNumber)] : [];
+  const milestoneArgs = item.milestone ? ["--milestone", item.milestone] : [];
   run(["issue", "create", "--title", issueTitle(item), "--body", issueBody(item), ...labelArgs, ...milestoneArgs]);
 }
 
-function updateIssue(number, item, milestoneNumber) {
+function updateIssue(number, item) {
   const labelArgs = labelsFor(item).flatMap((l) => ["--add-label", l]);
-  const milestoneArgs = milestoneNumber ? ["--milestone", String(milestoneNumber)] : [];
+  const milestoneArgs = item.milestone ? ["--milestone", item.milestone] : [];
   run(["issue", "edit", String(number), "--title", issueTitle(item), "--body", issueBody(item), ...labelArgs, ...milestoneArgs]);
 }
 
@@ -234,7 +234,7 @@ function main() {
   console.log(`Parsed ${items.length} items (${items.filter((i) => i.isRoadmap).length} roadmap, ${items.filter((i) => !i.isRoadmap).length} backlog)\n`);
 
   // Ensure all referenced milestones exist on GitHub
-  const milestoneNumbers = getMilestoneNumbers(items);
+  getMilestoneNumbers(items);
 
   // Load existing tracked issues
   const ghIssues = listTrackedIssues();
@@ -247,12 +247,11 @@ function main() {
   const activeIDs = new Set(items.map((i) => i.id));
 
   for (const item of items) {
-    const milestoneNumber = item.milestone ? milestoneNumbers[item.milestone] : null;
     const existing = byID[item.id];
 
     if (!existing) {
       console.log(`  + Creating  ${item.id}: ${item.title}`);
-      createIssue(item, milestoneNumber);
+      createIssue(item);
       continue;
     }
 
@@ -266,7 +265,7 @@ function main() {
 
     if (changed) {
       console.log(`  ~ Updating  #${existing.number} (${item.id})`);
-      updateIssue(existing.number, item, milestoneNumber);
+      updateIssue(existing.number, item);
     } else {
       console.log(`  = No change #${existing.number} (${item.id})`);
     }
