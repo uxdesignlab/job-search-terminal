@@ -295,6 +295,8 @@ Copy-paste answer drafts for application questions.
 | `answer` | Generated or edited answer |
 | `source` | `ai-generated` / `user-added` |
 | `sort_order` | Display order |
+| `provider_used` | AI provider that generated the answer (added in 0041) |
+| `model_used` | Model ID used (added in 0041) |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
 
@@ -431,6 +433,8 @@ Draft outreach messages to recruiters or hiring managers.
 | `message` | Draft message text |
 | `char_count` | Character count |
 | `status` | `draft` / `sent` |
+| `provider_used` | AI provider that generated the draft (added in 0041) |
+| `model_used` | Model ID used (added in 0041) |
 | `created_at` | ISO timestamp |
 
 ### writing_style_cache
