@@ -65,7 +65,7 @@ export const helpPages: HelpPage[] = [
     },
     highlights: [
       "Everything runs locally on your machine.",
-      "One AI provider key is required; Adzuna and Brave Search keys are optional but expand coverage significantly.",
+      "One AI provider is required. Cloud providers (OpenAI, Anthropic, Gemini) need an API key; Ollama is free and needs no key — it runs models locally on your machine.",
       "The Dashboard scan runs ATS sources and Adzuna together once credentials are configured.",
     ],
     sections: [
@@ -88,8 +88,8 @@ export const helpPages: HelpPage[] = [
           "The app is useful only after it understands who you are, what roles you want, and which AI provider should power the assistant features.",
         steps: [
           {
-            title: "Add one AI provider key",
-            body: "Open Account → Settings → AI Providers, choose OpenAI, Anthropic, or Google Gemini, paste the key, save, and test the connection.",
+            title: "Add one AI provider",
+            body: "Open Account → Settings → AI Providers. For cloud providers (OpenAI, Anthropic, or Gemini), paste an API key. To use Ollama instead, install it on your machine, pull a model, start the server, and enter the base URL — no key required. Save and test the connection. See the AI providers guide for Ollama setup steps.",
           },
           {
             title: "Upload your base resumes",
@@ -158,17 +158,17 @@ export const helpPages: HelpPage[] = [
     slug: "ai-providers",
     title: "Add and manage AI providers",
     shortTitle: "AI providers",
-    description: "Create an API key, add it to the app, test the connection, and understand what each provider powers.",
+    description: "Configure OpenAI, Anthropic, Google Gemini, or Ollama; create API keys or set up a local server; build a provider priority chain; and test connections.",
     category: "Setup",
-    readTime: "10 min",
+    readTime: "12 min",
     icon: "key",
     image: {
       src: "/images/job-search-terminal/job-search-terminal-ai-provider-settings.png",
       alt: "AI provider settings screen with provider cards and connection controls",
     },
     highlights: [
-      "You need only one provider to start.",
-      "Keys are saved locally with the app data.",
+      "One provider is enough to start. Ollama is free and needs no API key.",
+      "Cloud keys and the Ollama base URL are saved locally with the app data.",
       "Use the built-in connection test before relying on AI features.",
     ],
     sections: [
@@ -176,12 +176,13 @@ export const helpPages: HelpPage[] = [
         id: "provider-choice",
         title: "Choose a provider",
         intro:
-          "The app supports OpenAI, Anthropic, and Google Gemini through one provider layer. Pick the service where you already have access, billing, or credits. You can change the active provider later.",
+          "The app supports four providers through one unified layer. Configure as many as you like and rank them in a priority list — the app tries providers from top to bottom and fails over automatically when one is unavailable. You can put Ollama first (free, fully local) with a cloud provider as backup, or use a single cloud provider.",
         bullets: [
           "OpenAI is used for evaluation, answers, outreach, research, transcription, and generation.",
           "Anthropic is used for evaluation, answers, outreach, and research.",
           "Google Gemini is used for evaluation, answers, outreach, research, and transcription.",
-          "A fallback provider can be configured if you have more than one key.",
+          "Ollama (local) is used for evaluation, answers, outreach, and research. No API key or billing required.",
+          "The first enabled provider in your priority list with valid credentials is used for each task. The rest act as automatic fallbacks.",
         ],
       },
       {
@@ -239,6 +240,46 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "setup-ollama",
+        title: "Set up Ollama (free local AI, no API key)",
+        intro:
+          "Ollama runs open-source language models on your machine. No API key, no cloud account, no usage fees — and when Ollama is your active provider, no data leaves your computer. You need Ollama installed, a model pulled, and the server running before configuring the app.",
+        steps: [
+          {
+            title: "Install Ollama",
+            body: "Download and install Ollama from ollama.com. The installer registers the ollama command in your terminal and, on macOS and Windows, adds a menu-bar app that keeps the server running. Supported on macOS, Linux, and Windows.",
+          },
+          {
+            title: "Pull a model",
+            body: "Open a terminal and run: ollama pull llama3.1:8b — this downloads an 8B parameter model suitable for most tasks and needs about 6 GB of RAM. Larger models give better results: qwen2.5:14b needs roughly 10 GB, llama3.1:70b needs roughly 48 GB. Browse available models at ollama.com/library.",
+          },
+          {
+            title: "Start the server",
+            body: "Run ollama serve in a terminal, or open the Ollama desktop app if you installed it. The server starts on http://localhost:11434 by default. Leave it running while using the app — it stops when you close the terminal or quit the app.",
+          },
+          {
+            title: "Enable Ollama in settings",
+            body: "Open Account → Settings → AI Providers. In the provider priority list, check the box next to Ollama. The configuration section expands below the list.",
+          },
+          {
+            title: "Confirm the base URL",
+            body: "The base URL defaults to http://localhost:11434. Leave it unchanged if Ollama is running on the same machine. Change it only if you run Ollama on a different host or port.",
+          },
+          {
+            title: "Choose a model",
+            body: "Click Choose… to open the model picker. The app contacts your running Ollama server and lists every installed model. Select the model you pulled in step 2. If the list is empty, pull a model first and try again.",
+          },
+          {
+            title: "Set priority and save",
+            body: "Drag Ollama to the top of the priority list to use it by default. Cloud providers lower in the list act as automatic fallbacks when Ollama is unavailable. Click Save, then Test connection to verify the server responds and the model loads.",
+          },
+        ],
+        callout: {
+          title: "Choose the right model size for your machine",
+          body: "A model that does not fit in available RAM will be very slow or fail. Rough guide: 7B–8B models need 6–8 GB (good for most tasks), 14B models need 10–12 GB (better structured output), 70B+ models need 40–48 GB (near cloud quality). The quality guide in Settings → AI Providers lists specific recommended models by RAM tier.",
+        },
+      },
+      {
         id: "key-safety",
         title: "Key safety",
         bullets: [
@@ -282,6 +323,7 @@ export const helpPages: HelpPage[] = [
       { label: "Gemini API keys", href: "https://ai.google.dev/gemini-api/docs/api-key" },
       { label: "Adzuna developer API (free tier)", href: "https://developer.adzuna.com" },
       { label: "Brave Search API (free tier)", href: "https://brave.com/search/api" },
+      { label: "Ollama — download and model library", href: "https://ollama.com" },
     ],
     related: ["getting-started", "job-search", "troubleshooting"],
   },
@@ -720,6 +762,10 @@ export const helpPages: HelpPage[] = [
             body: "When you save a gap answer, the app checks whether it includes where the experience happened, what you did, and what proof point supports it. Vague answers are saved as drafts and prompt a follow-up question.",
           },
         ],
+        callout: {
+          title: "Model attribution",
+          body: "The evaluation panel shows which provider and model handled the request. If you expected Ollama but see a cloud provider name, Ollama was unreachable and the next provider in your priority chain took over automatically.",
+        },
       },
       {
         id: "tailor",
@@ -925,10 +971,15 @@ export const helpPages: HelpPage[] = [
         intro:
           "When you run an AI feature, the relevant prompt context is sent to the active provider. That can include job descriptions, resume-derived profile facts, questions, or writing samples needed for the requested task.",
         bullets: [
-          "Choose a provider whose terms and data practices you accept.",
-          "Do not run AI features on materials you do not want sent to that provider.",
-          "Rotate provider keys if they may have been exposed.",
+          "If Ollama is your active provider, all AI processing runs locally — nothing is sent to an external service.",
+          "Cloud providers (OpenAI, Anthropic, Gemini) receive prompt context through their APIs. Choose a provider whose terms and data practices you accept.",
+          "Do not run cloud AI features on materials you do not want sent to that provider.",
+          "Rotate cloud API keys if they may have been exposed.",
         ],
+        callout: {
+          title: "Fully private with Ollama",
+          body: "When Ollama is first in your provider priority chain and the server is reachable, all AI prompts — including job descriptions, resume content, and application questions — are processed on your own machine. No data leaves your computer for those requests.",
+        },
       },
       {
         id: "safety",
@@ -983,11 +1034,25 @@ export const helpPages: HelpPage[] = [
         id: "ai",
         title: "AI features fail",
         bullets: [
-          "Open Account -> Settings -> AI Providers.",
-          "Confirm the active provider has a saved key.",
-          "Run the provider connection test.",
-          "Check provider billing, usage limits, model availability, and key permissions.",
-          "Try a fallback provider if one is configured.",
+          "Open Account → Settings → AI Providers.",
+          "For cloud providers (OpenAI, Anthropic, Gemini): confirm a key is saved for that provider.",
+          "For Ollama: confirm the server is running (ollama serve), the base URL is correct, and the selected model is installed (ollama list).",
+          "Run the connection test for the failing provider.",
+          "Check billing, usage limits, and key permissions for cloud providers.",
+          "Review your provider priority chain — the first provider with valid credentials is used. If the one you expect is failing, the next one in the chain takes over automatically.",
+        ],
+      },
+      {
+        id: "ollama",
+        title: "Ollama connection and model issues",
+        bullets: [
+          "If the connection test fails: run ollama serve in a terminal and try again. The server must be running before the app can reach it.",
+          "If the model picker shows no models: run ollama pull llama3.1:8b (or any model) in a terminal, then reopen the picker.",
+          "If evaluation errors early in a run: the model may still be loading into memory. Wait a few seconds and retry.",
+          "If generation is very slow or the server stops responding: the selected model may not fit in available RAM. Try a smaller model.",
+          "If you changed the Ollama port: update the base URL in Settings to match, for example http://localhost:11435.",
+          "If the Account health dot is yellow: Ollama is first in the priority chain but unreachable. Check that ollama serve is running.",
+          "If a cloud provider is handling requests when you expected Ollama: Ollama is in the chain but the server is not reachable. The app automatically fell over to the next provider.",
         ],
       },
       {
