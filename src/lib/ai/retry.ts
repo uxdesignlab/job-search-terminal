@@ -1,7 +1,9 @@
 // Rate limit errors (429, "rate limit", "too many requests") are excluded — they need
 // 20-60s to clear and short retries just waste time. If the provider attaches a
 // retryAfterMs property (from the Retry-After header), withRetry will honor it instead.
-const RETRYABLE = ["503", "overloaded", "unavailable", "econnreset", "etimedout"];
+// "timed out", "connect to ollama", and "invalid json" handle humanized Ollama errors from humanizeOllamaError().
+// "invalid json" is worth retrying because LLM output quality is non-deterministic.
+const RETRYABLE = ["503", "overloaded", "unavailable", "econnreset", "etimedout", "timed out", "connect to ollama", "invalid json"];
 
 const MAX_AUTO_RETRY_AFTER_MS = 30_000;
 

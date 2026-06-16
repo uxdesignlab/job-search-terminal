@@ -1,5 +1,6 @@
 import { runAndSaveJobWithAI } from "@/lib/evaluation/llm-evaluator";
-import type { BlockUpdate } from "@/lib/evaluation/llm-evaluator";
+import type { BlockName, BlockUpdate } from "@/lib/evaluation/llm-evaluator";
+import { tryGetActiveProvider } from "@/lib/ai/factory";
 
 function toUserMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error);
@@ -11,6 +12,10 @@ function toUserMessage(error: unknown): string {
   }
   if (msg.toLowerCase().includes("network") || msg.toLowerCase().includes("fetch")) {
     return "Network error reaching the AI provider. Check your connection and try again.";
+  }
+  // Pass through already-humanized Ollama errors (they're user-readable and specific)
+  if (msg.toLowerCase().includes("ollama") || msg.toLowerCase().startsWith("could not connect")) {
+    return msg;
   }
   return "Evaluation failed. Check your AI provider settings and try again.";
 }
@@ -30,12 +35,24 @@ export async function GET(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
+      let currentBlock: BlockName | "save" = "a";
+
       try {
+        const activeProvider = tryGetActiveProvider();
+        if (activeProvider) {
+          send({ block: "start", providerUsed: activeProvider.name, modelUsed: activeProvider.effectiveModel, done: false });
+        }
+
         const onBlock = (update: BlockUpdate) => {
           send({ block: update.block, label: update.label, content: update.content, done: false });
         };
 
-        const result = await runAndSaveJobWithAI(jobId, onBlock);
+        const onBlockStart = (block: BlockName) => {
+          currentBlock = block;
+        };
+
+        const result = await runAndSaveJobWithAI(jobId, onBlock, onBlockStart);
+        currentBlock = "save";
 
         send({
           block: "complete",
@@ -50,10 +67,12 @@ export async function GET(
           done: true
         });
       } catch (error) {
-        console.error("[evaluate] error:", error);
+        const blockLabel = currentBlock === "save" ? "saving results" : `block ${currentBlock.toUpperCase()}`;
+        console.error(`[evaluate] error during ${blockLabel}:`, error);
         send({
           block: "error",
           error: toUserMessage(error),
+          failedBlock: currentBlock,
           done: true
         });
       } finally {

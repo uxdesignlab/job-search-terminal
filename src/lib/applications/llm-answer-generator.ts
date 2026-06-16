@@ -109,7 +109,9 @@ Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyConte
     question,
     answer: answers[index] ?? fallbackAnswer(question, job.company, job.title, profile.name),
     source: `AI-generated · ${provider.name} / ${provider.effectiveModel}`,
-    sortOrder: index
+    sortOrder: index,
+    providerUsed: provider.name,
+    modelUsed: provider.effectiveModel
   }));
 
   saveApplicationAnswerDrafts(drafts);

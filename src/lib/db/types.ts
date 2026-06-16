@@ -433,6 +433,8 @@ export type ApplicationAnswerDraftRecord = {
   answer: string;
   source: string;
   sortOrder: number;
+  providerUsed: string;
+  modelUsed: string;
   updatedAt: string;
 };
 
@@ -443,6 +445,8 @@ export type ApplicationAnswerDraftInput = {
   answer: string;
   source: string;
   sortOrder: number;
+  providerUsed?: string;
+  modelUsed?: string;
 };
 
 export type ApplicationStatusUpdateInput = {
@@ -505,10 +509,11 @@ export type RoleDirectionUpdateInput = {
   gaps: string[];
 };
 
-export type AIProviderName = "anthropic" | "gemini" | "openai";
+export type AIProviderName = "anthropic" | "gemini" | "openai" | "ollama";
 
 export type AISettingsRecord = {
   id: string;
+  /** @deprecated Use providerOrderJson instead. */
   activeProvider: AIProviderName;
   anthropicApiKey: string;
   geminiApiKey: string;
@@ -516,7 +521,11 @@ export type AISettingsRecord = {
   anthropicModel: string;
   geminiModel: string;
   openaiModel: string;
+  ollamaBaseUrl: string;
+  ollamaModel: string;
+  /** @deprecated Use providerOrderJson instead. */
   fallbackProvider: string;
+  providerOrderJson: AIProviderName[];
   onboardingDismissed: boolean;
   onboardingPreferencesConfirmed: boolean;
   braveSearchApiKey: string;
@@ -533,7 +542,10 @@ export type AISettingsUpdateInput = {
   anthropicModel: string;
   geminiModel: string;
   openaiModel: string;
+  ollamaBaseUrl: string;
+  ollamaModel: string;
   fallbackProvider: string;
+  providerOrderJson: AIProviderName[];
   onboardingDismissed?: boolean;
   onboardingPreferencesConfirmed?: boolean;
   braveSearchApiKey?: string;
@@ -620,6 +632,8 @@ export type OutreachDraftRecord = {
   message: string;
   charCount: number;
   status: string;
+  providerUsed: string;
+  modelUsed: string;
   createdAt: string;
 };
 
@@ -628,6 +642,8 @@ export type OutreachDraftInput = {
   jobId: string;
   contactType: "recruiter" | "hiring_manager" | "peer";
   message: string;
+  providerUsed?: string;
+  modelUsed?: string;
 };
 
 export type WritingStyleRecord = {

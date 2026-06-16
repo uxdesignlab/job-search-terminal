@@ -15,6 +15,7 @@ export type BlockUpdate = {
 };
 
 export type EvaluationCallback = (update: BlockUpdate) => void;
+export type BlockStartCallback = (block: BlockName) => void;
 
 // ─── Block A: Role Summary ─────────────────────────────────────────────────
 
@@ -303,7 +304,7 @@ function buildResumeExcerpts(resumes: { name: string; extractedText: string; act
 
 // ─── Orchestrator ──────────────────────────────────────────────────────────
 
-export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallback): Promise<JobEvaluationResultInput> {
+export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallback, onBlockStart?: BlockStartCallback): Promise<JobEvaluationResultInput> {
   const start = Date.now();
   const provider = getActiveProvider();
 
@@ -332,18 +333,23 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
 
   // All blocks run sequentially — avoids rate-limit/503 from parallel API calls,
   // and gives better streaming UX (one block appears at a time).
+  onBlockStart?.("a");
   const blockA = await withRetry(() => runBlockA(provider, systemPrompt, jobCtx));
   onBlock?.({ block: "a", label: "A. Role summary", content: blockA.summary });
 
+  onBlockStart?.("b");
   const blockB = await withRetry(() => runBlockB(provider, systemPrompt, jobCtx, blockA));
   onBlock?.({ block: "b", label: "B. CV match", content: blockB.summary });
 
+  onBlockStart?.("c");
   const blockCContent = await withRetry(() => runBlockC(provider, systemPrompt, jobCtx, blockA, blockB));
   onBlock?.({ block: "c", label: "C. Level strategy", content: blockCContent });
 
+  onBlockStart?.("d");
   const blockDContent = await withRetry(() => runBlockD(provider, systemPrompt, jobCtx, blockA, { title: job.title, company: job.company, location: job.location }));
   onBlock?.({ block: "d", label: "D. Comp and demand", content: blockDContent });
 
+  onBlockStart?.("e");
   const blockE = await withRetry(() => runBlockE(provider, systemPrompt, jobCtx, blockA, blockB));
   onBlock?.({ block: "e", label: "E. Personalization plan", content: blockE.plan });
 
@@ -353,9 +359,11 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
     .map((s) => s.title)
     .slice(0, 8);
 
+  onBlockStart?.("f");
   const blockFResult = await withRetry(() => runBlockF(provider, systemPrompt, jobCtx, blockA, blockE, existingStoryTitles));
   onBlock?.({ block: "f", label: "F. Interview plan", content: blockFResult.lines });
 
+  onBlockStart?.("g");
   const blockGResult = await withRetry(() => runBlockG(provider, systemPrompt, jobCtx, job));
   onBlock?.({ block: "g", label: "G. Posting legitimacy", content: blockGResult.legitimacy });
 
@@ -407,8 +415,8 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   };
 }
 
-export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCallback): Promise<JobEvaluationResultInput> {
-  const result = await evaluateJobWithAI(jobId, onBlock);
+export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCallback, onBlockStart?: BlockStartCallback): Promise<JobEvaluationResultInput> {
+  const result = await evaluateJobWithAI(jobId, onBlock, onBlockStart);
   saveJobEvaluation(result);
   // Auto-populate story bank from Block F structured output (replaces prior auto-saved stories for this job)
   if (result.sections.storiesStructured && result.sections.storiesStructured.length > 0) {

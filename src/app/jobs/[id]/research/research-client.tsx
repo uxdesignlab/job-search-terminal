@@ -99,6 +99,7 @@ export function ResearchClient({ jobId, saved }: Props) {
   const [currentLabel, setCurrentLabel] = useState("");
   const [error, setError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [modelLine, setModelLine] = useState("");
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => () => { esRef.current?.close(); }, []);
@@ -109,6 +110,11 @@ export function ResearchClient({ jobId, saved }: Props) {
     setError("");
     setCurrentLabel("Researching company...");
     setModalOpen(true);
+    setModelLine("");
+    fetch("/api/ai/active")
+      .then((r) => r.json() as Promise<{ providerName: string; modelName: string }>)
+      .then((d) => { if (d.modelName) setModelLine(`${d.modelName} · ${d.providerName}`); })
+      .catch(() => {});
 
     esRef.current?.close();
     const es = new EventSource(`/api/research/${jobId}`);
@@ -168,6 +174,7 @@ export function ResearchClient({ jobId, saved }: Props) {
       message="Running 6-axis AI analysis…"
       subtitle="Covers AI strategy, culture, recent news, competitive position, and your personal angle."
       statusLine={status === "loading" ? currentLabel : undefined}
+      modelLine={modelLine || undefined}
       error={status === "error" ? (error || "Research failed") : null}
       onClose={() => setModalOpen(false)}
     >

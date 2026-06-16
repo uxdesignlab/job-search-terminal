@@ -219,6 +219,8 @@ type ApplicationAnswerDraftRow = {
   answer: string;
   source: string;
   sort_order: number;
+  provider_used: string;
+  model_used: string;
   updated_at: string;
 };
 
@@ -749,6 +751,8 @@ export function getApplicationAnswerDrafts(jobId: string): ApplicationAnswerDraf
     answer: row.answer,
     source: row.source,
     sortOrder: row.sort_order,
+    providerUsed: row.provider_used ?? "",
+    modelUsed: row.model_used ?? "",
     updatedAt: row.updated_at
   }));
 }
@@ -764,18 +768,20 @@ export function saveApplicationAnswerDrafts(drafts: ApplicationAnswerDraftInput[
       database
         .prepare(
           `insert into application_answer_drafts (
-            id, job_id, question, answer, source, sort_order, updated_at
+            id, job_id, question, answer, source, sort_order, provider_used, model_used, updated_at
           ) values (
-            @id, @jobId, @question, @answer, @source, @sortOrder, current_timestamp
+            @id, @jobId, @question, @answer, @source, @sortOrder, @providerUsed, @modelUsed, current_timestamp
           )
           on conflict(id) do update set
             question = excluded.question,
             answer = excluded.answer,
             source = excluded.source,
             sort_order = excluded.sort_order,
+            provider_used = excluded.provider_used,
+            model_used = excluded.model_used,
             updated_at = current_timestamp`
         )
-        .run(draft);
+        .run({ ...draft, providerUsed: draft.providerUsed ?? "", modelUsed: draft.modelUsed ?? "" });
     }
   });
 
@@ -2025,7 +2031,10 @@ type AISettingsRow = {
   anthropic_model: string;
   gemini_model: string;
   openai_model: string;
+  ollama_base_url: string;
+  ollama_model: string;
   fallback_provider: string;
+  provider_order_json: string;
   onboarding_dismissed: number;
   onboarding_preferences_confirmed: number;
   brave_search_api_key: string;
@@ -2046,7 +2055,10 @@ export function getAISettings(): AISettingsRecord {
       anthropicModel: "claude-sonnet-4-6",
       geminiModel: "gemini-2.5-flash",
       openaiModel: "gpt-5.4-mini",
+      ollamaBaseUrl: "http://localhost:11434",
+      ollamaModel: "llama3.1:8b",
       fallbackProvider: "",
+      providerOrderJson: ["openai", "anthropic", "gemini"],
       onboardingDismissed: false,
       onboardingPreferencesConfirmed: false,
       braveSearchApiKey: "",
@@ -2054,6 +2066,12 @@ export function getAISettings(): AISettingsRecord {
       adzunaApiKey: "",
       updatedAt: new Date().toISOString()
     };
+  }
+  let providerOrderJson: AIProviderName[];
+  try {
+    providerOrderJson = JSON.parse(row.provider_order_json || "[]") as AIProviderName[];
+  } catch {
+    providerOrderJson = ["openai", "anthropic", "gemini"];
   }
   return {
     id: row.id,
@@ -2064,7 +2082,10 @@ export function getAISettings(): AISettingsRecord {
     anthropicModel: row.anthropic_model,
     geminiModel: row.gemini_model,
     openaiModel: row.openai_model,
+    ollamaBaseUrl: row.ollama_base_url ?? "http://localhost:11434",
+    ollamaModel: row.ollama_model ?? "llama3.1:8b",
     fallbackProvider: row.fallback_provider,
+    providerOrderJson,
     onboardingDismissed: Boolean(row.onboarding_dismissed),
     onboardingPreferencesConfirmed: Boolean(row.onboarding_preferences_confirmed),
     braveSearchApiKey: row.brave_search_api_key ?? "",
@@ -2086,7 +2107,10 @@ export function saveAISettings(input: AISettingsUpdateInput) {
         anthropic_model = @anthropicModel,
         gemini_model = @geminiModel,
         openai_model = @openaiModel,
+        ollama_base_url = @ollamaBaseUrl,
+        ollama_model = @ollamaModel,
         fallback_provider = @fallbackProvider,
+        provider_order_json = @providerOrderJson,
         onboarding_dismissed = @onboardingDismissed,
         onboarding_preferences_confirmed = @onboardingPreferencesConfirmed,
         brave_search_api_key = @braveSearchApiKey,
@@ -2097,6 +2121,7 @@ export function saveAISettings(input: AISettingsUpdateInput) {
     )
     .run({
       ...input,
+      providerOrderJson: JSON.stringify(input.providerOrderJson),
       onboardingDismissed: input.onboardingDismissed ? 1 : 0,
       onboardingPreferencesConfirmed: input.onboardingPreferencesConfirmed ? 1 : 0,
       braveSearchApiKey: input.braveSearchApiKey ?? existing.braveSearchApiKey,
@@ -2343,6 +2368,8 @@ type OutreachDraftRow = {
   message: string;
   char_count: number;
   status: string;
+  provider_used: string;
+  model_used: string;
   created_at: string;
 };
 
@@ -2354,6 +2381,8 @@ function mapOutreachDraft(row: OutreachDraftRow): OutreachDraftRecord {
     message: row.message,
     charCount: row.char_count,
     status: row.status,
+    providerUsed: row.provider_used ?? "",
+    modelUsed: row.model_used ?? "",
     createdAt: row.created_at
   };
 }
@@ -2367,12 +2396,12 @@ export function saveOutreachDraft(input: OutreachDraftInput) {
   getDatabase()
     .prepare(
       `insert or replace into outreach_drafts (
-        id, job_id, contact_type, message, char_count
+        id, job_id, contact_type, message, char_count, provider_used, model_used
       ) values (
-        @id, @jobId, @contactType, @message, @charCount
+        @id, @jobId, @contactType, @message, @charCount, @providerUsed, @modelUsed
       )`
     )
-    .run({ ...input, charCount: input.message.length });
+    .run({ ...input, charCount: input.message.length, providerUsed: input.providerUsed ?? "", modelUsed: input.modelUsed ?? "" });
   logActivity("outreach", input.jobId, `Outreach draft saved for ${input.contactType}`, { charCount: input.message.length });
 }
 

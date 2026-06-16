@@ -20,7 +20,11 @@ function shouldFailover(error: unknown): boolean {
     msg.includes("403") ||
     msg.includes("overloaded") ||
     msg.includes("unavailable") ||
-    msg.includes("503")
+    msg.includes("503") ||
+    // Ollama-specific: invalid JSON output, timeout, or connection failure — try next provider
+    msg.includes("invalid json") ||
+    msg.includes("timed out") ||
+    msg.includes("connect to ollama")
   );
 }
 

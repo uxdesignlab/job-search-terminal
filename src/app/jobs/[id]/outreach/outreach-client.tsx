@@ -11,6 +11,8 @@ type DraftDisplay = {
   contactType: ContactType;
   message: string;
   charCount: number;
+  modelUsed: string;
+  providerUsed: string;
 };
 
 const CONTACT_LABELS: Record<ContactType, string> = {
@@ -25,7 +27,9 @@ const CHAR_LIMIT = 300;
 function savedToDrafts(saved: OutreachDraftRecord[]): DraftDisplay[] {
   return CONTACT_ORDER.flatMap((ct) => {
     const record = saved.find((r) => r.contactType === ct);
-    return record ? [{ contactType: ct, message: record.message, charCount: record.charCount }] : [];
+    return record
+      ? [{ contactType: ct, message: record.message, charCount: record.charCount, modelUsed: record.modelUsed, providerUsed: record.providerUsed }]
+      : [];
   });
 }
 
@@ -42,12 +46,18 @@ export function OutreachClient({ jobId, saved }: Props) {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modelLine, setModelLine] = useState("");
 
   const generate = useCallback(async () => {
     setStatus("loading");
     setError("");
     setDrafts([]);
     setModalOpen(true);
+    setModelLine("");
+    fetch("/api/ai/active")
+      .then((r) => r.json() as Promise<{ providerName: string; modelName: string }>)
+      .then((d) => { if (d.modelName) setModelLine(`${d.modelName} · ${d.providerName}`); })
+      .catch(() => {});
 
     try {
       const res = await fetch(`/api/outreach/${jobId}`, { method: "POST" });
@@ -85,6 +95,7 @@ export function OutreachClient({ jobId, saved }: Props) {
       title="Generating outreach messages"
       message="Writing LinkedIn messages for recruiter, hiring manager, and peer…"
       subtitle="Each message is kept under 300 characters for LinkedIn."
+      modelLine={modelLine || undefined}
       error={status === "error" ? (error || "Generation failed") : null}
       onClose={closeModal}
     >
@@ -126,10 +137,13 @@ export function OutreachClient({ jobId, saved }: Props) {
                 <div className="rounded-control border border-border bg-surface p-4">
                   <p className="text-sm leading-relaxed text-ink">{draft.message}</p>
                 </div>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex items-center justify-between gap-2">
                   <Button onClick={() => copyToClipboard(draft.message, key)} type="button">
                     {isCopied ? "Copied!" : "Copy"}
                   </Button>
+                  {draft.modelUsed && (
+                    <span className="text-xs text-muted font-mono">{draft.modelUsed} · {draft.providerUsed}</span>
+                  )}
                 </div>
               </Card>
             );

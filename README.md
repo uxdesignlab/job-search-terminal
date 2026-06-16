@@ -102,7 +102,7 @@ http://localhost:3000
 
 Then follow the 3-step setup wizard:
 
-1. Add an AI API key.
+1. Add an AI API key (or use Ollama for free — see below).
 2. Upload your resume.
 3. Scan for jobs.
 
@@ -117,8 +117,42 @@ Full setup guide: [docs/getting-started.md](docs/getting-started.md)
 | Computer | Mac, Windows with WSL, or Linux |
 | Node.js | Version 18 or later |
 | Git | Required to clone the repo |
-| AI API key | OpenAI, Anthropic, or Google Gemini |
+| AI API key | OpenAI, Anthropic, or Google Gemini — **or use Ollama locally for free** (see below) |
 | Google Chrome | Recommended for PDF generation — falls back to bundled Chromium if not found |
+
+---
+
+## Using Ollama (free, local AI)
+
+Job Search Terminal supports [Ollama](https://ollama.com) as a free alternative to cloud AI providers. Your data stays entirely on your machine.
+
+**1. Install Ollama**
+
+Download from [ollama.com](https://ollama.com) or via Homebrew:
+
+```bash
+brew install ollama
+```
+
+**2. Start the server**
+
+```bash
+ollama serve
+```
+
+**3. Pull a model**
+
+| RAM available | Recommended model | Command |
+|---|---|---|
+| ≥64 GB | `qwen2.5:72b` | `ollama pull qwen2.5:72b` |
+| ≥12 GB | `qwen2.5:14b` | `ollama pull qwen2.5:14b` |
+| ≥8 GB | `llama3.1:8b` | `ollama pull llama3.1:8b` |
+
+**4. Enable Ollama in Job Search Terminal**
+
+Go to **Settings → AI Provider**, enable the **Ollama (Local)** row in the priority list, click **Choose…** to pick your model, and save.
+
+> **Quality note:** Larger models produce results closer to cloud quality. For the full 7-block job evaluation, a 14B+ model is recommended.
 
 ---
 

@@ -16,6 +16,7 @@ export function ApplicationQuestionsForm({ jobId }: Props) {
   const [questions, setQuestions] = useState<string[]>([""]);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
+  const [modelLine, setModelLine] = useState("");
 
   function addQuestion() {
     setQuestions((prev) => [...prev, ""]);
@@ -37,6 +38,11 @@ export function ApplicationQuestionsForm({ jobId }: Props) {
 
     setStatus("preparing");
     setError("");
+    setModelLine("");
+    fetch("/api/ai/active")
+      .then((r) => r.json() as Promise<{ providerName: string; modelName: string }>)
+      .then((d) => { if (d.modelName) setModelLine(`${d.modelName} · ${d.providerName}`); })
+      .catch(() => {});
 
     try {
       const res = await fetch(`/api/applications/prepare-answers/${jobId}`, {
@@ -118,6 +124,7 @@ export function ApplicationQuestionsForm({ jobId }: Props) {
         title="Preparing application answers"
         message="Drafting answers grounded in your resume and evaluation…"
         subtitle="This may take 15–30 seconds with AI."
+        modelLine={modelLine || undefined}
         error={status === "error" ? (error || "Something went wrong.") : null}
         onClose={closeModal}
       >
