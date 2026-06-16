@@ -689,11 +689,15 @@ Search performance metrics drawn from actual evaluation and application data.
 Four configuration tabs:
 
 ### AI Providers
-- Set active AI provider: Anthropic (Claude), OpenAI (GPT), or Google (Gemini).
-- Enter API keys for each provider.
-- Select model per provider.
-- Set optional fallback provider.
-- Test connection to verify the key and model work.
+- **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Reorder with the Up / Down arrows on each row.
+- **Cloud providers** — Anthropic (Claude), OpenAI (GPT), Google (Gemini). Enter an API key and select a default model for each.
+- **Ollama (local)** — free, runs entirely on your machine; no API key required. Enable in the priority list to reveal the configuration section:
+  - **Base URL** — Ollama server address (default `http://localhost:11434`).
+  - **Model picker** — click "Choose…" to fetch the list of locally installed models from the running server and select one.
+  - **Quality guide** — ≥64 GB: `qwen2.5:72b` / `llama3.1:70b` (near cloud quality); ≥12 GB: `qwen2.5:14b` / `mistral-nemo`; ≥8 GB: `llama3.1:8b` / `qwen2.5:7b`.
+  - **Unreachability warning** — when Ollama is in the priority chain and the server is not reachable, an inline warning banner appears with a Retry button.
+- Test connection for any provider to verify credentials and measure latency.
+- **Model attribution** — every AI-generated result (evaluation, research, outreach drafts, application answers) shows the model and provider that produced it.
 
 ### Job Sources
 - All configured sources appear in a unified table — companies from

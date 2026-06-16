@@ -8,6 +8,8 @@ export type AIProviderConfig = {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Base URL for local providers (e.g. Ollama). Ignored by cloud providers. */
+  baseUrl?: string;
 };
 
 export type StreamChunk = {

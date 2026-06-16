@@ -5,14 +5,23 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { provider: AIProviderName; apiKey: string; model?: string };
-    const { provider, apiKey, model } = body;
+    const body = await request.json() as { provider: AIProviderName; apiKey?: string; model?: string; baseUrl?: string };
+    const { provider, apiKey, model, baseUrl } = body;
+
+    const settings = getAISettings();
+
+    if (provider === "ollama") {
+      const resolvedBaseUrl = baseUrl || settings.ollamaBaseUrl || "http://localhost:11434";
+      const resolvedModel = model || settings.ollamaModel;
+      const instance = createProvider("ollama", { apiKey: "ollama", model: resolvedModel, baseUrl: resolvedBaseUrl });
+      const result = await instance.testConnection();
+      return NextResponse.json(result);
+    }
 
     if (!apiKey) {
       return NextResponse.json({ ok: false, latencyMs: 0, model: model ?? "", error: "API key required" }, { status: 400 });
     }
 
-    const settings = getAISettings();
     const defaultModel =
       provider === "anthropic" ? settings.anthropicModel
       : provider === "gemini" ? settings.geminiModel

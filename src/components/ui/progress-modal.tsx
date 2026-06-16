@@ -14,6 +14,8 @@ type Props = {
   subtitle?: string;
   /** Animated current-step text shown below message while running */
   statusLine?: string;
+  /** Model attribution shown while running, e.g. "claude-sonnet-4-6 · Anthropic" */
+  modelLine?: string;
   error?: string | null;
   /** Content shown in done state when there is no error */
   children?: ReactNode;
@@ -27,6 +29,7 @@ export function ProgressModal({
   message,
   subtitle,
   statusLine,
+  modelLine,
   error,
   children,
   onClose,
@@ -86,6 +89,9 @@ export function ProgressModal({
               )}
               {subtitle && (
                 <p className="mt-2 max-w-sm text-xs leading-relaxed text-muted">{subtitle}</p>
+              )}
+              {modelLine && (
+                <p className="mt-2 text-xs font-mono text-muted/60">{modelLine}</p>
               )}
             </div>
           </div>

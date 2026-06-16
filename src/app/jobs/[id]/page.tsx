@@ -640,7 +640,9 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                         <p className="text-sm font-semibold text-ink">{draft.question}</p>
                         <p className="mt-2 text-sm leading-6 text-ink whitespace-pre-wrap">{draft.answer}</p>
                         <div className="mt-2 flex items-center justify-between gap-2">
-                          <p className="text-xs text-muted">{draft.source}</p>
+                          <p className="text-xs text-muted font-mono">
+                            {draft.modelUsed ? `${draft.modelUsed} · ${draft.providerUsed}` : draft.source}
+                          </p>
                           <CopyAnswerButton answer={draft.answer} />
                         </div>
                       </li>

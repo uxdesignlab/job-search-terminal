@@ -40,6 +40,8 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
   const [done, setDone] = useState<BlockName[]>([]);
   const [summary, setSummary] = useState<CompleteEvent | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [failedBlock, setFailedBlock] = useState<string | null>(null);
+  const [activeModel, setActiveModel] = useState<{ providerUsed: string; modelUsed: string } | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   function start() {
@@ -48,22 +50,31 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
     setDone([]);
     setSummary(null);
     setErrorMsg("");
+    setFailedBlock(null);
+    setActiveModel(null);
 
     const es = new EventSource(`/api/evaluate/${jobId}`);
     esRef.current = es;
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data as string) as {
-        block: BlockName | "complete" | "error";
+        block: BlockName | "start" | "complete" | "error";
         label?: string;
         done: boolean;
         error?: string;
+        failedBlock?: string;
       } & Partial<CompleteEvent>;
+
+      if (data.block === "start") {
+        setActiveModel({ providerUsed: data.providerUsed ?? "", modelUsed: data.modelUsed ?? "" });
+        return;
+      }
 
       if (data.block === "error") {
         es.close();
         setStatus("error");
         setErrorMsg(data.error ?? "Evaluation failed");
+        setFailedBlock(data.failedBlock ?? null);
         return;
       }
 
@@ -191,8 +202,14 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
                     })}
                   </ul>
 
+                  {activeModel && (
+                    <p className="mt-4 text-xs font-mono text-muted/60">
+                      {activeModel.modelUsed} · {activeModel.providerUsed}
+                    </p>
+                  )}
+
                   <button
-                    className="mt-5 text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
+                    className="mt-3 text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
                     onClick={() => close(false)}
                     type="button"
                   >
@@ -220,12 +237,36 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
 
               {status === "error" && (
                 <>
-                  <p className="mb-5 text-sm text-muted">{errorMsg}</p>
+                  {/* Keep block progress visible so user can see how far it got */}
+                  <ul className="mb-4 grid gap-2">
+                    {BLOCK_ORDER.map((key) => {
+                      const isDone = done.includes(key);
+                      const isFailed = failedBlock === key;
+                      return (
+                        <li
+                          key={key}
+                          className={`flex items-center gap-3 text-sm ${
+                            isFailed ? "text-danger" : isDone ? "text-ink" : "text-muted/40"
+                          }`}
+                        >
+                          <span className="w-4 shrink-0 text-center text-xs">
+                            {isFailed ? (
+                              <span className="text-danger">✕</span>
+                            ) : isDone ? (
+                              <span className="text-success">✓</span>
+                            ) : (
+                              <span>○</span>
+                            )}
+                          </span>
+                          {BLOCK_LABELS[key]}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="mb-4 text-sm text-danger">{errorMsg}</p>
                   <div className="flex gap-2">
                     <Button onClick={start}>Retry</Button>
-                    <Button onClick={() => close(false)} variant="quiet">
-                      Close
-                    </Button>
+                    <Button onClick={() => close(false)} variant="quiet">Close</Button>
                   </div>
                 </>
               )}

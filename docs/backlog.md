@@ -17,6 +17,7 @@ Planned new capabilities, organized by milestone.
 
 **Type:** feature
 **Milestone:** v2.0
+**Status:** ✅ Completed (June 2026) — migration 0041, OllamaProvider, ordered provider chain, drag-and-drop priority list, model picker popup, unreachability warning, model attribution badges on all AI output, failover/retry hardening.
 
 Allow users to point Job Search Terminal at a locally-running LLM (Ollama, LM Studio,
 or any OpenAI-compatible endpoint) instead of a cloud API provider. This makes the

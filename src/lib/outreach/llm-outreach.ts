@@ -13,6 +13,8 @@ export type OutreachDraftResult = {
   contactType: ContactType;
   message: string;
   charCount: number;
+  modelUsed: string;
+  providerUsed: string;
 };
 
 	const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
@@ -71,13 +73,15 @@ export async function generateOutreachDrafts(jobId: string): Promise<OutreachDra
 
   for (const contactType of contactTypes) {
     const message = await generateMessage(contactType, job, profile, provider, styleContext);
-    results.push({ contactType, message, charCount: message.length });
+    results.push({ contactType, message, charCount: message.length, modelUsed: provider.effectiveModel, providerUsed: provider.name });
 
     saveOutreachDraft({
       id: `outreach-${jobId}-${contactType}`,
       jobId,
       contactType,
-      message
+      message,
+      providerUsed: provider.name,
+      modelUsed: provider.effectiveModel
     });
   }
 

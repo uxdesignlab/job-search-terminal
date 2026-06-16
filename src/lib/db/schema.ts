@@ -706,5 +706,17 @@ export const migrations = [
     sql: `
       alter table jobs add column review_status text not null default 'none';
     `
+  },
+  {
+    id: "0041_ollama_settings",
+    sql: `
+      alter table ai_settings add column ollama_base_url text not null default 'http://localhost:11434';
+      alter table ai_settings add column ollama_model text not null default 'llama3.1:8b';
+      alter table ai_settings add column provider_order_json text not null default '["openai","anthropic","gemini"]';
+      alter table outreach_drafts add column provider_used text not null default '';
+      alter table outreach_drafts add column model_used text not null default '';
+      alter table application_answer_drafts add column provider_used text not null default '';
+      alter table application_answer_drafts add column model_used text not null default '';
+    `
   }
 ];

@@ -26,18 +26,27 @@ const PRIMARY_ITEMS = [
 
 function ProviderHealthDot() {
   const settings = getAISettings();
-  const hasActive =
-    (settings.activeProvider === "openai" && !!settings.openaiApiKey) ||
-    (settings.activeProvider === "anthropic" && !!settings.anthropicApiKey) ||
-    (settings.activeProvider === "gemini" && !!settings.geminiApiKey);
-  const hasAny = !!(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
 
-  const color = hasActive ? "bg-success" : hasAny ? "bg-warning" : "bg-danger";
-  const label = hasActive
-    ? `AI active: ${settings.activeProvider}`
+  function hasCredential(p: string): boolean {
+    if (p === "anthropic") return !!settings.anthropicApiKey;
+    if (p === "gemini") return !!settings.geminiApiKey;
+    if (p === "openai") return !!settings.openaiApiKey;
+    if (p === "ollama") return !!settings.ollamaBaseUrl;
+    return false;
+  }
+
+  const chain = settings.providerOrderJson.length > 0
+    ? settings.providerOrderJson
+    : ["openai", "anthropic", "gemini"];
+  const activeProvider = chain.find(hasCredential) ?? null;
+  const hasAny = chain.some(hasCredential) || !!(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
+
+  const color = activeProvider ? "bg-success" : hasAny ? "bg-warning" : "bg-danger";
+  const label = activeProvider
+    ? `AI active: ${activeProvider}`
     : hasAny
-      ? "AI key set but active provider has no key"
-      : "No AI key configured";
+      ? "AI key set but no active provider in chain"
+      : "No AI provider configured";
 
   return (
     <span

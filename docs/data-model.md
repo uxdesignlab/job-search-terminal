@@ -54,6 +54,7 @@ and initializes an empty local profile if the database is empty.
 | `0038_daily_scan_and_resume_audit` | Adds scheduled-scan freshness metadata and generated-resume evidence audit fields |
 | `0039_generated_document_resume_lane_id` | Adds stable resume-lane IDs to generated documents so lane renames do not break export |
 | `0040_job_review_status` | Adds `review_status` text column to `jobs` (default `'none'`) for the low-confidence review queue |
+| `0041_ollama_settings` | Adds `ollama_base_url`, `ollama_model`, `provider_order_json` to `ai_settings`; adds `provider_used`, `model_used` to `outreach_drafts` and `application_answer_drafts` |
 
 ---
 
@@ -350,14 +351,17 @@ Singleton row holding AI provider configuration.
 | Column | Purpose |
 |---|---|
 | `id` | `singleton` (fixed) |
-| `active_provider` | `openai` / `anthropic` / `gemini` |
+| `active_provider` | Legacy primary provider slug (derived from `provider_order_json[0]`). Kept for backward compatibility. |
 | `anthropic_api_key` | Anthropic key |
 | `gemini_api_key` | Google key |
 | `openai_api_key` | OpenAI key |
 | `anthropic_model` | Default Anthropic model slug |
 | `gemini_model` | Default Gemini model slug |
 | `openai_model` | Default OpenAI model slug |
-| `fallback_provider` | Optional fallback provider |
+| `ollama_base_url` | Ollama server base URL (default `http://localhost:11434`) |
+| `ollama_model` | Selected Ollama model name (default `llama3.1:8b`) |
+| `fallback_provider` | Legacy fallback (derived from `provider_order_json[1]`). Kept for backward compatibility. |
+| `provider_order_json` | JSON array of `AIProviderName` values in user-configured priority order. Only enabled providers appear. The factory tries them left to right. |
 | `onboarding_dismissed` | 0 = show onboarding, 1 = dismissed |
 | `onboarding_preferences_confirmed` | 0 = first-run job preferences still need user confirmation, 1 = confirmed |
 | `brave_search_api_key` | Optional Brave Search API key for search-based ATS source discovery |
