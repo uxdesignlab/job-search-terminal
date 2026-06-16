@@ -689,7 +689,7 @@ Search performance metrics drawn from actual evaluation and application data.
 Four configuration tabs:
 
 ### AI Providers
-- **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Reorder with the Up / Down arrows on each row.
+- **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Drag the grip handle on each row to reorder.
 - **Cloud providers** — Anthropic (Claude), OpenAI (GPT), Google (Gemini). Enter an API key and select a default model for each.
 - **Ollama (local)** — free, runs entirely on your machine; no API key required. Enable in the priority list to reveal the configuration section:
   - **Base URL** — Ollama server address (default `http://localhost:11434`).
