@@ -16,11 +16,12 @@ The Shell header provides two navigation groups:
 **Help link** appears immediately after Account and opens the in-app help site at
 `/help` in a **new browser tab** (`target="_blank"`) so the user doesn't lose their current context.
 
-The Account menu shows a live AI provider health dot:
-- Green: active provider has a key configured
-- Red: no key configured for the active provider
-
-(The documented yellow/partial state is not yet implemented; the indicator shows green or red only.)
+The Account menu shows a live AI provider health dot. The indicator reads the
+provider priority chain from `providerOrderJson` and checks each provider for a
+credential (API key for cloud providers; a non-empty base URL for Ollama):
+- Green: the first enabled provider in the chain has a credential configured
+- Yellow: a credential exists somewhere but the first-in-chain provider is missing one
+- Red: no credential is configured for any provider in the chain
 
 The app redirects `/` to `/dashboard` on load.
 The app also serves `/favicon.ico` (redirected to the shared `logo.svg`) so
@@ -44,8 +45,9 @@ guides, and per-topic pages.
 
 **Guide pages:**
 - `/help/getting-started` — setup, onboarding, and daily workflow.
-- `/help/ai-providers` — how to create and add OpenAI, Anthropic, or Google
-  Gemini API keys, test the provider, and protect keys.
+- `/help/ai-providers` — how to configure OpenAI, Anthropic, Google Gemini, or
+  Ollama (local); create and add API keys; set the provider priority chain;
+  test providers; and protect keys.
 - `/help/resume-lanes` — resume lanes, resume upload, ATS-friendly formatting,
   PDF guidance, and bullet quality.
 - `/help/job-search` — dashboard scans, job sources, manual job entry, filters,
@@ -79,7 +81,7 @@ generate useful matches, resumes, and answer drafts until setup is finished.
 
 The modal has 5 steps — 4 required and 1 optional:
 
-1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key inline.
+1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key, or configures an Ollama base URL, inline.
 2. **Resume lanes** — uses the normal multi-lane resume upload cards. Uploading a
    PDF seeds desired positions and positive title filters from extracted resume
    titles, and AI extraction can enrich the full profile. The "Add another lane"
@@ -750,17 +752,22 @@ Four configuration tabs:
 
 ## AI Capabilities
 
-The app supports three AI providers interchangeably:
+The app supports four AI providers interchangeably:
 
 | Provider | Default model | Used for |
 |---|---|---|
-| OpenAI | `gpt-4o` | Evaluation, answers, outreach, research, transcription |
+| OpenAI | `gpt-5.4-mini` | Evaluation, answers, outreach, research, transcription |
 | Anthropic | `claude-sonnet-4-6` | Evaluation, answers, outreach, research |
-| Google Gemini | `gemini-2.0-flash` | Evaluation, answers, outreach, research, transcription |
+| Google Gemini | `gemini-2.5-flash` | Evaluation, answers, outreach, research, transcription |
+| Ollama (local) | user-selected | Evaluation, answers, outreach, research |
 
-The active provider is set in Settings. If the active provider fails, a fallback
-provider can be configured. All AI calls use the `src/lib/ai/` provider
-abstraction with retry logic.
+Providers are configured as an ordered **priority chain** in Settings → AI
+Provider. The app tries providers from top to bottom and automatically fails over
+to the next one when a provider is unavailable or returns a recoverable error.
+The first provider in the chain that has a credential configured is the active
+provider. Ollama uses a base URL (default `http://localhost:11434`) instead of an
+API key and supports any model installed on the local Ollama server. All AI calls
+use the `src/lib/ai/` provider abstraction with retry and failover logic.
 
 **AI-powered features:**
 - Job fit evaluation (streaming, real-time output)
