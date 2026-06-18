@@ -39,6 +39,9 @@ guides, and per-topic pages.
 **Help home:**
 - Hero with product screenshot and calls to start the guide or open the resume
   and ATS guide.
+- Near-hero privacy note that stored data stays on the machine and AI actions
+  use the configured provider: OpenAI, Anthropic, Google Gemini, or Ollama
+  locally.
 - Search across all help pages.
 - Workflow groups for setup, profile, jobs, applying, tracking, interview prep,
   privacy, and troubleshooting.

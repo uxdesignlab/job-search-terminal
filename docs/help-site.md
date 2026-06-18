@@ -36,7 +36,7 @@ components. The help registry stores serializable icon names, and
 ## Current Guide Coverage
 
 - Getting started and the daily workflow
-- AI provider setup for OpenAI, Anthropic, and Google Gemini
+- AI provider setup for OpenAI, Anthropic, Google Gemini, and Ollama
 - Resume lanes, resume upload, ATS-friendly resume structure, and PDF guidance
 - Job search, scan sources, manual job entry, filters, and saved presets
 - Browser-board scanner setup, result scrolling/paging behavior, imports,
@@ -46,7 +46,8 @@ components. The help registry stores serializable icon names, and
 - Application tracking, statuses, kanban/table views, follow-ups, archive vs.
   delete
 - Interview preparation with STAR stories and voice practice
-- Privacy, local data, AI-provider data flow, backups, and safety boundaries
+- Privacy, local data, AI-provider data flow, local Ollama behavior, backups,
+  and safety boundaries
 - Troubleshooting for setup, AI, resume/PDF, scan quality, and browser-board imports
 
 ## Research References
@@ -57,6 +58,7 @@ resources where users need provider-specific or resume-standard guidance:
 - OpenAI API quickstart
 - Anthropic API overview and API access help
 - Google Gemini API key documentation
+- Ollama download and model library
 - LinkedIn job search, filters, alerts, and prohibited software guidance
 - University career-center ATS and resume-format guidance
 

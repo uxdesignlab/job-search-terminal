@@ -31,7 +31,7 @@ browser-board scanning.
 | **Computer** | Mac, Windows (WSL), or Linux |
 | **Node.js** | Version 18 or later — download from [nodejs.org](https://nodejs.org) |
 | **Git** | Download from [git-scm.com](https://git-scm.com) |
-| **An AI API key** | At least one of: OpenAI, Anthropic, or Google Gemini (free tier available) |
+| **An AI provider** | OpenAI, Anthropic, or Google Gemini API key — or Ollama running locally |
 | **Google Chrome** | Recommended for PDF generation — the app falls back to a bundled Chromium if Chrome is not found |
 
 You do not need to know how to code. You just need to be comfortable opening a
@@ -105,17 +105,24 @@ npm install
 It may take a minute or two. You will see a lot of text scrolling by — that is
 normal.
 
-### 5. Add your AI API key
+### 5. Add your AI provider
 
-The app needs at least one AI provider key to evaluate jobs and generate
-content. You can use whichever service you have access to:
+The app needs at least one AI provider to evaluate jobs and generate content.
+Cloud providers receive the text needed for the action you choose. Ollama runs
+models locally, so AI prompts stay on your machine when it is the active
+provider.
+
+For cloud providers, you can use whichever service you have access to:
 
 - **Google Gemini** (free tier): [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 - **OpenAI:** [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 - **Anthropic:** [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
 
-Once you have a key, you configure it inside the app itself (Settings → AI
-Providers). You do not need to create any configuration files manually.
+To use Ollama, install it, pull a model, start the local server, and configure
+the Ollama base URL inside the app.
+
+Configure your provider inside the app itself (Settings → AI Providers). You do
+not need to create any configuration files manually.
 
 ### 5a. Optional: Add job aggregator and source discovery keys
 
