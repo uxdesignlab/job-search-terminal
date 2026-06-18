@@ -13,29 +13,6 @@ and push. The workflow will create or update the corresponding GitHub Issue.
 
 Planned new capabilities, organized by milestone.
 
-### RF-1 — Local LLM provider support (Ollama / LM Studio)
-
-**Type:** feature
-**Milestone:** v2.0
-**Status:** ✅ Completed (June 2026) — migration 0041, OllamaProvider, ordered provider chain, drag-and-drop priority list, model picker popup, unreachability warning, model attribution badges on all AI output, failover/retry hardening.
-
-Allow users to point Job Search Terminal at a locally-running LLM (Ollama, LM Studio,
-or any OpenAI-compatible endpoint) instead of a cloud API provider. This makes the
-"runs locally on your computer" claim fully true from a privacy perspective: no data
-leaves the machine at any point.
-
-**Scope:**
-- Add a fourth AI provider option in Settings: "Local (OpenAI-compatible)"
-- Accept a base URL (e.g. `http://localhost:11434/v1`) and optional model name
-- Reuse the existing OpenAI provider adapter since Ollama/LM Studio both expose the
-  OpenAI-compatible REST API
-- Surface a warning when a local provider is selected and the URL is unreachable
-- Update README and help docs to document supported local model setups
-
-**Requested by:** User feedback (Chris Blocher, June 2026)
-
----
-
 ### RF-2 — Resume skill sub-category model
 
 **Type:** feature
