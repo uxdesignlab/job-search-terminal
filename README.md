@@ -4,7 +4,7 @@
 ![Free for Non-Commercial Use](https://img.shields.io/badge/free-non--commercial-brightgreen)
 ![Local First](https://img.shields.io/badge/local--first-yes-brightgreen)
 ![No Account Required](https://img.shields.io/badge/account-not_required-lightgrey)
-![AI Providers](https://img.shields.io/badge/AI-OpenAI%20%7C%20Anthropic%20%7C%20Gemini-black)
+![AI Providers](https://img.shields.io/badge/AI-OpenAI%20%7C%20Anthropic%20%7C%20Gemini%20%7C%20Ollama-black)
 ![Built with Next.js](https://img.shields.io/badge/Next.js-15-black)
 
 A free, source-available, local-first job-search dashboard for people who need structure, privacy, and better tools in a brutal job market.
@@ -12,6 +12,10 @@ A free, source-available, local-first job-search dashboard for people who need s
 Job Search Terminal helps you scan jobs, score fit with AI, generate tailored resumes, draft application answers, track your pipeline, and prepare for interviews — all on your own computer.
 
 No account. No subscription. No hosted database. Your data stays local.
+
+AI features use the provider you configure: OpenAI, Anthropic, Google Gemini, or
+Ollama running locally. Cloud providers receive the text needed for the action
+you choose; Ollama keeps AI processing on your machine.
 
 Licensed for non-commercial use under CC BY-NC 4.0.
 
@@ -65,7 +69,7 @@ Job Search Terminal was inspired by [Career-Ops](https://github.com/santifer/car
 
 Career-Ops is an excellent AI-powered job-search system built around agentic CLI workflows, Claude Code, Gemini CLI, scanning, scoring, tailored PDFs, and pipeline tracking.
 
-Job Search Terminal takes inspiration from that philosophy while pursuing a different product direction: a local-first visual dashboard with guided setup, structured application tracking, resume lanes, interview prep, and support for OpenAI, Anthropic, and Google Gemini.
+Job Search Terminal takes inspiration from that philosophy while pursuing a different product direction: a local-first visual dashboard with guided setup, structured application tracking, resume lanes, interview prep, and support for OpenAI, Anthropic, Google Gemini, and Ollama.
 
 ---
 
@@ -78,7 +82,7 @@ Job Search Terminal takes inspiration from that philosophy while pursuing a diff
 | Markdown, YAML, TSV, and generated reports | SQLite-backed local app |
 | Strong batch automation | Strong application tracking and UX flow |
 | Terminal dashboard | Web dashboard with guided setup |
-| Claude Code first | OpenAI, Anthropic, and Gemini provider support |
+| Claude Code first | OpenAI, Anthropic, Gemini, and Ollama provider support |
 | Highly customizable by editing files | Configurable through the app UI |
 
 Both projects share a belief: job seekers need better tools, and those tools should not be locked behind another paid gate.
@@ -102,11 +106,25 @@ http://localhost:3000
 
 Then follow the 3-step setup wizard:
 
-1. Add an AI API key (or use Ollama for free — see below).
+1. Add an AI provider (cloud API key or local Ollama — see below).
 2. Upload your resume.
 3. Scan for jobs.
 
 Full setup guide: [docs/getting-started.md](docs/getting-started.md)
+
+---
+
+## Starting the app again
+
+After the first setup, return to the project folder and start the local server:
+
+```bash
+cd job-search-terminal
+npm run dev
+```
+
+Then open [http://localhost:3000](http://localhost:3000). Your saved profile,
+resumes, jobs, applications, and settings load from the local database.
 
 ---
 
@@ -117,7 +135,7 @@ Full setup guide: [docs/getting-started.md](docs/getting-started.md)
 | Computer | Mac, Windows with WSL, or Linux |
 | Node.js | Version 18 or later |
 | Git | Required to clone the repo |
-| AI API key | OpenAI, Anthropic, or Google Gemini — **or use Ollama locally for free** (see below) |
+| AI provider | OpenAI, Anthropic, or Google Gemini API key — **or use Ollama locally for free** (see below) |
 | Google Chrome | Recommended for PDF generation — falls back to bundled Chromium if not found |
 
 ---
@@ -205,7 +223,7 @@ npm run data:export      # export readable JSON snapshot
 |---|---|
 | Framework | Next.js 15, React 19, TypeScript |
 | Database | SQLite via better-sqlite3 |
-| AI | OpenAI, Anthropic, Google Gemini |
+| AI | OpenAI, Anthropic, Google Gemini, Ollama |
 | PDF | Playwright + Chrome |
 | Styling | Tailwind CSS with custom design tokens |
 | Icons | Lucide React |

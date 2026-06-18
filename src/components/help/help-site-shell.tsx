@@ -27,6 +27,10 @@ export function HelpSiteShell({ activeSlug, children }: HelpSiteShellProps) {
                   Complete guidance for setup, AI providers, resume lanes, ATS-friendly PDFs, job scanning, LinkedIn imports,
                   tailoring, applications, interviews, data, and troubleshooting.
                 </p>
+                <p className="max-w-2xl text-sm leading-6 text-muted">
+                  Stored data stays on your machine. AI actions use the provider you configure: OpenAI, Anthropic,
+                  Google Gemini, or Ollama running locally.
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
