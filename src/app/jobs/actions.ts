@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { archiveJob, getJobByUrl, insertManualJob, setJobReviewStatus, updateJobDetails } from "@/lib/db/queries";
+import { localDateString } from "@/lib/dates";
 
 export async function addManualJobAction(formData: FormData) {
   const company = formData.get("company") as string;
@@ -15,7 +16,7 @@ export async function addManualJobAction(formData: FormData) {
   }
 
   const id = `job-${randomUUID().split("-")[0]}`;
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localDateString();
 
   const changes = insertManualJob({
     id,

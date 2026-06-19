@@ -172,8 +172,8 @@ Every job discovered by scanning or added manually.
 | `source` | ATS source, manual source, or browser-board source (`linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`) |
 | `location` | Job location text |
 | `remote_type` | `remote` / `hybrid` / `onsite` / `unknown` |
-| `date_posted` | Date from ATS if available |
-| `first_seen_date` | Date Job Search Terminal first discovered this job |
+| `date_posted` | Date from ATS if available (`YYYY-MM-DD` in user's local timezone) |
+| `first_seen_date` | Date Job Search Terminal first discovered this job (`YYYY-MM-DD` in user's local timezone — never UTC) |
 | `freshness_label` | Human-readable freshness (e.g., "3 days ago") |
 | `raw_description` | Full raw job description text |
 | `parsed_description` | Cleaned description for display |
