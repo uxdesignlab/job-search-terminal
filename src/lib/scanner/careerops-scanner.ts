@@ -7,6 +7,7 @@ import type { FreshnessWindowHours, ScannedJobInput, ScanRunRecord, ScanTrigger 
 import { buildJobPreferenceFilter, type JobPreferenceProfile } from "../jobs/preference-fit";
 import { classifyScanErrorMessage } from "../scan-error-category";
 import { safeFetch } from "../safe-fetch";
+import { localDateString } from "../dates";
 import { classifyFreshness, DEFAULT_FRESHNESS_WINDOW_HOURS } from "./freshness";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
@@ -143,7 +144,7 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     ? companiesForTargets.length - targets.length
     : enabledCompanies.length - targets.length;
   const dedup = getJobDedupKeys();
-  const date = startedAt.slice(0, 10);
+  const date = localDateString(options.now ?? new Date());
   const newJobs: ScannedJobInput[] = [];
   const errors: ScanError[] = [...preflightErrors];
   if (

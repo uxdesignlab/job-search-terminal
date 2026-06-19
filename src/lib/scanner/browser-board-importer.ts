@@ -16,6 +16,7 @@ import {
   type BrowserBoardSource,
   isBrowserBoardSource
 } from "./browser-board-sources";
+import { localDateString } from "@/lib/dates";
 import { classifyFreshness } from "./freshness";
 
 const GENERIC_IMPORT_DIR = path.join(process.cwd(), "data", "job-board-imports");
@@ -81,7 +82,7 @@ export function prepareBrowserBoardJobs(
   options: PrepareOptions = {}
 ): { jobs: BrowserBoardJobInput[]; skipped: number; duplicates: number; fresh: number; unknownDate: number; staleFiltered: number } {
   const dedup = options.dedup ?? getJobDedupKeys();
-  const firstSeenDate = (options.now ?? new Date()).toISOString().slice(0, 10);
+  const firstSeenDate = localDateString(options.now ?? new Date());
   const jobs: BrowserBoardJobInput[] = [];
   let skipped = 0;
   let duplicates = 0;
@@ -150,7 +151,7 @@ export function prepareBrowserBoardJobs(
       location,
       rawDescription,
       datePosted,
-      firstSeenDate: stringValue(raw.discoveredAt)?.slice(0, 10) || firstSeenDate,
+      firstSeenDate: (stringValue(raw.discoveredAt) ? localDateString(new Date(stringValue(raw.discoveredAt)!)) : null) || firstSeenDate,
       salaryNotes: stringValue(raw.salaryNotes) || "Not captured by scanner.",
       isDuplicate,
       duplicateOf: isDuplicate ? duplicateOf : null,
@@ -250,7 +251,7 @@ export async function importBrowserBoardJobs(
 }
 
 function archiveImportFile(jsonFilePath: string) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const archiveDir = path.join(path.dirname(jsonFilePath), "archive", today);
   mkdirSync(archiveDir, { recursive: true });
   const dest = path.join(archiveDir, path.basename(jsonFilePath));
