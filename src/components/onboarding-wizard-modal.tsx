@@ -73,6 +73,7 @@ export function OnboardingWizardModal({
   const [open, setOpen] = useState(true);
   const [confirmClose, setConfirmClose] = useState(false);
   const [extractionDone, setExtractionDone] = useState(hasExtractedProfile);
+  const [extractionError, setExtractionError] = useState(false);
   // When set, shows the resume builder inline (full-screen within the modal overlay)
   const [builderResumeId, setBuilderResumeId] = useState<string | null>(null);
   const [scheduleEnabled, setScheduleEnabled] = useState(true);
@@ -159,6 +160,12 @@ export function OnboardingWizardModal({
     router.refresh();
   }
 
+  async function forceClose() {
+    await dismissOnboardingAction();
+    setOpen(false);
+    router.refresh();
+  }
+
   function requestClose() {
     if (statuses.ready) {
       void dismissOnboarding();
@@ -227,16 +234,14 @@ export function OnboardingWizardModal({
                 Complete each step here before using the dashboard. Your data stays on this machine.
               </p>
             </div>
-            {statuses.ready && (
-              <button
-                aria-label="Close onboarding"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control border border-border text-lg leading-none text-muted transition-colors hover:border-accent hover:text-ink"
-                onClick={requestClose}
-                type="button"
-              >
-                ×
-              </button>
-            )}
+            <button
+              aria-label="Close onboarding"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-control border border-border text-lg leading-none text-muted transition-colors hover:border-accent hover:text-ink"
+              onClick={requestClose}
+              type="button"
+            >
+              ×
+            </button>
           </div>
 
           {confirmClose ? (
@@ -255,6 +260,7 @@ export function OnboardingWizardModal({
               </div>
               <div className="flex flex-wrap gap-3">
                 <Button onClick={() => setConfirmClose(false)} variant="primary">Back to setup</Button>
+                <Button onClick={() => void forceClose()} variant="secondary">Dismiss setup</Button>
               </div>
             </div>
           ) : (
@@ -390,7 +396,8 @@ export function OnboardingWizardModal({
                           <div className="mt-3">
                             <ExtractProfileButton
                               disabled={!hasKey}
-                              onExtracted={() => { setExtractionDone(true); router.refresh(); }}
+                              onExtracted={() => { setExtractionDone(true); setExtractionError(false); router.refresh(); }}
+                              onError={() => setExtractionError(true)}
                             />
                           </div>
                         </div>
@@ -403,12 +410,15 @@ export function OnboardingWizardModal({
                         )}
 
                         <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
-                          {!extractionDone && (
+                          {!extractionDone && !extractionError && (
                             <p className="text-xs text-muted">Run &ldquo;Extract with AI&rdquo; above to populate your profile before continuing.</p>
+                          )}
+                          {extractionError && (
+                            <p className="text-xs text-muted">Extraction failed — you can continue and re-run it from the Profile page later.</p>
                           )}
                           <Button
                             className="ml-auto"
-                            disabled={!extractionDone}
+                            disabled={!extractionDone && !extractionError}
                             onClick={() => setActiveStep("preferences")}
                             type="button"
                             variant="primary"

@@ -63,6 +63,19 @@ function mergeTitleKeywords(existing: string[], additions: string[]) {
   return normalizeTitleKeywords([...existing, ...additions]);
 }
 
+function mergeTargetRoles(existing: string[], additions: string[]): string[] {
+  const seen = new Set(existing.map((r) => r.trim().toLowerCase()));
+  const merged = [...existing];
+  for (const role of additions) {
+    const key = role.trim().toLowerCase();
+    if (key && !seen.has(key)) {
+      merged.push(role.trim());
+      seen.add(key);
+    }
+  }
+  return merged;
+}
+
 export async function extractProfileWithAI(): Promise<{ profileSaved: boolean; skillCount: number }> {
   const previous = getUserProfile();
   const resumes = getResumes().filter((r) => r.extractedText && r.extractedText.length > 100);
@@ -173,7 +186,7 @@ ${resumeText}`
     currentSearchGoal: result.profile.currentSearchGoal || "",
     urgency: normalizeUrgency(result.profile.urgency || "actively searching"),
     direction: result.profile.direction || "",
-    targetRoles: result.profile.targetRoles || [],
+    targetRoles: mergeTargetRoles(previous.targetRoles, result.profile.targetRoles || []),
     desiredIndustries: result.profile.desiredIndustries || [],
     compensationNeeds: result.profile.compensationNeeds || "",
     workPreferences: result.profile.workPreferences || [],
@@ -191,11 +204,52 @@ ${resumeText}`
 
   updateUserProfile(profileUpdate);
 
-  const roleTitleFilters = normalizeTitleKeywords(profileUpdate.targetRoles);
-  if (roleTitleFilters.length > 0) {
-    const currentTitleFilters = getTitleFilters();
+  // ── Call 3: title search keyword expansion ────────────────────────────────
+  // Generates realistic job-board search keywords (substring matches) beyond
+  // just the raw targetRoles — synonyms, industry variants, seniority-neutral
+  // forms that recruiters actually use in postings.
+  let expandedTitleKeywords: string[] = [];
+  if (profileUpdate.targetRoles.length > 0) {
+    const titleExpansionMessages: AIMessage[] = [
+      systemMsg,
+      {
+        role: "user",
+        content: `You are a job search expert. Given a candidate's target roles and career direction, produce a list of realistic job title SEARCH KEYWORDS for a job board.
+
+Rules:
+- Each keyword is a 1–4 word lowercase phrase used as a substring match against job posting titles.
+- Include: industry synonyms, common abbreviations, seniority-neutral variants (drop "senior"/"lead" so one keyword catches all levels), and specialization variants actually found in job postings.
+- Exclude: overly broad single words ("design", "manager"), C-suite titles the resume doesn't support, and roles from unrelated fields.
+- Keep abbreviations if they appear in postings (e.g. "ux", "ui/ux", "ia").
+- Return ONLY a JSON array of lowercase strings. Max 20 items. No explanations.
+
+Target roles: ${profileUpdate.targetRoles.join(", ")}
+Career direction: ${profileUpdate.direction}
+
+["keyword 1", "keyword 2", ...]`
+      }
+    ];
+
+    try {
+      const raw = await withRetry(() =>
+        provider.generateJSON<string[]>(titleExpansionMessages, "[]", { maxTokens: 512 })
+      );
+      expandedTitleKeywords = Array.isArray(raw)
+        ? raw.map((k) => String(k).trim().toLowerCase()).filter((k) => k.length > 0 && k.length <= 40)
+        : [];
+    } catch {
+      // Non-fatal — proceed without expansion keywords
+    }
+  }
+
+  const currentTitleFilters = getTitleFilters();
+  const allTitleAdditions = normalizeTitleKeywords([
+    ...profileUpdate.targetRoles,
+    ...expandedTitleKeywords,
+  ]);
+  if (allTitleAdditions.length > 0) {
     saveTitleFilters(
-      mergeTitleKeywords(currentTitleFilters.positive, roleTitleFilters),
+      mergeTitleKeywords(currentTitleFilters.positive, allTitleAdditions),
       currentTitleFilters.negative
     );
   }

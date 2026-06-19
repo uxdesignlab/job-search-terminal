@@ -9,9 +9,10 @@ import { extractProfileWithAIAction } from "@/app/profile/actions";
 type Props = {
   disabled?: boolean;
   onExtracted?: () => void;
+  onError?: () => void;
 };
 
-export function ExtractProfileButton({ disabled = false, onExtracted }: Props) {
+export function ExtractProfileButton({ disabled = false, onExtracted, onError }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle");
@@ -32,6 +33,7 @@ export function ExtractProfileButton({ disabled = false, onExtracted }: Props) {
       } catch (e) {
         setError(e instanceof Error ? e.message : "Extraction failed");
         setPhase("error");
+        onError?.();
       }
     });
   }

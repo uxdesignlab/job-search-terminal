@@ -44,45 +44,29 @@ Ordered by severity within each section.
 
 ### Blocker
 
-### OB-1 — Onboarding traps user when AI extraction hits MAX_TOKENS
+### OB-1 — Onboarding traps user when AI extraction hits MAX_TOKENS ✓ Fixed
 
 **Type:** bug
 **Source:** User feedback (Chris Blocher, June 2026)
 **Milestone:** v1.1
-**Files:** `src/components/onboarding-wizard-modal.tsx:83–87, 405–416` · `src/components/extract-profile-button.tsx:26–36`
-
-When the AI extraction call fails (e.g. Gemini MAX_TOKENS on a long resume),
-`extractionDone` stays `false` and "Continue to job preferences →" stays disabled.
-The preferences step is gated behind `statuses.resume = hasResume && hasExtractedProfile`,
-and the close (×) button only renders when `statuses.ready`. There is no skip, dismiss,
-or retry-with-different-model path. The user is fully trapped.
-
-**Fix direction:** Allow the user to bypass the extraction gate when extraction errors
-out — either a "Skip for now" option on the extraction card, or allowing the continue
-button when an extraction error is present and the resume is uploaded. Extraction can
-be re-run later from the Profile page.
+**Fixed:** June 2026 — `ExtractProfileButton` now calls `onError` on failure; the
+wizard tracks `extractionError` state and enables "Continue to job preferences →"
+when extraction has errored (with a note to re-run from Profile). The × close
+button is now always visible and the confirm-close panel has a "Dismiss setup"
+escape hatch.
 
 ---
 
 ### High
 
-### OB-2 — Onboarding re-appears after git pull despite prior dismissal
+### OB-2 — Onboarding re-appears after git pull despite prior dismissal ✓ Fixed
 
 **Type:** bug
 **Source:** User feedback (Chris Blocher, June 2026)
 **Milestone:** v1.1
-**Files:** `src/app/dashboard/page.tsx:70–72` · `src/components/new-user-onboarding.tsx:21–23`
-
-`showOnboarding = !onboardingComplete || !onboardingDismissed`. If `onboardingComplete`
-ever becomes false — e.g. when `hasRolePreferences` requires positive title filters the
-user never set — onboarding re-triggers even though `onboardingDismissed = true`. This
-is compounded by OB-1: a user trapped by the extraction failure can never confirm
-preferences, keeping `onboardingComplete = false` permanently.
-
-**Fix direction:** Once a user has dismissed onboarding, `onboardingDismissed` should
-be the authoritative gate. Decouple the "show modal" condition from `onboardingComplete`
-— instead surface a non-blocking banner or nudge for incomplete setup rather than
-re-triggering the full modal.
+**Fixed:** June 2026 — `showOnboarding` in `dashboard/page.tsx` now reads
+`!settings.onboardingDismissed` only; `onboardingComplete` no longer gates modal
+visibility. Once dismissed, the modal never re-appears.
 
 ---
 
