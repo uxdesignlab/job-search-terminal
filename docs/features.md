@@ -77,10 +77,12 @@ the shared help components under `src/components/help/`.
 
 The command center. Has two states depending on setup progress.
 
-**First-run onboarding** (shown until setup is complete and dismissed): Opens as
-an isolated dashboard modal so the user can finish setup without leaving the
-flow. Closing before completion shows a warning that the app will fail to
-generate useful matches, resumes, and answer drafts until setup is finished.
+**First-run onboarding** (shown until dismissed): Opens as an isolated dashboard
+modal so the user can finish setup without leaving the flow. The × close button
+is always visible. Clicking it when setup is not fully complete shows a warning
+with two options — "Back to setup" or "Dismiss setup" (exits immediately and
+records dismissal). Once dismissed, the modal never re-appears regardless of
+whether all steps are complete; `onboardingDismissed` is the authoritative gate.
 
 The modal has 5 steps — 4 required and 1 optional:
 
@@ -89,7 +91,10 @@ The modal has 5 steps — 4 required and 1 optional:
    PDF seeds desired positions and positive title filters from extracted resume
    titles, and AI extraction can enrich the full profile. The "Add another lane"
    button only appears once all existing lanes have a file uploaded (to prevent
-   accidentally adding duplicate empty lanes).
+   accidentally adding duplicate empty lanes). If AI extraction fails (e.g.
+   MAX_TOKENS on a long resume), the "Continue to job preferences →" button
+   becomes enabled anyway with a note that extraction can be re-run from the
+   Profile page; the user is never trapped.
 3. **Job preferences** — requires the user to review and explicitly save desired
    positions, include/exclude title filters, and location work modes. Resume
    upload or extraction may prefill these values, but the step does not become
@@ -587,7 +592,13 @@ Resumes tab shows an upload banner when no extracted resumes exist.
   skills, role directions, and experience automatically. Clicking **Extract with
   AI** opens a blocking `ProgressModal` ("Analyzing your resume…" + spinner); on
   success it shows the number of skills extracted; on error it shows the failure
-  message.
+  message. **Extraction merges, never overwrites:** existing `targetRoles` are
+  preserved and new AI-extracted roles are appended (case-insensitive dedup).
+  Positive title filters also merge — a third AI call generates realistic
+  job-board search keywords (industry synonyms, seniority-neutral variants,
+  common abbreviations) from the extracted roles and career direction, and all
+  additions are merged into any filters already saved. The negative filter list
+  is always left untouched.
 - Edit form: current search goal, search direction, urgency (select), career
   intent, career change interest, confidence level.
 

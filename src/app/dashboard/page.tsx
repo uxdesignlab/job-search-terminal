@@ -69,7 +69,7 @@ export default function DashboardPage() {
   const hasLocationPreferences = profile.workModes.length > 0;
   const preferencesConfirmed = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
   const onboardingComplete = hasKey && hasResume && preferencesConfirmed;
-  const showOnboarding = !onboardingComplete || !settings.onboardingDismissed;
+  const showOnboarding = !settings.onboardingDismissed;
 
   const actionQueue = getDashboardActionQueue();
   const jobSources = getJobSourceBreakdown();
