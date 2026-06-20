@@ -718,5 +718,59 @@ export const migrations = [
       alter table application_answer_drafts add column provider_used text not null default '';
       alter table application_answer_drafts add column model_used text not null default '';
     `
+  },
+  {
+    id: "0042_email_job_alert_imports",
+    sql: `
+      alter table jobs add column posting_resolution_status text not null default 'resolved';
+      alter table jobs add column posting_search_query text not null default '';
+
+      create table if not exists job_email_import_evidence (
+        id text primary key,
+        job_id text not null references jobs(id) on delete cascade,
+        source_filename text not null,
+        email_subject text not null default '',
+        email_from text not null default '',
+        email_date text not null default '',
+        extracted_snippet text not null default '',
+        candidate_links_json text not null default '[]',
+        confidence text not null default 'low',
+        extraction_notes text not null default '',
+        created_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_job_email_import_evidence_job_id on job_email_import_evidence(job_id);
+    `
+  },
+  {
+    id: "0043_pending_email_candidates",
+    sql: `
+      create table if not exists pending_email_job_candidates (
+        id text primary key,
+        batch_id text not null,
+        email_subject text not null default '',
+        email_from text not null default '',
+        email_date text not null default '',
+        source_filename text not null default '',
+        company text not null,
+        position text not null,
+        location text not null,
+        url text not null,
+        source_url text not null,
+        original_posting_url text not null default '',
+        job_description text not null default '',
+        salary_notes text not null default '',
+        snippet text not null default '',
+        confidence text not null default 'low',
+        extraction_notes text not null default '',
+        posting_resolution_status text not null default 'needs_resolution',
+        posting_search_query text not null default '',
+        candidate_links_json text not null default '[]',
+        discovered_at text not null,
+        title_match text not null default 'unknown',
+        created_at text not null default current_timestamp
+      );
+      create index if not exists idx_pending_email_candidates_batch on pending_email_job_candidates(batch_id);
+    `
   }
 ];

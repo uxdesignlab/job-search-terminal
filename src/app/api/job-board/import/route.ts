@@ -6,7 +6,7 @@ import { resolveImportFilePathWithin } from "@/lib/scanner/import-path";
 
 const WATCH_DIR = getBrowserBoardImportDirectory();
 const ALLOWED_DIRS = [WATCH_DIR, getLinkedInImportDirectory()];
-const FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster)-jobs-.+\.json$/;
+const FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster|adzuna|email)-jobs-.+\.json$/;
 
 export async function POST(req: Request) {
   try {

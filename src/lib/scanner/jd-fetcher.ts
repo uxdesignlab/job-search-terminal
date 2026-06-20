@@ -1,5 +1,6 @@
 import type { JobRecord } from "../db/types";
 import { safeFetch } from "../safe-fetch";
+import { hasResolvedPosting } from "../jobs/posting-resolution";
 
 const FETCH_TIMEOUT_MS = 12_000;
 
@@ -89,7 +90,7 @@ async function fetchLever(jobUrl: string): Promise<string | null> {
 }
 
 export async function fetchJobDescription(job: JobRecord): Promise<string | null> {
-  if (!job.url) return null;
+  if (!hasResolvedPosting(job)) return null;
   const source = job.source ?? "";
   const url = job.url;
 

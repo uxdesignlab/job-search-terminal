@@ -5,7 +5,8 @@ export const BROWSER_BOARD_SOURCES = [
   "glassdoor",
   "indeed",
   "monster",
-  "adzuna"
+  "adzuna",
+  "email"
 ] as const;
 
 export type BrowserBoardSource = (typeof BROWSER_BOARD_SOURCES)[number];
@@ -17,7 +18,8 @@ export type BrowserBoardScanType =
   | "glassdoor-browser-scan"
   | "indeed-browser-scan"
   | "monster-browser-scan"
-  | "adzuna-api-scan";
+  | "adzuna-api-scan"
+  | "email-alert-import";
 
 const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   linkedin: "LinkedIn",
@@ -26,7 +28,8 @@ const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   glassdoor: "Glassdoor",
   indeed: "Indeed",
   monster: "Monster",
-  adzuna: "Adzuna"
+  adzuna: "Adzuna",
+  email: "Email"
 };
 
 const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
@@ -36,7 +39,8 @@ const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
   glassdoor: "glassdoor-browser-scan",
   indeed: "indeed-browser-scan",
   monster: "monster-browser-scan",
-  adzuna: "adzuna-api-scan"
+  adzuna: "adzuna-api-scan",
+  email: "email-alert-import"
 };
 
 const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
@@ -46,7 +50,8 @@ const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
   "glassdoor-browser-scan": "glassdoor",
   "indeed-browser-scan": "indeed",
   "monster-browser-scan": "monster",
-  "adzuna-api-scan": "adzuna"
+  "adzuna-api-scan": "adzuna",
+  "email-alert-import": "email"
 };
 
 export function isBrowserBoardSource(value: unknown): value is BrowserBoardSource {

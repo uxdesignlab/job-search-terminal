@@ -5,11 +5,13 @@ import { formatPostedDate } from "@/lib/dates";
 import { getJobs, getReviewQueueCount, getUserProfile } from "@/lib/db/queries";
 import { OUTSIDE_PREFERENCES_LABEL, buildJobPreferenceFilter } from "@/lib/jobs/preference-fit";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
+import { hasResolvedPosting } from "@/lib/jobs/posting-resolution";
 import { AddJobModal } from "@/components/AddJobModal";
 import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
 import { approveReviewAction, dismissReviewAction } from "./actions";
 import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
+import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
 import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,7 @@ export default async function JobsPage() {
       preferenceLabel: preferenceDecision.accepted ? undefined : OUTSIDE_PREFERENCES_LABEL,
       removalProtected: isJobProtectedFromAutomaticRemoval(job),
       sourceLabel: sourceLabelFromJobSource(job.source),
+      hasResolvedPosting: hasResolvedPosting(job),
     };
   });
 
@@ -89,7 +92,7 @@ export default async function JobsPage() {
                 {job.sourceLabel ? <Badge tone="neutral">{job.sourceLabel}</Badge> : null}
                 {job.preferenceLabel ? <Badge tone="warning">{job.preferenceLabel}</Badge> : null}
                 {job.livenessStatus === "expired" ? <Badge tone="danger">Posting expired</Badge> : null}
-                {job.url ? (
+                {job.hasResolvedPosting ? (
                   <a
                     className="text-xs font-medium text-accent hover:underline"
                     href={job.url}
@@ -99,6 +102,7 @@ export default async function JobsPage() {
                     Posting ↗
                   </a>
                 ) : null}
+                {job.postingResolutionStatus === "needs_resolution" ? <Badge tone="warning">Needs posting</Badge> : null}
               </div>
             </div>
           ))}
@@ -116,6 +120,7 @@ export default async function JobsPage() {
         ) : null}
       </div>
       <LinkedInImportNotification />
+      <EmailCandidateApprovalModal />
     </Shell>
   );
 }

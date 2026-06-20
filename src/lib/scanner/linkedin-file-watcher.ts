@@ -5,9 +5,14 @@ import {
   getLinkedInImportDirectory,
   importBrowserBoardJobs
 } from "./browser-board-importer";
+import {
+  getEmailJobAlertImportDirectory,
+  importEmailJobAlertFile
+} from "./email-job-alert-importer";
 
 const LEGACY_LINKEDIN_FILE_PATTERN = /^linkedin-jobs-.+\.json$/;
-const BROWSER_BOARD_FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster)-jobs-.+\.json$/;
+const BROWSER_BOARD_FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster|adzuna|email)-jobs-.+\.json$/;
+export const EMAIL_JOB_ALERT_FILE_PATTERN = /\.(eml|html|txt)$/i;
 let started = false;
 
 export function startLinkedInFileWatcher() {
@@ -20,6 +25,7 @@ export function startBrowserBoardFileWatcher() {
 
   watchDirectory(getLinkedInImportDirectory(), LEGACY_LINKEDIN_FILE_PATTERN, "linkedin");
   watchDirectory(getBrowserBoardImportDirectory(), BROWSER_BOARD_FILE_PATTERN);
+  watchDirectory(getEmailJobAlertImportDirectory(), EMAIL_JOB_ALERT_FILE_PATTERN, undefined, processEmailFile);
 }
 
 async function processFile(filePath: string, legacySource?: "linkedin") {
@@ -29,6 +35,19 @@ async function processFile(filePath: string, legacySource?: "linkedin") {
     try {
       const { logActivity } = await import("@/lib/db/queries");
       logActivity("browser-board-import", "watcher-error", `File watcher error: ${String(e)}`, {});
+    } catch {
+      // Ignore secondary logging failure
+    }
+  }
+}
+
+async function processEmailFile(filePath: string) {
+  try {
+    await importEmailJobAlertFile(filePath);
+  } catch (e) {
+    try {
+      const { logActivity } = await import("@/lib/db/queries");
+      logActivity("email-job-alert-import", "watcher-error", `Email file watcher error: ${String(e)}`, { filePath });
     } catch {
       // Ignore secondary logging failure
     }
@@ -53,13 +72,18 @@ async function waitForFileStable(filePath: string, maxRetries = 4): Promise<bool
   return existsSync(filePath) && statSync(filePath).size === prevSize && prevSize > 0;
 }
 
-function watchDirectory(watchDir: string, filePattern: RegExp, legacySource?: "linkedin") {
+function watchDirectory(
+  watchDir: string,
+  filePattern: RegExp,
+  legacySource?: "linkedin",
+  processor: (filePath: string, legacySource?: "linkedin") => Promise<void> = processFile
+) {
   if (!existsSync(watchDir)) mkdirSync(watchDir, { recursive: true });
 
   // Sweep for files that arrived while the app was stopped so nothing is silently missed.
   for (const filename of readdirSync(watchDir)) {
     if (!filename.endsWith(".tmp") && filePattern.test(filename)) {
-      void processFile(path.join(watchDir, filename), legacySource);
+      void processor(path.join(watchDir, filename), legacySource);
     }
   }
 
@@ -74,7 +98,7 @@ function watchDirectory(watchDir: string, filePattern: RegExp, legacySource?: "l
       if (!existsSync(filePath)) return;
       const stable = await waitForFileStable(filePath);
       if (!stable || !existsSync(filePath)) return;
-      await processFile(filePath, legacySource);
+      await processor(filePath, legacySource);
     })();
   });
 

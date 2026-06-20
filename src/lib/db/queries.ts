@@ -55,7 +55,9 @@ import type {
   ActionQueueData,
   FreshnessWindowHours,
   ScanScheduleRecord,
-  ScanTrigger
+  ScanTrigger,
+  PendingEmailJobCandidate,
+  PendingEmailJobCandidateInput
 } from "./types";
 
 const parseJson = <T>(value: string | null | undefined, fallback?: T): T => {
@@ -128,6 +130,8 @@ type JobRow = {
   liveness_checked_at: string;
   scope_status: string;
   review_status: string;
+  posting_resolution_status: string;
+  posting_search_query: string;
   archived: number;
   is_duplicate: number;
   duplicate_of: string | null;
@@ -358,6 +362,44 @@ export function saveJobDescription(id: string, rawDescription: string) {
   getDatabase()
     .prepare("update jobs set raw_description = @rawDescription, parsed_description = @rawDescription where id = @id")
     .run({ id, rawDescription });
+}
+
+export function updateJobPostingResolution(
+  id: string,
+  fields: {
+    url?: string;
+    sourceUrl?: string;
+    originalPostingUrl?: string;
+    originalPostingKey?: string;
+    rawDescription?: string;
+    postingResolutionStatus?: "resolved" | "needs_resolution";
+    reviewStatus?: "none" | "pending_review";
+  }
+) {
+  const sets: string[] = ["updated_at = current_timestamp"];
+  const params: Record<string, string> = { id };
+  if (fields.url !== undefined) { sets.push("url = @url"); params.url = fields.url; }
+  if (fields.sourceUrl !== undefined) { sets.push("source_url = @sourceUrl"); params.sourceUrl = fields.sourceUrl; }
+  if (fields.originalPostingUrl !== undefined) { sets.push("original_posting_url = @originalPostingUrl"); params.originalPostingUrl = fields.originalPostingUrl; }
+  if (fields.originalPostingKey !== undefined) { sets.push("original_posting_key = @originalPostingKey"); params.originalPostingKey = fields.originalPostingKey; }
+  if (fields.rawDescription !== undefined) {
+    sets.push("raw_description = @rawDescription, parsed_description = @rawDescription");
+    params.rawDescription = fields.rawDescription;
+  }
+  if (fields.postingResolutionStatus !== undefined) {
+    sets.push("posting_resolution_status = @postingResolutionStatus");
+    params.postingResolutionStatus = fields.postingResolutionStatus;
+  }
+  if (fields.reviewStatus !== undefined) {
+    sets.push("review_status = @reviewStatus");
+    params.reviewStatus = fields.reviewStatus;
+  }
+  getDatabase().prepare(`update jobs set ${sets.join(", ")} where id = @id`).run(params);
+  logActivity("job", id, "Job posting resolution updated", {
+    postingResolutionStatus: fields.postingResolutionStatus,
+    hasUrl: Boolean(fields.url),
+    hasDescription: Boolean(fields.rawDescription),
+  });
 }
 
 export function updateJobDetails(
@@ -1539,7 +1581,8 @@ export type BrowserBoardJobInput = {
     | "glassdoor-browser-scan"
     | "indeed-browser-scan"
     | "monster-browser-scan"
-    | "adzuna-api-scan";
+    | "adzuna-api-scan"
+    | "email-alert-import";
   location: string;
   rawDescription: string;
   datePosted: string | null;
@@ -1548,6 +1591,8 @@ export type BrowserBoardJobInput = {
   isDuplicate: boolean;
   duplicateOf: string[] | null;
   reviewStatus?: "none" | "pending_review";
+  postingResolutionStatus?: "resolved" | "needs_resolution";
+  postingSearchQuery?: string;
 };
 
 export type LinkedInJobInput = Omit<
@@ -1566,7 +1611,7 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
       parsed_description, status, fit_score, role_archetype, recommendation,
       summary, why_it_matches, main_concern, recommended_resume, salary_notes,
       requirement_match_json, resume_evidence_json, gaps_json, red_flags_json,
-      is_duplicate, duplicate_of, review_status
+      is_duplicate, duplicate_of, review_status, posting_resolution_status, posting_search_query
     ) values (
       @id, @company, @title, @url, @sourceUrl, @originalPostingUrl, @originalPostingKey, @source, @location, @remoteType,
       @datePosted, @firstSeenDate, @freshnessLabel, @rawDescription,
@@ -1575,7 +1620,7 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
       'Pending evaluation against profile, resume lanes, and constraints.',
       'Not evaluated yet.', 'To be selected', @salaryNotes,
       '[]', '[]', '[]', '[]',
-      @isDuplicate, @duplicateOf, @reviewStatus
+      @isDuplicate, @duplicateOf, @reviewStatus, @postingResolutionStatus, @postingSearchQuery
     )`
   );
 
@@ -1591,7 +1636,9 @@ export function insertBrowserBoardJobs(jobs: BrowserBoardJobInput[]): { inserted
         salaryNotes: job.salaryNotes || "Not captured by scanner.",
         isDuplicate: job.isDuplicate ? 1 : 0,
         duplicateOf: job.duplicateOf ? JSON.stringify(job.duplicateOf) : null,
-        reviewStatus: job.reviewStatus ?? "none"
+        reviewStatus: job.reviewStatus ?? "none",
+        postingResolutionStatus: job.postingResolutionStatus ?? "resolved",
+        postingSearchQuery: job.postingSearchQuery ?? ""
       });
       if (Number(result.changes) > 0) {
         inserted++;
@@ -1643,7 +1690,9 @@ export function getLatestBrowserBoardImport() {
          'workatastartup-browser-scan',
          'glassdoor-browser-scan',
          'indeed-browser-scan',
-         'monster-browser-scan'
+         'monster-browser-scan',
+         'adzuna-api-scan',
+         'email-alert-import'
        )
        order by started_at desc
        limit 1`
@@ -1657,6 +1706,213 @@ export function getLatestBrowserBoardImport() {
       scan_type: string;
     }
     | undefined;
+}
+
+export type EmailImportEvidenceInput = {
+  id: string;
+  jobId: string;
+  sourceFilename: string;
+  emailSubject: string;
+  emailFrom: string;
+  emailDate: string;
+  extractedSnippet: string;
+  candidateLinks: string[];
+  confidence: "high" | "medium" | "low";
+  extractionNotes: string;
+};
+
+export type EmailImportEvidenceRecord = Omit<EmailImportEvidenceInput, "jobId"> & {
+  jobId: string;
+  createdAt: string;
+};
+
+export function saveEmailImportEvidence(items: EmailImportEvidenceInput[]) {
+  if (items.length === 0) return;
+  const insert = getDatabase().prepare(
+    `insert or ignore into job_email_import_evidence (
+      id, job_id, source_filename, email_subject, email_from, email_date,
+      extracted_snippet, candidate_links_json, confidence, extraction_notes
+    ) values (
+      @id, @jobId, @sourceFilename, @emailSubject, @emailFrom, @emailDate,
+      @extractedSnippet, @candidateLinksJson, @confidence, @extractionNotes
+    )`
+  );
+  const tx = getDatabase().transaction((records: EmailImportEvidenceInput[]) => {
+    for (const item of records) {
+      insert.run({
+        ...item,
+        candidateLinksJson: JSON.stringify(item.candidateLinks),
+      });
+    }
+  });
+  tx(items);
+}
+
+export function getEmailImportEvidence(jobId: string): EmailImportEvidenceRecord[] {
+  const rows = getDatabase()
+    .prepare(
+      `select
+        id,
+        job_id,
+        source_filename,
+        email_subject,
+        email_from,
+        email_date,
+        extracted_snippet,
+        candidate_links_json,
+        confidence,
+        extraction_notes,
+        created_at
+      from job_email_import_evidence
+      where job_id = @jobId
+      order by created_at desc`
+    )
+    .all({ jobId }) as Array<{
+      id: string;
+      job_id: string;
+      source_filename: string;
+      email_subject: string;
+      email_from: string;
+      email_date: string;
+      extracted_snippet: string;
+      candidate_links_json: string;
+      confidence: "high" | "medium" | "low";
+      extraction_notes: string;
+      created_at: string;
+    }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    jobId: row.job_id,
+    sourceFilename: row.source_filename,
+    emailSubject: row.email_subject,
+    emailFrom: row.email_from,
+    emailDate: row.email_date,
+    extractedSnippet: row.extracted_snippet,
+    candidateLinks: parseJson<string[]>(row.candidate_links_json, []),
+    confidence: row.confidence,
+    extractionNotes: row.extraction_notes,
+    createdAt: row.created_at,
+  }));
+}
+
+// ─── Pending Email Candidates ────────────────────────────────────────────────
+
+export function savePendingEmailCandidates(candidates: PendingEmailJobCandidateInput[]): void {
+  if (candidates.length === 0) return;
+  const insert = getDatabase().prepare(
+    `insert or ignore into pending_email_job_candidates (
+      id, batch_id, email_subject, email_from, email_date, source_filename,
+      company, position, location, url, source_url, original_posting_url,
+      job_description, salary_notes, snippet, confidence, extraction_notes,
+      posting_resolution_status, posting_search_query, candidate_links_json,
+      discovered_at, title_match
+    ) values (
+      @id, @batchId, @emailSubject, @emailFrom, @emailDate, @sourceFilename,
+      @company, @position, @location, @url, @sourceUrl, @originalPostingUrl,
+      @jobDescription, @salaryNotes, @snippet, @confidence, @extractionNotes,
+      @postingResolutionStatus, @postingSearchQuery, @candidateLinksJson,
+      @discoveredAt, @titleMatch
+    )`
+  );
+  const tx = getDatabase().transaction((items: PendingEmailJobCandidateInput[]) => {
+    for (const c of items) {
+      insert.run({ ...c, candidateLinksJson: JSON.stringify(c.candidateLinks) });
+    }
+  });
+  tx(candidates);
+}
+
+type PendingEmailCandidateRow = {
+  id: string;
+  batch_id: string;
+  email_subject: string;
+  email_from: string;
+  email_date: string;
+  source_filename: string;
+  company: string;
+  position: string;
+  location: string;
+  url: string;
+  source_url: string;
+  original_posting_url: string;
+  job_description: string;
+  salary_notes: string;
+  snippet: string;
+  confidence: "high" | "medium" | "low";
+  extraction_notes: string;
+  posting_resolution_status: "resolved" | "needs_resolution";
+  posting_search_query: string;
+  candidate_links_json: string;
+  discovered_at: string;
+  title_match: "good" | "weak" | "unknown";
+  created_at: string;
+};
+
+function rowToPendingEmailCandidate(row: PendingEmailCandidateRow): PendingEmailJobCandidate {
+  return {
+    id: row.id,
+    batchId: row.batch_id,
+    emailSubject: row.email_subject,
+    emailFrom: row.email_from,
+    emailDate: row.email_date,
+    sourceFilename: row.source_filename,
+    company: row.company,
+    position: row.position,
+    location: row.location,
+    url: row.url,
+    sourceUrl: row.source_url,
+    originalPostingUrl: row.original_posting_url,
+    jobDescription: row.job_description,
+    salaryNotes: row.salary_notes,
+    snippet: row.snippet,
+    confidence: row.confidence,
+    extractionNotes: row.extraction_notes,
+    postingResolutionStatus: row.posting_resolution_status,
+    postingSearchQuery: row.posting_search_query,
+    candidateLinks: parseJson<string[]>(row.candidate_links_json, []),
+    discoveredAt: row.discovered_at,
+    titleMatch: row.title_match,
+    createdAt: row.created_at,
+  };
+}
+
+export function getPendingEmailCandidates(): PendingEmailJobCandidate[] {
+  const rows = getDatabase()
+    .prepare(
+      `select * from pending_email_job_candidates
+       order by title_match asc, created_at asc`
+    )
+    .all() as PendingEmailCandidateRow[];
+  return rows.map(rowToPendingEmailCandidate);
+}
+
+export function countPendingEmailCandidates(): number {
+  const row = getDatabase()
+    .prepare("select count(*) as n from pending_email_job_candidates")
+    .get() as { n: number };
+  return row.n;
+}
+
+export function getPendingEmailCandidatesByIds(ids: string[]): PendingEmailJobCandidate[] {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = getDatabase()
+    .prepare(`select * from pending_email_job_candidates where id in (${placeholders})`)
+    .all(...ids) as PendingEmailCandidateRow[];
+  return rows.map(rowToPendingEmailCandidate);
+}
+
+export function deletePendingEmailCandidates(ids: string[]): void {
+  if (ids.length === 0) return;
+  const placeholders = ids.map(() => "?").join(",");
+  getDatabase()
+    .prepare(`delete from pending_email_job_candidates where id in (${placeholders})`)
+    .run(...ids);
+}
+
+export function deleteAllPendingEmailCandidates(): void {
+  getDatabase().prepare("delete from pending_email_job_candidates").run();
 }
 
 export function insertManualJob(job: {
@@ -1860,6 +2116,8 @@ function mapJob(row: JobRow): JobRecord {
     livenessCheckedAt: row.liveness_checked_at ?? "",
     scopeStatus: row.scope_status ?? "",
     reviewStatus: (row.review_status === "pending_review" ? "pending_review" : "none") as "none" | "pending_review",
+    postingResolutionStatus: (row.posting_resolution_status === "needs_resolution" ? "needs_resolution" : "resolved") as "resolved" | "needs_resolution",
+    postingSearchQuery: row.posting_search_query ?? "",
     archived: (row.archived ?? 0) === 1,
     isDuplicate: (row.is_duplicate ?? 0) === 1,
     duplicateOf: row.duplicate_of ? (parseJson<string[]>(row.duplicate_of)) : null
@@ -2005,7 +2263,9 @@ function sourceNameForSummary(source: BrowserBoardJobInput["source"]) {
   if (source === "workatastartup-browser-scan") return "Work at a Startup";
   if (source === "glassdoor-browser-scan") return "Glassdoor";
   if (source === "indeed-browser-scan") return "Indeed";
-  return "Monster";
+  if (source === "monster-browser-scan") return "Monster";
+  if (source === "adzuna-api-scan") return "Adzuna";
+  return "Email";
 }
 
 function scanActivityLabel(run: ScanRunRecord) {
