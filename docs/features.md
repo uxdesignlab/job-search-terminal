@@ -196,6 +196,18 @@ status, posting maintenance, and bulk tools.
 - Add job manually via modal (paste URL or fill in details). Jobs added this
   way are stored with `source = 'manual'` and display a **Manual** badge in
   the Source column.
+- **Email job alert imports** — drop `.eml`, `.html`, or `.txt` files into
+  `data/email-job-alert-imports/`. The local watcher parses them and queues
+  extracted candidates in the **Email approval modal** — jobs are never added
+  automatically. Each candidate is pre-scored against your saved target roles
+  and positive title filters (**Matches criteria** / **Off target** / **No
+  criteria set**). Candidates matching your criteria are pre-checked; off-target
+  ones appear unchecked. Choose **Add to jobs** or **Dismiss selected** per
+  candidate, or **Dismiss all** to clear the queue. Unchecked candidates stay
+  pending until you add or dismiss them. The modal appears on both the Dashboard
+  and Jobs pages and polls every 8 seconds for new arrivals. Jobs without a
+  direct posting URL are imported as email leads that can be resolved via
+  **Resolve posting** on the job detail page.
 - **Column filters** — click any column header to open a sort + multi-value
   checkbox filter dropdown. Active filters show a count summary ("X of Y jobs")
   with a "Clear all filters" link.

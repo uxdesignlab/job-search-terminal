@@ -23,6 +23,7 @@ import { isScanSourceEnabled } from "@/lib/scanner/careerops-scanner";
 import { runJobDiscoveryScan } from "@/lib/scanner/job-discovery";
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
+import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
 import { LocalDateLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
 import Link from "next/link";
 
@@ -300,6 +301,7 @@ export default function DashboardPage() {
         )}
 
       </div>
+      <EmailCandidateApprovalModal />
     </Shell>
   );
 }

@@ -54,7 +54,9 @@ and initializes an empty local profile if the database is empty.
 | `0038_daily_scan_and_resume_audit` | Adds scheduled-scan freshness metadata and generated-resume evidence audit fields |
 | `0039_generated_document_resume_lane_id` | Adds stable resume-lane IDs to generated documents so lane renames do not break export |
 | `0040_job_review_status` | Adds `review_status` text column to `jobs` (default `'none'`) for the low-confidence review queue |
+| `0042_email_job_alert_imports` | Adds email-import posting resolution fields and the `job_email_import_evidence` provenance table |
 | `0041_ollama_settings` | Adds `ollama_base_url`, `ollama_model`, `provider_order_json` to `ai_settings`; adds `provider_used`, `model_used` to `outreach_drafts` and `application_answer_drafts` |
+| `0043_pending_email_candidates` | Adds the `pending_email_job_candidates` table for the approval-gated email import queue |
 
 ---
 
@@ -195,6 +197,8 @@ Every job discovered by scanning or added manually.
 | `scope_status` | Maintenance label such as `out_of_scope` when a verified active posting no longer matches saved title filters |
 | `archived` | 0 = active, 1 = archived |
 | `review_status` | `none` (default) or `pending_review` — set to `pending_review` by the importer when a job's raw description is under 100 characters (low-confidence import); cleared to `none` when the user approves the job from the review queue banner |
+| `posting_resolution_status` | `resolved` (default) or `needs_resolution` for email leads that do not yet have a real posting URL |
+| `posting_search_query` | Saved company/title/location query used by on-demand posting resolution |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
 
@@ -204,9 +208,59 @@ values are `Match` and `Out of scope`. Saving profile Preferences or
 Constraints revalidates the Jobs page so this column reflects the latest profile
 rules.
 
+### job_email_import_evidence
+
+Minimal provenance for jobs imported from dropped email alerts.
+
+| Column | Purpose |
+|---|---|
+| `id` | Row identifier |
+| `job_id` | Imported job or unresolved email lead |
+| `source_filename` | Original dropped email filename |
+| `email_subject` | Email subject line |
+| `email_from` | Sender header when available |
+| `email_date` | Date header when available |
+| `extracted_snippet` | Short text snippet used to identify the job |
+| `candidate_links_json` | Extracted candidate posting links |
+| `confidence` | `high`, `medium`, or `low` extraction confidence |
+| `extraction_notes` | Short parser note |
+| `created_at` | ISO timestamp |
+
 **Job status values:** `found` → `reviewed` → `resume_generated` → `applied`
 → `follow_up_needed` → `recruiter_responded` → `interviewing` → `offer` →
 `rejected` / `skipped` / `archived`
+
+### pending_email_job_candidates
+
+Temporary approval queue populated when email files are dropped into
+`data/email-job-alert-imports/`. Rows are deleted once the user approves or
+dismisses them — they never persist beyond the approval modal session.
+
+| Column | Purpose |
+|---|---|
+| `id` | Stable hash of the candidate (same algorithm as the final job ID) |
+| `batch_id` | Groups all candidates from a single dropped email file |
+| `email_subject` | Subject line of the source email |
+| `email_from` | Sender header |
+| `email_date` | Date header |
+| `source_filename` | Original dropped email filename |
+| `company` | Extracted company name |
+| `position` | Extracted job title |
+| `location` | Extracted or inferred location |
+| `url` | Best available URL (direct posting or synthetic `email-alert://` URI) |
+| `source_url` | Same as `url` |
+| `original_posting_url` | Direct ATS/employer link when found in the email |
+| `job_description` | Full extracted text (may be empty for low-confidence leads) |
+| `salary_notes` | Extracted salary string if any |
+| `snippet` | Short surrounding text used to identify the job |
+| `confidence` | `high` (has direct link) or `low` (no link) |
+| `extraction_notes` | Short parser note |
+| `posting_resolution_status` | `resolved` or `needs_resolution` |
+| `posting_search_query` | Pre-built query for Brave Search / posting resolution |
+| `candidate_links_json` | Extracted links from the email |
+| `discovered_at` | ISO timestamp from the email date header |
+| `title_match` | `good`, `weak`, or `unknown` — match against user's target roles + positive filters |
+| `created_at` | ISO timestamp when row was inserted |
 
 ### evaluations
 

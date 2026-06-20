@@ -38,6 +38,7 @@ This project is free for non-commercial use because job seekers should not have 
 ## What it does
 
 - Discovers jobs from company career pages and supported ATS sources.
+- Imports job-alert email files from a local drop folder.
 - Scores each job against your profile using AI.
 - Generates tailored resumes for specific roles.
 - Drafts application answers for manual copy-paste.

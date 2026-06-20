@@ -561,6 +561,19 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "email-alerts",
+        title: "Import job alert emails",
+        intro:
+          "Drop exported job-alert emails into the local import folder when good leads arrive by email instead of a supported scanner.",
+        bullets: [
+          "Place `.eml`, `.html`, or `.txt` files in `data/email-job-alert-imports/` while the app is running.",
+          "The app queues extracted candidates for approval instead of adding them automatically.",
+          "Unchecked candidates stay pending until you add or dismiss them.",
+          "Open an email lead and use Resolve posting when you want to search on demand or paste the real posting URL.",
+          "Email import never connects to your mailbox and never runs search during import.",
+        ],
+      },
+      {
         id: "aggregator",
         title: "Scan with Adzuna",
         intro:

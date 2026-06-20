@@ -66,7 +66,7 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   const confirmedKwsForInjection = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
   const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const content = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection);
+  const content = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes);
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -166,7 +166,7 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const confirmedKwsForInjection = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
   const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const draft = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection);
+  const draft = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes);
   const keywordCoverage = keywordCoverageFor(draft, evaluation.keywords);
   const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
   const date = new Date().toISOString().slice(0, 10);
@@ -243,9 +243,11 @@ function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume
 // but used a slight paraphrase. Only injects short phrases (≤3 words) to avoid awkward skill entries.
 function injectMissingConfirmedKeywordsIntoSkills(
   draft: ResumeTemplateInput,
-  confirmedKeywords: string[]
+  confirmedKeywords: string[],
+  sectionModes: ResumeSectionModeInput[]
 ): ResumeTemplateInput {
   if (confirmedKeywords.length === 0) return draft;
+  if (modeForSection("skills", sectionModes) === "keep") return draft;
   const { partial: stillPartial, missing: stillMissing } = keywordStrengthDetailsForText(
     evidenceTextForDraft(draft), confirmedKeywords
   );

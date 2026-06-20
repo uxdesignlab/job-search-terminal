@@ -30,6 +30,7 @@ import {
   TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
 } from "@/lib/table-saved-filter-storage-keys";
 import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
+import { hasResolvedPosting } from "@/lib/jobs/posting-resolution";
 
 type JobRowStatus = "loading" | "done" | "error";
 type SortCol = MainJobsSortCol;
@@ -449,7 +450,7 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
                       </div>
                     </td>
                     <td className="py-3">
-                      {job.url && (
+                      {hasResolvedPosting(job) ? (
                         <a
                           className="text-xs font-medium text-accent hover:underline"
                           href={job.url}
@@ -458,7 +459,9 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
                         >
                           ↗
                         </a>
-                      )}
+                      ) : job.postingResolutionStatus === "needs_resolution" ? (
+                        <Badge tone="warning">Needs posting</Badge>
+                      ) : null}
                     </td>
                     {(onApproveReview ?? onDismissReview) ? (
                       <td className="py-3">

@@ -83,6 +83,8 @@ export type JobRecord = {
   livenessCheckedAt: string;
   scopeStatus: string;
   reviewStatus: "none" | "pending_review";
+  postingResolutionStatus: "resolved" | "needs_resolution";
+  postingSearchQuery: string;
   archived: boolean;
   isDuplicate: boolean;
   duplicateOf: string[] | null;
@@ -203,7 +205,8 @@ export type ScanRunRecord = {
     | "glassdoor-browser-scan"
     | "indeed-browser-scan"
     | "monster-browser-scan"
-    | "adzuna-api-scan";
+    | "adzuna-api-scan"
+    | "email-alert-import";
 };
 
 export type ImportResult = {
@@ -243,7 +246,7 @@ export type LinkedInScanFile = {
 
 export type BrowserBoardScanFile = {
   metadata: {
-    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster" | "adzuna";
+    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster" | "adzuna" | "email";
     scanTimestamp: string;
     scanDurationSeconds: number;
     totalJobsDiscovered: number;
@@ -269,6 +272,8 @@ export type BrowserBoardScanFile = {
     location?: string;
     datePosted?: string | null;
     salaryNotes?: string;
+    postingResolutionStatus?: "resolved" | "needs_resolution";
+    postingSearchQuery?: string;
     dataQuality?: Record<string, boolean | number | string | string[]>;
   }>;
   validationSummary?: {
@@ -706,3 +711,31 @@ export type ActionQueueData = {
   toApply: JobRecord[];
   recentlyApplied: ApplicationRecord[];
 };
+
+export type PendingEmailJobCandidate = {
+  id: string;
+  batchId: string;
+  emailSubject: string;
+  emailFrom: string;
+  emailDate: string;
+  sourceFilename: string;
+  company: string;
+  position: string;
+  location: string;
+  url: string;
+  sourceUrl: string;
+  originalPostingUrl: string;
+  jobDescription: string;
+  salaryNotes: string;
+  snippet: string;
+  confidence: "high" | "medium" | "low";
+  extractionNotes: string;
+  postingResolutionStatus: "resolved" | "needs_resolution";
+  postingSearchQuery: string;
+  candidateLinks: string[];
+  discoveredAt: string;
+  titleMatch: "good" | "weak" | "unknown";
+  createdAt: string;
+};
+
+export type PendingEmailJobCandidateInput = Omit<PendingEmailJobCandidate, "createdAt">;

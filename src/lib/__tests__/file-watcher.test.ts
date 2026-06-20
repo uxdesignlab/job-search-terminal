@@ -68,18 +68,29 @@ describe("waitForFileStable", () => {
 
 describe("watcher startup sweep — file pattern matching", () => {
   const BROWSER_BOARD_FILE_PATTERN =
-    /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster)-jobs-.+\.json$/;
+    /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster|adzuna|email)-jobs-.+\.json$/;
+  const EMAIL_JOB_ALERT_FILE_PATTERN = /\.(eml|html|txt)$/i;
 
   it("matches valid browser board filenames", () => {
     const valid = [
       "linkedin-jobs-2026-06-11T14-30-00Z.json",
       "wellfound-jobs-2026-06-11T14-30-00Z.json",
       "monster-jobs-2026-06-11T14-30-00Z.json",
+      "adzuna-jobs-2026-06-11T14-30-00Z.json",
+      "email-jobs-2026-06-11T14-30-00Z.json",
       "job-board-jobs-2026-06-11T14-30-00Z.json",
     ];
     for (const f of valid) {
       expect(BROWSER_BOARD_FILE_PATTERN.test(f), `Expected ${f} to match`).toBe(true);
     }
+  });
+
+  it("matches email job alert source files", () => {
+    expect(EMAIL_JOB_ALERT_FILE_PATTERN.test("alert.eml")).toBe(true);
+    expect(EMAIL_JOB_ALERT_FILE_PATTERN.test("alert.html")).toBe(true);
+    expect(EMAIL_JOB_ALERT_FILE_PATTERN.test("alert.txt")).toBe(true);
+    expect(EMAIL_JOB_ALERT_FILE_PATTERN.test("alert.json")).toBe(false);
+    expect(EMAIL_JOB_ALERT_FILE_PATTERN.test("alert.eml.tmp")).toBe(false);
   });
 
   it("does not match .tmp files", () => {

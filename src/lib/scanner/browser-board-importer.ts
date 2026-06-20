@@ -155,7 +155,9 @@ export function prepareBrowserBoardJobs(
       salaryNotes: stringValue(raw.salaryNotes) || "Not captured by scanner.",
       isDuplicate,
       duplicateOf: isDuplicate ? duplicateOf : null,
-      reviewStatus: rawDescription.length < 100 ? "pending_review" : "none"
+      reviewStatus: raw.postingResolutionStatus === "needs_resolution" || rawDescription.length < 100 ? "pending_review" : "none",
+      postingResolutionStatus: raw.postingResolutionStatus === "needs_resolution" ? "needs_resolution" : "resolved",
+      postingSearchQuery: stringValue(raw.postingSearchQuery)
     });
   }
 
@@ -383,6 +385,9 @@ function platformPostingId(source: BrowserBoardSource, rawUrl: string) {
       const jobIndex = segments.findIndex((segment) => segment === "job-openings" || segment === "jobs");
       return jobIndex >= 0 ? segments[jobIndex + 1] ?? segments.at(-1) ?? "" : segments.at(-1) ?? "";
     }
+    if (source === "email") {
+      return `${url.hostname}${url.pathname}`.replace(/^job\//, "");
+    }
   } catch {
     return "";
   }
@@ -403,7 +408,9 @@ function stableJobId(source: BrowserBoardSource, url: string): string {
               ? "ind"
               : source === "adzuna"
                 ? "adz"
-                : "mon";
+                : source === "email"
+                  ? "em"
+                  : "mon";
   const stableInput = source === "linkedin" ? url : `${source}:${url}`;
   return `${prefix}-${createHash("sha1").update(stableInput).digest("hex").slice(0, 16)}`;
 }

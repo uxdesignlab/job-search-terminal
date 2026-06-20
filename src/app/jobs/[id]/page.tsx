@@ -10,6 +10,7 @@ import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { AIProviderBadge } from "@/components/ai-provider-badge";
 import { InterviewPlanSection } from "@/components/interview-plan-section";
+import { PostingResolutionPanel } from "@/components/posting-resolution-panel";
 import {
   Badge,
   Button,
@@ -33,6 +34,7 @@ import {
   getApplicationAnswerDrafts,
   getApplicationByJobId,
   getEvaluationByJobId,
+  getEmailImportEvidence,
   getGeneratedDocumentById,
   getJobById,
 	  getJobGapResponses,
@@ -49,6 +51,7 @@ import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import type { ResumeBuilderSection, ResumeBuilderVersionStatus } from "@/lib/db/types";
 import { coerceResumeBaseToLane } from "@/lib/evaluation/resume-lane-picker";
 import { splitListValue } from "@/lib/profile/intelligence";
+import { buildPostingSearchQuery, hasResolvedPosting } from "@/lib/jobs/posting-resolution";
 
 export const dynamic = "force-dynamic";
 
@@ -76,8 +79,10 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const generatedDocument = getGeneratedDocumentById(`document-${id}`);
   const application = getApplicationByJobId(id);
   const answerDrafts = getApplicationAnswerDrafts(id);
+  const emailEvidence = getEmailImportEvidence(id);
   const resumes = getResumes();
   const profile = getUserProfile();
+  const resolvedPosting = hasResolvedPosting(job);
   const resumeVersions: Record<string, { status: ResumeBuilderVersionStatus; sections: ResumeBuilderSection[] }> = Object.fromEntries(
     await Promise.all(
       resumes.map(async (resume) => {
@@ -177,7 +182,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
     const { fetchJobDescription } = await import("@/lib/scanner/jd-fetcher");
     const { saveJobDescription } = await import("@/lib/db/queries");
     const current = getJobById(id);
-    if (current && !current.rawDescription && current.url) {
+    if (current && !current.rawDescription && hasResolvedPosting(current)) {
       const desc = await fetchJobDescription(current);
       if (desc) saveJobDescription(id, desc);
     }
@@ -188,7 +193,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
     "use server";
     const { checkJobLiveness } = await import("@/lib/scanner/liveness-checker");
     const current = getJobById(id);
-    if (current?.url) {
+    if (current && hasResolvedPosting(current)) {
       const result = await checkJobLiveness(current.url);
       saveJobLiveness(id, result.status, result.reason);
     }
@@ -272,14 +277,22 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
           {/* Header actions — evaluate, liveness, posting link */}
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {!job.archived && <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />}
-            {!job.archived && (
+            {!job.archived && resolvedPosting && (
               <form action={checkLivenessAction}>
                 <SubmitButton label="Check live" pendingLabel="Checking…" savedLabel="Done ✓" variant="secondary" />
               </form>
             )}
-            <ExternalLinkButton href={job.url}>Job posting ↗</ExternalLinkButton>
+            {resolvedPosting ? <ExternalLinkButton href={job.url}>Job posting ↗</ExternalLinkButton> : null}
           </div>
         </div>
+
+        {job.postingResolutionStatus === "needs_resolution" ? (
+          <PostingResolutionPanel
+            evidence={emailEvidence}
+            jobId={id}
+            searchQuery={buildPostingSearchQuery(job)}
+          />
+        ) : null}
 
         {/* ── Status & score bar ───────────────────────────────────── */}
         <div className="mb-4 flex items-center justify-between gap-4 rounded-panel border border-border bg-panel px-4 py-2.5">
@@ -323,6 +336,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             <Badge tone={scoreTone}>{fitScore}% · {scoreLabel}</Badge>
             <Badge tone={recommendation === "Skip" ? "danger" : "success"}>{recommendation}</Badge>
             {evaluation?.legitimacyLabel ? <Badge>{evaluation.legitimacyLabel}</Badge> : null}
+            {job.postingResolutionStatus === "needs_resolution" && <Badge tone="warning">Needs posting</Badge>}
             {job.livenessStatus === "active" && <Badge tone="success">Live ✓</Badge>}
             {job.livenessStatus === "expired" && <Badge tone="danger">Expired</Badge>}
             {job.livenessStatus === "uncertain" && <Badge tone="warning">Status uncertain</Badge>}
@@ -434,11 +448,17 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-semibold text-ink">Job description not saved</p>
-                    <p className="text-xs text-muted">Fetch from the ATS to enable accurate evaluation and resume tailoring.</p>
+                    <p className="text-xs text-muted">
+                      {resolvedPosting
+                        ? "Fetch from the ATS to enable accurate evaluation and resume tailoring."
+                        : "Resolve the posting URL first, then fetch or paste the job description."}
+                    </p>
                   </div>
-                  <form action={fetchDescriptionAction}>
-                    <SubmitButton label="Fetch description" pendingLabel="Fetching…" savedLabel="Saved ✓" variant="secondary" />
-                  </form>
+                  {resolvedPosting ? (
+                    <form action={fetchDescriptionAction}>
+                      <SubmitButton label="Fetch description" pendingLabel="Fetching…" savedLabel="Saved ✓" variant="secondary" />
+                    </form>
+                  ) : null}
                 </div>
               )}
             </Card>
@@ -617,7 +637,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <CardTitle>Next actions</CardTitle>
                   </CardHeader>
                   <div className="grid gap-2">
-                    <ExternalLinkButton href={job.url}>Open job posting ↗</ExternalLinkButton>
+                    {resolvedPosting ? <ExternalLinkButton href={job.url}>Open job posting ↗</ExternalLinkButton> : null}
                     <LinkButton href={`/jobs/${id}/research`} variant="secondary">Company research</LinkButton>
                     <LinkButton href={`/jobs/${id}/outreach`} variant="secondary">Draft LinkedIn outreach</LinkButton>
                   </div>
@@ -774,5 +794,3 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
     </Card>
   );
 }
-
-

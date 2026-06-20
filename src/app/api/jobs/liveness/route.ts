@@ -3,6 +3,7 @@ import { checkJobLiveness } from "@/lib/scanner/liveness-checker";
 import { deleteJob, getJobById, getJobs, saveJobLiveness, saveJobScopeStatus, getTitleFilters } from "@/lib/db/queries";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import type { JobRecord } from "@/lib/db/types";
+import { hasResolvedPosting } from "@/lib/jobs/posting-resolution";
 
 const CONCURRENCY = 6;
 
@@ -88,7 +89,7 @@ async function checkJobs(jobs: JobRecord[], titleFilters: { positive: string[]; 
   async function next() {
     while (index < jobs.length) {
       const job = jobs[index++];
-      if (!job.url) {
+      if (!hasResolvedPosting(job)) {
         uncertain++;
         continue;
       }
