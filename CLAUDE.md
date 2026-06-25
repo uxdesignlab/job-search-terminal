@@ -34,10 +34,10 @@ This file also contains instructions for Claude Desktop to perform browser-assis
 
 ## When to Use This Workflow
 
-When the user asks you to "scan LinkedIn for jobs", "find new jobs on Wellfound", "scan Work at a Startup", "scan Glassdoor", "scan Indeed", "scan Monster", or similar, follow the steps below. You will need:
+When the user asks you to "scan LinkedIn for jobs", "find new jobs on Wellfound", "scan Work at a Startup", "scan Glassdoor", "scan Indeed", "scan Monster", "scan Dice", or similar, follow the steps below. You will need:
 
-- The **Claude in Chrome** browser extension installed and active.
-- The user already logged into the requested job board in Chrome if the board requires a session.
+- The **Claude in Chrome** browser extension installed and active (not required for Dice — it uses an MCP tool instead).
+- The user already logged into the requested job board in Chrome if the board requires a session (Dice requires no login).
 - Job Search Terminal running, or at minimum its database and project folder accessible.
 
 Supported boards:
@@ -50,6 +50,7 @@ Supported boards:
 | Glassdoor | `glassdoor` | `https://www.glassdoor.com/Job/index.htm` |
 | Indeed | `indeed` | `https://www.indeed.com/jobs` |
 | Monster | `monster` | `https://www.monster.com/jobs/search?recency=3&sort=newest` (append `&q=<title>&where=<location>` for each search) |
+| Dice | `dice` | (MCP — no URL; call `search_jobs` tool directly, no browser needed) |
 
 ---
 
@@ -115,6 +116,33 @@ Scan up to 3 pages of results or 50 jobs, whichever comes first. Pause 1–2 sec
 
 **Stop immediately** if the board shows a CAPTCHA, bot detection, or login prompt. Report this to the user and do not continue.
 
+### Dice — MCP-based scan (no browser required)
+
+When scanning Dice, **do not use Claude in Chrome**. Instead call the `search_jobs` MCP tool directly (available in this project as the `dice` MCP server). No login or API key is needed.
+
+For each title in `target_roles_json`, call `search_jobs` with:
+
+- `keyword` = the job title
+- `location` = first entry from `preferred_locations_json` (omit when `remote_preference` is `"remote-only"`)
+- `workplace_types`:
+  - `["Remote"]` when `remote_preference` is `"remote-only"`
+  - `["Remote", "On-Site"]` when `"local-or-remote"`
+  - `["Remote", "Hybrid", "On-Site"]` when `"all"`
+- `posted_date` = `"SEVEN"` (past week)
+- `employment_types` = `["FULLTIME"]`
+- `jobs_per_page` = 20; call with `page_number` 1, 2, 3 until 50 jobs are collected or results are exhausted
+
+Map returned fields to the standard JSON schema:
+- `position` ← job title
+- `company` ← company name
+- `url` ← direct job or apply URL from the result
+- `sourceUrl` ← same as `url`
+- `originalPostingUrl` ← employer/ATS URL if present in result, else `""`
+- `location`, `jobDescription`, `salaryNotes` ← directly from result
+- `discoveredAt` ← current UTC ISO datetime
+
+Apply `negative_json` title filters and skip excluded titles. Write the output file as `dice-jobs-<timestamp>.json`.
+
 ---
 
 ## Step 3 — Build the Output JSON
@@ -124,7 +152,7 @@ Structure the collected jobs as follows:
 ```json
 {
   "metadata": {
-    "source": "linkedin | wellfound | workatastartup | glassdoor | indeed | monster",
+    "source": "linkedin | wellfound | workatastartup | glassdoor | indeed | monster | dice",
     "scanTimestamp": "<ISO 8601 UTC datetime when scan started>",
     "scanDurationSeconds": 120,
     "totalJobsDiscovered": 12,
