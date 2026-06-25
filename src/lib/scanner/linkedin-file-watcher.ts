@@ -11,7 +11,7 @@ import {
 } from "./email-job-alert-importer";
 
 const LEGACY_LINKEDIN_FILE_PATTERN = /^linkedin-jobs-.+\.json$/;
-const BROWSER_BOARD_FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster|adzuna|email)-jobs-.+\.json$/;
+const BROWSER_BOARD_FILE_PATTERN = /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster|adzuna|email|dice)-jobs-.+\.json$/;
 export const EMAIL_JOB_ALERT_FILE_PATTERN = /\.(eml|html|txt)$/i;
 let started = false;
 

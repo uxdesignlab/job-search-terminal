@@ -56,7 +56,7 @@ async function searchAdzuna(
   const params = new URLSearchParams({
     app_id: appId,
     app_key: apiKey,
-    what,
+    title_only: what,
     results_per_page: "50",
     sort_by: "date",
     max_days_old: String(Math.ceil(freshnessWindowHours / 24)),

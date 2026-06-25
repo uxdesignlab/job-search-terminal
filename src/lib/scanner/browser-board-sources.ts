@@ -6,7 +6,8 @@ export const BROWSER_BOARD_SOURCES = [
   "indeed",
   "monster",
   "adzuna",
-  "email"
+  "email",
+  "dice"
 ] as const;
 
 export type BrowserBoardSource = (typeof BROWSER_BOARD_SOURCES)[number];
@@ -19,7 +20,8 @@ export type BrowserBoardScanType =
   | "indeed-browser-scan"
   | "monster-browser-scan"
   | "adzuna-api-scan"
-  | "email-alert-import";
+  | "email-alert-import"
+  | "dice-mcp-scan";
 
 const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   linkedin: "LinkedIn",
@@ -29,7 +31,8 @@ const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   indeed: "Indeed",
   monster: "Monster",
   adzuna: "Adzuna",
-  email: "Email"
+  email: "Email",
+  dice: "Dice"
 };
 
 const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
@@ -40,7 +43,8 @@ const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
   indeed: "indeed-browser-scan",
   monster: "monster-browser-scan",
   adzuna: "adzuna-api-scan",
-  email: "email-alert-import"
+  email: "email-alert-import",
+  dice: "dice-mcp-scan"
 };
 
 const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
@@ -51,7 +55,8 @@ const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
   "indeed-browser-scan": "indeed",
   "monster-browser-scan": "monster",
   "adzuna-api-scan": "adzuna",
-  "email-alert-import": "email"
+  "email-alert-import": "email",
+  "dice-mcp-scan": "dice"
 };
 
 export function isBrowserBoardSource(value: unknown): value is BrowserBoardSource {

@@ -206,7 +206,8 @@ export type ScanRunRecord = {
     | "indeed-browser-scan"
     | "monster-browser-scan"
     | "adzuna-api-scan"
-    | "email-alert-import";
+    | "email-alert-import"
+    | "dice-mcp-scan";
 };
 
 export type ImportResult = {
@@ -246,7 +247,7 @@ export type LinkedInScanFile = {
 
 export type BrowserBoardScanFile = {
   metadata: {
-    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster" | "adzuna" | "email";
+    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster" | "adzuna" | "email" | "dice";
     scanTimestamp: string;
     scanDurationSeconds: number;
     totalJobsDiscovered: number;

@@ -1582,7 +1582,8 @@ export type BrowserBoardJobInput = {
     | "indeed-browser-scan"
     | "monster-browser-scan"
     | "adzuna-api-scan"
-    | "email-alert-import";
+    | "email-alert-import"
+    | "dice-mcp-scan";
   location: string;
   rawDescription: string;
   datePosted: string | null;
@@ -1692,7 +1693,8 @@ export function getLatestBrowserBoardImport() {
          'indeed-browser-scan',
          'monster-browser-scan',
          'adzuna-api-scan',
-         'email-alert-import'
+         'email-alert-import',
+         'dice-mcp-scan'
        )
        order by started_at desc
        limit 1`
@@ -2265,6 +2267,7 @@ function sourceNameForSummary(source: BrowserBoardJobInput["source"]) {
   if (source === "indeed-browser-scan") return "Indeed";
   if (source === "monster-browser-scan") return "Monster";
   if (source === "adzuna-api-scan") return "Adzuna";
+  if (source === "dice-mcp-scan") return "Dice";
   return "Email";
 }
 

@@ -68,7 +68,7 @@ describe("waitForFileStable", () => {
 
 describe("watcher startup sweep — file pattern matching", () => {
   const BROWSER_BOARD_FILE_PATTERN =
-    /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster|adzuna|email)-jobs-.+\.json$/;
+    /^(job-board|browser-board|linkedin|wellfound|workatastartup|glassdoor|indeed|monster|adzuna|email|dice)-jobs-.+\.json$/;
   const EMAIL_JOB_ALERT_FILE_PATTERN = /\.(eml|html|txt)$/i;
 
   it("matches valid browser board filenames", () => {
@@ -78,6 +78,7 @@ describe("watcher startup sweep — file pattern matching", () => {
       "monster-jobs-2026-06-11T14-30-00Z.json",
       "adzuna-jobs-2026-06-11T14-30-00Z.json",
       "email-jobs-2026-06-11T14-30-00Z.json",
+      "dice-jobs-2026-06-11T14-30-00Z.json",
       "job-board-jobs-2026-06-11T14-30-00Z.json",
     ];
     for (const f of valid) {

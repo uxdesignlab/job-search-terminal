@@ -56,8 +56,8 @@ guides, and per-topic pages.
 - `/help/job-search` — dashboard scans, job sources, manual job entry, filters,
   and saved presets.
 - `/help/linkedin-scanner` — Claude/Codex browser-board scanning for LinkedIn,
-  Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster; imports,
-  duplicates, limits, and safety notes.
+  Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster; Dice MCP scanning
+  (no browser required); imports, duplicates, limits, and safety notes.
 - `/help/evaluate-tailor` — evaluation, tailored resume generation, PDF export,
   application answers, research, and outreach drafting.
 - `/help/applications` — statuses, table and kanban tracking, follow-ups, and
@@ -874,14 +874,33 @@ which tends to add many slugs that do not actually exist on the ATS host.
 
 ## Browser Job Board Scanner (Claude and Codex Integration)
 
-An optional feature for users with Claude Desktop or Codex Chrome. An agent browses visible job-board results on your behalf and writes discovered jobs directly into Job Search Terminal — no copy-paste required. Supported browser-board sources are LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster.
+An optional feature for users with Claude Desktop or Codex Chrome. An agent discovers job-board results on your behalf and writes them directly into Job Search Terminal — no copy-paste required. Supported sources are LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, Monster, and **Dice** (MCP-powered, no browser needed).
 
 **How it works:**
-1. Ask Claude or Codex to scan LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster
+1. Ask Claude or Codex to scan LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, Monster, or Dice
 2. The agent reads your target roles and location preferences from the JST database
-3. The agent opens the requested board in Chrome and extracts matching visible postings
+3. For browser boards: the agent opens the board in Chrome and extracts matching visible postings. For Dice: the agent calls the Dice MCP `search_jobs` tool directly — no Chrome extension or login needed
 4. A JSON file is written to `data/job-board-imports/` (`data/linkedin-imports/` remains supported for legacy LinkedIn files)
 5. Job Search Terminal detects the file, imports jobs with duplicate detection, and shows a notification
+
+---
+
+## Dice MCP Scanner (In-App, No Credentials)
+
+Dice is a tech-focused job board. JST integrates with Dice via Dice's free, public MCP server (`https://mcp.dice.com/mcp`) — no API keys, no browser extension, and no login required.
+
+**How it works:**
+1. Open Settings → Sources → Job aggregators
+2. Click **Scan with Dice**
+3. JST calls the Dice MCP `search_jobs` tool over HTTP with your target roles, location preferences, and remote preference from your profile
+4. Results are filtered by your title filters, written to `data/job-board-imports/dice-jobs-<timestamp>.json`, and imported automatically
+5. New jobs appear in the Jobs table with a **Dice** source badge
+
+**What it covers:** Tech roles on Dice including software engineering, data, DevOps, security, and product. Results are filtered to the past 7 days and up to 50 jobs per scan.
+
+**Scan type recorded:** `dice-mcp-scan`. Jobs appear in the Jobs table with a **Dice** source badge.
+
+**Implementation:** `src/lib/scanner/dice-scanner.ts` — contains a minimal MCP streamable-HTTP client and the scan/import orchestration.
 
 ---
 
@@ -905,10 +924,10 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 **Scan type recorded:** `adzuna-api-scan`. Jobs appear in the Jobs table with an **Adzuna** source badge.
 
 **UI indicators on the Jobs table:**
-- **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, **Monster**, or **Adzuna** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans or aggregator API scans
+- **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, **Monster**, **Dice**, or **Adzuna** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans, MCP scans, or aggregator API scans
 - **Manual** badge (neutral gray) — source column — identifies jobs added manually via the Add Job modal
 - **Duplicate** badge (amber, clickable) — flagged jobs whose URL or company+title already existed in the database. Clicking the badge instantly filters the table to show only duplicate-flagged jobs. Clicking again clears the filter.
-- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Adzuna", "Manual", and "Scanner"
+- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Dice", "Adzuna", "Manual", and "Scanner"
 
 **URL behavior:** Browser-board imports prefer a visible job-specific employer/ATS apply URL. If one is not available, the platform job URL is used and preserved as provenance.
 
@@ -918,7 +937,7 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 
 **Import notification:** A fixed-bottom green alert appears on the Jobs page within 30 seconds of a completed import, showing the count of new jobs and duplicates. Auto-dismissed after 5 minutes.
 
-**Requirements:** Claude Desktop with Claude in Chrome, or Codex with the Codex Chrome Extension. The user must already be logged into boards that require a session.
+**Requirements:** Claude Desktop with Claude in Chrome, or Codex with the Codex Chrome Extension. The user must already be logged into boards that require a session. Dice is the exception — it uses an MCP server (`https://mcp.dice.com/mcp`) and requires no browser extension or login.
 
 **Full documentation:**
 - User guide: `docs/linkedin-scanner-guide.md`

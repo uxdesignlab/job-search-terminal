@@ -28,6 +28,7 @@ import { DiscoveredSourcesButton } from "@/components/discovered-sources-button"
 import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
 import { AggregatorScanButton } from "@/components/aggregator-scan-button";
+import { DiceScanButton } from "@/components/dice-scan-button";
 import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
 import { runSourceDiscovery, runSearchDiscovery } from "@/lib/scanner/source-discovery";
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
@@ -192,6 +193,20 @@ export default async function SettingsPage({
       locations: profile.preferredLocations,
       remotePreference: profile.remotePreference,
       freshnessWindowHours: getScanSchedule().freshnessWindowHours,
+    });
+  }
+
+  async function runDiceScanAction() {
+    "use server";
+    const profile = getUserProfile();
+    const filters = getTitleFilters();
+    const { runDiceScan } = await import("@/lib/scanner/dice-scanner");
+    return runDiceScan({
+      titles: profile.targetRoles,
+      locations: profile.preferredLocations,
+      remotePreference: profile.remotePreference,
+      freshnessWindowHours: getScanSchedule().freshnessWindowHours,
+      titleFilters: { positive: filters.positive, negative: filters.negative },
     });
   }
 
@@ -443,18 +458,33 @@ export default async function SettingsPage({
 
             {/* Job aggregators */}
             <Card>
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <CardTitle>Job aggregators</CardTitle>
-                  <CardDescription>
-                    Scan Adzuna to pull matching jobs directly from aggregator APIs into your pipeline.
-                    Configure your Adzuna App ID and API Key in the AI Provider tab.
-                  </CardDescription>
+              <div className="mb-4 space-y-1">
+                <CardTitle>Job aggregators</CardTitle>
+                <CardDescription>
+                  Pull matching jobs directly into your pipeline from aggregator APIs and MCP sources.
+                </CardDescription>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Dice</p>
+                    <p className="text-xs text-muted">Tech-focused job board. Free, no credentials needed.</p>
+                  </div>
+                  <DiceScanButton onScan={runDiceScanAction} />
                 </div>
-                <AggregatorScanButton
-                  onScan={runAggregatorScanAction}
-                  hasCredentials={Boolean(settings.adzunaAppId && settings.adzunaApiKey)}
-                />
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Adzuna</p>
+                    <p className="text-xs text-muted">
+                      Aggregates from many sources. Requires an App ID and API Key —{" "}
+                      configure them in the AI Provider tab.
+                    </p>
+                  </div>
+                  <AggregatorScanButton
+                    onScan={runAggregatorScanAction}
+                    hasCredentials={Boolean(settings.adzunaAppId && settings.adzunaApiKey)}
+                  />
+                </div>
               </div>
             </Card>
           </>
