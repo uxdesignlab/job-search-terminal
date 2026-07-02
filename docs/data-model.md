@@ -62,6 +62,7 @@ and initializes an empty local profile if the database is empty.
 | `0050_private_keyword_taxonomy` / `0051_group_generated_misc_taxonomy_roots` | Private keyword taxonomy tables and the "Other keywords" holding root |
 | `0052_taxonomy_candidate_status` | Adds the `candidate` concept lifecycle: rule-based demotion of unused generated concepts (0 stories, <3 jobs, no active children), run in three passes to cascade up parent chains. No schema column change — reuses `keyword_concepts.status` |
 | `0054_practice_attempts` | Adds `practice_attempts` (durable per-question rehearsal history) and `question_story_links` (question↔story matrix), and backfills both from existing `answered_question` stories |
+| `0055_story_consolidation_runs` | Adds `story_consolidation_runs`, a resumable JSON-blob state store for the one-time story consolidation wizard |
 
 ---
 
@@ -615,6 +616,19 @@ Many-to-many map of which stories answer which questions (migration `0054`). A s
 | `story_id` | `story_bank` row (cascade delete) |
 | `source` | `practice` (created by practicing), `manual`, etc. |
 | `created_at` | ISO timestamp |
+
+### story_consolidation_runs
+
+Resumable state for the one-time story consolidation wizard (migration `0055`), which clusters legacy `evaluation_suggestion` stories into a small set of canonical core stories.
+
+| Column | Purpose |
+|---|---|
+| `id` | Run identifier |
+| `status` | `review` (draft awaiting approval), `committed`, or `abandoned` |
+| `payload_json` | The full clustering draft: `{ totalSuggestions, clusters: [{ key, canonical STAR, members[] }] }` |
+| `created_at` / `updated_at` | ISO timestamps |
+
+The wizard flow: `POST /api/interview/consolidate/analyze` runs LLM clustering + synthesis over `getEvaluationSuggestionDigests()` and saves a `review` run; the client review page edits clusters and approves; `POST /api/interview/consolidate/commit` (`commitConsolidation`) inserts each approved cluster as a `standalone_story`, re-points the members' `story_job_links` onto it, deletes the member suggestion rows, and marks the run `committed`. Clustering is LLM-driven (`src/lib/interview/consolidation.ts`, via `getActiveProvider`), so a configured AI provider is required.
 
 ### company_research
 

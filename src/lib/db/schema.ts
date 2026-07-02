@@ -1193,5 +1193,21 @@ export const migrations = [
         from story_bank
         where story_kind = 'answered_question' and question_id is not null and question_id <> '';
     `
+  },
+  {
+    id: "0055_story_consolidation_runs",
+    sql: `
+      -- Resumable state for the one-time story consolidation wizard, which clusters the
+      -- legacy per-job evaluation_suggestion stories into a small set of canonical core
+      -- stories. One JSON blob keeps the whole draft (clusters + members + edits) so the
+      -- review survives reloads without a full relational model.
+      create table if not exists story_consolidation_runs (
+        id text primary key,
+        status text not null default 'review',
+        payload_json text not null default '{}',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+    `
   }
 ];

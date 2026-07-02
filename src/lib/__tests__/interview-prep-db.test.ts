@@ -511,6 +511,74 @@ describe("interview prep database helpers", () => {
     ]);
   });
 
+  it("consolidates evaluation suggestions into a canonical story, re-homing job links", async () => {
+    const { client, queries } = await loadFreshDb();
+    const db = client.getDatabase();
+
+    const insertJob = db.prepare(
+      `insert into jobs (
+        id, company, title, url, source, location, remote_type, first_seen_date,
+        freshness_label, raw_description, parsed_description, status, fit_score,
+        role_archetype, recommendation, summary, why_it_matches, main_concern,
+        recommended_resume, salary_notes, requirement_match_json, resume_evidence_json,
+        gaps_json, red_flags_json
+      ) values (
+        @id, @company, 'Designer', @url, 'manual', 'Remote', 'remote', '2026-07-01',
+        'fresh', '', '', 'Applied', 80, '', '', '', '', '', '', '', '[]', '[]', '[]', '[]'
+      )`
+    );
+    insertJob.run({ id: "job-x", company: "Acme", url: "https://example.com/x" });
+    insertJob.run({ id: "job-y", company: "Beta", url: "https://example.com/y" });
+
+    for (const [id, job] of [["sug-1", "job-x"], ["sug-2", "job-x"], ["sug-3", "job-y"]] as const) {
+      queries.saveStory({
+        id,
+        title: `Tell me about a redesign (${job})`,
+        situation: "Patterns were inconsistent.",
+        task: "I owned unification.",
+        action: "I audited components and drove adoption.",
+        result: "Consistency improved.",
+        reflection: "Involve engineering earlier.",
+        skills: [],
+        themes: [],
+        sourceJobId: job,
+        sourceBlockF: "evaluation",
+        tags: ["design systems"],
+      });
+      db.prepare("insert or ignore into story_job_links (story_id, job_id, source) values (?, ?, 'auto')").run(id, job);
+    }
+
+    expect(queries.getEvaluationSuggestionCount()).toBe(3);
+    expect(queries.getEvaluationSuggestionDigests().length).toBe(3);
+
+    const runId = "run-test";
+    queries.saveConsolidationRun(runId, { totalSuggestions: 3, clusters: [] }, "review");
+    const result = queries.commitConsolidation(runId, [
+      {
+        canonical: {
+          title: "Design system unification",
+          situation: "Patterns were inconsistent across products.",
+          task: "I owned unification.",
+          action: "I audited components, built governance, and drove adoption.",
+          result: "Consistency and reuse improved measurably.",
+          reflection: "Involve engineering earlier.",
+          tags: ["design systems", "governance"],
+        },
+        memberIds: ["sug-1", "sug-2", "sug-3"],
+      },
+    ]);
+
+    expect(result.createdStories).toBe(1);
+    expect(result.removedSuggestions).toBe(3);
+    expect(queries.getEvaluationSuggestionCount()).toBe(0);
+
+    const canonical = queries.getStories().find((s) => s.title === "Design system unification");
+    expect(canonical?.storyKind).toBe("standalone_story");
+    // Job links from all members are re-homed onto the canonical story.
+    expect(canonical?.assignedJobs.map((j) => j.jobId).sort()).toEqual(["job-x", "job-y"]);
+    expect(queries.getLatestConsolidationRun()?.status).toBe("committed");
+  });
+
   it("records practice attempts per question and exposes them through the practice map", async () => {
     const { queries } = await loadFreshDb();
 
