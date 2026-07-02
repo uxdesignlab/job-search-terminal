@@ -154,6 +154,10 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   async function saveStoryAction(formData: FormData) {
     "use server";
     const { randomUUID } = await import("node:crypto");
+    const sourceJobId = String(formData.get("jobId") ?? "");
+    // Reuse the job's own extracted ATS keywords as tags — same vocabulary as
+    // autoSaveEvaluationStories, so this story can auto-match other positions too.
+    const jobKeywords = sourceJobId ? getEvaluationByJobId(sourceJobId)?.keywords ?? [] : [];
     saveStory({
       id: randomUUID(),
       title: String(formData.get("title") ?? ""),
@@ -164,7 +168,8 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
       reflection: "",
       skills: [],
       themes: [],
-      sourceJobId: String(formData.get("jobId") ?? ""),
+      tags: jobKeywords,
+      sourceJobId,
       sourceBlockF: String(formData.get("sourceBlockF") ?? ""),
     });
     revalidatePath("/interview-prep");

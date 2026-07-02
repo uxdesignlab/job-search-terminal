@@ -283,7 +283,7 @@ AI-generated evaluation output for a job, stored separately from `jobs`.
 | `resume_evidence_json` | Evidence from resume lanes |
 | `sections_json` | Full evaluation section breakdown |
 | `legitimacy_label` | Job legitimacy signal |
-| `keywords_json` | Extracted keywords |
+| `keywords_json` | 20–25 ATS keyword phrases extracted verbatim from the posting (Block E, `runBlockE` in `src/lib/evaluation/llm-evaluator.ts`), ordered required-priority first. Used for resume-tailoring keyword coverage and — as of `0048`/`0049` — as the tag source for that job's `evaluation_suggestion` stories and the job-side matching haystack in `story_job_links` auto-matching (see `story_bank` above) |
 | `user_correction_json` | User-applied corrections to evaluation |
 | `provider_used` | AI provider that ran the evaluation. When the fallback chain is active, this reflects the provider that actually served the last block, not necessarily the configured active provider. |
 | `model_used` | Model ID used (matches `provider_used`) |
@@ -449,10 +449,104 @@ STAR stories for interview preparation.
 | `action` | Actions taken |
 | `result` | Outcome and impact |
 | `reflection` | Personal takeaway |
-| `skills_json` | Tagged skills |
-| `themes_json` | Tagged themes |
+| `skills_json` | Legacy skill tags retained for compatibility |
+| `themes_json` | Legacy theme tags retained for compatibility |
+| `tags_json` | Raw story keywords. These stay close to ATS/job-description language and are preserved for matching provenance. Grouped user-facing tags are stored through the private taxonomy tables below |
 | `source_job_id` | Optional FK → `jobs` (if sourced from a job) |
 | `source_block_f` | Source block reference |
+| `story_kind` | `answered_question`, `standalone_story`, or `evaluation_suggestion` |
+| `question_id` | Optional FK-like reference to `interview_questions.id` |
+| `prompt_text` | Interview prompt text used when the story came from a question |
+| `quality_status` | `ready`, `needs_detail`, or `missing_result` |
+| `quality_notes` | Short coaching note explaining missing or ready details |
+| `last_evaluated_at` | Last time AI/user quality metadata was refreshed |
+| `created_at` | ISO timestamp |
+| `updated_at` | ISO timestamp |
+
+### story_job_links
+
+Many-to-many links between reusable interview stories and active application positions.
+
+| Column | Purpose |
+|---|---|
+| `story_id` | FK → `story_bank.id` |
+| `job_id` | FK → `jobs.id` |
+| `source` | `manual` (user checked the position) or `auto` (system-matched by tag overlap) |
+| `created_at` | ISO timestamp |
+
+Stories can only be linked to jobs with application statuses `Applied`, `Recruiter
+responded`, or `Interviewing` — never to jobs that are merely found, reviewed, or have
+only had a resume generated. This eligibility set lives in
+`ELIGIBLE_ASSIGNMENT_STATUSES` in `src/lib/db/queries.ts` and backs
+`getInterviewAssignmentJobs()`.
+
+**Auto-matching.** In addition to manual checkbox assignment in the Interview Prep UI,
+two triggers automatically link a story to a position when its taxonomy concepts
+overlap the job's locally classified title, role archetype, or extracted ATS keywords:
+
+- `saveStory()` — after saving a story, it is matched against all currently-eligible
+  jobs (`autoMatchJobsForStory`), unless the save is itself a manual assignment toggle
+  (`skipAutoMatch: true` — see below).
+- `updateApplicationStatus()` — when a job's status changes to `Applied`, `Recruiter
+  responded`, or `Interviewing`, all stories are matched against it
+  (`autoMatchStoriesForJob`).
+
+The matcher deliberately excludes the job's free-text `summary`/`requirement_match_json`
+— matching against prose makes nearly every job match a generic tag like
+"collaboration". `evaluations.keywords_json` remains the raw ATS phrase source, but
+matching is mediated through `keyword_concepts` so related wording can group together
+without destroying exact keyword coverage. Parent/child overlap counts, so a story
+classified as `User interviews` can match a job classified as `User research`.
+
+Auto-matching only ever adds links (`insert or ignore`) — it never removes a link the
+user manually cleared. Manual assignment updates are diffed against the existing link
+set rather than deleted-and-reinserted, so re-saving unrelated story fields does not
+downgrade an `auto` link to `manual` or vice versa. Unchecking a position in the UI
+sends `skipAutoMatch: true` to `POST /api/interview/save-story`, which skips the
+auto-matcher for that save — otherwise the same save that removes the link would
+immediately re-add it. Unchecking a position removes its link regardless of source.
+
+Migrations `0047_story_job_link_backfill` and `0049_story_job_link_backfill_v2` run the
+same matching heuristic once, in pure SQL (`json_each` over `tags_json`), against all
+pre-existing stories and eligible positions so historical data isn't left unmatched
+after the feature shipped. `0049` re-runs after `0048_evaluation_story_keyword_tags`
+backfills real keyword tags onto existing `evaluation_suggestion` stories (they
+previously had only generic placeholder tags, since the story bank predates keyword
+reuse) — it only adds links `0047`'s narrower haystack (title/role-archetype only)
+missed; it never removes anything `0047` already created.
+
+### private keyword taxonomy
+
+The keyword taxonomy is local and user-specific. The app ships only schema; a fresh
+install has no taxonomy concepts or aliases. Concepts are created from the user's own
+evaluated jobs, story tags, resumes, and interview-prep material.
+
+| Table | Purpose |
+|---|---|
+| `keyword_concepts` | Canonical concept tags in a tree up to five levels deep. Concepts can be active or archived |
+| `keyword_aliases` | Raw phrases and synonyms mapped to a concept, with source and confidence |
+| `job_keyword_concepts` | Links a job/evaluation raw keyword to a concept while preserving the raw keyword |
+| `story_keyword_concepts` | Links a story raw keyword to a concept while preserving the raw keyword |
+| `keyword_mapping_suggestions` | Reserved review queue for uncertain AI-suggested mappings |
+| `taxonomy_activity_log` | Local audit trail for created, moved, archived, restored, aliased, and merged concepts |
+
+Raw keywords and concept tags are intentionally separate:
+
+- Raw keywords remain exact phrases for ATS/resume tailoring and provenance.
+- Concept tags organize search, Story Bank filters, taxonomy browsing, and semantic story-to-job matching.
+- User edits in the Taxonomy Manager are saved as local authoritative aliases/moves/merges and reused by future classification.
+
+### interview_questions
+
+Reusable interview prompts for the Interview Prep workspace.
+
+| Column | Purpose |
+|---|---|
+| `id` | Row identifier |
+| `prompt` | Question text shown in the practice workflow |
+| `category` | User-facing grouping label |
+| `source` | `default` for bundled prompts, `custom` for user-added prompts |
+| `active` | Hidden prompts are retained with `active = 0` |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
 

@@ -420,7 +420,7 @@ export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCal
   saveJobEvaluation(result);
   // Auto-populate story bank from Block F structured output (replaces prior auto-saved stories for this job)
   if (result.sections.storiesStructured && result.sections.storiesStructured.length > 0) {
-    autoSaveEvaluationStories(jobId, result.sections.storiesStructured);
+    autoSaveEvaluationStories(jobId, result.sections.storiesStructured, result.keywords);
   }
   const resumeNames = getResumes().map((r) => r.name);
   return {

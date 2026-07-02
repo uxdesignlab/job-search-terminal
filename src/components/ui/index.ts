@@ -8,6 +8,7 @@ export * from "./modal";
 export * from "./page-header";
 export * from "./progress-bar";
 export * from "./progress-modal";
+export * from "./searchable-multi-select";
 export * from "./select";
 // Shell is server-only (imports DB queries) — import directly from "@/components/ui/shell"
 export * from "./stat-card";
