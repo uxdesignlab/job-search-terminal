@@ -656,6 +656,32 @@ export type TaxonomyConceptRecord = {
   children: TaxonomyConceptRecord[];
 };
 
+export type PracticeAttemptRecord = {
+  id: string;
+  questionId: string | null;
+  storyId: string | null;
+  transcript: string;
+  parsed: {
+    title: string;
+    situation: string;
+    task: string;
+    action: string;
+    result: string;
+    reflection: string;
+  };
+  qualityStatus: StoryQualityStatus;
+  coachingNotes: string[];
+  createdAt: string;
+};
+
+export type QuestionPracticeRecord = {
+  questionId: string;
+  attemptCount: number;
+  lastPracticedAt: string | null;
+  linkedStories: Array<{ id: string; title: string; qualityStatus: StoryQualityStatus }>;
+  attempts: PracticeAttemptRecord[];
+};
+
 export type TaxonomyCandidateRecord = {
   id: string;
   label: string;

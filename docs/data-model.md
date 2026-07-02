@@ -61,6 +61,7 @@ and initializes an empty local profile if the database is empty.
 | `0045_story_tags_and_job_assignments` – `0049_story_job_link_backfill_v2` | Story tag/keyword plumbing and `story_job_links` auto-matching backfills |
 | `0050_private_keyword_taxonomy` / `0051_group_generated_misc_taxonomy_roots` | Private keyword taxonomy tables and the "Other keywords" holding root |
 | `0052_taxonomy_candidate_status` | Adds the `candidate` concept lifecycle: rule-based demotion of unused generated concepts (0 stories, <3 jobs, no active children), run in three passes to cascade up parent chains. No schema column change — reuses `keyword_concepts.status` |
+| `0054_practice_attempts` | Adds `practice_attempts` (durable per-question rehearsal history) and `question_story_links` (question↔story matrix), and backfills both from existing `answered_question` stories |
 
 ---
 
@@ -588,6 +589,32 @@ Reusable interview prompts for the Interview Prep workspace.
 | `active` | Hidden prompts are retained with `active = 0` |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
+
+### practice_attempts
+
+Durable history of every rehearsal of an interview question (migration `0054`). Re-practicing appends a row; nothing is overwritten. Written by `POST /api/interview/save-story` when a practice save carries a transcript, and read by `getQuestionPracticeMap`.
+
+| Column | Purpose |
+|---|---|
+| `id` | Row identifier |
+| `question_id` | The practiced `interview_questions` row (nullable; set null if the question is deleted) |
+| `story_id` | The canonical story this attempt refined (nullable) |
+| `transcript` | Raw typed/spoken answer for this rep |
+| `parsed_json` | AI-structured STAR fields for this rep (`title`/`situation`/`task`/`action`/`result`/`reflection`) |
+| `quality_status` | `ready` / `needs_detail` / `missing_result` at the time of the rep |
+| `coaching_notes_json` | AI coaching suggestions captured for this rep |
+| `created_at` | ISO timestamp |
+
+### question_story_links
+
+Many-to-many map of which stories answer which questions (migration `0054`). A story can cover several questions; a question can have several candidate stories. Powers the per-question history drawer and the coverage matrix.
+
+| Column | Purpose |
+|---|---|
+| `question_id` | `interview_questions` row (cascade delete) |
+| `story_id` | `story_bank` row (cascade delete) |
+| `source` | `practice` (created by practicing), `manual`, etc. |
+| `created_at` | ISO timestamp |
 
 ### company_research
 

@@ -10,6 +10,7 @@ import { VoicePractice } from "@/components/voice-practice";
 import type {
   ApplicationRecord,
   InterviewQuestionRecord,
+  QuestionPracticeRecord,
   StoryRecord,
   TaxonomyActivityRecord,
   TaxonomyCandidateRecord,
@@ -19,6 +20,7 @@ import type {
 type Props = {
   assignmentJobs: ApplicationRecord[];
   questions: InterviewQuestionRecord[];
+  questionPractice: Record<string, QuestionPracticeRecord>;
   stories: StoryRecord[];
   taxonomy: TaxonomyConceptRecord[];
   taxonomyActivity: TaxonomyActivityRecord[];
@@ -43,6 +45,7 @@ type ActiveTab = "practice" | "story-bank" | "taxonomy";
 export function InterviewPrepWorkspace({
   assignmentJobs,
   questions,
+  questionPractice,
   stories,
   taxonomy,
   taxonomyActivity,
@@ -141,6 +144,7 @@ export function InterviewPrepWorkspace({
             <VoicePractice
               assignmentJobs={assignmentJobs}
               hideQuestionAction={hideQuestionAction}
+              questionPractice={questionPractice}
               questions={questions}
               saveQuestionAction={saveQuestionAction}
             />

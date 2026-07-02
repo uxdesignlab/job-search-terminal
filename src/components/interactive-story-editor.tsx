@@ -35,6 +35,10 @@ type Props = {
   storyKind?: "answered_question" | "standalone_story" | "evaluation_suggestion";
   jobId?: string | null;
   initialStory?: ParsedStory | null;
+  // When practicing a question that already has a canonical story, reuse its id so a
+  // re-practice updates that story (the latest, best version) instead of creating a
+  // duplicate. Every prior rep is still preserved as a separate practice attempt.
+  reuseStoryId?: string | null;
   onClose?: () => void;
   onSaved?: () => void;
 };
@@ -94,6 +98,7 @@ export function InteractiveStoryEditor({
   storyKind = question ? "answered_question" : "standalone_story",
   jobId = null,
   initialStory = null,
+  reuseStoryId = null,
   onClose,
   onSaved
 }: Props) {
@@ -208,7 +213,7 @@ export function InteractiveStoryEditor({
       if (!res.ok) throw new Error("AI parsing failed");
       const data = await res.json();
       
-      const newStoryId = crypto.randomUUID();
+      const newStoryId = reuseStoryId ?? crypto.randomUUID();
       const initialStoryData: ParsedStory = {
         id: newStoryId,
         title: data.story.title || "Draft story",

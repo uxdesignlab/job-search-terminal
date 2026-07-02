@@ -1142,5 +1142,56 @@ export const migrations = [
           where child.parent_id = keyword_concepts.id and child.status = 'active'
         );
     `
+  },
+  {
+    id: "0054_practice_attempts",
+    sql: `
+      -- Durable practice history: every rehearsal of a question is recorded as an
+      -- attempt (transcript + parsed STAR + coaching), so re-practicing appends instead
+      -- of silently spawning duplicate stories. The story remains the canonical artifact.
+      create table if not exists practice_attempts (
+        id text primary key,
+        question_id text references interview_questions(id) on delete set null,
+        story_id text references story_bank(id) on delete set null,
+        transcript text not null default '',
+        parsed_json text not null default '{}',
+        quality_status text not null default 'needs_detail',
+        coaching_notes_json text not null default '[]',
+        created_at text not null default current_timestamp
+      );
+      create index if not exists idx_practice_attempts_question on practice_attempts(question_id, created_at);
+      create index if not exists idx_practice_attempts_story on practice_attempts(story_id);
+
+      -- Which stories answer which questions (a story can cover several; a question can
+      -- have several candidate stories). Powers the per-question view and coverage matrix.
+      create table if not exists question_story_links (
+        question_id text not null references interview_questions(id) on delete cascade,
+        story_id text not null references story_bank(id) on delete cascade,
+        source text not null default 'manual',
+        created_at text not null default current_timestamp,
+        primary key (question_id, story_id)
+      );
+
+      -- Backfill: existing answered-question stories become links + one seed attempt each.
+      insert or ignore into question_story_links (question_id, story_id, source)
+        select question_id, id, 'practice'
+        from story_bank
+        where story_kind = 'answered_question' and question_id is not null and question_id <> '';
+
+      insert into practice_attempts (
+        id, question_id, story_id, transcript, parsed_json, quality_status, coaching_notes_json, created_at
+      )
+        select
+          'attempt-seed-' || id,
+          question_id,
+          id,
+          '',
+          json_object('title', title, 'situation', situation, 'task', task, 'action', action, 'result', result, 'reflection', reflection),
+          quality_status,
+          '[]',
+          created_at
+        from story_bank
+        where story_kind = 'answered_question' and question_id is not null and question_id <> '';
+    `
   }
 ];

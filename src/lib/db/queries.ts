@@ -60,6 +60,8 @@ import type {
   ScanTrigger,
   PendingEmailJobCandidate,
   PendingEmailJobCandidateInput,
+  PracticeAttemptRecord,
+  QuestionPracticeRecord,
   TaxonomyActivityRecord,
   TaxonomyAliasRecord,
   TaxonomyCandidateRecord,
@@ -3419,6 +3421,143 @@ export function setInterviewQuestionActive(id: string, active: boolean) {
     .prepare("update interview_questions set active = @active, updated_at = current_timestamp where id = @id")
     .run({ id, active: active ? 1 : 0 });
   logActivity("interview_question", id, active ? "Interview question restored" : "Interview question hidden", {});
+}
+
+// ─── Practice attempts & question↔story links ─────────────────────────────────
+
+type PracticeAttemptRow = {
+  id: string;
+  question_id: string | null;
+  story_id: string | null;
+  transcript: string;
+  parsed_json: string;
+  quality_status: string;
+  coaching_notes_json: string;
+  created_at: string;
+};
+
+function mapPracticeAttempt(row: PracticeAttemptRow): PracticeAttemptRecord {
+  const parsed = parseJson<Record<string, string>>(row.parsed_json || "{}", {});
+  return {
+    id: row.id,
+    questionId: row.question_id,
+    storyId: row.story_id,
+    transcript: row.transcript,
+    parsed: {
+      title: parsed.title ?? "",
+      situation: parsed.situation ?? "",
+      task: parsed.task ?? "",
+      action: parsed.action ?? "",
+      result: parsed.result ?? "",
+      reflection: parsed.reflection ?? ""
+    },
+    qualityStatus: STORY_QUALITY_VALUES.has(row.quality_status as StoryQualityStatus)
+      ? (row.quality_status as StoryQualityStatus)
+      : "needs_detail",
+    coachingNotes: parseJson<string[]>(row.coaching_notes_json || "[]", []),
+    createdAt: row.created_at
+  };
+}
+
+/** Records one rehearsal of a question. Re-practicing appends; nothing is overwritten. */
+export function savePracticeAttempt(input: {
+  questionId: string | null;
+  storyId: string | null;
+  transcript: string;
+  parsed: { title: string; situation: string; task: string; action: string; result: string; reflection: string };
+  qualityStatus: StoryQualityStatus;
+  coachingNotes: string[];
+}): string {
+  const id = `attempt-${randomUUID()}`;
+  getDatabase()
+    .prepare(
+      `insert into practice_attempts (
+        id, question_id, story_id, transcript, parsed_json, quality_status, coaching_notes_json
+      ) values (
+        @id, @questionId, @storyId, @transcript, @parsedJson, @qualityStatus, @coachingNotesJson
+      )`
+    )
+    .run({
+      id,
+      questionId: input.questionId,
+      storyId: input.storyId,
+      transcript: input.transcript,
+      parsedJson: JSON.stringify(input.parsed),
+      qualityStatus: input.qualityStatus,
+      coachingNotesJson: JSON.stringify(input.coachingNotes ?? [])
+    });
+  return id;
+}
+
+export function linkQuestionStory(questionId: string, storyId: string, source = "manual") {
+  if (!questionId || !storyId) return;
+  getDatabase()
+    .prepare(
+      "insert or ignore into question_story_links (question_id, story_id, source) values (@questionId, @storyId, @source)"
+    )
+    .run({ questionId, storyId, source });
+}
+
+export function unlinkQuestionStory(questionId: string, storyId: string) {
+  getDatabase()
+    .prepare("delete from question_story_links where question_id = @questionId and story_id = @storyId")
+    .run({ questionId, storyId });
+}
+
+/**
+ * Per-question practice state for the interview-prep workspace: linked canonical
+ * stories plus full attempt history, keyed by question id. One query feeds every
+ * question row's history drawer and the coverage matrix.
+ */
+export function getQuestionPracticeMap(): Map<string, QuestionPracticeRecord> {
+  const attemptRows = getDatabase()
+    .prepare("select * from practice_attempts where question_id is not null order by created_at asc")
+    .all() as PracticeAttemptRow[];
+  const linkRows = getDatabase()
+    .prepare(
+      `select qsl.question_id, qsl.story_id, story_bank.title, story_bank.quality_status,
+              story_bank.situation, story_bank.task, story_bank.action, story_bank.result
+       from question_story_links qsl
+       join story_bank on story_bank.id = qsl.story_id`
+    )
+    .all() as Array<{
+      question_id: string;
+      story_id: string;
+      title: string;
+      quality_status: string;
+      situation: string;
+      task: string;
+      action: string;
+      result: string;
+    }>;
+
+  const map = new Map<string, QuestionPracticeRecord>();
+  const ensure = (questionId: string): QuestionPracticeRecord => {
+    let entry = map.get(questionId);
+    if (!entry) {
+      entry = { questionId, attemptCount: 0, lastPracticedAt: null, linkedStories: [], attempts: [] };
+      map.set(questionId, entry);
+    }
+    return entry;
+  };
+
+  for (const row of linkRows) {
+    ensure(row.question_id).linkedStories.push({
+      id: row.story_id,
+      title: row.title,
+      qualityStatus: inferQualityStatus(row)
+    });
+  }
+  for (const row of attemptRows) {
+    if (!row.question_id) continue;
+    const entry = ensure(row.question_id);
+    entry.attempts.push(mapPracticeAttempt(row));
+    entry.attemptCount += 1;
+    entry.lastPracticedAt = row.created_at;
+  }
+  // Newest attempts first for display.
+  for (const entry of map.values()) entry.attempts.reverse();
+  return map;
 }
 
 export function getStories(): StoryRecord[] {
