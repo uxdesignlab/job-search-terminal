@@ -582,11 +582,27 @@ export type StoryRecord = {
   reflection: string;
   skills: string[];
   themes: string[];
+  tags: string[];
+  conceptTags: TaxonomyConceptRecord[];
+  rawKeywords: string[];
   sourceJobId: string | null;
   sourceBlockF: string;
+  storyKind: StoryKind;
+  questionId: string | null;
+  promptText: string;
+  qualityStatus: StoryQualityStatus;
+  qualityNotes: string;
+  lastEvaluatedAt: string | null;
+  sourceJobCompany: string;
+  sourceJobTitle: string;
+  assignedJobs: StoryJobAssignmentRecord[];
   createdAt: string;
   updatedAt: string;
 };
+
+export type StoryKind = "answered_question" | "standalone_story" | "evaluation_suggestion";
+
+export type StoryQualityStatus = "ready" | "needs_detail" | "missing_result";
 
 export type StoryInput = {
   id: string;
@@ -598,8 +614,94 @@ export type StoryInput = {
   reflection: string;
   skills: string[];
   themes: string[];
+  tags?: string[];
+  conceptTags?: string[];
   sourceJobId?: string | null;
   sourceBlockF?: string;
+  storyKind?: StoryKind;
+  questionId?: string | null;
+  promptText?: string;
+  qualityStatus?: StoryQualityStatus;
+  qualityNotes?: string;
+  lastEvaluatedAt?: string | null;
+  assignedJobIds?: string[];
+};
+
+export type StoryJobAssignmentRecord = {
+  jobId: string;
+  company: string;
+  role: string;
+  status: string;
+  source: "auto" | "manual";
+};
+
+export type TaxonomyConceptStatus = "active" | "archived";
+
+export type TaxonomyConceptRecord = {
+  id: string;
+  label: string;
+  normalizedLabel: string;
+  parentId: string | null;
+  depth: number;
+  description: string;
+  status: TaxonomyConceptStatus;
+  createdFrom: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  aliases: TaxonomyAliasRecord[];
+  storyCount: number;
+  jobCount: number;
+  path: string[];
+  children: TaxonomyConceptRecord[];
+};
+
+export type TaxonomyAliasRecord = {
+  id: string;
+  conceptId: string;
+  rawPhrase: string;
+  normalizedPhrase: string;
+  source: string;
+  confidence: number;
+  verifiedAt: string | null;
+  createdAt: string;
+};
+
+export type TaxonomyActivityRecord = {
+  id: string;
+  action: string;
+  conceptId: string | null;
+  relatedId: string | null;
+  details: JsonValue;
+  actor: string;
+  createdAt: string;
+};
+
+export type TaxonomyConceptInput = {
+  id?: string;
+  label: string;
+  parentId?: string | null;
+  description?: string;
+};
+
+export type InterviewQuestionSource = "default" | "custom";
+
+export type InterviewQuestionRecord = {
+  id: string;
+  prompt: string;
+  category: string;
+  source: InterviewQuestionSource;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InterviewQuestionInput = {
+  id: string;
+  prompt: string;
+  category: string;
+  source?: InterviewQuestionSource;
+  active?: boolean;
 };
 
 export type CompanyResearchRecord = {

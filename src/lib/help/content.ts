@@ -907,8 +907,9 @@ export const helpPages: HelpPage[] = [
     },
     highlights: [
       "Stories should be specific, evidence-backed, and reusable.",
-      "Voice practice turns spoken answers into structured STAR stories.",
-      "Tagging stories helps you retrieve the right example quickly.",
+      "Custom questions and standalone stories can both become structured STAR stories.",
+      "AI-structured drafts are reviewed before they are saved.",
+      "Tags, position assignments, filters, and source labels help retrieve the right example quickly.",
     ],
     sections: [
       {
@@ -924,20 +925,39 @@ export const helpPages: HelpPage[] = [
       },
       {
         id: "practice",
-        title: "Draft or record stories",
+        title: "Draft, record, or add questions",
         steps: [
           {
-            title: "Select input method",
-            body: "Choose Type draft to write your raw thoughts or notes, or Record audio to practice speaking out loud.",
+            title: "Choose or add a question",
+            body: "Use the Practice tab to pick one of the default prompts or open the add-question modal for a reusable custom prompt.",
           },
           {
-            title: "Convert with AI",
-            body: "Click Convert to STAR to let the AI transcribe and structure your experience into standard Situation, Task, Action, Result, and Reflection categories.",
+            title: "Type or record",
+            body: "Open the practice wizard to write rough notes or record a spoken answer. You can also open the standalone story wizard without attaching it to a question.",
+          },
+          {
+            title: "Review before saving",
+            body: "The AI structures the draft into Situation, Task, Action, Result, and Reflection, then shows readiness notes before anything is saved.",
           },
           {
             title: "Edit section-by-section",
-            body: "Review the structured output. Click Edit next to any section (e.g., Action or Result) to make precise adjustments, then click Save to commit that section directly to the database.",
+            body: "After saving, click Edit next to any section to make precise adjustments without creating duplicate stories.",
           },
+        ],
+      },
+      {
+        id: "find-stories",
+        title: "Find the right story",
+        bullets: [
+          "Use search for title, STAR text, company, position, or tag.",
+          "Filter by grouped taxonomy tags instead of separate skill/theme fields.",
+          "Open the Taxonomy tab to review, add, move, archive, alias, or merge tags.",
+          "Assign reusable answers to multiple applied, recruiter-responded, or interviewing positions.",
+          "Switch to the Story Bank tab when you only need retrieval, review, or editing.",
+          "Filter by answered questions, standalone stories, or job evaluation suggestions.",
+          "Use quality filters to focus on ready stories or repair stories missing outcomes.",
+          "Job-backed stories keep a link to the original role context.",
+          "Raw job keywords stay available in story details, while grouped tags make large story banks easier to browse.",
         ],
       },
       {

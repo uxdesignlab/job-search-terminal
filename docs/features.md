@@ -568,16 +568,45 @@ Read-only HTML preview of the tailored resume.
 
 Tools to prepare for interviews using stored experience.
 
+**Tabbed Workspace:**
+- **Practice:** reusable questions, answer recording, and standalone story capture live in the practice workspace.
+- **Story Bank:** saved stories, generated job suggestions, search, filters, and inline editing live in a separate story-bank workspace.
+- **Taxonomy:** the private local tag tree built from the user's own jobs, resumes, and stories can be reviewed and managed without changing raw ATS keywords.
+
 **Interactive Story Builder:**
 - **Type or Record:** Toggle between "Type draft" (typing a raw text response or notes) and "Record audio" (spoken practice transcribed by AI).
-- **AI STAR Structuring:** AI automatically parses the raw text or spoken recording transcript into the structured STAR + Reflection format (Title, Situation, Task, Action, Result, Reflection), identifying demonstrated skills and themes.
+- **AI STAR Structuring:** AI parses the raw text or spoken recording transcript into the structured STAR + Reflection format (Title, Situation, Task, Action, Result, Reflection), identifying 2–8 ATS-style keyword tags (skills, tools, methodologies, domain terms genuinely demonstrated in the story — the same kind of verbatim phrase the job-evaluation pipeline extracts from postings), readiness, and missing details.
+- **Preview Before Save:** AI-structured drafts are shown for review before they are written to the story bank.
+- **Modal Wizard:** Practice answers and standalone stories open in a focused modal flow instead of expanding the full page.
+- **Position Assignment:** Answers can be assigned to multiple active application positions with statuses Applied, Recruiter responded, or Interviewing. Checkboxes save immediately and can be unchecked at any time, regardless of how the link was created.
+- **Private Taxonomy:** The app ships only the taxonomy schema; new installs have no taxonomy data. Concepts are created locally from the user's own evaluated jobs, story tags, and interview-prep material. Raw ATS keywords remain unchanged for resume tailoring, while grouped concept tags power search, filtering, and story-job matching.
+- **Auto-Matching:** Stories are automatically linked to eligible positions (Applied, Recruiter responded, Interviewing) whose local taxonomy concepts overlap with the job's title, role archetype, or extracted ATS keywords — no manual checkbox needed. Exact raw keyword overlap still helps, but broader parent/child matches also work; for example, a story classified under "User interviews" can match a job asking for "user research." Auto-matched positions are labeled "Auto-matched" wherever assignments are shown, so it's always clear whether a link was system-suggested or user-chosen. Matching runs whenever a story is saved and whenever a position's status changes into the eligible set.
 - **Section-by-Section Editing:** Once structured, the story is displayed as separate sections. Each section can be independently edited and saved directly to the database, ensuring you can refine details piece-by-piece.
 - **Writing Voice Integration:** Optionally opt-in to update your writing voice style profile with your custom answers, refining future AI-generated drafts.
 
+**Practice Questions:**
+- Ships with reusable default prompts and lets users add their own custom interview questions.
+- Custom questions can be selected, edited, hidden, and reused for future typed or recorded practice through pop-up flows.
+
+**Standalone Stories:**
+- Users can capture an accomplishment or proof point without tying it to a specific question.
+- AI structures the story, evaluates whether it is ready, and saves it as a standalone story after user confirmation in a pop-up wizard.
+
 **STAR Story Bank:**
 - Collates and displays all saved stories with visual badges for S/T/A/R/Reflection components.
-- Support **inline editing** using the interactive section-by-section editor. Clicking Edit on any card launches the editor immediately.
-- Tags stories with skills and themes, and shows the origin (e.g. "From Job eval" or "Voice practice").
+- Shows source and kind labels for answered questions, standalone stories, voice practice entries, and job evaluation suggestions.
+- Includes search and filters by story kind, source, quality/readiness, grouped taxonomy tags, assigned/source position, and updated date.
+- **Tags and Position filters are searchable multi-selects** (`SearchableMultiSelect` in `src/components/ui/searchable-multi-select.tsx`): a button shows the selected count and opens a popover with a search box and checkboxes, so hundreds of tags or dozens of positions stay usable. Tag filters use grouped taxonomy concepts; selecting a parent concept includes its children. Selecting multiple values within one filter is OR'd; filters across different fields are AND'd.
+- **Cards are collapsed by default.** Each card shows title, badges, a one-line preview, up to 4 tags, and the assigned-position count; clicking the row (or "Show details") expands it to the full STAR text, all tags, all assigned positions, and quality notes. This keeps the list scannable at the story-bank's typical scale (100+ stories).
+- **Paginated at 20 stories per page** with Previous/Next controls, so the page doesn't render or scroll through the entire story bank at once. Changing any filter or the search box resets to page 1.
+- Support **inline editing** using the interactive section-by-section editor. Clicking Edit on an expanded card launches the editor immediately.
+- Shows grouped concept tags first and keeps raw keywords in expanded details. User-authored stories normally contribute 2–8 raw keywords; job-evaluation suggestions can contribute up to 12 raw ATS keywords from the source job.
+
+**Taxonomy Manager:**
+- Lets users review the generated tag tree, search paths and aliases, add tags, rename tags, move tags under another parent, archive/restore tags, add/remove aliases, and merge duplicate tags.
+- Taxonomy changes are logged locally. User edits are treated as authoritative for future classification.
+- The tree supports up to five levels so broad areas can contain specific methods, such as `Research / User research / Qualitative research / Contextual inquiry`.
+- **Tags are collapsed by default and lazily rendered.** A tag's children — and the per-tag "move to parent" / "merge into" dropdowns, which list every other tag — only render once that tag is expanded. Unmatched keywords fall into a single "Other keywords" bucket that can grow into the hundreds as real usage data accumulates; rendering that bucket's full edit UI unconditionally on page load previously froze the tab. Searching temporarily reveals matching branches regardless of their expanded state, and the match check walks the full subtree so a result at any depth (not just the first level or two) surfaces correctly.
 
 **Job Evaluation Integration (Section F. Interview plan):**
 - Direct entry point from the **Job Detail → Analysis** page. Next to each suggested question in Section F, clicking `"Draft / Record Answer"` opens the interactive builder inline.
