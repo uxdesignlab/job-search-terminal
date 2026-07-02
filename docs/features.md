@@ -569,7 +569,8 @@ Read-only HTML preview of the tailored resume.
 Tools to prepare for interviews using stored experience.
 
 **Tabbed Workspace:**
-- **Practice:** reusable questions, answer recording, and standalone story capture live in the practice workspace.
+- **Header chips** are core-story-centric: `N core stories · N questions`, plus a `N to consolidate` link (when generated suggestions remain) and a `N candidates to review` link (when the taxonomy has candidates).
+- **Practice:** opens with a **Coverage** panel — a per-category readout of how many questions have at least one linked story or recorded attempt. Categories with no story yet are highlighted as gaps, so it's obvious where prep is missing. Below it are reusable questions, answer recording, and standalone story capture.
 - **Story Bank:** saved stories, search, filters, and inline editing live in a separate story-bank workspace. Job evaluations no longer auto-fill this bank (see "Generate but ask first" below); older auto-generated suggestions remain until the one-time consolidation wizard folds them into core stories.
 - **Taxonomy:** the private local tag tree built from the user's own jobs, resumes, and stories can be reviewed and managed without changing raw ATS keywords.
 
