@@ -651,6 +651,61 @@ describe("interview prep database helpers", () => {
     expect(stillArchived?.status).toBe("archived");
   });
 
+  it("surfaces existing stories that match a job and links them on demand, without auto-inserting", async () => {
+    const { client, queries } = await loadFreshDb();
+    const db = client.getDatabase();
+
+    db.prepare(
+      `insert into jobs (
+        id, company, title, url, source, location, remote_type, first_seen_date,
+        freshness_label, raw_description, parsed_description, status, fit_score,
+        role_archetype, recommendation, summary, why_it_matches, main_concern,
+        recommended_resume, salary_notes, requirement_match_json, resume_evidence_json,
+        gaps_json, red_flags_json
+      ) values (
+        'job-match', 'Acme', 'Design Systems Lead', 'https://example.com/match', 'manual', 'Remote', 'remote', '2026-07-01',
+        'fresh', '', '', 'Reviewed', 80,
+        'Design leadership', '', '', '', '', '', '', '[]', '[]', '[]', '[]'
+      )`
+    ).run();
+    db.prepare(
+      `insert into evaluations (
+        id, job_id, fit_score, score_label, role_archetype, summary, strengths_json, gaps_json,
+        red_flags_json, recommendation, resume_base_recommendation, requirement_match_json,
+        resume_evidence_json, keywords_json
+      ) values (
+        'evaluation-job-match', 'job-match', 80, 'Strong', 'Design leadership', '', '[]', '[]',
+        '[]', '', '', '[]', '[]', ?
+      )`
+    ).run(JSON.stringify(["design systems"]));
+
+    queries.saveStory({
+      id: "core-ds-story",
+      title: "Rebuilt the design system",
+      situation: "Components had drifted.",
+      task: "I owned the rebuild.",
+      action: "I set up governance and a contribution model.",
+      result: "Adoption hit 90%.",
+      reflection: "I'd involve engineering earlier.",
+      skills: [],
+      themes: [],
+      tags: ["design systems"],
+    });
+
+    // The job is only 'Reviewed' (not an eligible application), so auto-match did not
+    // link it — but it should surface as a suggested match.
+    const matches = queries.getMatchingStoriesForJob("job-match");
+    expect(matches.some((m) => m.id === "core-ds-story" && !m.alreadyLinked)).toBe(true);
+
+    queries.setStoryJobLink("core-ds-story", "job-match", true);
+    const afterLink = queries.getMatchingStoriesForJob("job-match");
+    expect(afterLink.find((m) => m.id === "core-ds-story")?.alreadyLinked).toBe(true);
+
+    queries.setStoryJobLink("core-ds-story", "job-match", false);
+    const afterUnlink = queries.getMatchingStoriesForJob("job-match");
+    expect(afterUnlink.find((m) => m.id === "core-ds-story")?.alreadyLinked).toBe(false);
+  });
+
   it("lets users add, move, alias, archive, restore, and merge taxonomy tags", async () => {
     const { queries } = await loadFreshDb();
 

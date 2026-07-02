@@ -3110,6 +3110,75 @@ function autoMatchStoriesForJob(jobId: string) {
   }
 }
 
+/**
+ * Existing core stories (never evaluation-suggestion rows) that plausibly answer this
+ * job's interview questions, ranked by taxonomy-concept / raw-keyword overlap. Powers
+ * the "you may already have a story for this role" review panel on the job page, so a
+ * user can link an existing story instead of drafting a duplicate. Read-only except for
+ * lazily backfilling concept links; it does not create story_job_links itself.
+ */
+export function getMatchingStoriesForJob(jobId: string): Array<{
+  id: string;
+  title: string;
+  qualityStatus: StoryQualityStatus;
+  alreadyLinked: boolean;
+}> {
+  const job = getJobById(jobId);
+  if (!job) return [];
+  const evaluation = getEvaluationByJobId(jobId);
+  const jobKeywords = evaluation?.keywords ?? [];
+  if (evaluation?.keywords.length) {
+    linkJobKeywordConcepts(jobId, evaluation.id, [job.title, job.roleArchetype, ...evaluation.keywords], "job_evaluation");
+  } else {
+    linkJobKeywordConcepts(jobId, null, [job.title, job.roleArchetype], "job_status");
+  }
+  const jobConcepts = getJobConceptIds(jobId);
+
+  const linkedRows = getDatabase()
+    .prepare("select story_id from story_job_links where job_id = @jobId")
+    .all({ jobId }) as Array<{ story_id: string }>;
+  const linked = new Set(linkedRows.map((row) => row.story_id));
+
+  const rows = getDatabase()
+    .prepare(
+      "select id, title, tags_json, quality_status, situation, task, action, result from story_bank where story_kind <> 'evaluation_suggestion'"
+    )
+    .all() as Array<Pick<StoryRow, "id" | "title" | "tags_json" | "quality_status" | "situation" | "task" | "action" | "result">>;
+
+  const matches: Array<{ id: string; title: string; qualityStatus: StoryQualityStatus; alreadyLinked: boolean }> = [];
+  for (const row of rows) {
+    const tags = parseJson<string[]>(row.tags_json || "[]", []);
+    if (tags.length > 0 && getStoryConceptIds(row.id).size === 0) {
+      linkStoryConcepts(row.id, tags, "story_tag");
+    }
+    const overlap =
+      hasSpecificConceptOverlap(getStoryConceptIds(row.id), jobConcepts) ||
+      rawKeywordMatchesHaystack(tags, [job.title, job.roleArchetype, ...jobKeywords]);
+    if (overlap) {
+      matches.push({
+        id: row.id,
+        title: row.title,
+        qualityStatus: inferQualityStatus(row),
+        alreadyLinked: linked.has(row.id)
+      });
+    }
+  }
+  // Already-linked first (so the user sees existing coverage), then by title.
+  return matches.sort((a, b) => Number(b.alreadyLinked) - Number(a.alreadyLinked) || a.title.localeCompare(b.title));
+}
+
+/** Manually links or unlinks a single existing story to a job (source 'manual'). */
+export function setStoryJobLink(storyId: string, jobId: string, linked: boolean) {
+  if (linked) {
+    getDatabase()
+      .prepare("insert or ignore into story_job_links (story_id, job_id, source) values (@storyId, @jobId, 'manual')")
+      .run({ storyId, jobId });
+  } else {
+    getDatabase().prepare("delete from story_job_links where story_id = @storyId and job_id = @jobId").run({ storyId, jobId });
+  }
+  logActivity("story_bank", storyId, linked ? "Story linked to job" : "Story unlinked from job", { jobId });
+}
+
 const STORY_KIND_VALUES = new Set<StoryKind>(["answered_question", "standalone_story", "evaluation_suggestion"]);
 const STORY_QUALITY_VALUES = new Set<StoryQualityStatus>(["ready", "needs_detail", "missing_result"]);
 

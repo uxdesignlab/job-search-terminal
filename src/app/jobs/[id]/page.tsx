@@ -38,11 +38,13 @@ import {
   getGeneratedDocumentById,
   getJobById,
 	  getJobGapResponses,
+	  getMatchingStoriesForJob,
 	  getResumes,
 	  getUserProfile,
 	  saveEvaluationCorrection,
   saveJobLiveness,
   saveStory,
+  setStoryJobLink,
   unarchiveJob,
   updateApplicationStatus,
   updateJobRecommendedResume,
@@ -172,6 +174,17 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
       sourceJobId,
       sourceBlockF: String(formData.get("sourceBlockF") ?? ""),
     });
+    revalidatePath("/interview-prep");
+  }
+
+  async function linkStoryToJobAction(formData: FormData) {
+    "use server";
+    const storyId = String(formData.get("storyId") ?? "");
+    const targetJobId = String(formData.get("jobId") ?? "");
+    const linked = String(formData.get("linked") ?? "") === "true";
+    if (!storyId || !targetJobId) return;
+    setStoryJobLink(storyId, targetJobId, linked);
+    revalidatePath(`/jobs/${targetJobId}`);
     revalidatePath("/interview-prep");
   }
 
@@ -702,7 +715,12 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <EvaluationSection title="E. Personalization plan" items={evaluation.sections.tailoringPlan} />
                   </div>
                   <div className="lg:col-span-2">
-                    <InterviewPlanSection items={evaluation.sections.interviewPlan} jobId={id} />
+                    <InterviewPlanSection
+                      items={evaluation.sections.interviewPlan}
+                      jobId={id}
+                      linkStoryAction={linkStoryToJobAction}
+                      matchedStories={getMatchingStoriesForJob(id)}
+                    />
                   </div>
                   <EvaluationSection title="G. Posting legitimacy" items={evaluation.sections.postingLegitimacy} />
                   <EvaluationSection title="Keywords" items={evaluation.keywords} />

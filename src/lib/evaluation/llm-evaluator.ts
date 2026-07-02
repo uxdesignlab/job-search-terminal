@@ -1,7 +1,7 @@
 import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage, AIProvider } from "../ai/provider";
-import { autoSaveEvaluationStories, getJobById, getRoleDirections, getResumes, getSkills, getStories, getUserProfile, saveJobEvaluation } from "../db/queries";
+import { getJobById, getRoleDirections, getResumes, getSkills, getStories, getUserProfile, saveJobEvaluation } from "../db/queries";
 import type { EvaluationSections, JobEvaluationResultInput, JobRecord, StructuredStory } from "../db/types";
 import { coerceResumeBaseToLane, pickResumeBase } from "./resume-lane-picker";
 import { buildJobContext, buildSystemPrompt, type ResumeExcerpt } from "./prompts";
@@ -418,10 +418,10 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
 export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCallback, onBlockStart?: BlockStartCallback): Promise<JobEvaluationResultInput> {
   const result = await evaluateJobWithAI(jobId, onBlock, onBlockStart);
   saveJobEvaluation(result);
-  // Auto-populate story bank from Block F structured output (replaces prior auto-saved stories for this job)
-  if (result.sections.storiesStructured && result.sections.storiesStructured.length > 0) {
-    autoSaveEvaluationStories(jobId, result.sections.storiesStructured, result.keywords);
-  }
+  // Block F stories are NOT auto-inserted into the story bank anymore. They render in
+  // the job's "F. Interview plan" section, where the user decides per question whether
+  // to draft it as a new core story, link an existing story, or ignore it. This stops
+  // the runaway ~5-stories-per-job growth that made the bank unreviewable.
   const resumeNames = getResumes().map((r) => r.name);
   return {
     ...result,
