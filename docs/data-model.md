@@ -287,7 +287,7 @@ AI-generated evaluation output for a job, stored separately from `jobs`.
 | `resume_evidence_json` | Evidence from resume lanes |
 | `sections_json` | Full evaluation section breakdown |
 | `legitimacy_label` | Job legitimacy signal |
-| `keywords_json` | 20–25 ATS keyword phrases extracted verbatim from the posting (Block E, `runBlockE` in `src/lib/evaluation/llm-evaluator.ts`), ordered required-priority first. Used for resume-tailoring keyword coverage and — as of `0048`/`0049` — as the tag source for that job's `evaluation_suggestion` stories and the job-side matching haystack in `story_job_links` auto-matching (see `story_bank` above) |
+| `keywords_json` | 20–25 ATS keyword phrases extracted verbatim from the posting (Block E, `runBlockE` in `src/lib/evaluation/llm-evaluator.ts`), ordered required-priority first. Used for resume-tailoring keyword coverage and as the job-side matching haystack in `story_job_links` auto-matching (see `story_bank` above). Block F stories are **no longer auto-inserted** as `evaluation_suggestion` rows — they are reviewed per question on the job page (`getMatchingStoriesForJob`); existing suggestion rows persist until the consolidation wizard folds them into core stories |
 | `user_correction_json` | User-applied corrections to evaluation |
 | `provider_used` | AI provider that ran the evaluation. When the fallback chain is active, this reflects the provider that actually served the last block, not necessarily the configured active provider. |
 | `model_used` | Model ID used (matches `provider_used`) |

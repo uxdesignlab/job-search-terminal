@@ -570,8 +570,12 @@ Tools to prepare for interviews using stored experience.
 
 **Tabbed Workspace:**
 - **Practice:** reusable questions, answer recording, and standalone story capture live in the practice workspace.
-- **Story Bank:** saved stories, generated job suggestions, search, filters, and inline editing live in a separate story-bank workspace.
+- **Story Bank:** saved stories, search, filters, and inline editing live in a separate story-bank workspace. Job evaluations no longer auto-fill this bank (see "Generate but ask first" below); older auto-generated suggestions remain until the one-time consolidation wizard folds them into core stories.
 - **Taxonomy:** the private local tag tree built from the user's own jobs, resumes, and stories can be reviewed and managed without changing raw ATS keywords.
+
+**Generate but ask first (Block F no longer auto-inserts):**
+- Running **Evaluate with AI** on a job still generates likely interview questions with STAR outlines, shown in the job's **F. Interview plan** section — but nothing is written to the story bank automatically. This replaced the previous behavior of silently inserting ~5 stories per evaluation, which made the bank impossible to review.
+- Each suggested question offers three choices: **Draft / Record Answer** (save it as a new core story via the interactive builder), **Link an existing story** (the section shows core stories that already match this role's concepts, with a one-click Link/Unlink toggle backed by `getMatchingStoriesForJob` / `setStoryJobLink`), or simply ignore it (drafts are not persisted).
 
 **Interactive Story Builder:**
 - **Type or Record:** Toggle between "Type draft" (typing a raw text response or notes) and "Record audio" (spoken practice transcribed by AI).
@@ -615,7 +619,7 @@ Tools to prepare for interviews using stored experience.
 
 **Job Evaluation Integration (Section F. Interview plan):**
 - Direct entry point from the **Job Detail → Analysis** page. Next to each suggested question in Section F, clicking `"Draft / Record Answer"` opens the interactive builder inline.
-- Allows preparing, structuring, and editing answers tailored to the job's context before saving them straight to the Story Bank.
+- Above the questions, a **"You may already have stories for this role"** panel lists existing core stories whose taxonomy concepts overlap this job, each with a **Link / Linked ✓** toggle — so you can attach an existing story instead of drafting a duplicate. This is the review step that replaced auto-insertion; nothing enters the story bank without an explicit Draft or Link action.
 
 ---
 
