@@ -656,6 +656,46 @@ export type TaxonomyConceptRecord = {
   children: TaxonomyConceptRecord[];
 };
 
+export type ConsolidationCanonical = {
+  title: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+  reflection: string;
+  tags: string[];
+};
+
+export type ConsolidationCluster = {
+  key: string;
+  canonical: ConsolidationCanonical;
+  members: Array<{ id: string; title: string; sourceJobId: string | null; sourceJobTitle: string }>;
+};
+
+export type ConsolidationPayload = {
+  totalSuggestions: number;
+  clusters: ConsolidationCluster[];
+};
+
+export type ConsolidationRunRecord = {
+  id: string;
+  status: "review" | "committed" | "abandoned";
+  payload: ConsolidationPayload;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EvaluationSuggestionDigest = {
+  id: string;
+  title: string;
+  situation: string;
+  action: string;
+  result: string;
+  tags: string[];
+  sourceJobId: string | null;
+  sourceJobTitle: string;
+};
+
 export type PracticeAttemptRecord = {
   id: string;
   questionId: string | null;

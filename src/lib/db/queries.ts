@@ -59,6 +59,10 @@ import type {
   ScanScheduleRecord,
   ScanTrigger,
   PendingEmailJobCandidate,
+  ConsolidationCanonical,
+  ConsolidationPayload,
+  ConsolidationRunRecord,
+  EvaluationSuggestionDigest,
   PendingEmailJobCandidateInput,
   PracticeAttemptRecord,
   QuestionPracticeRecord,
@@ -3558,6 +3562,134 @@ export function getQuestionPracticeMap(): Map<string, QuestionPracticeRecord> {
   // Newest attempts first for display.
   for (const entry of map.values()) entry.attempts.reverse();
   return map;
+}
+
+// ─── Story consolidation wizard ───────────────────────────────────────────────
+
+export function getEvaluationSuggestionCount(): number {
+  const row = getDatabase()
+    .prepare("select count(*) as n from story_bank where story_kind = 'evaluation_suggestion'")
+    .get() as { n: number };
+  return row.n;
+}
+
+/** Compact digests of the legacy evaluation-suggestion stories, for LLM clustering. */
+export function getEvaluationSuggestionDigests(): EvaluationSuggestionDigest[] {
+  const rows = getDatabase()
+    .prepare(
+      `select story_bank.id, story_bank.title, story_bank.situation, story_bank.action, story_bank.result,
+              story_bank.tags_json, story_bank.source_job_id,
+              coalesce(jobs.company || ' — ' || jobs.title, '') as source_job_title
+       from story_bank
+       left join jobs on jobs.id = story_bank.source_job_id
+       where story_bank.story_kind = 'evaluation_suggestion'
+       order by story_bank.created_at asc`
+    )
+    .all() as Array<{
+      id: string;
+      title: string;
+      situation: string;
+      action: string;
+      result: string;
+      tags_json: string;
+      source_job_id: string | null;
+      source_job_title: string;
+    }>;
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    situation: row.situation,
+    action: row.action,
+    result: row.result,
+    tags: parseJson<string[]>(row.tags_json || "[]", []),
+    sourceJobId: row.source_job_id,
+    sourceJobTitle: row.source_job_title
+  }));
+}
+
+export function saveConsolidationRun(id: string, payload: ConsolidationPayload, status: ConsolidationRunRecord["status"] = "review") {
+  getDatabase()
+    .prepare(
+      `insert into story_consolidation_runs (id, status, payload_json, updated_at)
+       values (@id, @status, @payloadJson, current_timestamp)
+       on conflict(id) do update set status = excluded.status, payload_json = excluded.payload_json, updated_at = current_timestamp`
+    )
+    .run({ id, status, payloadJson: JSON.stringify(payload) });
+}
+
+export function getLatestConsolidationRun(): ConsolidationRunRecord | null {
+  const row = getDatabase()
+    .prepare("select * from story_consolidation_runs order by created_at desc limit 1")
+    .get() as { id: string; status: string; payload_json: string; created_at: string; updated_at: string } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    status: (["review", "committed", "abandoned"].includes(row.status) ? row.status : "review") as ConsolidationRunRecord["status"],
+    payload: parseJson<ConsolidationPayload>(row.payload_json || "{}", { totalSuggestions: 0, clusters: [] }),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+/**
+ * Commits approved clusters: each becomes a canonical standalone story, the members'
+ * job links are re-pointed to it, and the member suggestion rows are deleted. Runs in a
+ * single transaction. Unapproved clusters are left untouched (their members stay).
+ */
+export function commitConsolidation(
+  runId: string,
+  approved: Array<{ canonical: ConsolidationCanonical; memberIds: string[] }>
+): { createdStories: number; removedSuggestions: number } {
+  const db = getDatabase();
+  let removedSuggestions = 0;
+
+  db.transaction(() => {
+    for (const cluster of approved) {
+      const memberIds = cluster.memberIds.filter(Boolean);
+      if (memberIds.length === 0) continue;
+      const storyId = `story-${randomUUID()}`;
+
+      // Collect the members' job links so the new canonical inherits them.
+      const placeholders = memberIds.map(() => "?").join(",");
+      const jobLinks = db
+        .prepare(`select distinct job_id from story_job_links where story_id in (${placeholders})`)
+        .all(...memberIds) as Array<{ job_id: string }>;
+      const sourceJobId = (db
+        .prepare(`select source_job_id from story_bank where id in (${placeholders}) and source_job_id is not null limit 1`)
+        .get(...memberIds) as { source_job_id: string | null } | undefined)?.source_job_id ?? null;
+
+      saveStory(
+        {
+          id: storyId,
+          title: cluster.canonical.title,
+          situation: cluster.canonical.situation,
+          task: cluster.canonical.task,
+          action: cluster.canonical.action,
+          result: cluster.canonical.result,
+          reflection: cluster.canonical.reflection,
+          skills: [],
+          themes: [],
+          tags: cluster.canonical.tags,
+          sourceJobId,
+          sourceBlockF: "",
+          storyKind: "standalone_story",
+          assignedJobIds: jobLinks.map((row) => row.job_id)
+        },
+        { skipAutoMatch: false }
+      );
+
+      const del = db.prepare("delete from story_bank where id = ?");
+      for (const id of memberIds) {
+        del.run(id);
+        removedSuggestions += 1;
+      }
+    }
+  })();
+
+  const run = getLatestConsolidationRun();
+  if (run && run.id === runId) saveConsolidationRun(runId, run.payload, "committed");
+
+  return { createdStories: approved.filter((c) => c.memberIds.length > 0).length, removedSuggestions };
 }
 
 export function getStories(): StoryRecord[] {

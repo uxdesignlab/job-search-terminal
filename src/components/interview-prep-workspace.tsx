@@ -176,6 +176,17 @@ export function InterviewPrepWorkspace({
             <CardTitle>Story bank</CardTitle>
             <CardDescription>{stories.length} {stories.length === 1 ? "story" : "stories"} saved</CardDescription>
           </CardHeader>
+          {generatedStoryCount > 0 ? (
+            <a
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-accent/40 bg-accent/5 px-4 py-3 hover:bg-accent/10"
+              href="/interview-prep/consolidate"
+            >
+              <span className="text-sm text-ink">
+                <span className="font-semibold">{generatedStoryCount} auto-generated suggestions</span> are cluttering your bank. Consolidate them into a small set of reusable core stories.
+              </span>
+              <span className="shrink-0 rounded-control border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-white">Consolidate →</span>
+            </a>
+          ) : null}
           {stories.length > 0 ? (
             <StoryBankList assignmentJobs={assignmentJobs} stories={stories} taxonomy={taxonomy} deleteStoryAction={deleteStoryAction} />
           ) : (
