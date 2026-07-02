@@ -511,6 +511,146 @@ describe("interview prep database helpers", () => {
     ]);
   });
 
+  it("mints job-evaluation keywords as candidates, hidden from the active taxonomy", async () => {
+    const { client, queries } = await loadFreshDb();
+    const db = client.getDatabase();
+
+    db.prepare(
+      `insert into jobs (
+        id, company, title, url, source, location, remote_type, first_seen_date,
+        freshness_label, raw_description, parsed_description, status, fit_score,
+        role_archetype, recommendation, summary, why_it_matches, main_concern,
+        recommended_resume, salary_notes, requirement_match_json, resume_evidence_json,
+        gaps_json, red_flags_json
+      ) values (
+        'job-cand', 'Acme', 'Designer', 'https://example.com/cand', 'manual', 'Remote', 'remote', '2026-07-01',
+        'fresh', '', '', 'Found', 80,
+        '', '', '', '', '', '', '', '[]', '[]', '[]', '[]'
+      )`
+    ).run();
+    db.prepare(
+      `insert into evaluations (
+        id, job_id, fit_score, score_label, role_archetype, summary, strengths_json, gaps_json,
+        red_flags_json, recommendation, resume_base_recommendation, requirement_match_json,
+        resume_evidence_json, keywords_json
+      ) values (
+        'evaluation-job-cand', 'job-cand', 80, 'Strong', '', '', '[]', '[]',
+        '[]', '', '', '[]', '[]', ?
+      )`
+    ).run(JSON.stringify(["clinical trials"]));
+
+    // Linking runs lazily on read.
+    const activeTree = queries.getKeywordTaxonomy();
+    const activeLabels = activeTree.flatMap((c) => [c, ...c.children]).map((c) => c.label);
+    expect(activeLabels).not.toContain("Clinical Trials");
+
+    const candidates = queries.getTaxonomyCandidates();
+    expect(candidates.some((c) => c.label === "Clinical Trials")).toBe(true);
+    expect(queries.getTaxonomyStatusCounts().candidate).toBeGreaterThan(0);
+
+    // A story link is the strongest signal — it promotes the candidate to active.
+    queries.saveStory({
+      id: "promoting-story",
+      title: "Ran a clinical trial rollout",
+      situation: "A clinical program needed structured evidence.",
+      task: "I owned the trial UX.",
+      action: "I designed the intake and consent flows.",
+      result: "Enrollment error rate dropped by half.",
+      reflection: "I'd pilot with more sites next time.",
+      skills: [],
+      themes: [],
+      tags: ["clinical trials"],
+    });
+
+    const promotedTree = queries.getKeywordTaxonomy();
+    const promotedLabels = promotedTree.flatMap((c) => [c, ...c.children]).map((c) => c.label);
+    expect(promotedLabels).toContain("Clinical Trials");
+  });
+
+  it("blocks credentials, job titles, and company names from becoming concepts", async () => {
+    const { client, queries } = await loadFreshDb();
+    const db = client.getDatabase();
+
+    db.prepare(
+      `insert into jobs (
+        id, company, title, url, source, location, remote_type, first_seen_date,
+        freshness_label, raw_description, parsed_description, status, fit_score,
+        role_archetype, recommendation, summary, why_it_matches, main_concern,
+        recommended_resume, salary_notes, requirement_match_json, resume_evidence_json,
+        gaps_json, red_flags_json
+      ) values (
+        'job-block', 'Globex', 'Designer', 'https://example.com/block', 'manual', 'Remote', 'remote', '2026-07-01',
+        'fresh', '', '', 'Found', 80,
+        '', '', '', '', '', '', '', '[]', '[]', '[]', '[]'
+      )`
+    ).run();
+    db.prepare(
+      `insert into evaluations (
+        id, job_id, fit_score, score_label, role_archetype, summary, strengths_json, gaps_json,
+        red_flags_json, recommendation, resume_base_recommendation, requirement_match_json,
+        resume_evidence_json, keywords_json
+      ) values (
+        'evaluation-job-block', 'job-block', 80, 'Strong', '', '', '[]', '[]',
+        '[]', '', '', '[]', '[]', ?
+      )`
+    ).run(JSON.stringify(["Bachelor's Degree", "Senior Product Designer", "Globex", "design systems"]));
+
+    queries.getKeywordTaxonomy();
+
+    const allLabels = [
+      ...queries.getKeywordTaxonomy({ includeArchived: true, includeCandidates: true }).flatMap((c) => [c, ...c.children, ...c.children.flatMap((x) => x.children)]).map((c) => c.label.toLowerCase()),
+      ...queries.getTaxonomyCandidates().map((c) => c.label.toLowerCase()),
+    ];
+    expect(allLabels).not.toContain("bachelor's degree");
+    expect(allLabels).not.toContain("senior product designer");
+    expect(allLabels).not.toContain("globex");
+    // A legitimate skill from the same evaluation still lands (as a candidate).
+    expect(queries.getTaxonomyCandidates().some((c) => c.label === "Design Systems")).toBe(true);
+  });
+
+  it("archives unused candidates and never resurrects them on re-evaluation", async () => {
+    const { client, queries } = await loadFreshDb();
+    const db = client.getDatabase();
+
+    db.prepare(
+      `insert into jobs (
+        id, company, title, url, source, location, remote_type, first_seen_date,
+        freshness_label, raw_description, parsed_description, status, fit_score,
+        role_archetype, recommendation, summary, why_it_matches, main_concern,
+        recommended_resume, salary_notes, requirement_match_json, resume_evidence_json,
+        gaps_json, red_flags_json
+      ) values (
+        'job-unused', 'Acme', 'Designer', 'https://example.com/unused', 'manual', 'Remote', 'remote', '2026-07-01',
+        'fresh', '', '', 'Found', 80,
+        '', '', '', '', '', '', '', '[]', '[]', '[]', '[]'
+      )`
+    ).run();
+    db.prepare(
+      `insert into evaluations (
+        id, job_id, fit_score, score_label, role_archetype, summary, strengths_json, gaps_json,
+        red_flags_json, recommendation, resume_base_recommendation, requirement_match_json,
+        resume_evidence_json, keywords_json
+      ) values (
+        'evaluation-job-unused', 'job-unused', 80, 'Strong', '', '', '[]', '[]',
+        '[]', '', '', '[]', '[]', ?
+      )`
+    ).run(JSON.stringify(["cardiology workflows"]));
+
+    queries.getKeywordTaxonomy();
+    const archived = queries.archiveUnusedTaxonomyConcepts();
+    expect(archived).toBeGreaterThan(0);
+    expect(queries.getTaxonomyCandidates().some((c) => c.label === "Cardiology Workflows")).toBe(false);
+
+    // Re-linking the same job's keywords (as happens on the next evaluation) must not
+    // resurrect the archived concept — the resurrection bug fix.
+    db.prepare("delete from job_keyword_concepts where job_id = 'job-unused'").run();
+    queries.getKeywordTaxonomy();
+    const stillArchived = db
+      .prepare("select status from keyword_concepts where label = 'Cardiology Workflows'")
+      .get() as { status: string } | undefined;
+    expect(stillArchived?.status).toBe("archived");
+  });
+
   it("lets users add, move, alias, archive, restore, and merge taxonomy tags", async () => {
     const { queries } = await loadFreshDb();
 

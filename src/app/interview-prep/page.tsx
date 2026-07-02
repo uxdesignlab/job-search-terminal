@@ -1,13 +1,24 @@
 import { PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { InterviewPrepWorkspace } from "@/components/interview-prep-workspace";
-import { getInterviewAssignmentJobs, getInterviewQuestions, getKeywordTaxonomy, getStories, getTaxonomyActivity } from "@/lib/db/queries";
+import {
+  getInterviewAssignmentJobs,
+  getInterviewQuestions,
+  getKeywordTaxonomy,
+  getStories,
+  getTaxonomyActivity,
+  getTaxonomyCandidates,
+  getTaxonomyStatusCounts,
+} from "@/lib/db/queries";
 import {
   addTaxonomyAliasAction,
   archiveTaxonomyConceptAction,
+  archiveUnusedTaxonomyConceptsAction,
+  bulkArchiveTaxonomyConceptsAction,
   deleteStoryAction,
   hideInterviewQuestionAction,
   mergeTaxonomyConceptAction,
+  promoteTaxonomyConceptAction,
   removeTaxonomyAliasAction,
   restoreTaxonomyConceptAction,
   saveInterviewQuestionAction,
@@ -22,6 +33,8 @@ export default function InterviewPrepPage() {
   const assignmentJobs = getInterviewAssignmentJobs();
   const taxonomy = getKeywordTaxonomy({ includeArchived: true });
   const taxonomyActivity = getTaxonomyActivity();
+  const taxonomyCandidates = getTaxonomyCandidates();
+  const taxonomyCounts = getTaxonomyStatusCounts();
 
   return (
     <Shell activeItem="Interview Prep">
@@ -38,8 +51,11 @@ export default function InterviewPrepPage() {
           assignmentJobs={assignmentJobs}
           addTaxonomyAliasAction={addTaxonomyAliasAction}
           archiveTaxonomyConceptAction={archiveTaxonomyConceptAction}
+          archiveUnusedTaxonomyConceptsAction={archiveUnusedTaxonomyConceptsAction}
+          bulkArchiveTaxonomyConceptsAction={bulkArchiveTaxonomyConceptsAction}
           questions={questions}
           mergeTaxonomyConceptAction={mergeTaxonomyConceptAction}
+          promoteTaxonomyConceptAction={promoteTaxonomyConceptAction}
           removeTaxonomyAliasAction={removeTaxonomyAliasAction}
           restoreTaxonomyConceptAction={restoreTaxonomyConceptAction}
           saveQuestionAction={saveInterviewQuestionAction}
@@ -47,6 +63,8 @@ export default function InterviewPrepPage() {
           stories={stories}
           taxonomy={taxonomy}
           taxonomyActivity={taxonomyActivity}
+          taxonomyCandidates={taxonomyCandidates}
+          taxonomyCounts={taxonomyCounts}
         />
       </div>
     </Shell>

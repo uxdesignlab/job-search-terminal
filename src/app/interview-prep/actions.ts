@@ -5,8 +5,11 @@ import { revalidatePath } from "next/cache";
 import {
   addTaxonomyAlias,
   archiveTaxonomyConcept,
+  archiveUnusedTaxonomyConcepts,
+  bulkArchiveTaxonomyConcepts,
   deleteStory,
   mergeTaxonomyConcept,
+  promoteTaxonomyConcept,
   removeTaxonomyAlias,
   restoreTaxonomyConcept,
   saveInterviewQuestion,
@@ -145,5 +148,27 @@ export async function mergeTaxonomyConceptAction(formData: FormData) {
   const targetId = String(formData.get("targetId") ?? "");
   if (!sourceId || !targetId || sourceId === targetId) return;
   mergeTaxonomyConcept(sourceId, targetId);
+  revalidatePath("/interview-prep");
+}
+
+export async function promoteTaxonomyConceptAction(formData: FormData) {
+  const ids = splitList(formData.get("ids"));
+  const single = String(formData.get("id") ?? "");
+  if (single) ids.push(single);
+  for (const id of ids) promoteTaxonomyConcept(id);
+  revalidatePath("/interview-prep");
+}
+
+export async function bulkArchiveTaxonomyConceptsAction(formData: FormData) {
+  const ids = splitList(formData.get("ids"));
+  const single = String(formData.get("id") ?? "");
+  if (single) ids.push(single);
+  if (ids.length === 0) return;
+  bulkArchiveTaxonomyConcepts(ids);
+  revalidatePath("/interview-prep");
+}
+
+export async function archiveUnusedTaxonomyConceptsAction() {
+  archiveUnusedTaxonomyConcepts();
   revalidatePath("/interview-prep");
 }

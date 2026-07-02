@@ -1083,5 +1083,64 @@ export const migrations = [
           'other keywords'
         );
     `
+  },
+  {
+    id: "0052_taxonomy_candidate_status",
+    sql: `
+      -- Introduce a 'candidate' lifecycle for machine-generated taxonomy concepts.
+      -- Job-evaluation keywords no longer clutter the active taxonomy: any active,
+      -- non-user concept below the root level that has never been linked to a story
+      -- and appears in fewer than 3 distinct jobs is demoted to 'candidate'. It stays
+      -- fully queryable (job<->story matching ignores status), just out of the default
+      -- active view until a story link or 3-job recurrence promotes it.
+      --
+      -- Rule-based only: on a fresh database with no generated concepts this demotes
+      -- nothing. Run the statement 3x so parents whose only active children were just
+      -- demoted also demote (taxonomy is at most 5 levels deep).
+      update keyword_concepts
+      set status = 'candidate', updated_at = current_timestamp
+      where status = 'active'
+        and created_from not in ('user', 'system')
+        and depth > 1
+        and id not in (select distinct concept_id from story_keyword_concepts)
+        and (
+          select count(distinct job_id) from job_keyword_concepts j
+          where j.concept_id = keyword_concepts.id
+        ) < 3
+        and not exists (
+          select 1 from keyword_concepts child
+          where child.parent_id = keyword_concepts.id and child.status = 'active'
+        );
+
+      update keyword_concepts
+      set status = 'candidate', updated_at = current_timestamp
+      where status = 'active'
+        and created_from not in ('user', 'system')
+        and depth > 1
+        and id not in (select distinct concept_id from story_keyword_concepts)
+        and (
+          select count(distinct job_id) from job_keyword_concepts j
+          where j.concept_id = keyword_concepts.id
+        ) < 3
+        and not exists (
+          select 1 from keyword_concepts child
+          where child.parent_id = keyword_concepts.id and child.status = 'active'
+        );
+
+      update keyword_concepts
+      set status = 'candidate', updated_at = current_timestamp
+      where status = 'active'
+        and created_from not in ('user', 'system')
+        and depth > 1
+        and id not in (select distinct concept_id from story_keyword_concepts)
+        and (
+          select count(distinct job_id) from job_keyword_concepts j
+          where j.concept_id = keyword_concepts.id
+        ) < 3
+        and not exists (
+          select 1 from keyword_concepts child
+          where child.parent_id = keyword_concepts.id and child.status = 'active'
+        );
+    `
   }
 ];

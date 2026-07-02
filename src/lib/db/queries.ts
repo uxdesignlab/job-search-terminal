@@ -62,6 +62,7 @@ import type {
   PendingEmailJobCandidateInput,
   TaxonomyActivityRecord,
   TaxonomyAliasRecord,
+  TaxonomyCandidateRecord,
   TaxonomyConceptInput,
   TaxonomyConceptRecord,
   StoryKind,
@@ -2701,7 +2702,7 @@ function mapConceptRow(row: TaxonomyConceptRow, aliases: TaxonomyAliasRecord[] =
     parentId: row.parent_id,
     depth: row.depth,
     description: row.description,
-    status: row.status === "archived" ? "archived" : "active",
+    status: row.status === "archived" ? "archived" : row.status === "candidate" ? "candidate" : "active",
     createdFrom: row.created_from,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -2742,14 +2743,91 @@ function getConceptDepth(parentId: string | null): number {
   return Math.min((row?.depth ?? 0) + 1, TAXONOMY_MAX_DEPTH);
 }
 
-function ensureConcept(label: string, parentId: string | null, createdFrom: string): TaxonomyConceptRow {
+/**
+ * Sources whose concepts are born as 'candidate' rather than 'active'. Machine
+ * extraction from job postings (Block E keywords, status-based fallbacks) fills the
+ * candidate pool; real user story tags and hand-authored concepts go straight to
+ * active. A candidate is promoted the moment it earns a story link or recurs across
+ * enough jobs (see promoteConceptWithAncestors / linkJobKeywordConcepts).
+ */
+const CANDIDATE_CONCEPT_SOURCES = new Set(["job_evaluation", "job_status", "job_evaluation_story"]);
+
+/** Story tags injected purely as UI filler by normalizeTags — never real skills. */
+const FILLER_TAG_PHRASES = new Set(["interview prep", "interview answer", "standalone story"]);
+
+function statusForConceptSource(source: string): "active" | "candidate" {
+  return CANDIDATE_CONCEPT_SOURCES.has(source) ? "candidate" : "active";
+}
+
+const CREDENTIAL_KEYWORD_RE =
+  /\b(bachelor|bachelors|master|masters|mba|phd|ph\.?d|doctorate|degree|diploma|ged|associate'?s? degree|certification|certificate|licensure)\b/;
+// Role-agnostic seniority-title shape: seniority prefix + generic role noun. Not a
+// design/UX word list — the role nouns span industries so a fresh non-design user is
+// covered too. Best-effort only; the candidate status is the real safety net.
+const SENIORITY_TITLE_RE =
+  /^(senior|sr|junior|jr|staff|principal|lead|director|vp|vice president|head of|chief|entry[ -]?level|mid[ -]?level|associate)\b.*\b(designer|engineer|manager|researcher|analyst|developer|scientist|architect|consultant|specialist|director|officer|strategist|marketer|writer|producer|coordinator|administrator|technician|accountant|recruiter|nurse|lead)s?$/;
+
+// Cached and self-invalidating: a cheap count query rebuilds the set only when the
+// jobs table changes, so a newly-tracked company starts being blocked without a restart.
+let companyNamePhraseCache: { count: number; set: Set<string> } | null = null;
+function getCompanyNamePhrases(): Set<string> {
+  const count = (getDatabase().prepare("select count(*) as n from jobs").get() as { n: number }).n;
+  if (companyNamePhraseCache && companyNamePhraseCache.count === count) return companyNamePhraseCache.set;
+  const rows = getDatabase().prepare("select distinct company from jobs").all() as Array<{ company: string }>;
+  const set = new Set(rows.map((row) => normalizeKeywordPhrase(row.company)).filter((value) => value.length > 2));
+  companyNamePhraseCache = { count, set };
+  return set;
+}
+
+/**
+ * True when a raw keyword should never become a taxonomy concept — credentials, job
+ * titles, and the user's own tracked company names. Blocked phrases are dropped from
+ * concept/alias creation only; they remain in evaluations.keywords_json and still
+ * participate in rawKeywordMatchesHaystack, so job matching and resume tailoring are
+ * unaffected.
+ */
+function isBlockedKeywordPhrase(normalizedPhrase: string): boolean {
+  if (!normalizedPhrase) return true;
+  if (CREDENTIAL_KEYWORD_RE.test(normalizedPhrase)) return true;
+  if (SENIORITY_TITLE_RE.test(normalizedPhrase)) return true;
+  if (getCompanyNamePhrases().has(normalizedPhrase)) return true;
+  return false;
+}
+
+/**
+ * Promotes a candidate concept (and any candidate ancestors, so the tree stays
+ * connected) to active. No-op for concepts that are already active or archived —
+ * archived concepts stay rejected.
+ */
+function promoteConceptWithAncestors(conceptId: string, reason: string, actor = "system") {
+  let current: string | null = conceptId;
+  const seen = new Set<string>();
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const row = getDatabase()
+      .prepare("select parent_id, status from keyword_concepts where id = @id")
+      .get({ id: current }) as { parent_id: string | null; status: string } | undefined;
+    if (!row) break;
+    if (row.status === "candidate") {
+      getDatabase()
+        .prepare("update keyword_concepts set status = 'active', updated_at = current_timestamp where id = @id")
+        .run({ id: current });
+      logTaxonomyActivity("promoted", current, null, { reason }, actor);
+    }
+    current = row.parent_id;
+  }
+}
+
+function ensureConcept(label: string, parentId: string | null, createdFrom: string, status: "active" | "candidate" = "active"): TaxonomyConceptRow {
   const existing = findConceptByLabel(label, parentId);
   if (existing) {
-    if (existing.status === "archived") {
+    // Never let a machine re-encounter resurrect an archived (user-rejected) concept.
+    // Only an explicit user action restores it (see restoreTaxonomyConcept / saveTaxonomyConcept).
+    if (existing.status === "archived" && createdFrom === "user") {
       getDatabase()
         .prepare("update keyword_concepts set status = 'active', archived_at = null, updated_at = current_timestamp where id = @id")
         .run({ id: existing.id });
-      logTaxonomyActivity("restored", existing.id, null, { label: existing.label }, "system");
+      logTaxonomyActivity("restored", existing.id, null, { label: existing.label }, "user");
       return { ...existing, status: "active", archived_at: null };
     }
     return existing;
@@ -2760,9 +2838,9 @@ function ensureConcept(label: string, parentId: string | null, createdFrom: stri
   getDatabase()
     .prepare(
       `insert into keyword_concepts (
-        id, label, normalized_label, parent_id, depth, created_from
+        id, label, normalized_label, parent_id, depth, created_from, status
       ) values (
-        @id, @label, @normalizedLabel, @parentId, @depth, @createdFrom
+        @id, @label, @normalizedLabel, @parentId, @depth, @createdFrom, @status
       )`
     )
     .run({
@@ -2771,19 +2849,22 @@ function ensureConcept(label: string, parentId: string | null, createdFrom: stri
       normalizedLabel: normalizeKeywordPhrase(label),
       parentId,
       depth,
-      createdFrom
+      createdFrom,
+      status
     });
-  logTaxonomyActivity("created", id, parentId, { label, parentId, depth, createdFrom }, createdFrom === "user" ? "user" : "system");
+  logTaxonomyActivity("created", id, parentId, { label, parentId, depth, createdFrom, status }, createdFrom === "user" ? "user" : "system");
   return getDatabase().prepare("select * from keyword_concepts where id = @id").get({ id }) as TaxonomyConceptRow;
 }
 
-function ensureConceptPath(path: string[], createdFrom: string): TaxonomyConceptRow | null {
+function ensureConceptPath(path: string[], createdFrom: string, status: "active" | "candidate" = "active"): TaxonomyConceptRow | null {
   let parentId: string | null = null;
   let current: TaxonomyConceptRow | null = null;
   for (const segment of path.slice(0, TAXONOMY_MAX_DEPTH)) {
     const label = segment.trim();
     if (!label) continue;
-    current = ensureConcept(label, parentId, createdFrom);
+    // Ancestors of a candidate leaf are created as candidates too; they promote
+    // together with the leaf. Existing ancestors keep their current status.
+    current = ensureConcept(label, parentId, createdFrom, status);
     parentId = current.id;
   }
   return current;
@@ -2830,7 +2911,15 @@ function conceptForKeyword(rawKeyword: string, source: string): TaxonomyConceptR
     .get({ normalized }) as TaxonomyConceptRow | undefined;
   if (alias) return alias;
 
-  const concept = ensureConceptPath(inferConceptPath(rawKeyword), source);
+  // Filler and blocked phrases (credentials, job titles, company names) never mint a
+  // concept. User- and story-sourced keywords bypass the blocklist so a deliberate tag
+  // is always honored.
+  const fromUserOrStory = source === "user" || source === "story_tag";
+  if (FILLER_TAG_PHRASES.has(normalized)) return null;
+  if (!fromUserOrStory && isBlockedKeywordPhrase(normalized)) return null;
+
+  const status = statusForConceptSource(source);
+  const concept = ensureConceptPath(inferConceptPath(rawKeyword), source, status);
   if (concept) ensureAlias(concept.id, rawKeyword, source, 0.75);
   return concept;
 }
@@ -2856,8 +2945,14 @@ function linkStoryConcepts(storyId: string, rawKeywords: string[], source = "sto
       source,
       confidence: 0.75
     });
+    // A story link is the strongest possible signal — promote the concept (and its
+    // candidate ancestors) into the curated active taxonomy.
+    promoteConceptWithAncestors(concept.id, "story_link");
   }
 }
+
+/** Distinct-job threshold at which a recurring candidate concept auto-promotes to active. */
+const CANDIDATE_JOB_PROMOTION_THRESHOLD = 3;
 
 function linkJobKeywordConcepts(jobId: string, evaluationId: string | null, rawKeywords: string[], source = "job_evaluation") {
   const unique = Array.from(new Set(rawKeywords.map((item) => item.trim()).filter(Boolean)));
@@ -2881,6 +2976,15 @@ function linkJobKeywordConcepts(jobId: string, evaluationId: string | null, rawK
       source,
       confidence: 0.75
     });
+    // Recurrence across enough distinct jobs signals a genuinely relevant concept.
+    if (concept.status === "candidate") {
+      const jobCount = getDatabase()
+        .prepare("select count(distinct job_id) as n from job_keyword_concepts where concept_id = @conceptId")
+        .get({ conceptId: concept.id }) as { n: number };
+      if (jobCount.n >= CANDIDATE_JOB_PROMOTION_THRESHOLD) {
+        promoteConceptWithAncestors(concept.id, "job_recurrence");
+      }
+    }
   }
 }
 
@@ -3422,9 +3526,15 @@ function buildTaxonomyTree(rows: TaxonomyConceptRow[], aliasRows: TaxonomyAliasR
   return roots;
 }
 
-export function getKeywordTaxonomy(options?: { includeArchived?: boolean }): TaxonomyConceptRecord[] {
+export function getKeywordTaxonomy(options?: { includeArchived?: boolean; includeCandidates?: boolean }): TaxonomyConceptRecord[] {
   ensureTaxonomyForEvaluations();
-  const statusWhere = options?.includeArchived ? "" : "where keyword_concepts.status <> 'archived'";
+  // The default tree is the curated set: active (and archived when asked, so the user
+  // can restore). Candidate concepts — the machine-generated pool — are excluded here
+  // and surfaced separately through the review queue (getTaxonomyCandidates).
+  const excluded: string[] = [];
+  if (!options?.includeArchived) excluded.push("archived");
+  if (!options?.includeCandidates) excluded.push("candidate");
+  const statusWhere = excluded.length ? `where keyword_concepts.status not in (${excluded.map(() => "?").join(",")})` : "";
   const rows = getDatabase()
     .prepare(
       `select
@@ -3435,11 +3545,103 @@ export function getKeywordTaxonomy(options?: { includeArchived?: boolean }): Tax
        ${statusWhere}
        order by depth asc, label collate nocase asc`
     )
-    .all() as TaxonomyConceptRow[];
+    .all(...excluded) as TaxonomyConceptRow[];
   const aliases = getDatabase()
     .prepare("select * from keyword_aliases order by raw_phrase collate nocase asc")
     .all() as TaxonomyAliasRow[];
   return buildTaxonomyTree(rows, aliases);
+}
+
+export function getTaxonomyStatusCounts(): { active: number; candidate: number; archived: number } {
+  const rows = getDatabase()
+    .prepare("select status, count(*) as n from keyword_concepts group by status")
+    .all() as Array<{ status: string; n: number }>;
+  const counts = { active: 0, candidate: 0, archived: 0 };
+  for (const row of rows) {
+    if (row.status === "candidate") counts.candidate = row.n;
+    else if (row.status === "archived") counts.archived = row.n;
+    else counts.active += row.n;
+  }
+  return counts;
+}
+
+/**
+ * Flat review-queue feed of machine-generated candidate concepts, ranked by how many
+ * distinct jobs referenced each (strongest promotion signal first). Used by the
+ * taxonomy review queue for bulk approve / archive.
+ */
+export function getTaxonomyCandidates(limit = 500): TaxonomyCandidateRecord[] {
+  const allRows = getDatabase()
+    .prepare("select id, label, parent_id from keyword_concepts")
+    .all() as Array<{ id: string; label: string; parent_id: string | null }>;
+  const byId = new Map(allRows.map((row) => [row.id, row]));
+  const pathFor = (id: string): string[] => {
+    const path: string[] = [];
+    let current: string | null = id;
+    const seen = new Set<string>();
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      const row = byId.get(current);
+      if (!row) break;
+      path.unshift(row.label);
+      current = row.parent_id;
+    }
+    return path;
+  };
+  const rows = getDatabase()
+    .prepare(
+      `select
+        keyword_concepts.id,
+        keyword_concepts.label,
+        (select count(distinct story_id) from story_keyword_concepts where story_keyword_concepts.concept_id = keyword_concepts.id) as story_count,
+        (select count(distinct job_id) from job_keyword_concepts where job_keyword_concepts.concept_id = keyword_concepts.id) as job_count
+       from keyword_concepts
+       where status = 'candidate'
+       order by job_count desc, label collate nocase asc
+       limit @limit`
+    )
+    .all({ limit }) as Array<{ id: string; label: string; story_count: number; job_count: number }>;
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    path: pathFor(row.id),
+    storyCount: row.story_count,
+    jobCount: row.job_count
+  }));
+}
+
+/** User approves a candidate (or a machine-promotion path) into the active taxonomy. */
+export function promoteTaxonomyConcept(id: string) {
+  promoteConceptWithAncestors(id, "user_approved", "user");
+}
+
+export function bulkArchiveTaxonomyConcepts(ids: string[]) {
+  const stmt = getDatabase().prepare(
+    "update keyword_concepts set status = 'archived', archived_at = current_timestamp, updated_at = current_timestamp where id = @id"
+  );
+  getDatabase().transaction(() => {
+    for (const id of ids) {
+      stmt.run({ id });
+      logTaxonomyActivity("archived", id, null, { bulk: true }, "user");
+    }
+  })();
+}
+
+/**
+ * Archives every candidate concept with no story links and fewer than the promotion
+ * threshold of distinct jobs — the "clear the noise" action. Returns the count archived.
+ */
+export function archiveUnusedTaxonomyConcepts(): number {
+  const rows = getDatabase()
+    .prepare(
+      `select id from keyword_concepts
+       where status = 'candidate'
+         and id not in (select distinct concept_id from story_keyword_concepts)
+         and (select count(distinct job_id) from job_keyword_concepts j where j.concept_id = keyword_concepts.id) < @threshold`
+    )
+    .all({ threshold: CANDIDATE_JOB_PROMOTION_THRESHOLD }) as Array<{ id: string }>;
+  bulkArchiveTaxonomyConcepts(rows.map((row) => row.id));
+  return rows.length;
 }
 
 export function getTaxonomyActivity(limit = 20): TaxonomyActivityRecord[] {
