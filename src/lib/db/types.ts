@@ -635,7 +635,7 @@ export type StoryJobAssignmentRecord = {
   source: "auto" | "manual";
 };
 
-export type TaxonomyConceptStatus = "active" | "archived";
+export type TaxonomyConceptStatus = "active" | "candidate" | "archived";
 
 export type TaxonomyConceptRecord = {
   id: string;
@@ -654,6 +654,14 @@ export type TaxonomyConceptRecord = {
   jobCount: number;
   path: string[];
   children: TaxonomyConceptRecord[];
+};
+
+export type TaxonomyCandidateRecord = {
+  id: string;
+  label: string;
+  path: string[];
+  storyCount: number;
+  jobCount: number;
 };
 
 export type TaxonomyAliasRecord = {

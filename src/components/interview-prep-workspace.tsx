@@ -7,7 +7,14 @@ import { InteractiveStoryEditor } from "@/components/interactive-story-editor";
 import { StoryBankList } from "@/components/story-bank-list";
 import { TaxonomyManager } from "@/components/taxonomy-manager";
 import { VoicePractice } from "@/components/voice-practice";
-import type { ApplicationRecord, InterviewQuestionRecord, StoryRecord, TaxonomyActivityRecord, TaxonomyConceptRecord } from "@/lib/db/types";
+import type {
+  ApplicationRecord,
+  InterviewQuestionRecord,
+  StoryRecord,
+  TaxonomyActivityRecord,
+  TaxonomyCandidateRecord,
+  TaxonomyConceptRecord,
+} from "@/lib/db/types";
 
 type Props = {
   assignmentJobs: ApplicationRecord[];
@@ -15,10 +22,15 @@ type Props = {
   stories: StoryRecord[];
   taxonomy: TaxonomyConceptRecord[];
   taxonomyActivity: TaxonomyActivityRecord[];
+  taxonomyCandidates: TaxonomyCandidateRecord[];
+  taxonomyCounts: { active: number; candidate: number; archived: number };
   addTaxonomyAliasAction: (formData: FormData) => Promise<void>;
   archiveTaxonomyConceptAction: (formData: FormData) => Promise<void>;
+  archiveUnusedTaxonomyConceptsAction: () => Promise<void>;
+  bulkArchiveTaxonomyConceptsAction: (formData: FormData) => Promise<void>;
   deleteStoryAction: (id: string) => Promise<void>;
   mergeTaxonomyConceptAction: (formData: FormData) => Promise<void>;
+  promoteTaxonomyConceptAction: (formData: FormData) => Promise<void>;
   removeTaxonomyAliasAction: (formData: FormData) => Promise<void>;
   restoreTaxonomyConceptAction: (formData: FormData) => Promise<void>;
   saveQuestionAction: (formData: FormData) => Promise<void>;
@@ -34,10 +46,15 @@ export function InterviewPrepWorkspace({
   stories,
   taxonomy,
   taxonomyActivity,
+  taxonomyCandidates,
+  taxonomyCounts,
   addTaxonomyAliasAction,
   archiveTaxonomyConceptAction,
+  archiveUnusedTaxonomyConceptsAction,
+  bulkArchiveTaxonomyConceptsAction,
   deleteStoryAction,
   mergeTaxonomyConceptAction,
+  promoteTaxonomyConceptAction,
   removeTaxonomyAliasAction,
   restoreTaxonomyConceptAction,
   saveQuestionAction,
@@ -100,6 +117,15 @@ export function InterviewPrepWorkspace({
           <span className="rounded-control border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
             {generatedStoryCount} generated suggestions
           </span>
+          {taxonomyCounts.candidate > 0 ? (
+            <button
+              className="rounded-control border border-accent/50 bg-accent/5 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
+              onClick={() => setActiveTab("taxonomy")}
+              type="button"
+            >
+              {taxonomyCounts.candidate} candidates to review
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -167,7 +193,12 @@ export function InterviewPrepWorkspace({
             activity={taxonomyActivity}
             addTaxonomyAliasAction={addTaxonomyAliasAction}
             archiveTaxonomyConceptAction={archiveTaxonomyConceptAction}
+            archiveUnusedTaxonomyConceptsAction={archiveUnusedTaxonomyConceptsAction}
+            bulkArchiveTaxonomyConceptsAction={bulkArchiveTaxonomyConceptsAction}
+            candidates={taxonomyCandidates}
+            counts={taxonomyCounts}
             mergeTaxonomyConceptAction={mergeTaxonomyConceptAction}
+            promoteTaxonomyConceptAction={promoteTaxonomyConceptAction}
             removeTaxonomyAliasAction={removeTaxonomyAliasAction}
             restoreTaxonomyConceptAction={restoreTaxonomyConceptAction}
             saveTaxonomyConceptAction={saveTaxonomyConceptAction}

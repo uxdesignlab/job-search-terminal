@@ -57,6 +57,10 @@ and initializes an empty local profile if the database is empty.
 | `0042_email_job_alert_imports` | Adds email-import posting resolution fields and the `job_email_import_evidence` provenance table |
 | `0041_ollama_settings` | Adds `ollama_base_url`, `ollama_model`, `provider_order_json` to `ai_settings`; adds `provider_used`, `model_used` to `outreach_drafts` and `application_answer_drafts` |
 | `0043_pending_email_candidates` | Adds the `pending_email_job_candidates` table for the approval-gated email import queue |
+| `0044_interview_prep_workspace` | Interview-prep workspace: seeds 10 default `interview_questions`, extends `story_bank` with `story_kind`, `question_id`, `prompt_text`, quality fields, `tags_json` |
+| `0045_story_tags_and_job_assignments` – `0049_story_job_link_backfill_v2` | Story tag/keyword plumbing and `story_job_links` auto-matching backfills |
+| `0050_private_keyword_taxonomy` / `0051_group_generated_misc_taxonomy_roots` | Private keyword taxonomy tables and the "Other keywords" holding root |
+| `0052_taxonomy_candidate_status` | Adds the `candidate` concept lifecycle: rule-based demotion of unused generated concepts (0 stories, <3 jobs, no active children), run in three passes to cascade up parent chains. No schema column change — reuses `keyword_concepts.status` |
 
 ---
 
@@ -523,18 +527,53 @@ evaluated jobs, story tags, resumes, and interview-prep material.
 
 | Table | Purpose |
 |---|---|
-| `keyword_concepts` | Canonical concept tags in a tree up to five levels deep. Concepts can be active or archived |
+| `keyword_concepts` | Canonical concept tags in a tree up to five levels deep. `status` is `active`, `candidate`, or `archived` |
 | `keyword_aliases` | Raw phrases and synonyms mapped to a concept, with source and confidence |
 | `job_keyword_concepts` | Links a job/evaluation raw keyword to a concept while preserving the raw keyword |
 | `story_keyword_concepts` | Links a story raw keyword to a concept while preserving the raw keyword |
 | `keyword_mapping_suggestions` | Reserved review queue for uncertain AI-suggested mappings |
-| `taxonomy_activity_log` | Local audit trail for created, moved, archived, restored, aliased, and merged concepts |
+| `taxonomy_activity_log` | Local audit trail for created, moved, promoted, archived, restored, aliased, and merged concepts |
 
 Raw keywords and concept tags are intentionally separate:
 
 - Raw keywords remain exact phrases for ATS/resume tailoring and provenance.
 - Concept tags organize search, Story Bank filters, taxonomy browsing, and semantic story-to-job matching.
 - User edits in the Taxonomy Manager are saved as local authoritative aliases/moves/merges and reused by future classification.
+
+#### Concept lifecycle: active, candidate, archived (migration `0052`)
+
+Job-evaluation keywords used to create an `active` concept for every unseen phrase,
+which grew the taxonomy without bound (~12 per evaluated job) and buried the useful
+tags. Concepts now have a three-state lifecycle:
+
+- **`candidate`** — machine-generated from a job evaluation (`created_from` other than
+  `user`/`system`). Candidates are excluded from the default taxonomy tree but still
+  participate fully in job↔story matching (`getStoryConceptIds`/`getJobConceptIds`
+  ignore status). They surface in the **Review queue** for approve/archive.
+- **`active`** — the curated set shown in the tree. A candidate is **promoted** to
+  active automatically when it (a) is linked to a story, or (b) recurs across ≥3
+  distinct jobs; or manually when the user approves it. User-authored and story-tag
+  concepts are born active.
+- **`archived`** — user-rejected. Migration `0052` demotes existing unused generated
+  concepts (0 story links, <3 jobs, no active children) to `candidate` in three passes
+  (to cascade up parent chains). It is rule-based, so a fresh install with no generated
+  concepts demotes nothing.
+
+**Blocklist:** credentials (degree/certificate phrasing), job titles (seniority-prefix
+shapes), and the user's own tracked company names never mint a concept. These are
+role-agnostic patterns plus company names read from the user's `jobs` table — not a
+fixed vocabulary — so non-design users are covered too. Blocked phrases still live in
+`evaluations.keywords_json` and still match via raw-keyword matching, so resume
+tailoring and job matching are unaffected.
+
+**Resurrection fix:** re-encountering an archived concept during a job evaluation no
+longer restores it to active — only an explicit user action does. This keeps a cleanup
+from being undone by the next evaluation.
+
+Query helpers: `getKeywordTaxonomy({ includeArchived?, includeCandidates? })` (default
+excludes both), `getTaxonomyCandidates()` (flat review-queue feed ranked by job count),
+`getTaxonomyStatusCounts()`. Mutations: `promoteTaxonomyConcept`,
+`bulkArchiveTaxonomyConcepts`, `archiveUnusedTaxonomyConcepts`.
 
 ### interview_questions
 
