@@ -68,8 +68,27 @@ export function InterviewPrepWorkspace({
   const [activeTab, setActiveTab] = useState<ActiveTab>("practice");
   const [storyModalOpen, setStoryModalOpen] = useState(false);
 
-  const userStoryCount = stories.filter((story) => story.storyKind !== "evaluation_suggestion").length;
+  const coreStories = stories.filter((story) => story.storyKind !== "evaluation_suggestion");
+  const userStoryCount = coreStories.length;
   const generatedStoryCount = stories.length - userStoryCount;
+
+  // Coverage-by-category: a question is "covered" when it has a linked story or a
+  // recorded practice attempt. Categories with zero coverage are the prep gaps.
+  const categoryCoverage = (() => {
+    const byCategory = new Map<string, { total: number; covered: number }>();
+    for (const question of questions) {
+      const practice = questionPractice[question.id];
+      const covered = (practice?.linkedStories.length ?? 0) > 0 || (practice?.attemptCount ?? 0) > 0;
+      const entry = byCategory.get(question.category) ?? { total: 0, covered: 0 };
+      entry.total += 1;
+      if (covered) entry.covered += 1;
+      byCategory.set(question.category, entry);
+    }
+    return Array.from(byCategory.entries())
+      .map(([category, stats]) => ({ category, ...stats }))
+      .sort((a, b) => a.covered / a.total - b.covered / b.total || b.total - a.total);
+  })();
+  const gapCategories = categoryCoverage.filter((c) => c.covered === 0).length;
 
   return (
     <div className="grid gap-5">
@@ -112,14 +131,19 @@ export function InterviewPrepWorkspace({
 
         <div className="flex flex-wrap gap-2 pb-2 sm:pb-0">
           <span className="rounded-control border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-            {questions.length} active questions
+            {userStoryCount} core stories
           </span>
           <span className="rounded-control border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-            {userStoryCount} user stories
+            {questions.length} questions
           </span>
-          <span className="rounded-control border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-            {generatedStoryCount} generated suggestions
-          </span>
+          {generatedStoryCount > 0 ? (
+            <a
+              className="rounded-control border border-accent/50 bg-accent/5 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
+              href="/interview-prep/consolidate"
+            >
+              {generatedStoryCount} to consolidate
+            </a>
+          ) : null}
           {taxonomyCounts.candidate > 0 ? (
             <button
               className="rounded-control border border-accent/50 bg-accent/5 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
@@ -134,6 +158,42 @@ export function InterviewPrepWorkspace({
 
       {activeTab === "practice" ? (
         <div className="grid gap-5">
+          <Card>
+            <CardHeader className="mb-3">
+              <CardTitle>Coverage</CardTitle>
+              <CardDescription>
+                {userStoryCount} core {userStoryCount === 1 ? "story" : "stories"} · {questions.length} questions ·{" "}
+                {gapCategories > 0 ? (
+                  <span className="text-warning">{gapCategories} {gapCategories === 1 ? "category has" : "categories have"} no story yet</span>
+                ) : (
+                  <span className="text-success">every category has a story</span>
+                )}
+              </CardDescription>
+            </CardHeader>
+            {categoryCoverage.length === 0 ? (
+              <p className="text-sm text-muted">Add questions to see coverage.</p>
+            ) : (
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {categoryCoverage.map((cat) => {
+                  const isGap = cat.covered === 0;
+                  return (
+                    <div
+                      className={`flex items-center justify-between gap-3 rounded-control border px-3 py-2 ${
+                        isGap ? "border-warning/40 bg-warning/5" : "border-border bg-surface"
+                      }`}
+                      key={cat.category}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{cat.category}</span>
+                      <span className={`shrink-0 text-xs font-medium ${isGap ? "text-warning" : "text-muted"}`}>
+                        {isGap ? "no story yet" : `${cat.covered}/${cat.total} covered`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Practice questions</CardTitle>
