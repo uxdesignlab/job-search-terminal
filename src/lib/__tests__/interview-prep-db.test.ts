@@ -511,6 +511,67 @@ describe("interview prep database helpers", () => {
     ]);
   });
 
+  it("records practice attempts per question and exposes them through the practice map", async () => {
+    const { queries } = await loadFreshDb();
+
+    const question = queries.getInterviewQuestions()[0];
+    expect(question).toBeTruthy();
+
+    queries.saveStory({
+      id: "practice-story",
+      title: "Cross-functional launch",
+      situation: "Two teams were misaligned.",
+      task: "I owned the alignment.",
+      action: "I ran a shared planning cadence.",
+      result: "We shipped a week early.",
+      reflection: "I'd set the cadence sooner.",
+      skills: [],
+      themes: [],
+      storyKind: "answered_question",
+      questionId: question.id,
+      tags: ["cross-functional"],
+    });
+    queries.linkQuestionStory(question.id, "practice-story", "practice");
+
+    queries.savePracticeAttempt({
+      questionId: question.id,
+      storyId: "practice-story",
+      transcript: "So there was this launch...",
+      parsed: {
+        title: "Cross-functional launch",
+        situation: "Two teams were misaligned.",
+        task: "I owned the alignment.",
+        action: "I ran a shared planning cadence.",
+        result: "We shipped a week early.",
+        reflection: "I'd set the cadence sooner.",
+      },
+      qualityStatus: "ready",
+      coachingNotes: ["Quantify the impact more."],
+    });
+    queries.savePracticeAttempt({
+      questionId: question.id,
+      storyId: "practice-story",
+      transcript: "Second run-through, tighter.",
+      parsed: {
+        title: "Cross-functional launch",
+        situation: "Two teams were misaligned.",
+        task: "I owned the alignment.",
+        action: "I ran a shared planning cadence and a risk log.",
+        result: "We shipped a week early with no escalations.",
+        reflection: "I'd set the cadence sooner.",
+      },
+      qualityStatus: "ready",
+      coachingNotes: [],
+    });
+
+    const map = queries.getQuestionPracticeMap();
+    const entry = map.get(question.id);
+    expect(entry?.attemptCount).toBe(2);
+    // Newest attempt first.
+    expect(entry?.attempts[0]?.transcript).toBe("Second run-through, tighter.");
+    expect(entry?.linkedStories.map((s) => s.id)).toContain("practice-story");
+  });
+
   it("mints job-evaluation keywords as candidates, hidden from the active taxonomy", async () => {
     const { client, queries } = await loadFreshDb();
     const db = client.getDatabase();

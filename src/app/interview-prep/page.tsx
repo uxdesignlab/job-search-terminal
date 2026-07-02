@@ -5,6 +5,7 @@ import {
   getInterviewAssignmentJobs,
   getInterviewQuestions,
   getKeywordTaxonomy,
+  getQuestionPracticeMap,
   getStories,
   getTaxonomyActivity,
   getTaxonomyCandidates,
@@ -35,6 +36,7 @@ export default function InterviewPrepPage() {
   const taxonomyActivity = getTaxonomyActivity();
   const taxonomyCandidates = getTaxonomyCandidates();
   const taxonomyCounts = getTaxonomyStatusCounts();
+  const questionPractice = Object.fromEntries(getQuestionPracticeMap());
 
   return (
     <Shell activeItem="Interview Prep">
@@ -54,6 +56,7 @@ export default function InterviewPrepPage() {
           archiveUnusedTaxonomyConceptsAction={archiveUnusedTaxonomyConceptsAction}
           bulkArchiveTaxonomyConceptsAction={bulkArchiveTaxonomyConceptsAction}
           questions={questions}
+          questionPractice={questionPractice}
           mergeTaxonomyConceptAction={mergeTaxonomyConceptAction}
           promoteTaxonomyConceptAction={promoteTaxonomyConceptAction}
           removeTaxonomyAliasAction={removeTaxonomyAliasAction}
