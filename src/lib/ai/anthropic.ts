@@ -59,7 +59,17 @@ export class AnthropicProvider implements AIProvider {
     }
     const text = await this.generateText(augmented, config);
     const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-    return JSON.parse(jsonMatch ? jsonMatch[1] ?? jsonMatch[0] : text) as T;
+    const payload = jsonMatch ? jsonMatch[1] ?? jsonMatch[0] : text;
+    try {
+      return JSON.parse(payload) as T;
+    } catch (error) {
+      // Truncated/malformed output (e.g. the response hit max_tokens mid-object) would
+      // otherwise throw a bare SyntaxError. Normalize it so withRetry treats it as a
+      // retryable malformed-JSON failure and the expected shape is visible in logs.
+      const reason = error instanceof Error ? error.message : String(error);
+      const preview = payload.length > 200 ? `${payload.slice(0, 200)}…` : payload;
+      throw new Error(`Anthropic returned invalid JSON (${reason}); expected shape ${hint}. Preview: ${preview}`);
+    }
   }
 
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {
