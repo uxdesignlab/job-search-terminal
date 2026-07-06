@@ -39,6 +39,27 @@ If the database fails to open:
   `docs/data-management.md`.
 - Run `npm run db:check`.
 
+## Job Evaluation
+
+If **Evaluate with AI** shows "Evaluation failed. Check your AI provider settings
+and try again." with a red ✗ on a specific block (most often **Interview Stories** /
+Block F):
+
+- This generic message is the fallthrough for an error that was *not* an auth, quota,
+  or network failure — almost always a malformed or truncated JSON response from the
+  model. Block F produces the most output and is the most prone to being cut off.
+- Clicking **Retry** re-runs the evaluation; because LLM output is non-deterministic,
+  the next generation usually parses cleanly. This is expected behavior, not a config
+  problem with your provider.
+- The pipeline now retries malformed/truncated JSON up to 3× per block automatically,
+  gives Block F a larger token budget (8,192), and lets Blocks F and G degrade to an
+  empty/"Unknown" result instead of aborting the whole run. Persistent Block F failures
+  after these safeguards usually mean the active model has a small output window — switch
+  to a model with a larger output limit in Settings → AI Provider.
+- If the ✗ lands on **Role Analysis** (A) or **Skills Match** (B) instead, those blocks
+  fail hard by design (a fabricated score is worse than none). Check the provider
+  credential, quota, and network first.
+
 ## Resume PDF Generation
 
 If PDF generation fails:

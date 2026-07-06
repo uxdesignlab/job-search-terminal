@@ -1,5 +1,5 @@
 import { getActiveProvider } from "../ai/factory";
-import { withRetry } from "../ai/retry";
+import { withRetry, isMalformedJsonResponse } from "../ai/retry";
 import type { AIMessage, AIProvider } from "../ai/provider";
 import { getJobById, getRoleDirections, getResumes, getSkills, getStories, getUserProfile, saveJobEvaluation } from "../db/queries";
 import type { EvaluationSections, JobEvaluationResultInput, JobRecord, StructuredStory } from "../db/types";
@@ -240,10 +240,21 @@ Each story should:
     }
   ];
 
-  const result = await provider.generateJSON<{ stories: Array<{ question: string; points: string[] }> }>(messages, '{"stories":[]}');
+  // Block F is the largest structured generation (3-5 stories × question + 5 STAR+Reflection
+  // bullets), and the "build on / contrast existing stories" instruction pushes the model
+  // toward longer output. Give it a bigger budget than the 4096 default so it doesn't
+  // truncate mid-JSON and fail to parse.
+  const result = await provider.generateJSON<{ stories: Array<{ question: string; points: string[] }> }>(
+    messages,
+    '{"stories":[]}',
+    { maxTokens: 8192 }
+  );
+
+  // `stories` may be absent if the model returned a different shape — guard before mapping.
+  const stories = result.stories ?? [];
 
   // Parse the structured points into labelled fields before flattening
-  const structured: StructuredStory[] = result.stories.map((s) => {
+  const structured: StructuredStory[] = stories.map((s) => {
     const extract = (prefix: string) =>
       s.points.find((p) => p.startsWith(prefix))?.replace(prefix, "").trim() ?? "";
     return {
@@ -256,7 +267,7 @@ Each story should:
     };
   });
 
-  const lines = result.stories.flatMap((s) => [`Q: ${s.question}`, ...s.points, ""]).filter(Boolean);
+  const lines = stories.flatMap((s) => [`Q: ${s.question}`, ...s.points, ""]).filter(Boolean);
 
   return { lines, structured };
 }
@@ -303,6 +314,24 @@ function buildResumeExcerpts(resumes: { name: string; extractedText: string; act
 }
 
 // ─── Orchestrator ──────────────────────────────────────────────────────────
+
+/**
+ * Runs a non-critical block with retry, then degrades to `fallback` if it still
+ * returns malformed/truncated JSON after all retries — so one flaky generation
+ * can't abort an otherwise-complete evaluation. Auth/quota/network errors (which
+ * the user must act on) still propagate untouched. Used for later, non-scoring
+ * blocks (F interview stories, G legitimacy); core blocks A/B fail hard by design
+ * because a fabricated match/score is worse than an honest failure.
+ */
+async function runBlockOrFallback<T>(label: string, fallback: T, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await withRetry(fn);
+  } catch (error) {
+    if (!isMalformedJsonResponse(error)) throw error;
+    console.warn(`[evaluate] ${label} degraded to fallback after retries:`, error);
+    return fallback;
+  }
+}
 
 export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallback, onBlockStart?: BlockStartCallback): Promise<JobEvaluationResultInput> {
   const start = Date.now();
@@ -360,11 +389,19 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
     .slice(0, 8);
 
   onBlockStart?.("f");
-  const blockFResult = await withRetry(() => runBlockF(provider, systemPrompt, jobCtx, blockA, blockE, existingStoryTitles));
+  const blockFResult = await runBlockOrFallback<BlockFResult>(
+    "Block F (interview stories)",
+    { lines: [], structured: [] },
+    () => runBlockF(provider, systemPrompt, jobCtx, blockA, blockE, existingStoryTitles)
+  );
   onBlock?.({ block: "f", label: "F. Interview plan", content: blockFResult.lines });
 
   onBlockStart?.("g");
-  const blockGResult = await withRetry(() => runBlockG(provider, systemPrompt, jobCtx, job));
+  const blockGResult = await runBlockOrFallback<BlockGResult>(
+    "Block G (posting legitimacy)",
+    { assessment: "Unknown", legitimacy: ["Legitimacy check unavailable — the AI response could not be parsed. Re-run the evaluation to retry."] },
+    () => runBlockG(provider, systemPrompt, jobCtx, job)
+  );
   onBlock?.({ block: "g", label: "G. Posting legitimacy", content: blockGResult.legitimacy });
 
   const sections: EvaluationSections = {
