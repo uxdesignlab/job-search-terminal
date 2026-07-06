@@ -248,6 +248,22 @@ Tabbed view for a single job. Four tabs:
 - User correction: override the AI recommendation and score with a note.
 - Provider and model metadata for the last evaluation run.
 
+**Evaluation resilience (blocks A–G):**
+- The evaluation runs seven blocks sequentially (A role summary, B CV match, C level
+  strategy, D comp & demand, E personalization/keywords, F interview stories, G posting
+  legitimacy). If any block throws, the streaming modal marks that block with a red ✗
+  and stops — the earlier blocks stay visible so you can see how far it got.
+- **Malformed/truncated JSON is retried automatically.** LLM output is non-deterministic,
+  so a block whose response is cut off mid-JSON (or otherwise unparseable) is retried up
+  to 3× before it counts as a failure. Auth, quota, and network errors are *not* retried —
+  they surface immediately with an actionable message so you can fix the provider setting.
+- **Non-critical blocks degrade instead of aborting.** Block F (interview stories) and
+  Block G (posting legitimacy) fall back to an empty/"Unknown" result if they still return
+  bad JSON after retries, so one flaky generation no longer kills an otherwise-complete
+  evaluation. Core blocks A and B fail hard by design — a fabricated match or score is worse
+  than an honest failure. Block F also gets a larger token budget (8,192) than other blocks
+  because it produces the most output and was the most prone to truncation.
+
 **AI evaluation data sources (all fed into the analysis):**
 - Full job description (up to 6,000 characters — captures required qualifications
   that appear deep in the posting).
