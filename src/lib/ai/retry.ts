@@ -1,15 +1,38 @@
 // Rate limit errors (429, "rate limit", "too many requests") are excluded — they need
 // 20-60s to clear and short retries just waste time. If the provider attaches a
 // retryAfterMs property (from the Retry-After header), withRetry will honor it instead.
-// "timed out", "connect to ollama", and "invalid json" handle humanized Ollama errors from humanizeOllamaError().
-// "invalid json" is worth retrying because LLM output quality is non-deterministic.
-const RETRYABLE = ["503", "overloaded", "unavailable", "econnreset", "etimedout", "timed out", "connect to ollama", "invalid json"];
+// "timed out" and "connect to ollama" handle humanized Ollama errors from humanizeOllamaError().
+const RETRYABLE = ["503", "overloaded", "unavailable", "econnreset", "etimedout", "timed out", "connect to ollama"];
+
+// Malformed or truncated LLM JSON. Output quality is non-deterministic, so a fresh
+// generation usually parses cleanly — worth an automatic retry. These patterns cover
+// raw JSON.parse SyntaxErrors surfaced by every provider (Anthropic rethrows them
+// verbatim, OpenAI passes them through), the humanized "invalid JSON" strings from
+// Gemini/Ollama, and Gemini's MAX_TOKENS / "cut off" truncation signal.
+const MALFORMED_JSON_PATTERNS = [
+  "invalid json",
+  "unexpected token",
+  "unexpected end of json",
+  "is not valid json",
+  "max_tokens",
+  "cut off",
+];
 
 const MAX_AUTO_RETRY_AFTER_MS = 30_000;
 
+/**
+ * True when the error is a malformed/truncated JSON response from an LLM (as opposed
+ * to an auth/quota/network failure). Callers can use this to degrade a non-critical
+ * block gracefully after retries, while still surfacing actionable provider errors.
+ */
+export function isMalformedJsonResponse(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return MALFORMED_JSON_PATTERNS.some((pattern) => msg.includes(pattern));
+}
+
 function isRetryable(error: unknown): boolean {
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return RETRYABLE.some((pattern) => msg.includes(pattern));
+  return RETRYABLE.some((pattern) => msg.includes(pattern)) || isMalformedJsonResponse(error);
 }
 
 function getRetryAfterMs(error: unknown): number | null {

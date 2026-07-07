@@ -37,12 +37,21 @@ function parseInterviewPlan(items: string[]): StarStory[] {
   return stories;
 }
 
+type MatchedStory = {
+  id: string;
+  title: string;
+  qualityStatus: "ready" | "needs_detail" | "missing_result";
+  alreadyLinked: boolean;
+};
+
 type Props = {
   items: string[];
   jobId: string;
+  matchedStories?: MatchedStory[];
+  linkStoryAction?: (formData: FormData) => Promise<void>;
 };
 
-export function InterviewPlanSection({ items, jobId }: Props) {
+export function InterviewPlanSection({ items, jobId, matchedStories = [], linkStoryAction }: Props) {
   const router = useRouter();
   const stories = parseInterviewPlan(items);
   const [activeDraftIdx, setActiveDraftIdx] = useState<number | null>(null);
@@ -59,12 +68,48 @@ export function InterviewPlanSection({ items, jobId }: Props) {
             <CardTitle>F. Interview plan</CardTitle>
             <CardDescription>
               {stories.length > 0
-                ? `${stories.length} STAR ${stories.length === 1 ? "story" : "stories"} tailored to this role`
-                : "No interview stories generated yet."}
+                ? `${stories.length} suggested ${stories.length === 1 ? "question" : "questions"} for this role — drafts are not saved automatically`
+                : "No interview questions generated yet."}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
+
+      {matchedStories.length > 0 && linkStoryAction ? (
+        <div className="mb-4 rounded-control border border-accent/40 bg-accent/5 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink">
+            You may already have {matchedStories.length === 1 ? "a story" : "stories"} for this role
+          </p>
+          <p className="mb-2 text-[11px] text-muted">
+            Link an existing story to this job instead of drafting a new one.
+          </p>
+          <div className="grid gap-1.5">
+            {matchedStories.map((story) => (
+              <div className="flex items-center gap-2 rounded-control border border-border/60 bg-surface px-2 py-1.5" key={story.id}>
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{story.title}</span>
+                {story.qualityStatus !== "ready" ? (
+                  <span className="shrink-0 text-[10px] text-warning">{story.qualityStatus === "missing_result" ? "needs result" : "needs detail"}</span>
+                ) : null}
+                <form action={linkStoryAction} onSubmit={() => setTimeout(() => router.refresh(), 300)}>
+                  <input name="storyId" type="hidden" value={story.id} />
+                  <input name="jobId" type="hidden" value={jobId} />
+                  <input name="linked" type="hidden" value={story.alreadyLinked ? "false" : "true"} />
+                  <button
+                    className={`shrink-0 rounded-control border px-2.5 py-1 text-[11px] font-semibold ${
+                      story.alreadyLinked
+                        ? "border-border bg-panel text-muted hover:border-danger hover:text-danger"
+                        : "border-accent bg-accent text-white hover:bg-accent/90"
+                    }`}
+                    type="submit"
+                  >
+                    {story.alreadyLinked ? "Linked ✓" : "Link"}
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {stories.length === 0 ? (
         <p className="text-sm text-muted">Run Evaluate with AI to generate interview stories for this role.</p>

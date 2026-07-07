@@ -772,5 +772,442 @@ export const migrations = [
       );
       create index if not exists idx_pending_email_candidates_batch on pending_email_job_candidates(batch_id);
     `
+  },
+  {
+    id: "0044_interview_prep_workspace",
+    sql: `
+      create table if not exists interview_questions (
+        id text primary key,
+        prompt text not null,
+        category text not null default 'General',
+        source text not null default 'custom',
+        active integer not null default 1,
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      insert or ignore into interview_questions (id, prompt, category, source, active) values
+        ('default-cross-functional-leadership', 'Tell me about a time you led a cross-functional initiative.', 'Leadership', 'default', 1),
+        ('default-influence-without-authority', 'Describe a situation where you had to influence without authority.', 'Influence', 'default', 1),
+        ('default-incomplete-data', 'Give an example of a product decision you made with incomplete data.', 'Decision making', 'default', 1),
+        ('default-ambiguity', 'Tell me about a time you had to navigate ambiguity.', 'Ambiguity', 'default', 1),
+        ('default-project-failure', 'Describe how you''ve handled a significant project failure.', 'Failure and learning', 'default', 1),
+        ('default-senior-stakeholders', 'Give an example of how you built alignment with senior stakeholders.', 'Stakeholders', 'default', 1),
+        ('default-proud-project', 'Tell me about a project you''re most proud of.', 'Impact', 'default', 1),
+        ('default-difficult-feedback', 'Describe a time you had to give difficult feedback.', 'Feedback', 'default', 1),
+        ('default-prioritization', 'How do you prioritize when everything feels urgent?', 'Prioritization', 'default', 1),
+        ('default-changed-mind-data', 'Tell me about a time you changed someone''s mind with data.', 'Data and influence', 'default', 1);
+
+      alter table story_bank add column story_kind text not null default 'standalone_story';
+      alter table story_bank add column question_id text;
+      alter table story_bank add column prompt_text text not null default '';
+      alter table story_bank add column quality_status text not null default 'needs_detail';
+      alter table story_bank add column quality_notes text not null default '';
+      alter table story_bank add column last_evaluated_at text;
+
+      update story_bank
+        set story_kind = case
+          when source_block_f = 'evaluation' then 'evaluation_suggestion'
+          when source_block_f = 'voice-practice' then 'answered_question'
+          else 'standalone_story'
+        end,
+        prompt_text = case
+          when source_block_f in ('evaluation', 'voice-practice') then title
+          else ''
+        end,
+        quality_status = case
+          when length(trim(result)) = 0 then 'missing_result'
+          when length(trim(situation)) = 0 or length(trim(task)) = 0 or length(trim(action)) = 0 then 'needs_detail'
+          else 'ready'
+        end,
+        quality_notes = case
+          when length(trim(result)) = 0 then 'Add a concrete outcome or impact before using this in an interview.'
+          when length(trim(situation)) = 0 or length(trim(task)) = 0 or length(trim(action)) = 0 then 'Add missing STAR details before using this in an interview.'
+          else ''
+        end,
+        last_evaluated_at = current_timestamp;
+
+      create index if not exists idx_interview_questions_active on interview_questions(active, source, updated_at);
+      create index if not exists idx_story_bank_kind on story_bank(story_kind);
+      create index if not exists idx_story_bank_quality on story_bank(quality_status);
+      create index if not exists idx_story_bank_question on story_bank(question_id);
+    `
+  },
+  {
+    id: "0045_story_tags_and_job_assignments",
+    sql: `
+      alter table story_bank add column tags_json text not null default '[]';
+
+      update story_bank
+        set tags_json = case
+          when skills_json <> '[]' then skills_json
+          when themes_json <> '[]' then themes_json
+          else '[]'
+        end;
+
+      create table if not exists story_job_links (
+        story_id text not null references story_bank(id) on delete cascade,
+        job_id text not null references jobs(id) on delete cascade,
+        created_at text not null default current_timestamp,
+        primary key (story_id, job_id)
+      );
+
+      create index if not exists idx_story_job_links_story on story_job_links(story_id);
+      create index if not exists idx_story_job_links_job on story_job_links(job_id);
+    `
+  },
+  {
+    id: "0046_story_job_link_source",
+    sql: `
+      alter table story_job_links add column source text not null default 'manual';
+    `
+  },
+  {
+    id: "0047_story_job_link_backfill",
+    sql: `
+      insert or ignore into story_job_links (story_id, job_id, source)
+      select distinct story_bank.id, applications.job_id, 'auto'
+      from story_bank
+      join json_each(story_bank.tags_json) as tag
+      join applications on applications.status in ('Applied', 'Recruiter responded', 'Interviewing')
+      join jobs on jobs.id = applications.job_id
+      where length(trim(tag.value)) > 2
+        and instr(
+          lower(coalesce(jobs.title, '') || ' ' || coalesce(jobs.role_archetype, '')),
+          lower(trim(tag.value))
+        ) > 0;
+    `
+  },
+  {
+    id: "0048_evaluation_story_keyword_tags",
+    sql: `
+      update story_bank
+      set tags_json = (
+        select json_group_array(kw.value)
+        from (
+          select value
+          from json_each((
+            select evaluations.keywords_json
+            from evaluations
+            where evaluations.job_id = story_bank.source_job_id
+            order by evaluations.created_at desc
+            limit 1
+          ))
+          limit 12
+        ) as kw
+      )
+      where story_kind = 'evaluation_suggestion'
+        and source_job_id is not null
+        and exists (select 1 from evaluations where evaluations.job_id = story_bank.source_job_id);
+    `
+  },
+  {
+    id: "0049_story_job_link_backfill_v2",
+    sql: `
+      insert or ignore into story_job_links (story_id, job_id, source)
+      select distinct story_bank.id, applications.job_id, 'auto'
+      from story_bank
+      join json_each(story_bank.tags_json) as tag
+      join applications on applications.status in ('Applied', 'Recruiter responded', 'Interviewing')
+      join jobs on jobs.id = applications.job_id
+      where length(trim(tag.value)) > 2
+        and instr(
+          lower(
+            coalesce(jobs.title, '') || ' ' || coalesce(jobs.role_archetype, '') || ' ' ||
+            coalesce((
+              select group_concat(kw.value, ' ')
+              from json_each((
+                select evaluations.keywords_json
+                from evaluations
+                where evaluations.job_id = jobs.id
+                order by evaluations.created_at desc
+                limit 1
+              )) as kw
+            ), '')
+          ),
+          lower(trim(tag.value))
+        ) > 0;
+    `
+  },
+  {
+    id: "0050_private_keyword_taxonomy",
+    sql: `
+      create table if not exists keyword_concepts (
+        id text primary key,
+        label text not null,
+        normalized_label text not null,
+        parent_id text references keyword_concepts(id) on delete set null,
+        depth integer not null default 1,
+        description text not null default '',
+        status text not null default 'active',
+        created_from text not null default 'system',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp,
+        archived_at text
+      );
+
+      create unique index if not exists idx_keyword_concepts_parent_label
+        on keyword_concepts(coalesce(parent_id, ''), normalized_label);
+      create index if not exists idx_keyword_concepts_parent on keyword_concepts(parent_id);
+      create index if not exists idx_keyword_concepts_status on keyword_concepts(status);
+
+      create table if not exists keyword_aliases (
+        id text primary key,
+        concept_id text not null references keyword_concepts(id) on delete cascade,
+        raw_phrase text not null,
+        normalized_phrase text not null,
+        source text not null default 'system',
+        confidence real not null default 0.7,
+        verified_at text,
+        created_at text not null default current_timestamp
+      );
+
+      create unique index if not exists idx_keyword_aliases_phrase
+        on keyword_aliases(normalized_phrase);
+      create index if not exists idx_keyword_aliases_concept on keyword_aliases(concept_id);
+
+      create table if not exists job_keyword_concepts (
+        job_id text not null references jobs(id) on delete cascade,
+        evaluation_id text,
+        raw_keyword text not null,
+        normalized_keyword text not null,
+        concept_id text not null references keyword_concepts(id) on delete cascade,
+        source text not null default 'job_evaluation',
+        confidence real not null default 0.7,
+        created_at text not null default current_timestamp,
+        primary key (job_id, normalized_keyword, concept_id)
+      );
+
+      create index if not exists idx_job_keyword_concepts_job on job_keyword_concepts(job_id);
+      create index if not exists idx_job_keyword_concepts_concept on job_keyword_concepts(concept_id);
+
+      create table if not exists story_keyword_concepts (
+        story_id text not null references story_bank(id) on delete cascade,
+        raw_keyword text not null,
+        normalized_keyword text not null,
+        concept_id text not null references keyword_concepts(id) on delete cascade,
+        source text not null default 'story_tag',
+        confidence real not null default 0.7,
+        created_at text not null default current_timestamp,
+        primary key (story_id, normalized_keyword, concept_id)
+      );
+
+      create index if not exists idx_story_keyword_concepts_story on story_keyword_concepts(story_id);
+      create index if not exists idx_story_keyword_concepts_concept on story_keyword_concepts(concept_id);
+
+      create table if not exists keyword_mapping_suggestions (
+        id text primary key,
+        raw_phrase text not null,
+        normalized_phrase text not null,
+        suggested_concept_id text references keyword_concepts(id) on delete set null,
+        suggested_label text not null default '',
+        suggested_parent_id text references keyword_concepts(id) on delete set null,
+        reason text not null default '',
+        confidence real not null default 0.5,
+        status text not null default 'pending',
+        source text not null default 'ai',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_keyword_mapping_suggestions_status
+        on keyword_mapping_suggestions(status, updated_at);
+
+      create table if not exists taxonomy_activity_log (
+        id text primary key,
+        action text not null,
+        concept_id text,
+        related_id text,
+        details_json text not null default '{}',
+        actor text not null default 'system',
+        created_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_taxonomy_activity_concept on taxonomy_activity_log(concept_id, created_at);
+    `
+  },
+  {
+    id: "0051_group_generated_misc_taxonomy_roots",
+    sql: `
+      insert or ignore into keyword_concepts (
+        id, label, normalized_label, parent_id, depth, description, status, created_from
+      )
+      select
+        'concept-other-keywords',
+        'Other keywords',
+        'other keywords',
+        null,
+        1,
+        'Generated holding area for private keywords that do not yet have a more specific taxonomy branch.',
+        'active',
+        'system'
+      where exists (
+        select 1
+        from keyword_concepts
+        where parent_id is null
+          and created_from <> 'user'
+          and normalized_label not in (
+            'research',
+            'design',
+            'collaboration',
+            'leadership',
+            'strategy',
+            'data and analytics',
+            'technology',
+            'domain knowledge',
+            'other keywords'
+          )
+      );
+
+      update keyword_concepts
+      set parent_id = (
+            select id
+            from keyword_concepts as other
+            where other.parent_id is null
+              and other.normalized_label = 'other keywords'
+            limit 1
+          ),
+          depth = 2,
+          updated_at = current_timestamp
+      where parent_id is null
+        and created_from <> 'user'
+        and normalized_label not in (
+          'research',
+          'design',
+          'collaboration',
+          'leadership',
+          'strategy',
+          'data and analytics',
+          'technology',
+          'domain knowledge',
+          'other keywords'
+        );
+    `
+  },
+  {
+    id: "0052_taxonomy_candidate_status",
+    sql: `
+      -- Introduce a 'candidate' lifecycle for machine-generated taxonomy concepts.
+      -- Job-evaluation keywords no longer clutter the active taxonomy: any active,
+      -- non-user concept below the root level that has never been linked to a story
+      -- and appears in fewer than 3 distinct jobs is demoted to 'candidate'. It stays
+      -- fully queryable (job<->story matching ignores status), just out of the default
+      -- active view until a story link or 3-job recurrence promotes it.
+      --
+      -- Rule-based only: on a fresh database with no generated concepts this demotes
+      -- nothing. Run the statement 3x so parents whose only active children were just
+      -- demoted also demote (taxonomy is at most 5 levels deep).
+      update keyword_concepts
+      set status = 'candidate', updated_at = current_timestamp
+      where status = 'active'
+        and created_from not in ('user', 'system')
+        and depth > 1
+        and id not in (select distinct concept_id from story_keyword_concepts)
+        and (
+          select count(distinct job_id) from job_keyword_concepts j
+          where j.concept_id = keyword_concepts.id
+        ) < 3
+        and not exists (
+          select 1 from keyword_concepts child
+          where child.parent_id = keyword_concepts.id and child.status = 'active'
+        );
+
+      update keyword_concepts
+      set status = 'candidate', updated_at = current_timestamp
+      where status = 'active'
+        and created_from not in ('user', 'system')
+        and depth > 1
+        and id not in (select distinct concept_id from story_keyword_concepts)
+        and (
+          select count(distinct job_id) from job_keyword_concepts j
+          where j.concept_id = keyword_concepts.id
+        ) < 3
+        and not exists (
+          select 1 from keyword_concepts child
+          where child.parent_id = keyword_concepts.id and child.status = 'active'
+        );
+
+      update keyword_concepts
+      set status = 'candidate', updated_at = current_timestamp
+      where status = 'active'
+        and created_from not in ('user', 'system')
+        and depth > 1
+        and id not in (select distinct concept_id from story_keyword_concepts)
+        and (
+          select count(distinct job_id) from job_keyword_concepts j
+          where j.concept_id = keyword_concepts.id
+        ) < 3
+        and not exists (
+          select 1 from keyword_concepts child
+          where child.parent_id = keyword_concepts.id and child.status = 'active'
+        );
+    `
+  },
+  {
+    id: "0054_practice_attempts",
+    sql: `
+      -- Durable practice history: every rehearsal of a question is recorded as an
+      -- attempt (transcript + parsed STAR + coaching), so re-practicing appends instead
+      -- of silently spawning duplicate stories. The story remains the canonical artifact.
+      create table if not exists practice_attempts (
+        id text primary key,
+        question_id text references interview_questions(id) on delete set null,
+        story_id text references story_bank(id) on delete set null,
+        transcript text not null default '',
+        parsed_json text not null default '{}',
+        quality_status text not null default 'needs_detail',
+        coaching_notes_json text not null default '[]',
+        created_at text not null default current_timestamp
+      );
+      create index if not exists idx_practice_attempts_question on practice_attempts(question_id, created_at);
+      create index if not exists idx_practice_attempts_story on practice_attempts(story_id);
+
+      -- Which stories answer which questions (a story can cover several; a question can
+      -- have several candidate stories). Powers the per-question view and coverage matrix.
+      create table if not exists question_story_links (
+        question_id text not null references interview_questions(id) on delete cascade,
+        story_id text not null references story_bank(id) on delete cascade,
+        source text not null default 'manual',
+        created_at text not null default current_timestamp,
+        primary key (question_id, story_id)
+      );
+
+      -- Backfill: existing answered-question stories become links + one seed attempt each.
+      insert or ignore into question_story_links (question_id, story_id, source)
+        select question_id, id, 'practice'
+        from story_bank
+        where story_kind = 'answered_question' and question_id is not null and question_id <> '';
+
+      insert into practice_attempts (
+        id, question_id, story_id, transcript, parsed_json, quality_status, coaching_notes_json, created_at
+      )
+        select
+          'attempt-seed-' || id,
+          question_id,
+          id,
+          '',
+          json_object('title', title, 'situation', situation, 'task', task, 'action', action, 'result', result, 'reflection', reflection),
+          quality_status,
+          '[]',
+          created_at
+        from story_bank
+        where story_kind = 'answered_question' and question_id is not null and question_id <> '';
+    `
+  },
+  {
+    id: "0055_story_consolidation_runs",
+    sql: `
+      -- Resumable state for the one-time story consolidation wizard, which clusters the
+      -- legacy per-job evaluation_suggestion stories into a small set of canonical core
+      -- stories. One JSON blob keeps the whole draft (clusters + members + edits) so the
+      -- review survives reloads without a full relational model.
+      create table if not exists story_consolidation_runs (
+        id text primary key,
+        status text not null default 'review',
+        payload_json text not null default '{}',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+    `
   }
 ];

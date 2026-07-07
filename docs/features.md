@@ -248,6 +248,22 @@ Tabbed view for a single job. Four tabs:
 - User correction: override the AI recommendation and score with a note.
 - Provider and model metadata for the last evaluation run.
 
+**Evaluation resilience (blocks A–G):**
+- The evaluation runs seven blocks sequentially (A role summary, B CV match, C level
+  strategy, D comp & demand, E personalization/keywords, F interview stories, G posting
+  legitimacy). If any block throws, the streaming modal marks that block with a red ✗
+  and stops — the earlier blocks stay visible so you can see how far it got.
+- **Malformed/truncated JSON is retried automatically.** LLM output is non-deterministic,
+  so a block whose response is cut off mid-JSON (or otherwise unparseable) is retried up
+  to 3× before it counts as a failure. Auth, quota, and network errors are *not* retried —
+  they surface immediately with an actionable message so you can fix the provider setting.
+- **Non-critical blocks degrade instead of aborting.** Block F (interview stories) and
+  Block G (posting legitimacy) fall back to an empty/"Unknown" result if they still return
+  bad JSON after retries, so one flaky generation no longer kills an otherwise-complete
+  evaluation. Core blocks A and B fail hard by design — a fabricated match or score is worse
+  than an honest failure. Block F also gets a larger token budget (8,192) than other blocks
+  because it produces the most output and was the most prone to truncation.
+
 **AI evaluation data sources (all fed into the analysis):**
 - Full job description (up to 6,000 characters — captures required qualifications
   that appear deep in the posting).
@@ -568,20 +584,65 @@ Read-only HTML preview of the tailored resume.
 
 Tools to prepare for interviews using stored experience.
 
+**Tabbed Workspace:**
+- **Header chips** are core-story-centric: `N core stories · N questions`, plus a `N to consolidate` link (when generated suggestions remain) and a `N candidates to review` link (when the taxonomy has candidates).
+- **Practice:** opens with a **Coverage** panel — a per-category readout of how many questions have at least one linked story or recorded attempt. Categories with no story yet are highlighted as gaps, so it's obvious where prep is missing. Below it are reusable questions, answer recording, and standalone story capture.
+- **Story Bank:** saved stories, search, filters, and inline editing live in a separate story-bank workspace. Job evaluations no longer auto-fill this bank (see "Generate but ask first" below); older auto-generated suggestions remain until the one-time consolidation wizard folds them into core stories.
+- **Taxonomy:** the private local tag tree built from the user's own jobs, resumes, and stories can be reviewed and managed without changing raw ATS keywords.
+
+**Story consolidation wizard (one-time cleanup):**
+- When the story bank still contains auto-generated `evaluation_suggestion` rows from the old Block F behavior, a banner in the **Story Bank** tab links to **`/interview-prep/consolidate`**.
+- The wizard (`ConsolidationWizard`) uses the active AI provider to cluster the near-duplicate suggestions — which are lightly-reworded copies of the same ~15–25 real experiences — into canonical core stories, then synthesizes one clean STAR+Reflection story per cluster with capability tags. **Nothing is written until you review and commit:** each proposed story shows its editable title/STAR/tags, the list of job-specific suggestions it was merged from, and an approve checkbox.
+- Committing creates the approved stories as reusable standalone stories, re-homes the merged suggestions' job links onto them, and removes the suggestion rows. The run is resumable (persisted in `story_consolidation_runs`) and the banner disappears once the bank is clean. This is a feature, not a one-off script — it appears for any user whose bank holds generated suggestions and never on a fresh install.
+
+**Generate but ask first (Block F no longer auto-inserts):**
+- Running **Evaluate with AI** on a job still generates likely interview questions with STAR outlines, shown in the job's **F. Interview plan** section — but nothing is written to the story bank automatically. This replaced the previous behavior of silently inserting ~5 stories per evaluation, which made the bank impossible to review.
+- Each suggested question offers three choices: **Draft / Record Answer** (save it as a new core story via the interactive builder), **Link an existing story** (the section shows core stories that already match this role's concepts, with a one-click Link/Unlink toggle backed by `getMatchingStoriesForJob` / `setStoryJobLink`), or simply ignore it (drafts are not persisted).
+
 **Interactive Story Builder:**
 - **Type or Record:** Toggle between "Type draft" (typing a raw text response or notes) and "Record audio" (spoken practice transcribed by AI).
-- **AI STAR Structuring:** AI automatically parses the raw text or spoken recording transcript into the structured STAR + Reflection format (Title, Situation, Task, Action, Result, Reflection), identifying demonstrated skills and themes.
+- **AI STAR Structuring:** AI parses the raw text or spoken recording transcript into the structured STAR + Reflection format (Title, Situation, Task, Action, Result, Reflection), identifying 2–8 ATS-style keyword tags (skills, tools, methodologies, domain terms genuinely demonstrated in the story — the same kind of verbatim phrase the job-evaluation pipeline extracts from postings), readiness, and missing details.
+- **Preview Before Save:** AI-structured drafts are shown for review before they are written to the story bank.
+- **Modal Wizard:** Practice answers and standalone stories open in a focused modal flow instead of expanding the full page.
+- **Position Assignment:** Answers can be assigned to multiple active application positions with statuses Applied, Recruiter responded, or Interviewing. Checkboxes save immediately and can be unchecked at any time, regardless of how the link was created.
+- **Private Taxonomy:** The app ships only the taxonomy schema; new installs have no taxonomy data. Concepts are created locally from the user's own evaluated jobs, story tags, and interview-prep material. Raw ATS keywords remain unchanged for resume tailoring, while grouped concept tags power search, filtering, and story-job matching.
+- **Auto-Matching:** Stories are automatically linked to eligible positions (Applied, Recruiter responded, Interviewing) whose local taxonomy concepts overlap with the job's title, role archetype, or extracted ATS keywords — no manual checkbox needed. Exact raw keyword overlap still helps, but broader parent/child matches also work; for example, a story classified under "User interviews" can match a job asking for "user research." Auto-matched positions are labeled "Auto-matched" wherever assignments are shown, so it's always clear whether a link was system-suggested or user-chosen. Matching runs whenever a story is saved and whenever a position's status changes into the eligible set.
+- **Per-question practice history:** Each question in the library shows an **attempts** count and a **History & stories** button. Every time you practice a question, the transcript, AI-structured STAR, quality rating, and coaching notes are saved as a durable **practice attempt** — re-practicing appends a new attempt rather than silently creating a duplicate story. The history drawer lists the question's linked canonical stories plus every past attempt (newest first, each expandable to its STAR and transcript), with a **Practice again** button. Because a re-practice reuses the question's existing canonical story id, refining an answer updates that one story while the full rep-by-rep history is preserved in `practice_attempts`.
 - **Section-by-Section Editing:** Once structured, the story is displayed as separate sections. Each section can be independently edited and saved directly to the database, ensuring you can refine details piece-by-piece.
 - **Writing Voice Integration:** Optionally opt-in to update your writing voice style profile with your custom answers, refining future AI-generated drafts.
 
+**Practice Questions:**
+- Ships with reusable default prompts and lets users add their own custom interview questions.
+- Custom questions can be selected, edited, hidden, and reused for future typed or recorded practice through pop-up flows.
+
+**Standalone Stories:**
+- Users can capture an accomplishment or proof point without tying it to a specific question.
+- AI structures the story, evaluates whether it is ready, and saves it as a standalone story after user confirmation in a pop-up wizard.
+
 **STAR Story Bank:**
 - Collates and displays all saved stories with visual badges for S/T/A/R/Reflection components.
-- Support **inline editing** using the interactive section-by-section editor. Clicking Edit on any card launches the editor immediately.
-- Tags stories with skills and themes, and shows the origin (e.g. "From Job eval" or "Voice practice").
+- Shows source and kind labels for answered questions, standalone stories, voice practice entries, and job evaluation suggestions.
+- Includes search and filters by story kind, source, quality/readiness, grouped taxonomy tags, assigned/source position, and updated date.
+- **Tags and Position filters are searchable multi-selects** (`SearchableMultiSelect` in `src/components/ui/searchable-multi-select.tsx`): a button shows the selected count and opens a popover with a search box and checkboxes, so hundreds of tags or dozens of positions stay usable. Tag filters use grouped taxonomy concepts; selecting a parent concept includes its children. Selecting multiple values within one filter is OR'd; filters across different fields are AND'd.
+- **Cards are collapsed by default.** Each card shows title, badges, a one-line preview, up to 4 tags, and the assigned-position count; clicking the row (or "Show details") expands it to the full STAR text, all tags, all assigned positions, and quality notes. This keeps the list scannable at the story-bank's typical scale (100+ stories).
+- **Paginated at 20 stories per page** with Previous/Next controls, so the page doesn't render or scroll through the entire story bank at once. Changing any filter or the search box resets to page 1.
+- Support **inline editing** using the interactive section-by-section editor. Clicking Edit on an expanded card launches the editor immediately.
+- Shows grouped concept tags first and keeps raw keywords in expanded details. User-authored stories normally contribute 2–8 raw keywords; job-evaluation suggestions can contribute up to 12 raw ATS keywords from the source job.
+
+**Taxonomy Manager:**
+- Lets users review the generated tag tree, search paths and aliases, add tags, rename tags, move tags under another parent, archive/restore tags, add/remove aliases, and merge duplicate tags.
+- Taxonomy changes are logged locally. User edits are treated as authoritative for future classification.
+- The tree supports up to five levels so broad areas can contain specific methods, such as `Research / User research / Qualitative research / Contextual inquiry`.
+- **Tags are collapsed by default and lazily rendered.** A tag's children — and the per-tag "move to parent" / "merge into" dropdowns, which list every other tag — only render once that tag is expanded. Unmatched keywords fall into a single "Other keywords" bucket that can grow into the hundreds as real usage data accumulates; rendering that bucket's full edit UI unconditionally on page load previously froze the tab. Searching temporarily reveals matching branches regardless of their expanded state, and the match check walks the full subtree so a result at any depth (not just the first level or two) surfaces correctly.
+- **Concept lifecycle (active / candidate / archived).** The tree shows only the curated **active** set. Keywords pulled from job evaluations now arrive as **candidates** rather than cluttering the tree — count chips at the top show active / candidate / archived / alias totals. Candidates still power story↔job matching; they are just held out of the browsing view.
+- **Review queue.** A dedicated panel lists candidate concepts ranked by how many jobs referenced each, with a filter box, per-row checkboxes, **Approve selected** / **Archive selected** bulk actions, and a one-click **Archive all unused** (candidates with no story links and fewer than 3 jobs). A header chip on the workspace ("N candidates to review") jumps straight here.
+- **Automatic promotion.** A candidate becomes active on its own when it is linked to a story or recurs across 3+ distinct jobs — so genuinely relevant tags surface without manual triage while one-off job phrases stay parked.
+- **Blocklist.** Credentials (degree/certificate phrasing), job titles (seniority-prefix shapes), and the user's own tracked company names never become concepts. Patterns are role-agnostic, so the diet works for any user's field, not just design. Blocked phrases still count for resume tailoring and job matching via raw-keyword matching.
+- **No resurrection.** Archiving a concept sticks: a later job evaluation that re-encounters the same keyword will not silently un-archive it — only an explicit restore does.
 
 **Job Evaluation Integration (Section F. Interview plan):**
 - Direct entry point from the **Job Detail → Analysis** page. Next to each suggested question in Section F, clicking `"Draft / Record Answer"` opens the interactive builder inline.
-- Allows preparing, structuring, and editing answers tailored to the job's context before saving them straight to the Story Bank.
+- Above the questions, a **"You may already have stories for this role"** panel lists existing core stories whose taxonomy concepts overlap this job, each with a **Link / Linked ✓** toggle — so you can attach an existing story instead of drafting a duplicate. This is the review step that replaced auto-insertion; nothing enters the story bank without an explicit Draft or Link action.
 
 ---
 

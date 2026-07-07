@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui";
+import type { ApplicationRecord } from "@/lib/db/types";
 
 type ParsedStory = {
   id: string;
@@ -13,14 +14,31 @@ type ParsedStory = {
   reflection: string;
   skills: string[];
   themes: string[];
+  tags: string[];
   sourceJobId: string | null;
   sourceBlockF: string;
+  storyKind: "answered_question" | "standalone_story" | "evaluation_suggestion";
+  questionId: string | null;
+  promptText: string;
+  qualityStatus: "ready" | "needs_detail" | "missing_result";
+  qualityNotes: string;
+  coachingNotes?: string[];
+  assignedJobIds?: string[];
+  assignedJobs?: Array<{ jobId: string; source?: "auto" | "manual" }>;
 };
 
 type Props = {
-  question: string;
+  assignmentJobs?: ApplicationRecord[];
+  question?: string;
+  questionId?: string | null;
+  promptText?: string;
+  storyKind?: "answered_question" | "standalone_story" | "evaluation_suggestion";
   jobId?: string | null;
   initialStory?: ParsedStory | null;
+  // When practicing a question that already has a canonical story, reuse its id so a
+  // re-practice updates that story (the latest, best version) instead of creating a
+  // duplicate. Every prior rep is still preserved as a separate practice attempt.
+  reuseStoryId?: string | null;
   onClose?: () => void;
   onSaved?: () => void;
 };
@@ -33,6 +51,7 @@ type EditorState =
   | { phase: "transcribing" }
   | { phase: "done"; transcript: string }
   | { phase: "parsing" }
+  | { phase: "preview"; story: ParsedStory; transcript: string }
   | { phase: "editing"; story: ParsedStory; editingField: string | null; tempValue: string; savedFields: Record<string, boolean> };
 
 function fmtDuration(s: number) {
@@ -46,11 +65,43 @@ const STAR_DETAILS: Record<string, { label: string; abbr: string; color: string;
   action: { label: "Action", abbr: "A", color: "bg-amber-50 text-amber-700 border-amber-200", hint: "Concrete steps you took (what YOU did)" },
   result: { label: "Result", abbr: "R", color: "bg-emerald-50 text-emerald-700 border-emerald-200", hint: "Measurable outcome or impact" },
   reflection: { label: "Reflection", abbr: "↺", color: "bg-slate-50 text-slate-600 border-slate-200", hint: "What you learned or would do differently" },
-  skills: { label: "Skills", abbr: "Skills", color: "bg-purple-50 text-purple-700 border-purple-200", hint: "Comma-separated list of skills demonstrated" },
-  themes: { label: "Themes", abbr: "Themes", color: "bg-rose-50 text-rose-700 border-rose-200", hint: "Comma-separated list of themes (e.g., leadership, ambiguity)" },
+  tags: { label: "Tags", abbr: "Tags", color: "bg-purple-50 text-purple-700 border-purple-200", hint: "2-8 comma-separated ATS-style keyword tags (skills, tools, domains) for finding this answer and matching it to roles" },
+  qualityNotes: { label: "Quality notes", abbr: "QA", color: "bg-slate-50 text-slate-700 border-slate-200", hint: "What should be strengthened before using this story" },
 };
 
-export function InteractiveStoryEditor({ question, jobId = null, initialStory = null, onClose, onSaved }: Props) {
+function normalizeClientTags(...groups: Array<string[] | undefined>) {
+  const tags = new Set<string>();
+  for (const group of groups) {
+    for (const item of group ?? []) {
+      const normalized = item.trim().replace(/\s+/g, " ");
+      if (normalized) tags.add(normalized);
+      if (tags.size >= 8) break;
+    }
+    if (tags.size >= 8) break;
+  }
+  return Array.from(tags);
+}
+
+function getAssignedJobIds(story: ParsedStory) {
+  return story.assignedJobIds ?? story.assignedJobs?.map((job) => job.jobId) ?? [];
+}
+
+function getAutoMatchedJobIds(story: ParsedStory) {
+  return new Set((story.assignedJobs ?? []).filter((job) => job.source === "auto").map((job) => job.jobId));
+}
+
+export function InteractiveStoryEditor({
+  assignmentJobs = [],
+  question,
+  questionId = null,
+  promptText,
+  storyKind = question ? "answered_question" : "standalone_story",
+  jobId = null,
+  initialStory = null,
+  reuseStoryId = null,
+  onClose,
+  onSaved
+}: Props) {
   const [inputMode, setInputMode] = useState<InputMode>("type");
   const [rawText, setRawText] = useState("");
   const [editorState, setEditorState] = useState<EditorState>({ phase: "input" });
@@ -65,9 +116,14 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
   // If initialStory is provided, go straight to editing mode
   useEffect(() => {
     if (initialStory) {
+      const tags = normalizeClientTags(initialStory.tags, initialStory.skills, initialStory.themes);
       setEditorState({
         phase: "editing",
-        story: initialStory,
+        story: {
+          ...initialStory,
+          tags,
+          assignedJobIds: getAssignedJobIds(initialStory),
+        },
         editingField: null,
         tempValue: "",
         savedFields: {},
@@ -152,12 +208,12 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
       const res = await fetch("/api/interview/parse-answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript: textToProcess }),
+        body: JSON.stringify({ question: question ?? "", transcript: textToProcess, storyKind }),
       });
       if (!res.ok) throw new Error("AI parsing failed");
       const data = await res.json();
       
-      const newStoryId = crypto.randomUUID();
+      const newStoryId = reuseStoryId ?? crypto.randomUUID();
       const initialStoryData: ParsedStory = {
         id: newStoryId,
         title: data.story.title || "Draft story",
@@ -168,28 +224,51 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
         reflection: data.story.reflection || "",
         skills: data.story.skills || [],
         themes: data.story.themes || [],
+        tags: normalizeClientTags(data.story.tags, data.story.skills, data.story.themes),
         sourceJobId: jobId,
-        sourceBlockF: jobId ? "evaluation" : "voice-practice",
+        sourceBlockF: storyKind === "evaluation_suggestion" ? "evaluation" : storyKind === "answered_question" ? "voice-practice" : "",
+        storyKind,
+        questionId,
+        promptText: promptText ?? question ?? "",
+        qualityStatus: data.story.qualityStatus || "needs_detail",
+        qualityNotes: data.story.qualityNotes || "",
+        coachingNotes: data.story.coachingNotes || [],
+        assignedJobIds: [],
       };
 
-      // Save initial draft immediately to the database so section-by-section works
-      await fetch("/api/interview/save-story", {
+      setEditorState({
+        phase: "preview",
+        story: initialStoryData,
+        transcript: textToProcess,
+      });
+    } catch (err) {
+      setError(`AI structure error: ${err instanceof Error ? err.message : String(err)}. Make sure active AI provider is configured.`);
+      setEditorState({ phase: "input" });
+    }
+  };
+
+  const savePreviewStory = async () => {
+    if (editorState.phase !== "preview") return;
+    setError("");
+    try {
+      const res = await fetch("/api/interview/save-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...initialStoryData, saveVoice, transcript: textToProcess }),
+        body: JSON.stringify({ ...editorState.story, saveVoice, transcript: editorState.transcript }),
       });
+
+      if (!res.ok) throw new Error("Save failed");
 
       setEditorState({
         phase: "editing",
-        story: initialStoryData,
+        story: editorState.story,
         editingField: null,
         tempValue: "",
         savedFields: {},
       });
       if (onSaved) onSaved();
     } catch (err) {
-      setError(`AI structure error: ${err instanceof Error ? err.message : String(err)}. Make sure active AI provider is configured.`);
-      setEditorState({ phase: "input" });
+      setError(`Save error: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -200,7 +279,7 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
     setError("");
     
     let processedValue: string | string[] = value;
-    if (field === "skills" || field === "themes") {
+    if (field === "skills" || field === "themes" || field === "tags" || field === "assignedJobIds") {
       processedValue = typeof value === "string" 
         ? value.split(",").map((s) => s.trim()).filter(Boolean)
         : value;
@@ -267,6 +346,55 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
     });
   };
 
+  const updateAssignments = async (jobIdToToggle: string) => {
+    if (editorState.phase !== "editing") return;
+    const current = getAssignedJobIds(editorState.story);
+    const assignedJobIds = current.includes(jobIdToToggle)
+      ? current.filter((id) => id !== jobIdToToggle)
+      : [...current, jobIdToToggle];
+    const updatedStory = {
+      ...editorState.story,
+      assignedJobIds,
+    };
+
+    setEditorState({
+      ...editorState,
+      story: updatedStory,
+    });
+
+    try {
+      const res = await fetch("/api/interview/save-story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...updatedStory,
+          saveVoice: false,
+          transcript: "",
+          skipAutoMatch: true,
+        }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      if (onSaved) onSaved();
+    } catch {
+      setError("Failed to save position assignments.");
+    }
+  };
+
+  const setPreviewAssignments = (jobIdToToggle: string) => {
+    if (editorState.phase !== "preview") return;
+    const current = getAssignedJobIds(editorState.story);
+    const assignedJobIds = current.includes(jobIdToToggle)
+      ? current.filter((id) => id !== jobIdToToggle)
+      : [...current, jobIdToToggle];
+    setEditorState({
+      ...editorState,
+      story: {
+        ...editorState.story,
+        assignedJobIds,
+      },
+    });
+  };
+
   const cancelEditingField = () => {
     if (editorState.phase !== "editing") return;
     setEditorState({
@@ -300,8 +428,12 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
     <div className="grid gap-5">
       {/* Target Question context */}
       <div className="rounded-control border border-border bg-surface px-4 py-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-0.5">Question Prompt</p>
-        <p className="text-sm font-medium text-ink leading-relaxed">{question}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-0.5">
+          {question ? "Question Prompt" : "Standalone Story"}
+        </p>
+        <p className="text-sm font-medium text-ink leading-relaxed">
+          {question ?? "Add a raw experience, accomplishment, or proof point without tying it to a specific interview question."}
+        </p>
       </div>
 
       {error && (
@@ -316,12 +448,14 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
           <div className="flex border-b border-border">
             <button
               onClick={() => setInputMode("type")}
+              type="button"
               className={`px-4 py-2 text-xs font-semibold uppercase border-b-2 transition-colors ${inputMode === "type" ? "border-accent text-accent" : "border-transparent text-muted"}`}
             >
               Type draft
             </button>
             <button
               onClick={() => setInputMode("record")}
+              type="button"
               className={`px-4 py-2 text-xs font-semibold uppercase border-b-2 transition-colors ${inputMode === "record" ? "border-accent text-accent" : "border-transparent text-muted"}`}
             >
               Record audio
@@ -354,6 +488,7 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
                     className="rounded-control border border-accent bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
                     disabled={!rawText.trim() || isBusy}
                     onClick={() => processStoryText(rawText)}
+                    type="button"
                   >
                     Convert to STAR
                   </button>
@@ -443,16 +578,110 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
               <button
                 className="rounded-control border border-accent bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent/90"
                 onClick={() => processStoryText(editorState.transcript)}
+                type="button"
               >
                 Structure into STAR story
               </button>
               <button
                 className="rounded-control border border-border px-4 py-2 text-xs font-semibold text-muted hover:text-ink"
                 onClick={reset}
+                type="button"
               >
                 Record again
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI PREVIEW BEFORE SAVE */}
+      {editorState.phase === "preview" && (
+        <div className="grid gap-4">
+          <div className="rounded-control border border-accent/30 bg-accent/5 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-ink">AI-structured draft</p>
+                <p className="text-[11px] text-muted">Review before saving. Nothing is written to the story bank until you save.</p>
+              </div>
+              <Badge tone={editorState.story.qualityStatus === "ready" ? "success" : editorState.story.qualityStatus === "missing_result" ? "danger" : "warning"}>
+                {editorState.story.qualityStatus.replace("_", " ")}
+              </Badge>
+            </div>
+            {editorState.story.qualityNotes ? (
+              <p className="mt-2 text-xs leading-5 text-muted">{editorState.story.qualityNotes}</p>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3">
+            {(["title", "situation", "task", "action", "result", "reflection", "tags"] as const).map((field) => {
+              const value = editorState.story[field];
+              return (
+                <div className="rounded-control border border-border bg-panel p-3" key={field}>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">{STAR_DETAILS[field].label}</p>
+                  {Array.isArray(value) ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {value.length > 0 ? value.map((item) => <Badge key={item}>{item}</Badge>) : <span className="text-xs text-muted">None identified</span>}
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink">{value || "Not provided"}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {assignmentJobs.length > 0 ? (
+            <div className="rounded-control border border-border bg-surface px-4 py-3">
+              <p className="mb-1 text-xs font-semibold text-ink">Use with positions</p>
+              <p className="mb-3 text-[11px] leading-5 text-muted">Assign this answer to applied, recruiter-responded, or interviewing jobs.</p>
+              <div className="grid max-h-44 gap-2 overflow-auto">
+                {assignmentJobs.map((job) => {
+                  const checked = getAssignedJobIds(editorState.story).includes(job.jobId);
+                  return (
+                    <label className="flex cursor-pointer items-start gap-2 rounded-control border border-border bg-panel px-3 py-2" key={job.jobId}>
+                      <input
+                        checked={checked}
+                        className="mt-0.5 h-4 w-4 accent-[rgb(var(--color-accent))]"
+                        onChange={() => setPreviewAssignments(job.jobId)}
+                        type="checkbox"
+                      />
+                      <span className="grid gap-0.5 text-xs">
+                        <span className="font-semibold text-ink">{job.company} · {job.role}</span>
+                        <span className="text-muted">{job.status}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {editorState.story.coachingNotes && editorState.story.coachingNotes.length > 0 ? (
+            <div className="rounded-control border border-border bg-surface px-4 py-3">
+              <p className="mb-2 text-xs font-semibold text-ink">Coaching notes</p>
+              <ul className="grid gap-1 text-xs leading-5 text-muted">
+                {editorState.story.coachingNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              className="rounded-control border border-border bg-panel px-4 py-2 text-xs font-semibold text-muted hover:text-ink"
+              onClick={reset}
+              type="button"
+            >
+              Start over
+            </button>
+            <button
+              className="rounded-control border border-accent bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent/90"
+              onClick={savePreviewStory}
+              type="button"
+            >
+              Save to story bank
+            </button>
           </div>
         </div>
       )}
@@ -465,7 +694,7 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
               <p className="text-xs font-semibold text-ink">STAR Story Editor</p>
               <p className="text-[11px] text-muted">Tweak and save each section individually</p>
             </div>
-            <button onClick={reset} className="text-xs text-muted hover:text-accent font-medium">
+            <button onClick={reset} className="text-xs text-muted hover:text-accent font-medium" type="button">
               Start over
             </button>
           </div>
@@ -504,12 +733,14 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
                             className="text-[11px] font-medium text-accent hover:underline disabled:opacity-50"
                             disabled={isSaving}
                             onClick={() => saveSectionField(field, editorState.tempValue)}
+                            type="button"
                           >
                             {isSaving ? "Saving..." : "Save"}
                           </button>
                           <button
                             className="text-[11px] font-medium text-muted hover:underline"
                             onClick={cancelEditingField}
+                            type="button"
                           >
                             Cancel
                           </button>
@@ -520,6 +751,7 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
                           <button
                             className="text-[11px] font-medium text-accent hover:underline"
                             onClick={() => startEditingField(field)}
+                            type="button"
                           >
                             Edit
                           </button>
@@ -535,17 +767,17 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
                         value={editorState.tempValue}
                         onChange={(e) => setEditorState({ ...editorState, tempValue: e.target.value })}
                         placeholder={detail.hint}
-                        rows={field === "skills" || field === "themes" ? 1 : 3}
+                        rows={field === "tags" ? 1 : 3}
                       />
                       <p className="text-[10px] text-muted">{detail.hint}</p>
                     </div>
                   ) : (
                     <div className="mt-1">
-                      {field === "skills" || field === "themes" ? (
+                      {field === "tags" ? (
                         <div className="flex flex-wrap gap-1.5">
-                          {Array.isArray(value) && value.length > 0 ? (
-                            value.map((tag) => (
-                              <Badge key={tag} tone={field === "skills" ? "neutral" : "success"}>
+                          {editorState.story.tags.length > 0 ? (
+                            editorState.story.tags.map((tag) => (
+                              <Badge key={tag} tone="neutral">
                                 {tag}
                               </Badge>
                             ))
@@ -565,11 +797,44 @@ export function InteractiveStoryEditor({ question, jobId = null, initialStory = 
             })}
           </div>
 
+          {assignmentJobs.length > 0 ? (
+            <div className="rounded-control border border-border bg-surface px-4 py-3">
+              <p className="mb-1 text-xs font-semibold text-ink">Use with positions</p>
+              <p className="mb-3 text-[11px] leading-5 text-muted">
+                Assignments save immediately when changed. Positions marked &quot;Auto-matched&quot; were linked automatically because this story&apos;s tags overlapped the role. Uncheck to remove.
+              </p>
+              <div className="grid max-h-44 gap-2 overflow-auto">
+                {assignmentJobs.map((job) => {
+                  const checked = getAssignedJobIds(editorState.story).includes(job.jobId);
+                  const isAutoMatched = checked && getAutoMatchedJobIds(editorState.story).has(job.jobId);
+                  return (
+                    <label className="flex cursor-pointer items-start gap-2 rounded-control border border-border bg-panel px-3 py-2" key={job.jobId}>
+                      <input
+                        checked={checked}
+                        className="mt-0.5 h-4 w-4 accent-[rgb(var(--color-accent))]"
+                        onChange={() => updateAssignments(job.jobId)}
+                        type="checkbox"
+                      />
+                      <span className="grid gap-0.5 text-xs">
+                        <span className="font-semibold text-ink">{job.company} · {job.role}</span>
+                        <span className="text-muted">
+                          {job.status}
+                          {isAutoMatched ? " · Auto-matched" : ""}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex justify-end gap-2 mt-2">
             {onClose && (
               <button
                 className="rounded-control border border-border px-4 py-2 text-xs font-semibold text-muted hover:text-ink bg-panel"
                 onClick={onClose}
+                type="button"
               >
                 Close
               </button>

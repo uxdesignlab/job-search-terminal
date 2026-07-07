@@ -38,11 +38,13 @@ import {
   getGeneratedDocumentById,
   getJobById,
 	  getJobGapResponses,
+	  getMatchingStoriesForJob,
 	  getResumes,
 	  getUserProfile,
 	  saveEvaluationCorrection,
   saveJobLiveness,
   saveStory,
+  setStoryJobLink,
   unarchiveJob,
   updateApplicationStatus,
   updateJobRecommendedResume,
@@ -154,6 +156,10 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   async function saveStoryAction(formData: FormData) {
     "use server";
     const { randomUUID } = await import("node:crypto");
+    const sourceJobId = String(formData.get("jobId") ?? "");
+    // Reuse the job's own extracted ATS keywords as tags — same vocabulary as
+    // autoSaveEvaluationStories, so this story can auto-match other positions too.
+    const jobKeywords = sourceJobId ? getEvaluationByJobId(sourceJobId)?.keywords ?? [] : [];
     saveStory({
       id: randomUUID(),
       title: String(formData.get("title") ?? ""),
@@ -164,9 +170,21 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
       reflection: "",
       skills: [],
       themes: [],
-      sourceJobId: String(formData.get("jobId") ?? ""),
+      tags: jobKeywords,
+      sourceJobId,
       sourceBlockF: String(formData.get("sourceBlockF") ?? ""),
     });
+    revalidatePath("/interview-prep");
+  }
+
+  async function linkStoryToJobAction(formData: FormData) {
+    "use server";
+    const storyId = String(formData.get("storyId") ?? "");
+    const targetJobId = String(formData.get("jobId") ?? "");
+    const linked = String(formData.get("linked") ?? "") === "true";
+    if (!storyId || !targetJobId) return;
+    setStoryJobLink(storyId, targetJobId, linked);
+    revalidatePath(`/jobs/${targetJobId}`);
     revalidatePath("/interview-prep");
   }
 
@@ -697,7 +715,12 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <EvaluationSection title="E. Personalization plan" items={evaluation.sections.tailoringPlan} />
                   </div>
                   <div className="lg:col-span-2">
-                    <InterviewPlanSection items={evaluation.sections.interviewPlan} jobId={id} />
+                    <InterviewPlanSection
+                      items={evaluation.sections.interviewPlan}
+                      jobId={id}
+                      linkStoryAction={linkStoryToJobAction}
+                      matchedStories={getMatchingStoriesForJob(id)}
+                    />
                   </div>
                   <EvaluationSection title="G. Posting legitimacy" items={evaluation.sections.postingLegitimacy} />
                   <EvaluationSection title="Keywords" items={evaluation.keywords} />
