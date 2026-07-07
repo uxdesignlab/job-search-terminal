@@ -1,11 +1,25 @@
 import { randomUUID } from "node:crypto";
-import { getWritingStyle, saveStory, saveWritingStyle } from "@/lib/db/queries";
+import { getWritingStyle, linkQuestionStory, savePracticeAttempt, saveStory, saveWritingStyle } from "@/lib/db/queries";
+import type { StoryKind, StoryQualityStatus } from "@/lib/db/types";
 
 export const dynamic = "force-dynamic";
+
+function coerceStoryKind(value: unknown): StoryKind {
+  if (value === "answered_question" || value === "evaluation_suggestion" || value === "standalone_story") return value;
+  return "standalone_story";
+}
+
+function coerceQualityStatus(value: unknown, result: string, situation: string, task: string, action: string): StoryQualityStatus {
+  if (value === "ready" || value === "needs_detail" || value === "missing_result") return value;
+  if (!result.trim()) return "missing_result";
+  if (!situation.trim() || !task.trim() || !action.trim()) return "needs_detail";
+  return "ready";
+}
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
+      id?: string;
       title: string;
       situation: string;
       task: string;
@@ -14,12 +28,25 @@ export async function POST(req: Request) {
       reflection: string;
       skills: string[];
       themes: string[];
+      tags?: string[];
       saveVoice: boolean;
       transcript: string;
+      sourceJobId?: string | null;
+      sourceBlockF?: string;
+      storyKind?: StoryKind;
+      questionId?: string | null;
+      promptText?: string;
+      qualityStatus?: StoryQualityStatus;
+      qualityNotes?: string;
+      coachingNotes?: string[];
+      assignedJobIds?: string[];
+      skipAutoMatch?: boolean;
     };
+    const qualityStatus = coerceQualityStatus(body.qualityStatus, body.result ?? "", body.situation ?? "", body.task ?? "", body.action ?? "");
+    const storyId = body.id || randomUUID();
 
     saveStory({
-      id: randomUUID(),
+      id: storyId,
       title: body.title,
       situation: body.situation,
       task: body.task,
@@ -28,9 +55,40 @@ export async function POST(req: Request) {
       reflection: body.reflection,
       skills: body.skills ?? [],
       themes: body.themes ?? [],
-      sourceJobId: null,
-      sourceBlockF: "voice-practice",
-    });
+      tags: body.tags ?? [],
+      sourceJobId: body.sourceJobId ?? null,
+      sourceBlockF: body.sourceBlockF ?? (body.storyKind === "evaluation_suggestion" ? "evaluation" : body.storyKind === "answered_question" ? "voice-practice" : ""),
+      storyKind: coerceStoryKind(body.storyKind),
+      questionId: body.questionId ?? null,
+      promptText: body.promptText ?? "",
+      qualityStatus,
+      qualityNotes: body.qualityNotes ?? (qualityStatus === "ready" ? "" : "Add missing STAR details before using this in an interview."),
+      lastEvaluatedAt: new Date().toISOString(),
+      assignedJobIds: Array.isArray(body.assignedJobIds) ? body.assignedJobIds : undefined
+    }, { skipAutoMatch: body.skipAutoMatch === true });
+
+    // Practicing a question leaves a durable attempt (transcript + STAR + coaching) and
+    // links the question to this story. Only fires on a real practice save (a transcript
+    // is present) — section-by-section edits post an empty transcript and are skipped, so
+    // they don't spawn phantom attempts.
+    if (coerceStoryKind(body.storyKind) === "answered_question" && body.questionId && body.transcript?.trim()) {
+      linkQuestionStory(body.questionId, storyId, "practice");
+      savePracticeAttempt({
+        questionId: body.questionId,
+        storyId,
+        transcript: body.transcript,
+        parsed: {
+          title: body.title ?? "",
+          situation: body.situation ?? "",
+          task: body.task ?? "",
+          action: body.action ?? "",
+          result: body.result ?? "",
+          reflection: body.reflection ?? ""
+        },
+        qualityStatus,
+        coachingNotes: Array.isArray(body.coachingNotes) ? body.coachingNotes : []
+      });
+    }
 
     if (body.saveVoice && body.transcript?.trim()) {
       const { extractWritingStyle } = await import("@/lib/profile/writing-style-extractor");

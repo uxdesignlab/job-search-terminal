@@ -30,6 +30,8 @@ import type {
   JobEvaluationResultInput,
   JobRecord,
   JsonValue,
+  InterviewQuestionInput,
+  InterviewQuestionRecord,
   OutreachDraftInput,
   OutreachDraftRecord,
   ProfileUpdateInput,
@@ -57,7 +59,20 @@ import type {
   ScanScheduleRecord,
   ScanTrigger,
   PendingEmailJobCandidate,
-  PendingEmailJobCandidateInput
+  ConsolidationCanonical,
+  ConsolidationPayload,
+  ConsolidationRunRecord,
+  EvaluationSuggestionDigest,
+  PendingEmailJobCandidateInput,
+  PracticeAttemptRecord,
+  QuestionPracticeRecord,
+  TaxonomyActivityRecord,
+  TaxonomyAliasRecord,
+  TaxonomyCandidateRecord,
+  TaxonomyConceptInput,
+  TaxonomyConceptRecord,
+  StoryKind,
+  StoryQualityStatus
 } from "./types";
 
 const parseJson = <T>(value: string | null | undefined, fallback?: T): T => {
@@ -71,6 +86,9 @@ const parseJson = <T>(value: string | null | undefined, fallback?: T): T => {
 };
 
 const WORK_MODE_VALUES = new Set<WorkMode>(["remote", "hybrid", "onsite"]);
+
+/** Application statuses eligible for interview-prep story assignment (manual or auto). */
+const ELIGIBLE_ASSIGNMENT_STATUSES = new Set(["Applied", "Recruiter responded", "Interviewing"]);
 
 type ProfileRow = {
   id: string;
@@ -723,6 +741,10 @@ export function getApplications(): ApplicationRecord[] {
     .all() as ApplicationRecord[];
 }
 
+export function getInterviewAssignmentJobs(): ApplicationRecord[] {
+  return getApplications().filter((application) => ELIGIBLE_ASSIGNMENT_STATUSES.has(application.status));
+}
+
 export function getApplicationByJobId(jobId: string): ApplicationRecord | undefined {
   const application = getDatabase()
     .prepare(
@@ -905,6 +927,11 @@ export function updateApplicationStatus(input: ApplicationStatusUpdateInput) {
   });
 
   save();
+
+  if (ELIGIBLE_ASSIGNMENT_STATUSES.has(input.status)) {
+    autoMatchStoriesForJob(input.jobId);
+  }
+
   logActivity("application", input.jobId, `Application status updated to ${input.status}`, {
     previousStatus: application?.status ?? job.status,
     status: input.status,
@@ -1276,6 +1303,7 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
   });
 
   save();
+  linkJobKeywordConcepts(input.jobId, input.id, [input.roleArchetype, ...normalized.keywords], "job_evaluation");
   logActivity("job", input.jobId, `Job evaluated: ${input.fitScore}% ${input.recommendation}`, {
     roleArchetype: input.roleArchetype,
     legitimacy: input.legitimacyLabel
@@ -2465,13 +2493,771 @@ type StoryRow = {
   reflection: string;
   skills_json: string;
   themes_json: string;
+  tags_json: string;
   source_job_id: string | null;
   source_block_f: string;
+  story_kind: string;
+  question_id: string | null;
+  prompt_text: string;
+  quality_status: string;
+  quality_notes: string;
+  last_evaluated_at: string | null;
+  source_job_company?: string | null;
+  source_job_title?: string | null;
   created_at: string;
   updated_at: string;
 };
 
+type InterviewQuestionRow = {
+  id: string;
+  prompt: string;
+  category: string;
+  source: string;
+  active: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type StoryJobLinkRow = {
+  story_id: string;
+  job_id: string;
+  company: string;
+  role: string;
+  status: string;
+  source: string;
+};
+
+type TaxonomyConceptRow = {
+  id: string;
+  label: string;
+  normalized_label: string;
+  parent_id: string | null;
+  depth: number;
+  description: string;
+  status: string;
+  created_from: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  story_count?: number;
+  job_count?: number;
+};
+
+type TaxonomyAliasRow = {
+  id: string;
+  concept_id: string;
+  raw_phrase: string;
+  normalized_phrase: string;
+  source: string;
+  confidence: number;
+  verified_at: string | null;
+  created_at: string;
+};
+
+type StoryConceptRow = {
+  story_id: string;
+  raw_keyword: string;
+  normalized_keyword: string;
+  concept_id: string;
+  source: string;
+  confidence: number;
+  label: string;
+  normalized_label: string;
+  parent_id: string | null;
+  depth: number;
+  description: string;
+  status: string;
+  created_from: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+};
+
+type TaxonomyActivityRow = {
+  id: string;
+  action: string;
+  concept_id: string | null;
+  related_id: string | null;
+  details_json: string;
+  actor: string;
+  created_at: string;
+};
+
+const TAXONOMY_MAX_DEPTH = 5;
+const GENERIC_CONCEPTS = new Set([
+  "collaboration",
+  "communication",
+  "leadership",
+  "strategy",
+  "management",
+  "teamwork",
+  "execution",
+  "planning"
+]);
+
+function normalizeKeywordPhrase(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9+#.\s/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\bux\b/g, "user experience")
+    .trim();
+}
+
+function titleCasePhrase(value: string): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) return "";
+  const acronyms = new Set(["ai", "api", "ats", "b2b", "b2c", "crm", "css", "html", "kpi", "ml", "saas", "sql", "ui", "ux"]);
+  return normalized
+    .split(" ")
+    .map((part) => {
+      const lower = part.toLowerCase();
+      if (acronyms.has(lower)) return lower.toUpperCase();
+      if (lower === "and" || lower === "or" || lower === "with") return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
+function canonicalConceptLabel(raw: string): string {
+  const normalized = normalizeKeywordPhrase(raw);
+  if (normalized === "ux" || normalized === "user experience" || normalized === "user-experience") return "User experience";
+  if (normalized === "user interview" || normalized === "user interviews" || normalized === "interviewing users") return "User interviews";
+  if (normalized === "shadowing" || normalized === "field shadowing") return "Contextual inquiry";
+  if (normalized === "contextual inquiries") return "Contextual inquiry";
+  if (normalized === "diary study" || normalized === "diary studies") return "Diary studies";
+  if (normalized === "ethnographic studies" || normalized === "ethnographic research") return "Ethnographic research";
+  return titleCasePhrase(raw);
+}
+
+function inferConceptPath(raw: string): string[] {
+  const normalized = normalizeKeywordPhrase(raw);
+  const label = canonicalConceptLabel(raw);
+  const has = (pattern: RegExp) => pattern.test(normalized);
+
+  if (has(/\b(user research|research|interview|diary stud|contextual|ethnograph|shadowing|usability test|survey|quantitative|qualitative)\b/)) {
+    if (normalized === "research") return ["Research"];
+    if (normalized === "user research") return ["Research", "User research"];
+    if (normalized === "qualitative research") return ["Research", "User research", "Qualitative research"];
+    if (normalized === "quantitative research") return ["Research", "User research", "Quantitative research"];
+    if (has(/\b(survey|quantitative|analytics|experiment|a\/b|ab test|metrics|statistical)\b/)) {
+      return ["Research", "User research", "Quantitative research", label].slice(0, TAXONOMY_MAX_DEPTH);
+    }
+    if (has(/\b(interview|diary stud|contextual|ethnograph|shadowing|qualitative|usability test)\b/)) {
+      return ["Research", "User research", "Qualitative research", label].slice(0, TAXONOMY_MAX_DEPTH);
+    }
+    return ["Research", "User research"].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  if (has(/\b(design system|component librar|figma|prototype|wireframe|interaction design|information architecture|visual design|product design|user experience)\b/)) {
+    if (normalized === "product design") return ["Design", "Product design"];
+    if (normalized === "design systems" || normalized === "design system") return ["Design", "Product design", "Design systems"];
+    if (normalized === "user experience") return ["Design", "User experience"];
+    if (has(/\b(design system|component librar)\b/)) return ["Design", "Product design", "Design systems", label].slice(0, TAXONOMY_MAX_DEPTH);
+    if (has(/\bfigma|prototype|wireframe|visual design|interaction design|information architecture\b/)) return ["Design", "Product design", label].slice(0, TAXONOMY_MAX_DEPTH);
+    return ["Design", "Product design"].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  if (has(/\b(stakeholder|cross-functional|alignment|facilitation|workshop|communication|influence)\b/)) {
+    return ["Collaboration", "Stakeholder management", label].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  if (has(/\b(leadership|manager|management|mentoring|coaching|hiring|director|vp|head of|principal|staff)\b/)) {
+    return ["Leadership", label].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  if (has(/\b(strategy|roadmap|vision|prioritization|planning|go-to-market|business)\b/)) {
+    return ["Strategy", label].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  if (has(/\b(data|analytics|metric|dashboard|sql|experiment|a\/b|insight)\b/)) {
+    return ["Data and analytics", label].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  if (has(/\b(engineering|developer|software|architecture|api|frontend|backend|platform|technical)\b/)) {
+    return ["Technology", label].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  if (has(/\b(healthcare|medical|device|compliance|quality|risk|security|privacy|regulated)\b/)) {
+    return ["Domain knowledge", label].slice(0, TAXONOMY_MAX_DEPTH);
+  }
+
+  return ["Other keywords", label].slice(0, TAXONOMY_MAX_DEPTH);
+}
+
+function mapTaxonomyAlias(row: TaxonomyAliasRow): TaxonomyAliasRecord {
+  return {
+    id: row.id,
+    conceptId: row.concept_id,
+    rawPhrase: row.raw_phrase,
+    normalizedPhrase: row.normalized_phrase,
+    source: row.source,
+    confidence: row.confidence,
+    verifiedAt: row.verified_at,
+    createdAt: row.created_at
+  };
+}
+
+function mapConceptRow(row: TaxonomyConceptRow, aliases: TaxonomyAliasRecord[] = []): TaxonomyConceptRecord {
+  return {
+    id: row.id,
+    label: row.label,
+    normalizedLabel: row.normalized_label,
+    parentId: row.parent_id,
+    depth: row.depth,
+    description: row.description,
+    status: row.status === "archived" ? "archived" : row.status === "candidate" ? "candidate" : "active",
+    createdFrom: row.created_from,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
+    aliases,
+    storyCount: row.story_count ?? 0,
+    jobCount: row.job_count ?? 0,
+    path: [],
+    children: []
+  };
+}
+
+function logTaxonomyActivity(action: string, conceptId: string | null, relatedId: string | null, details: Record<string, unknown>, actor = "system") {
+  getDatabase()
+    .prepare(
+      `insert into taxonomy_activity_log (id, action, concept_id, related_id, details_json, actor)
+       values (@id, @action, @conceptId, @relatedId, @detailsJson, @actor)`
+    )
+    .run({
+      id: `taxonomy-${Date.now()}-${randomUUID().slice(0, 8)}`,
+      action,
+      conceptId,
+      relatedId,
+      detailsJson: JSON.stringify(details),
+      actor
+    });
+}
+
+function findConceptByLabel(label: string, parentId: string | null): TaxonomyConceptRow | undefined {
+  return getDatabase()
+    .prepare("select * from keyword_concepts where normalized_label = @label and coalesce(parent_id, '') = coalesce(@parentId, '') limit 1")
+    .get({ label: normalizeKeywordPhrase(label), parentId }) as TaxonomyConceptRow | undefined;
+}
+
+function getConceptDepth(parentId: string | null): number {
+  if (!parentId) return 1;
+  const row = getDatabase().prepare("select depth from keyword_concepts where id = @parentId").get({ parentId }) as { depth: number } | undefined;
+  return Math.min((row?.depth ?? 0) + 1, TAXONOMY_MAX_DEPTH);
+}
+
+/**
+ * Sources whose concepts are born as 'candidate' rather than 'active'. Machine
+ * extraction from job postings (Block E keywords, status-based fallbacks) fills the
+ * candidate pool; real user story tags and hand-authored concepts go straight to
+ * active. A candidate is promoted the moment it earns a story link or recurs across
+ * enough jobs (see promoteConceptWithAncestors / linkJobKeywordConcepts).
+ */
+const CANDIDATE_CONCEPT_SOURCES = new Set(["job_evaluation", "job_status", "job_evaluation_story"]);
+
+/** Story tags injected purely as UI filler by normalizeTags — never real skills. */
+const FILLER_TAG_PHRASES = new Set(["interview prep", "interview answer", "standalone story"]);
+
+function statusForConceptSource(source: string): "active" | "candidate" {
+  return CANDIDATE_CONCEPT_SOURCES.has(source) ? "candidate" : "active";
+}
+
+const CREDENTIAL_KEYWORD_RE =
+  /\b(bachelor|bachelors|master|masters|mba|phd|ph\.?d|doctorate|degree|diploma|ged|associate'?s? degree|certification|certificate|licensure)\b/;
+// Role-agnostic seniority-title shape: seniority prefix + generic role noun. Not a
+// design/UX word list — the role nouns span industries so a fresh non-design user is
+// covered too. Best-effort only; the candidate status is the real safety net.
+const SENIORITY_TITLE_RE =
+  /^(senior|sr|junior|jr|staff|principal|lead|director|vp|vice president|head of|chief|entry[ -]?level|mid[ -]?level|associate)\b.*\b(designer|engineer|manager|researcher|analyst|developer|scientist|architect|consultant|specialist|director|officer|strategist|marketer|writer|producer|coordinator|administrator|technician|accountant|recruiter|nurse|lead)s?$/;
+
+// Cached and self-invalidating: a cheap count query rebuilds the set only when the
+// jobs table changes, so a newly-tracked company starts being blocked without a restart.
+let companyNamePhraseCache: { count: number; set: Set<string> } | null = null;
+function getCompanyNamePhrases(): Set<string> {
+  const count = (getDatabase().prepare("select count(*) as n from jobs").get() as { n: number }).n;
+  if (companyNamePhraseCache && companyNamePhraseCache.count === count) return companyNamePhraseCache.set;
+  const rows = getDatabase().prepare("select distinct company from jobs").all() as Array<{ company: string }>;
+  const set = new Set(rows.map((row) => normalizeKeywordPhrase(row.company)).filter((value) => value.length > 2));
+  companyNamePhraseCache = { count, set };
+  return set;
+}
+
+/**
+ * True when a raw keyword should never become a taxonomy concept — credentials, job
+ * titles, and the user's own tracked company names. Blocked phrases are dropped from
+ * concept/alias creation only; they remain in evaluations.keywords_json and still
+ * participate in rawKeywordMatchesHaystack, so job matching and resume tailoring are
+ * unaffected.
+ */
+function isBlockedKeywordPhrase(normalizedPhrase: string): boolean {
+  if (!normalizedPhrase) return true;
+  if (CREDENTIAL_KEYWORD_RE.test(normalizedPhrase)) return true;
+  if (SENIORITY_TITLE_RE.test(normalizedPhrase)) return true;
+  if (getCompanyNamePhrases().has(normalizedPhrase)) return true;
+  return false;
+}
+
+/**
+ * Promotes a candidate concept (and any candidate ancestors, so the tree stays
+ * connected) to active. No-op for concepts that are already active or archived —
+ * archived concepts stay rejected.
+ */
+function promoteConceptWithAncestors(conceptId: string, reason: string, actor = "system") {
+  let current: string | null = conceptId;
+  const seen = new Set<string>();
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const row = getDatabase()
+      .prepare("select parent_id, status from keyword_concepts where id = @id")
+      .get({ id: current }) as { parent_id: string | null; status: string } | undefined;
+    if (!row) break;
+    if (row.status === "candidate") {
+      getDatabase()
+        .prepare("update keyword_concepts set status = 'active', updated_at = current_timestamp where id = @id")
+        .run({ id: current });
+      logTaxonomyActivity("promoted", current, null, { reason }, actor);
+    }
+    current = row.parent_id;
+  }
+}
+
+function ensureConcept(label: string, parentId: string | null, createdFrom: string, status: "active" | "candidate" = "active"): TaxonomyConceptRow {
+  const existing = findConceptByLabel(label, parentId);
+  if (existing) {
+    // Never let a machine re-encounter resurrect an archived (user-rejected) concept.
+    // Only an explicit user action restores it (see restoreTaxonomyConcept / saveTaxonomyConcept).
+    if (existing.status === "archived" && createdFrom === "user") {
+      getDatabase()
+        .prepare("update keyword_concepts set status = 'active', archived_at = null, updated_at = current_timestamp where id = @id")
+        .run({ id: existing.id });
+      logTaxonomyActivity("restored", existing.id, null, { label: existing.label }, "user");
+      return { ...existing, status: "active", archived_at: null };
+    }
+    return existing;
+  }
+
+  const id = `concept-${randomUUID()}`;
+  const depth = getConceptDepth(parentId);
+  getDatabase()
+    .prepare(
+      `insert into keyword_concepts (
+        id, label, normalized_label, parent_id, depth, created_from, status
+      ) values (
+        @id, @label, @normalizedLabel, @parentId, @depth, @createdFrom, @status
+      )`
+    )
+    .run({
+      id,
+      label,
+      normalizedLabel: normalizeKeywordPhrase(label),
+      parentId,
+      depth,
+      createdFrom,
+      status
+    });
+  logTaxonomyActivity("created", id, parentId, { label, parentId, depth, createdFrom, status }, createdFrom === "user" ? "user" : "system");
+  return getDatabase().prepare("select * from keyword_concepts where id = @id").get({ id }) as TaxonomyConceptRow;
+}
+
+function ensureConceptPath(path: string[], createdFrom: string, status: "active" | "candidate" = "active"): TaxonomyConceptRow | null {
+  let parentId: string | null = null;
+  let current: TaxonomyConceptRow | null = null;
+  for (const segment of path.slice(0, TAXONOMY_MAX_DEPTH)) {
+    const label = segment.trim();
+    if (!label) continue;
+    // Ancestors of a candidate leaf are created as candidates too; they promote
+    // together with the leaf. Existing ancestors keep their current status.
+    current = ensureConcept(label, parentId, createdFrom, status);
+    parentId = current.id;
+  }
+  return current;
+}
+
+function ensureAlias(conceptId: string, rawPhrase: string, source: string, confidence = 0.75) {
+  const normalized = normalizeKeywordPhrase(rawPhrase);
+  if (!normalized) return;
+  getDatabase()
+    .prepare(
+      `insert into keyword_aliases (
+        id, concept_id, raw_phrase, normalized_phrase, source, confidence, verified_at
+      ) values (
+        @id, @conceptId, @rawPhrase, @normalizedPhrase, @source, @confidence, @verifiedAt
+      )
+      on conflict(normalized_phrase) do update set
+        concept_id = excluded.concept_id,
+        raw_phrase = excluded.raw_phrase,
+        source = case when keyword_aliases.source = 'user' then keyword_aliases.source else excluded.source end,
+        confidence = max(keyword_aliases.confidence, excluded.confidence)`
+    )
+    .run({
+      id: `alias-${randomUUID()}`,
+      conceptId,
+      rawPhrase,
+      normalizedPhrase: normalized,
+      source,
+      confidence,
+      verifiedAt: source === "user" ? new Date().toISOString() : null
+    });
+}
+
+function conceptForKeyword(rawKeyword: string, source: string): TaxonomyConceptRow | null {
+  const normalized = normalizeKeywordPhrase(rawKeyword);
+  if (!normalized) return null;
+  const alias = getDatabase()
+    .prepare(
+      `select keyword_concepts.*
+       from keyword_aliases
+       join keyword_concepts on keyword_concepts.id = keyword_aliases.concept_id
+       where keyword_aliases.normalized_phrase = @normalized
+       limit 1`
+    )
+    .get({ normalized }) as TaxonomyConceptRow | undefined;
+  if (alias) return alias;
+
+  // Filler and blocked phrases (credentials, job titles, company names) never mint a
+  // concept. User- and story-sourced keywords bypass the blocklist so a deliberate tag
+  // is always honored.
+  const fromUserOrStory = source === "user" || source === "story_tag";
+  if (FILLER_TAG_PHRASES.has(normalized)) return null;
+  if (!fromUserOrStory && isBlockedKeywordPhrase(normalized)) return null;
+
+  const status = statusForConceptSource(source);
+  const concept = ensureConceptPath(inferConceptPath(rawKeyword), source, status);
+  if (concept) ensureAlias(concept.id, rawKeyword, source, 0.75);
+  return concept;
+}
+
+function linkStoryConcepts(storyId: string, rawKeywords: string[], source = "story_tag") {
+  const unique = Array.from(new Set(rawKeywords.map((item) => item.trim()).filter(Boolean)));
+  getDatabase().prepare("delete from story_keyword_concepts where story_id = @storyId").run({ storyId });
+  const stmt = getDatabase().prepare(
+    `insert or ignore into story_keyword_concepts (
+      story_id, raw_keyword, normalized_keyword, concept_id, source, confidence
+    ) values (
+      @storyId, @rawKeyword, @normalizedKeyword, @conceptId, @source, @confidence
+    )`
+  );
+  for (const rawKeyword of unique) {
+    const concept = conceptForKeyword(rawKeyword, source);
+    if (!concept) continue;
+    stmt.run({
+      storyId,
+      rawKeyword,
+      normalizedKeyword: normalizeKeywordPhrase(rawKeyword),
+      conceptId: concept.id,
+      source,
+      confidence: 0.75
+    });
+    // A story link is the strongest possible signal — promote the concept (and its
+    // candidate ancestors) into the curated active taxonomy.
+    promoteConceptWithAncestors(concept.id, "story_link");
+  }
+}
+
+/** Distinct-job threshold at which a recurring candidate concept auto-promotes to active. */
+const CANDIDATE_JOB_PROMOTION_THRESHOLD = 3;
+
+function linkJobKeywordConcepts(jobId: string, evaluationId: string | null, rawKeywords: string[], source = "job_evaluation") {
+  const unique = Array.from(new Set(rawKeywords.map((item) => item.trim()).filter(Boolean)));
+  getDatabase().prepare("delete from job_keyword_concepts where job_id = @jobId").run({ jobId });
+  const stmt = getDatabase().prepare(
+    `insert or ignore into job_keyword_concepts (
+      job_id, evaluation_id, raw_keyword, normalized_keyword, concept_id, source, confidence
+    ) values (
+      @jobId, @evaluationId, @rawKeyword, @normalizedKeyword, @conceptId, @source, @confidence
+    )`
+  );
+  for (const rawKeyword of unique) {
+    const concept = conceptForKeyword(rawKeyword, source);
+    if (!concept) continue;
+    stmt.run({
+      jobId,
+      evaluationId,
+      rawKeyword,
+      normalizedKeyword: normalizeKeywordPhrase(rawKeyword),
+      conceptId: concept.id,
+      source,
+      confidence: 0.75
+    });
+    // Recurrence across enough distinct jobs signals a genuinely relevant concept.
+    if (concept.status === "candidate") {
+      const jobCount = getDatabase()
+        .prepare("select count(distinct job_id) as n from job_keyword_concepts where concept_id = @conceptId")
+        .get({ conceptId: concept.id }) as { n: number };
+      if (jobCount.n >= CANDIDATE_JOB_PROMOTION_THRESHOLD) {
+        promoteConceptWithAncestors(concept.id, "job_recurrence");
+      }
+    }
+  }
+}
+
+function getConceptAncestorIds(conceptIds: string[]): Set<string> {
+  const all = new Set<string>(conceptIds);
+  const queue = [...conceptIds];
+  const stmt = getDatabase().prepare("select parent_id from keyword_concepts where id = @id");
+  while (queue.length > 0) {
+    const id = queue.pop();
+    if (!id) continue;
+    const row = stmt.get({ id }) as { parent_id: string | null } | undefined;
+    if (row?.parent_id && !all.has(row.parent_id)) {
+      all.add(row.parent_id);
+      queue.push(row.parent_id);
+    }
+  }
+  return all;
+}
+
+function getStoryConceptIds(storyId: string): Set<string> {
+  const rows = getDatabase()
+    .prepare("select concept_id from story_keyword_concepts where story_id = @storyId")
+    .all({ storyId }) as Array<{ concept_id: string }>;
+  return getConceptAncestorIds(rows.map((row) => row.concept_id));
+}
+
+function getJobConceptIds(jobId: string): Set<string> {
+  const rows = getDatabase()
+    .prepare("select concept_id from job_keyword_concepts where job_id = @jobId")
+    .all({ jobId }) as Array<{ concept_id: string }>;
+  return getConceptAncestorIds(rows.map((row) => row.concept_id));
+}
+
+function hasSpecificConceptOverlap(a: Set<string>, b: Set<string>): boolean {
+  const rows = getDatabase()
+    .prepare(`select id, normalized_label, depth from keyword_concepts where id in (${Array.from(new Set([...a, ...b])).map(() => "?").join(",") || "''"})`)
+    .all(...Array.from(new Set([...a, ...b]))) as Array<{ id: string; normalized_label: string; depth: number }>;
+  const meta = new Map(rows.map((row) => [row.id, row]));
+  for (const id of a) {
+    if (!b.has(id)) continue;
+    const row = meta.get(id);
+    if (!row) continue;
+    if (row.depth > 1 || !GENERIC_CONCEPTS.has(row.normalized_label)) return true;
+  }
+  return false;
+}
+
+function rawKeywordMatchesHaystack(rawKeywords: string[], haystackParts: string[]): boolean {
+  const haystack = haystackParts.map(normalizeKeywordPhrase).join(" ");
+  return rawKeywords.some((keyword) => {
+    const normalized = normalizeKeywordPhrase(keyword);
+    return normalized.length > 4 && !GENERIC_CONCEPTS.has(normalized) && haystack.includes(normalized);
+  });
+}
+
+/**
+ * Auto-links a story to eligible application positions (Applied, Recruiter responded,
+ * Interviewing) whose title/role archetype/ATS keywords overlap with the story's tags.
+ * Positions the user has only found, reviewed, or generated a resume for are never
+ * matched. Existing links (manual or auto) are left untouched — this only adds new ones.
+ */
+function autoMatchJobsForStory(storyId: string, tags: string[]) {
+  if (tags.length === 0) return;
+  linkStoryConcepts(storyId, tags, "story_tag");
+  const storyConcepts = getStoryConceptIds(storyId);
+  if (storyConcepts.size === 0) return;
+  const eligibleJobs = getInterviewAssignmentJobs();
+  if (eligibleJobs.length === 0) return;
+
+  const stmt = getDatabase().prepare(
+    "insert or ignore into story_job_links (story_id, job_id, source) values (@storyId, @jobId, 'auto')"
+  );
+  for (const application of eligibleJobs) {
+    const job = getJobById(application.jobId);
+    if (!job) continue;
+    const evaluation = getEvaluationByJobId(application.jobId);
+    const jobKeywords = evaluation?.keywords ?? [];
+    if (evaluation?.keywords.length) {
+      linkJobKeywordConcepts(application.jobId, evaluation.id, [job.title, job.roleArchetype, ...evaluation.keywords], "job_evaluation");
+    } else {
+      linkJobKeywordConcepts(application.jobId, null, [job.title, job.roleArchetype], "job_status");
+    }
+    const jobConcepts = getJobConceptIds(application.jobId);
+    if (hasSpecificConceptOverlap(storyConcepts, jobConcepts) || rawKeywordMatchesHaystack(tags, [job.title, job.roleArchetype, ...jobKeywords])) {
+      stmt.run({ storyId, jobId: application.jobId });
+    }
+  }
+}
+
+/**
+ * Auto-links existing stories to a job the moment it becomes an eligible application
+ * position. Called from updateApplicationStatus whenever a job's status enters
+ * Applied, Recruiter responded, or Interviewing.
+ */
+function autoMatchStoriesForJob(jobId: string) {
+  const job = getJobById(jobId);
+  if (!job) return;
+  const evaluation = getEvaluationByJobId(jobId);
+  const jobKeywords = evaluation?.keywords ?? [];
+  if (evaluation?.keywords.length) {
+    linkJobKeywordConcepts(jobId, evaluation.id, [job.title, job.roleArchetype, ...evaluation.keywords], "job_evaluation");
+  } else {
+    linkJobKeywordConcepts(jobId, null, [job.title, job.roleArchetype], "job_status");
+  }
+  const jobConcepts = getJobConceptIds(jobId);
+  if (jobConcepts.size === 0) return;
+
+  const rows = getDatabase().prepare("select id, tags_json from story_bank").all() as Array<{ id: string; tags_json: string }>;
+  if (rows.length === 0) return;
+
+  const stmt = getDatabase().prepare(
+    "insert or ignore into story_job_links (story_id, job_id, source) values (@storyId, @jobId, 'auto')"
+  );
+  for (const row of rows) {
+    const tags = parseJson<string[]>(row.tags_json || "[]", []);
+    if (tags.length > 0 && getStoryConceptIds(row.id).size === 0) {
+      linkStoryConcepts(row.id, tags, "story_tag");
+    }
+    const storyConcepts = getStoryConceptIds(row.id);
+    if (hasSpecificConceptOverlap(storyConcepts, jobConcepts) || rawKeywordMatchesHaystack(tags, [job.title, job.roleArchetype, ...jobKeywords])) {
+      stmt.run({ storyId: row.id, jobId });
+    }
+  }
+}
+
+/**
+ * Existing core stories (never evaluation-suggestion rows) that plausibly answer this
+ * job's interview questions, ranked by taxonomy-concept / raw-keyword overlap. Powers
+ * the "you may already have a story for this role" review panel on the job page, so a
+ * user can link an existing story instead of drafting a duplicate. Read-only except for
+ * lazily backfilling concept links; it does not create story_job_links itself.
+ */
+export function getMatchingStoriesForJob(jobId: string): Array<{
+  id: string;
+  title: string;
+  qualityStatus: StoryQualityStatus;
+  alreadyLinked: boolean;
+}> {
+  const job = getJobById(jobId);
+  if (!job) return [];
+  const evaluation = getEvaluationByJobId(jobId);
+  const jobKeywords = evaluation?.keywords ?? [];
+  if (evaluation?.keywords.length) {
+    linkJobKeywordConcepts(jobId, evaluation.id, [job.title, job.roleArchetype, ...evaluation.keywords], "job_evaluation");
+  } else {
+    linkJobKeywordConcepts(jobId, null, [job.title, job.roleArchetype], "job_status");
+  }
+  const jobConcepts = getJobConceptIds(jobId);
+
+  const linkedRows = getDatabase()
+    .prepare("select story_id from story_job_links where job_id = @jobId")
+    .all({ jobId }) as Array<{ story_id: string }>;
+  const linked = new Set(linkedRows.map((row) => row.story_id));
+
+  const rows = getDatabase()
+    .prepare(
+      "select id, title, tags_json, quality_status, situation, task, action, result from story_bank where story_kind <> 'evaluation_suggestion'"
+    )
+    .all() as Array<Pick<StoryRow, "id" | "title" | "tags_json" | "quality_status" | "situation" | "task" | "action" | "result">>;
+
+  const matches: Array<{ id: string; title: string; qualityStatus: StoryQualityStatus; alreadyLinked: boolean }> = [];
+  for (const row of rows) {
+    const tags = parseJson<string[]>(row.tags_json || "[]", []);
+    if (tags.length > 0 && getStoryConceptIds(row.id).size === 0) {
+      linkStoryConcepts(row.id, tags, "story_tag");
+    }
+    const overlap =
+      hasSpecificConceptOverlap(getStoryConceptIds(row.id), jobConcepts) ||
+      rawKeywordMatchesHaystack(tags, [job.title, job.roleArchetype, ...jobKeywords]);
+    if (overlap) {
+      matches.push({
+        id: row.id,
+        title: row.title,
+        qualityStatus: inferQualityStatus(row),
+        alreadyLinked: linked.has(row.id)
+      });
+    }
+  }
+  // Already-linked first (so the user sees existing coverage), then by title.
+  return matches.sort((a, b) => Number(b.alreadyLinked) - Number(a.alreadyLinked) || a.title.localeCompare(b.title));
+}
+
+/** Manually links or unlinks a single existing story to a job (source 'manual'). */
+export function setStoryJobLink(storyId: string, jobId: string, linked: boolean) {
+  if (linked) {
+    getDatabase()
+      .prepare("insert or ignore into story_job_links (story_id, job_id, source) values (@storyId, @jobId, 'manual')")
+      .run({ storyId, jobId });
+  } else {
+    getDatabase().prepare("delete from story_job_links where story_id = @storyId and job_id = @jobId").run({ storyId, jobId });
+  }
+  logActivity("story_bank", storyId, linked ? "Story linked to job" : "Story unlinked from job", { jobId });
+}
+
+const STORY_KIND_VALUES = new Set<StoryKind>(["answered_question", "standalone_story", "evaluation_suggestion"]);
+const STORY_QUALITY_VALUES = new Set<StoryQualityStatus>(["ready", "needs_detail", "missing_result"]);
+
+function coerceStoryKind(value: string | null | undefined): StoryKind {
+  return STORY_KIND_VALUES.has(value as StoryKind) ? (value as StoryKind) : "standalone_story";
+}
+
+function inferQualityStatus(row: Pick<StoryRow, "situation" | "task" | "action" | "result" | "quality_status">): StoryQualityStatus {
+  if (STORY_QUALITY_VALUES.has(row.quality_status as StoryQualityStatus)) {
+    return row.quality_status as StoryQualityStatus;
+  }
+  if (!row.result.trim()) return "missing_result";
+  if (!row.situation.trim() || !row.task.trim() || !row.action.trim()) return "needs_detail";
+  return "ready";
+}
+
+function assessStoryInput(input: Pick<StoryInput, "situation" | "task" | "action" | "result">): { status: StoryQualityStatus; notes: string } {
+  if (!input.result.trim()) {
+    return { status: "missing_result", notes: "Add a concrete outcome or impact before using this in an interview." };
+  }
+  if (!input.situation.trim() || !input.task.trim() || !input.action.trim()) {
+    return { status: "needs_detail", notes: "Add missing STAR details before using this in an interview." };
+  }
+  return { status: "ready", notes: "" };
+}
+
+function normalizeTags(input: Pick<StoryInput, "tags" | "skills" | "themes" | "storyKind">, limit = 8): string[] {
+  const seen = new Set<string>();
+  const source = [...(input.tags ?? []), ...input.skills, ...input.themes];
+  for (const item of source) {
+    const normalized = item.trim().replace(/\s+/g, " ");
+    if (normalized) seen.add(normalized);
+    if (seen.size >= limit) break;
+  }
+  if (seen.size === 0) {
+    seen.add(input.storyKind === "standalone_story" ? "standalone story" : "interview answer");
+  }
+  if (seen.size === 1) {
+    seen.add("interview prep");
+  }
+  return Array.from(seen).slice(0, limit);
+}
+
+function ensureTaxonomyForStories(rows: Array<Pick<StoryRow, "id" | "tags_json" | "skills_json" | "themes_json" | "story_kind">>) {
+  if (rows.length === 0) return;
+  const existing = getDatabase().prepare("select story_id from story_keyword_concepts").all() as Array<{ story_id: string }>;
+  const alreadyMapped = new Set(existing.map((row) => row.story_id));
+  for (const row of rows) {
+    if (alreadyMapped.has(row.id)) continue;
+    const tags = parseJson<string[]>(row.tags_json || "[]", []);
+    const skills = parseJson<string[]>(row.skills_json || "[]", []);
+    const themes = parseJson<string[]>(row.themes_json || "[]", []);
+    const rawKeywords = tags.length > 0 ? tags : normalizeTags({ tags: [], skills, themes, storyKind: coerceStoryKind(row.story_kind) });
+    linkStoryConcepts(row.id, rawKeywords, "story_tag");
+  }
+}
+
+function mapInterviewQuestion(row: InterviewQuestionRow): InterviewQuestionRecord {
+  return {
+    id: row.id,
+    prompt: row.prompt,
+    category: row.category,
+    source: row.source === "default" ? "default" : "custom",
+    active: row.active === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function mapStory(row: StoryRow): StoryRecord {
+  const tags = parseJson<string[]>(row.tags_json || "[]", []);
+  const skills = parseJson<string[]>(row.skills_json || "[]", []);
+  const themes = parseJson<string[]>(row.themes_json || "[]", []);
   return {
     id: row.id,
     title: row.title,
@@ -2480,45 +3266,545 @@ function mapStory(row: StoryRow): StoryRecord {
     action: row.action,
     result: row.result,
     reflection: row.reflection,
-    skills: parseJson<string[]>(row.skills_json || "[]"),
-    themes: parseJson<string[]>(row.themes_json || "[]"),
+    skills,
+    themes,
+    tags: tags.length > 0 ? tags : normalizeTags({ tags: [], skills, themes, storyKind: coerceStoryKind(row.story_kind) }),
+    conceptTags: [],
+    rawKeywords: tags,
     sourceJobId: row.source_job_id,
     sourceBlockF: row.source_block_f,
+    storyKind: coerceStoryKind(row.story_kind),
+    questionId: row.question_id,
+    promptText: row.prompt_text,
+    qualityStatus: inferQualityStatus(row),
+    qualityNotes: row.quality_notes,
+    lastEvaluatedAt: row.last_evaluated_at,
+    sourceJobCompany: row.source_job_company ?? "",
+    sourceJobTitle: row.source_job_title ?? "",
+    assignedJobs: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-export function getStories(): StoryRecord[] {
-  const rows = getDatabase().prepare("select * from story_bank order by updated_at desc").all() as StoryRow[];
-  return rows.map(mapStory);
+function loadStoryConcepts(storyIds: string[]): Map<string, { concepts: TaxonomyConceptRecord[]; rawKeywords: string[] }> {
+  if (storyIds.length === 0) return new Map();
+  const placeholders = storyIds.map(() => "?").join(",");
+  const rows = getDatabase()
+    .prepare(
+      `select
+        story_keyword_concepts.story_id,
+        story_keyword_concepts.raw_keyword,
+        story_keyword_concepts.normalized_keyword,
+        story_keyword_concepts.concept_id,
+        story_keyword_concepts.source,
+        story_keyword_concepts.confidence,
+        keyword_concepts.label,
+        keyword_concepts.normalized_label,
+        keyword_concepts.parent_id,
+        keyword_concepts.depth,
+        keyword_concepts.description,
+        keyword_concepts.status,
+        keyword_concepts.created_from,
+        keyword_concepts.created_at,
+        keyword_concepts.updated_at,
+        keyword_concepts.archived_at
+       from story_keyword_concepts
+       join keyword_concepts on keyword_concepts.id = story_keyword_concepts.concept_id
+       where story_keyword_concepts.story_id in (${placeholders})
+         and keyword_concepts.status <> 'archived'
+       order by keyword_concepts.depth, keyword_concepts.label collate nocase`
+    )
+    .all(...storyIds) as StoryConceptRow[];
+
+  const byStory = new Map<string, { concepts: TaxonomyConceptRecord[]; rawKeywords: string[] }>();
+  for (const row of rows) {
+    const entry = byStory.get(row.story_id) ?? { concepts: [], rawKeywords: [] };
+    if (!entry.concepts.some((concept) => concept.id === row.concept_id)) {
+      entry.concepts.push(mapConceptRow({
+        id: row.concept_id,
+        label: row.label,
+        normalized_label: row.normalized_label,
+        parent_id: row.parent_id,
+        depth: row.depth,
+        description: row.description,
+        status: row.status,
+        created_from: row.created_from,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        archived_at: row.archived_at
+      }));
+    }
+    if (!entry.rawKeywords.includes(row.raw_keyword)) entry.rawKeywords.push(row.raw_keyword);
+    byStory.set(row.story_id, entry);
+  }
+  return byStory;
 }
 
-export function getStoriesByJobId(jobId: string): StoryRecord[] {
-  const rows = getDatabase().prepare("select * from story_bank where source_job_id = @jobId order by updated_at desc").all({ jobId }) as StoryRow[];
-  return rows.map(mapStory);
+function loadStoryAssignments(storyIds: string[]): Map<string, StoryRecord["assignedJobs"]> {
+  if (storyIds.length === 0) return new Map();
+  const placeholders = storyIds.map(() => "?").join(",");
+  const rows = getDatabase()
+    .prepare(
+      `select
+        story_job_links.story_id,
+        story_job_links.job_id,
+        story_job_links.source,
+        coalesce(nullif(applications.company, ''), jobs.company, 'External opportunity') as company,
+        coalesce(nullif(applications.role, ''), jobs.title, story_job_links.job_id) as role,
+        coalesce(applications.status, jobs.status, '') as status
+       from story_job_links
+       left join applications on applications.job_id = story_job_links.job_id
+       left join jobs on jobs.id = story_job_links.job_id
+       where story_job_links.story_id in (${placeholders})
+       order by company collate nocase, role collate nocase`
+    )
+    .all(...storyIds) as StoryJobLinkRow[];
+
+  const byStory = new Map<string, StoryRecord["assignedJobs"]>();
+  for (const row of rows) {
+    const existing = byStory.get(row.story_id) ?? [];
+    existing.push({
+      jobId: row.job_id,
+      company: row.company,
+      role: row.role,
+      status: row.status,
+      source: row.source === "auto" ? "auto" : "manual"
+    });
+    byStory.set(row.story_id, existing);
+  }
+  return byStory;
 }
 
-export function saveStory(input: StoryInput) {
+function attachStoryAssignments(stories: StoryRecord[]): StoryRecord[] {
+  const assignments = loadStoryAssignments(stories.map((story) => story.id));
+  const concepts = loadStoryConcepts(stories.map((story) => story.id));
+  return stories.map((story) => ({
+    ...story,
+    assignedJobs: assignments.get(story.id) ?? [],
+    conceptTags: concepts.get(story.id)?.concepts ?? [],
+    rawKeywords: concepts.get(story.id)?.rawKeywords ?? story.rawKeywords
+  }));
+}
+
+export function getInterviewQuestions(includeInactive = false): InterviewQuestionRecord[] {
+  const where = includeInactive ? "" : "where active = 1";
+  const rows = getDatabase()
+    .prepare(`select * from interview_questions ${where} order by source = 'custom' desc, category collate nocase asc, updated_at desc, prompt collate nocase asc`)
+    .all() as InterviewQuestionRow[];
+  return rows.map(mapInterviewQuestion);
+}
+
+export function saveInterviewQuestion(input: InterviewQuestionInput) {
   getDatabase()
     .prepare(
-      `insert or replace into story_bank (
-        id, title, situation, task, action, result, reflection,
-        skills_json, themes_json, source_job_id, source_block_f,
-        updated_at
+      `insert into interview_questions (
+        id, prompt, category, source, active, updated_at
       ) values (
-        @id, @title, @situation, @task, @action, @result, @reflection,
-        @skillsJson, @themesJson, @sourceJobId, @sourceBlockF,
-        current_timestamp
+        @id, @prompt, @category, @source, @active, current_timestamp
+      )
+      on conflict(id) do update set
+        prompt = excluded.prompt,
+        category = excluded.category,
+        source = excluded.source,
+        active = excluded.active,
+        updated_at = current_timestamp`
+    )
+    .run({
+      id: input.id,
+      prompt: input.prompt.trim(),
+      category: input.category.trim() || "General",
+      source: input.source ?? "custom",
+      active: input.active === false ? 0 : 1
+    });
+  logActivity("interview_question", input.id, `Interview question saved: ${input.prompt.trim()}`, {});
+}
+
+export function setInterviewQuestionActive(id: string, active: boolean) {
+  getDatabase()
+    .prepare("update interview_questions set active = @active, updated_at = current_timestamp where id = @id")
+    .run({ id, active: active ? 1 : 0 });
+  logActivity("interview_question", id, active ? "Interview question restored" : "Interview question hidden", {});
+}
+
+// ─── Practice attempts & question↔story links ─────────────────────────────────
+
+type PracticeAttemptRow = {
+  id: string;
+  question_id: string | null;
+  story_id: string | null;
+  transcript: string;
+  parsed_json: string;
+  quality_status: string;
+  coaching_notes_json: string;
+  created_at: string;
+};
+
+function mapPracticeAttempt(row: PracticeAttemptRow): PracticeAttemptRecord {
+  const parsed = parseJson<Record<string, string>>(row.parsed_json || "{}", {});
+  return {
+    id: row.id,
+    questionId: row.question_id,
+    storyId: row.story_id,
+    transcript: row.transcript,
+    parsed: {
+      title: parsed.title ?? "",
+      situation: parsed.situation ?? "",
+      task: parsed.task ?? "",
+      action: parsed.action ?? "",
+      result: parsed.result ?? "",
+      reflection: parsed.reflection ?? ""
+    },
+    qualityStatus: STORY_QUALITY_VALUES.has(row.quality_status as StoryQualityStatus)
+      ? (row.quality_status as StoryQualityStatus)
+      : "needs_detail",
+    coachingNotes: parseJson<string[]>(row.coaching_notes_json || "[]", []),
+    createdAt: row.created_at
+  };
+}
+
+/** Records one rehearsal of a question. Re-practicing appends; nothing is overwritten. */
+export function savePracticeAttempt(input: {
+  questionId: string | null;
+  storyId: string | null;
+  transcript: string;
+  parsed: { title: string; situation: string; task: string; action: string; result: string; reflection: string };
+  qualityStatus: StoryQualityStatus;
+  coachingNotes: string[];
+}): string {
+  const id = `attempt-${randomUUID()}`;
+  getDatabase()
+    .prepare(
+      `insert into practice_attempts (
+        id, question_id, story_id, transcript, parsed_json, quality_status, coaching_notes_json
+      ) values (
+        @id, @questionId, @storyId, @transcript, @parsedJson, @qualityStatus, @coachingNotesJson
       )`
     )
     .run({
-      ...input,
-      skillsJson: JSON.stringify(input.skills),
-      themesJson: JSON.stringify(input.themes),
-      sourceJobId: input.sourceJobId ?? null,
-      sourceBlockF: input.sourceBlockF ?? ""
+      id,
+      questionId: input.questionId,
+      storyId: input.storyId,
+      transcript: input.transcript,
+      parsedJson: JSON.stringify(input.parsed),
+      qualityStatus: input.qualityStatus,
+      coachingNotesJson: JSON.stringify(input.coachingNotes ?? [])
     });
+  return id;
+}
+
+export function linkQuestionStory(questionId: string, storyId: string, source = "manual") {
+  if (!questionId || !storyId) return;
+  getDatabase()
+    .prepare(
+      "insert or ignore into question_story_links (question_id, story_id, source) values (@questionId, @storyId, @source)"
+    )
+    .run({ questionId, storyId, source });
+}
+
+export function unlinkQuestionStory(questionId: string, storyId: string) {
+  getDatabase()
+    .prepare("delete from question_story_links where question_id = @questionId and story_id = @storyId")
+    .run({ questionId, storyId });
+}
+
+/**
+ * Per-question practice state for the interview-prep workspace: linked canonical
+ * stories plus full attempt history, keyed by question id. One query feeds every
+ * question row's history drawer and the coverage matrix.
+ */
+export function getQuestionPracticeMap(): Map<string, QuestionPracticeRecord> {
+  const attemptRows = getDatabase()
+    .prepare("select * from practice_attempts where question_id is not null order by created_at asc")
+    .all() as PracticeAttemptRow[];
+  const linkRows = getDatabase()
+    .prepare(
+      `select qsl.question_id, qsl.story_id, story_bank.title, story_bank.quality_status,
+              story_bank.situation, story_bank.task, story_bank.action, story_bank.result
+       from question_story_links qsl
+       join story_bank on story_bank.id = qsl.story_id`
+    )
+    .all() as Array<{
+      question_id: string;
+      story_id: string;
+      title: string;
+      quality_status: string;
+      situation: string;
+      task: string;
+      action: string;
+      result: string;
+    }>;
+
+  const map = new Map<string, QuestionPracticeRecord>();
+  const ensure = (questionId: string): QuestionPracticeRecord => {
+    let entry = map.get(questionId);
+    if (!entry) {
+      entry = { questionId, attemptCount: 0, lastPracticedAt: null, linkedStories: [], attempts: [] };
+      map.set(questionId, entry);
+    }
+    return entry;
+  };
+
+  for (const row of linkRows) {
+    ensure(row.question_id).linkedStories.push({
+      id: row.story_id,
+      title: row.title,
+      qualityStatus: inferQualityStatus(row)
+    });
+  }
+  for (const row of attemptRows) {
+    if (!row.question_id) continue;
+    const entry = ensure(row.question_id);
+    entry.attempts.push(mapPracticeAttempt(row));
+    entry.attemptCount += 1;
+    entry.lastPracticedAt = row.created_at;
+  }
+  // Newest attempts first for display.
+  for (const entry of map.values()) entry.attempts.reverse();
+  return map;
+}
+
+// ─── Story consolidation wizard ───────────────────────────────────────────────
+
+export function getEvaluationSuggestionCount(): number {
+  const row = getDatabase()
+    .prepare("select count(*) as n from story_bank where story_kind = 'evaluation_suggestion'")
+    .get() as { n: number };
+  return row.n;
+}
+
+/** Compact digests of the legacy evaluation-suggestion stories, for LLM clustering. */
+export function getEvaluationSuggestionDigests(): EvaluationSuggestionDigest[] {
+  const rows = getDatabase()
+    .prepare(
+      `select story_bank.id, story_bank.title, story_bank.situation, story_bank.action, story_bank.result,
+              story_bank.tags_json, story_bank.source_job_id,
+              coalesce(jobs.company || ' — ' || jobs.title, '') as source_job_title
+       from story_bank
+       left join jobs on jobs.id = story_bank.source_job_id
+       where story_bank.story_kind = 'evaluation_suggestion'
+       order by story_bank.created_at asc`
+    )
+    .all() as Array<{
+      id: string;
+      title: string;
+      situation: string;
+      action: string;
+      result: string;
+      tags_json: string;
+      source_job_id: string | null;
+      source_job_title: string;
+    }>;
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    situation: row.situation,
+    action: row.action,
+    result: row.result,
+    tags: parseJson<string[]>(row.tags_json || "[]", []),
+    sourceJobId: row.source_job_id,
+    sourceJobTitle: row.source_job_title
+  }));
+}
+
+export function saveConsolidationRun(id: string, payload: ConsolidationPayload, status: ConsolidationRunRecord["status"] = "review") {
+  getDatabase()
+    .prepare(
+      `insert into story_consolidation_runs (id, status, payload_json, updated_at)
+       values (@id, @status, @payloadJson, current_timestamp)
+       on conflict(id) do update set status = excluded.status, payload_json = excluded.payload_json, updated_at = current_timestamp`
+    )
+    .run({ id, status, payloadJson: JSON.stringify(payload) });
+}
+
+export function getLatestConsolidationRun(): ConsolidationRunRecord | null {
+  const row = getDatabase()
+    .prepare("select * from story_consolidation_runs order by created_at desc limit 1")
+    .get() as { id: string; status: string; payload_json: string; created_at: string; updated_at: string } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    status: (["review", "committed", "abandoned"].includes(row.status) ? row.status : "review") as ConsolidationRunRecord["status"],
+    payload: parseJson<ConsolidationPayload>(row.payload_json || "{}", { totalSuggestions: 0, clusters: [] }),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+/**
+ * Commits approved clusters: each becomes a canonical standalone story, the members'
+ * job links are re-pointed to it, and the member suggestion rows are deleted. Runs in a
+ * single transaction. Unapproved clusters are left untouched (their members stay).
+ */
+export function commitConsolidation(
+  runId: string,
+  approved: Array<{ canonical: ConsolidationCanonical; memberIds: string[] }>
+): { createdStories: number; removedSuggestions: number } {
+  const db = getDatabase();
+  let removedSuggestions = 0;
+
+  db.transaction(() => {
+    for (const cluster of approved) {
+      const memberIds = cluster.memberIds.filter(Boolean);
+      if (memberIds.length === 0) continue;
+      const storyId = `story-${randomUUID()}`;
+
+      // Collect the members' job links so the new canonical inherits them.
+      const placeholders = memberIds.map(() => "?").join(",");
+      const jobLinks = db
+        .prepare(`select distinct job_id from story_job_links where story_id in (${placeholders})`)
+        .all(...memberIds) as Array<{ job_id: string }>;
+      const sourceJobId = (db
+        .prepare(`select source_job_id from story_bank where id in (${placeholders}) and source_job_id is not null limit 1`)
+        .get(...memberIds) as { source_job_id: string | null } | undefined)?.source_job_id ?? null;
+
+      saveStory(
+        {
+          id: storyId,
+          title: cluster.canonical.title,
+          situation: cluster.canonical.situation,
+          task: cluster.canonical.task,
+          action: cluster.canonical.action,
+          result: cluster.canonical.result,
+          reflection: cluster.canonical.reflection,
+          skills: [],
+          themes: [],
+          tags: cluster.canonical.tags,
+          sourceJobId,
+          sourceBlockF: "",
+          storyKind: "standalone_story",
+          assignedJobIds: jobLinks.map((row) => row.job_id)
+        },
+        { skipAutoMatch: false }
+      );
+
+      const del = db.prepare("delete from story_bank where id = ?");
+      for (const id of memberIds) {
+        del.run(id);
+        removedSuggestions += 1;
+      }
+    }
+  })();
+
+  const run = getLatestConsolidationRun();
+  if (run && run.id === runId) saveConsolidationRun(runId, run.payload, "committed");
+
+  return { createdStories: approved.filter((c) => c.memberIds.length > 0).length, removedSuggestions };
+}
+
+export function getStories(): StoryRecord[] {
+  const rows = getDatabase()
+    .prepare(
+      `select
+        story_bank.*,
+        jobs.company as source_job_company,
+        jobs.title as source_job_title
+       from story_bank
+       left join jobs on jobs.id = story_bank.source_job_id
+       order by story_bank.updated_at desc`
+    )
+    .all() as StoryRow[];
+  ensureTaxonomyForStories(rows);
+  return attachStoryAssignments(rows.map(mapStory));
+}
+
+export function getStoriesByJobId(jobId: string): StoryRecord[] {
+  const rows = getDatabase()
+    .prepare(
+      `select
+        story_bank.*,
+        jobs.company as source_job_company,
+        jobs.title as source_job_title
+       from story_bank
+       left join jobs on jobs.id = story_bank.source_job_id
+       where story_bank.source_job_id = @jobId
+       order by story_bank.updated_at desc`
+    )
+    .all({ jobId }) as StoryRow[];
+  ensureTaxonomyForStories(rows);
+  return attachStoryAssignments(rows.map(mapStory));
+}
+
+export function saveStory(input: StoryInput, options?: { skipAutoMatch?: boolean }) {
+  const assessed = assessStoryInput(input);
+  const storyKind = input.storyKind ?? (input.sourceBlockF === "evaluation" ? "evaluation_suggestion" : input.sourceBlockF === "voice-practice" ? "answered_question" : "standalone_story");
+  const tags = normalizeTags({ tags: input.tags, skills: input.skills, themes: input.themes, storyKind });
+  getDatabase().transaction(() => {
+    getDatabase()
+      .prepare(
+        `insert into story_bank (
+          id, title, situation, task, action, result, reflection,
+          skills_json, themes_json, tags_json, source_job_id, source_block_f,
+          story_kind, question_id, prompt_text, quality_status, quality_notes,
+          last_evaluated_at, updated_at
+        ) values (
+          @id, @title, @situation, @task, @action, @result, @reflection,
+          @skillsJson, @themesJson, @tagsJson, @sourceJobId, @sourceBlockF,
+          @storyKind, @questionId, @promptText, @qualityStatus, @qualityNotes,
+          @lastEvaluatedAt, current_timestamp
+        )
+        on conflict(id) do update set
+          title = excluded.title,
+          situation = excluded.situation,
+          task = excluded.task,
+          action = excluded.action,
+          result = excluded.result,
+          reflection = excluded.reflection,
+          skills_json = excluded.skills_json,
+          themes_json = excluded.themes_json,
+          tags_json = excluded.tags_json,
+          source_job_id = excluded.source_job_id,
+          source_block_f = excluded.source_block_f,
+          story_kind = excluded.story_kind,
+          question_id = excluded.question_id,
+          prompt_text = excluded.prompt_text,
+          quality_status = excluded.quality_status,
+          quality_notes = excluded.quality_notes,
+          last_evaluated_at = excluded.last_evaluated_at,
+          updated_at = current_timestamp`
+      )
+      .run({
+        ...input,
+        skillsJson: JSON.stringify(input.skills),
+        themesJson: JSON.stringify(input.themes),
+        tagsJson: JSON.stringify(tags),
+        sourceJobId: input.sourceJobId ?? null,
+        sourceBlockF: input.sourceBlockF ?? "",
+        storyKind,
+        questionId: input.questionId ?? null,
+        promptText: input.promptText ?? "",
+        qualityStatus: input.qualityStatus ?? assessed.status,
+        qualityNotes: input.qualityNotes ?? assessed.notes,
+        lastEvaluatedAt: input.lastEvaluatedAt ?? null
+      });
+    linkStoryConcepts(input.id, tags, storyKind === "evaluation_suggestion" ? "job_evaluation_story" : "story_tag");
+
+    if (input.assignedJobIds) {
+      // Diff against existing links rather than delete-and-reinsert, so re-saving
+      // unrelated fields doesn't collapse auto-matched links back to "manual".
+      const desired = new Set(input.assignedJobIds.filter(Boolean));
+      const existingRows = getDatabase()
+        .prepare("select job_id from story_job_links where story_id = @storyId")
+        .all({ storyId: input.id }) as Array<{ job_id: string }>;
+      const existing = new Set(existingRows.map((row) => row.job_id));
+
+      const removeStmt = getDatabase().prepare("delete from story_job_links where story_id = @storyId and job_id = @jobId");
+      for (const jobId of existing) {
+        if (!desired.has(jobId)) removeStmt.run({ storyId: input.id, jobId });
+      }
+
+      const addStmt = getDatabase().prepare("insert or ignore into story_job_links (story_id, job_id, source) values (@storyId, @jobId, 'manual')");
+      for (const jobId of desired) {
+        if (!existing.has(jobId)) addStmt.run({ storyId: input.id, jobId });
+      }
+    }
+
+    // Skipped when this save *is* a manual assignment toggle — otherwise re-matching
+    // would immediately re-add a position the user just unchecked.
+    if (!options?.skipAutoMatch) {
+      autoMatchJobsForStory(input.id, tags);
+    }
+  })();
   logActivity("story_bank", input.id, `Story saved: ${input.title}`, { sourceJobId: input.sourceJobId });
 }
 
@@ -2527,38 +3813,408 @@ export function deleteStory(id: string) {
   logActivity("story_bank", id, "Story deleted", {});
 }
 
+function ensureTaxonomyForEvaluations() {
+  const rows = getDatabase()
+    .prepare(
+      `select
+        evaluations.id as evaluation_id,
+        evaluations.job_id,
+        evaluations.role_archetype,
+        evaluations.keywords_json,
+        jobs.title
+       from evaluations
+       left join jobs on jobs.id = evaluations.job_id`
+    )
+    .all() as Array<{ evaluation_id: string; job_id: string; role_archetype: string; keywords_json: string; title: string | null }>;
+  for (const row of rows) {
+    const existing = getDatabase().prepare("select 1 from job_keyword_concepts where job_id = @jobId limit 1").get({ jobId: row.job_id });
+    if (existing) continue;
+    linkJobKeywordConcepts(row.job_id, row.evaluation_id, [row.title ?? "", row.role_archetype, ...parseJson<string[]>(row.keywords_json || "[]", [])], "job_evaluation");
+  }
+}
+
+function buildTaxonomyTree(rows: TaxonomyConceptRow[], aliasRows: TaxonomyAliasRow[]): TaxonomyConceptRecord[] {
+  const aliasesByConcept = new Map<string, TaxonomyAliasRecord[]>();
+  for (const row of aliasRows) {
+    const aliases = aliasesByConcept.get(row.concept_id) ?? [];
+    aliases.push(mapTaxonomyAlias(row));
+    aliasesByConcept.set(row.concept_id, aliases);
+  }
+
+  const byId = new Map<string, TaxonomyConceptRecord>();
+  for (const row of rows) {
+    byId.set(row.id, mapConceptRow(row, aliasesByConcept.get(row.id) ?? []));
+  }
+
+  for (const concept of byId.values()) {
+    concept.path = [concept.label];
+    if (concept.parentId && byId.has(concept.parentId)) {
+      byId.get(concept.parentId)?.children.push(concept);
+    }
+  }
+
+  function hydratePath(concept: TaxonomyConceptRecord, parentPath: string[]) {
+    concept.path = [...parentPath, concept.label];
+    concept.children.sort((a, b) => a.label.localeCompare(b.label));
+    concept.children.forEach((child) => hydratePath(child, concept.path));
+  }
+
+  const roots = Array.from(byId.values())
+    .filter((concept) => !concept.parentId || !byId.has(concept.parentId))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  roots.forEach((root) => hydratePath(root, []));
+  return roots;
+}
+
+export function getKeywordTaxonomy(options?: { includeArchived?: boolean; includeCandidates?: boolean }): TaxonomyConceptRecord[] {
+  ensureTaxonomyForEvaluations();
+  // The default tree is the curated set: active (and archived when asked, so the user
+  // can restore). Candidate concepts — the machine-generated pool — are excluded here
+  // and surfaced separately through the review queue (getTaxonomyCandidates).
+  const excluded: string[] = [];
+  if (!options?.includeArchived) excluded.push("archived");
+  if (!options?.includeCandidates) excluded.push("candidate");
+  const statusWhere = excluded.length ? `where keyword_concepts.status not in (${excluded.map(() => "?").join(",")})` : "";
+  const rows = getDatabase()
+    .prepare(
+      `select
+        keyword_concepts.*,
+        (select count(distinct story_id) from story_keyword_concepts where story_keyword_concepts.concept_id = keyword_concepts.id) as story_count,
+        (select count(distinct job_id) from job_keyword_concepts where job_keyword_concepts.concept_id = keyword_concepts.id) as job_count
+       from keyword_concepts
+       ${statusWhere}
+       order by depth asc, label collate nocase asc`
+    )
+    .all(...excluded) as TaxonomyConceptRow[];
+  const aliases = getDatabase()
+    .prepare("select * from keyword_aliases order by raw_phrase collate nocase asc")
+    .all() as TaxonomyAliasRow[];
+  return buildTaxonomyTree(rows, aliases);
+}
+
+export function getTaxonomyStatusCounts(): { active: number; candidate: number; archived: number } {
+  const rows = getDatabase()
+    .prepare("select status, count(*) as n from keyword_concepts group by status")
+    .all() as Array<{ status: string; n: number }>;
+  const counts = { active: 0, candidate: 0, archived: 0 };
+  for (const row of rows) {
+    if (row.status === "candidate") counts.candidate = row.n;
+    else if (row.status === "archived") counts.archived = row.n;
+    else counts.active += row.n;
+  }
+  return counts;
+}
+
+/**
+ * Flat review-queue feed of machine-generated candidate concepts, ranked by how many
+ * distinct jobs referenced each (strongest promotion signal first). Used by the
+ * taxonomy review queue for bulk approve / archive.
+ */
+export function getTaxonomyCandidates(limit = 500): TaxonomyCandidateRecord[] {
+  const allRows = getDatabase()
+    .prepare("select id, label, parent_id from keyword_concepts")
+    .all() as Array<{ id: string; label: string; parent_id: string | null }>;
+  const byId = new Map(allRows.map((row) => [row.id, row]));
+  const pathFor = (id: string): string[] => {
+    const path: string[] = [];
+    let current: string | null = id;
+    const seen = new Set<string>();
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      const row = byId.get(current);
+      if (!row) break;
+      path.unshift(row.label);
+      current = row.parent_id;
+    }
+    return path;
+  };
+  const rows = getDatabase()
+    .prepare(
+      `select
+        keyword_concepts.id,
+        keyword_concepts.label,
+        (select count(distinct story_id) from story_keyword_concepts where story_keyword_concepts.concept_id = keyword_concepts.id) as story_count,
+        (select count(distinct job_id) from job_keyword_concepts where job_keyword_concepts.concept_id = keyword_concepts.id) as job_count
+       from keyword_concepts
+       where status = 'candidate'
+       order by job_count desc, label collate nocase asc
+       limit @limit`
+    )
+    .all({ limit }) as Array<{ id: string; label: string; story_count: number; job_count: number }>;
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    path: pathFor(row.id),
+    storyCount: row.story_count,
+    jobCount: row.job_count
+  }));
+}
+
+/** User approves a candidate (or a machine-promotion path) into the active taxonomy. */
+export function promoteTaxonomyConcept(id: string) {
+  promoteConceptWithAncestors(id, "user_approved", "user");
+}
+
+export function bulkArchiveTaxonomyConcepts(ids: string[]) {
+  const stmt = getDatabase().prepare(
+    "update keyword_concepts set status = 'archived', archived_at = current_timestamp, updated_at = current_timestamp where id = @id"
+  );
+  getDatabase().transaction(() => {
+    for (const id of ids) {
+      stmt.run({ id });
+      logTaxonomyActivity("archived", id, null, { bulk: true }, "user");
+    }
+  })();
+}
+
+/**
+ * Archives every candidate concept with no story links and fewer than the promotion
+ * threshold of distinct jobs — the "clear the noise" action. Returns the count archived.
+ */
+export function archiveUnusedTaxonomyConcepts(): number {
+  const rows = getDatabase()
+    .prepare(
+      `select id from keyword_concepts
+       where status = 'candidate'
+         and id not in (select distinct concept_id from story_keyword_concepts)
+         and (select count(distinct job_id) from job_keyword_concepts j where j.concept_id = keyword_concepts.id) < @threshold`
+    )
+    .all({ threshold: CANDIDATE_JOB_PROMOTION_THRESHOLD }) as Array<{ id: string }>;
+  bulkArchiveTaxonomyConcepts(rows.map((row) => row.id));
+  return rows.length;
+}
+
+export function getTaxonomyActivity(limit = 20): TaxonomyActivityRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from taxonomy_activity_log order by created_at desc limit @limit")
+    .all({ limit }) as TaxonomyActivityRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    action: row.action,
+    conceptId: row.concept_id,
+    relatedId: row.related_id,
+    details: parseJson<JsonValue>(row.details_json || "{}", {}),
+    actor: row.actor,
+    createdAt: row.created_at
+  }));
+}
+
+function getDescendantConceptIds(id: string): string[] {
+  const rows = getDatabase().prepare("select id from keyword_concepts where parent_id = @id").all({ id }) as Array<{ id: string }>;
+  return rows.flatMap((row) => [row.id, ...getDescendantConceptIds(row.id)]);
+}
+
+function refreshDescendantDepths(parentId: string) {
+  const parent = getDatabase().prepare("select id, depth from keyword_concepts where id = @id").get({ id: parentId }) as { id: string; depth: number } | undefined;
+  if (!parent) return;
+  const children = getDatabase().prepare("select id from keyword_concepts where parent_id = @id").all({ id: parentId }) as Array<{ id: string }>;
+  for (const child of children) {
+    const depth = Math.min(parent.depth + 1, TAXONOMY_MAX_DEPTH);
+    getDatabase().prepare("update keyword_concepts set depth = @depth, updated_at = current_timestamp where id = @id").run({ id: child.id, depth });
+    refreshDescendantDepths(child.id);
+  }
+}
+
+export function saveTaxonomyConcept(input: TaxonomyConceptInput) {
+  const label = input.label.trim();
+  if (!label) return null;
+  const parentId = input.parentId || null;
+  const parentDepth = parentId ? getConceptDepth(parentId) : 1;
+  if (parentDepth > TAXONOMY_MAX_DEPTH) {
+    throw new Error(`Taxonomy depth cannot exceed ${TAXONOMY_MAX_DEPTH} levels.`);
+  }
+
+  if (!input.id) {
+    const concept = ensureConcept(label, parentId, "user");
+    ensureAlias(concept.id, label, "user", 1);
+    if (input.description) {
+      getDatabase()
+        .prepare("update keyword_concepts set description = @description, updated_at = current_timestamp where id = @id")
+        .run({ id: concept.id, description: input.description.trim() });
+    }
+    return concept.id;
+  }
+
+  const descendants = new Set(getDescendantConceptIds(input.id));
+  if (parentId && (parentId === input.id || descendants.has(parentId))) {
+    throw new Error("A taxonomy tag cannot be moved under itself or one of its children.");
+  }
+
+  getDatabase()
+    .prepare(
+      `update keyword_concepts
+       set label = @label,
+           normalized_label = @normalizedLabel,
+           parent_id = @parentId,
+           depth = @depth,
+           description = @description,
+           status = 'active',
+           archived_at = null,
+           updated_at = current_timestamp
+       where id = @id`
+    )
+    .run({
+      id: input.id,
+      label,
+      normalizedLabel: normalizeKeywordPhrase(label),
+      parentId,
+      depth: parentDepth,
+      description: input.description?.trim() ?? ""
+    });
+  refreshDescendantDepths(input.id);
+  ensureAlias(input.id, label, "user", 1);
+  logTaxonomyActivity("updated", input.id, parentId, { label, parentId }, "user");
+  return input.id;
+}
+
+export function archiveTaxonomyConcept(id: string) {
+  getDatabase()
+    .prepare("update keyword_concepts set status = 'archived', archived_at = current_timestamp, updated_at = current_timestamp where id = @id")
+    .run({ id });
+  logTaxonomyActivity("archived", id, null, {}, "user");
+}
+
+export function restoreTaxonomyConcept(id: string) {
+  getDatabase()
+    .prepare("update keyword_concepts set status = 'active', archived_at = null, updated_at = current_timestamp where id = @id")
+    .run({ id });
+  logTaxonomyActivity("restored", id, null, {}, "user");
+}
+
+export function addTaxonomyAlias(conceptId: string, rawPhrase: string) {
+  ensureAlias(conceptId, rawPhrase, "user", 1);
+  logTaxonomyActivity("alias_added", conceptId, null, { rawPhrase }, "user");
+}
+
+export function removeTaxonomyAlias(aliasId: string) {
+  const row = getDatabase().prepare("select * from keyword_aliases where id = @aliasId").get({ aliasId }) as TaxonomyAliasRow | undefined;
+  if (!row) return;
+  getDatabase().prepare("delete from keyword_aliases where id = @aliasId").run({ aliasId });
+  logTaxonomyActivity("alias_removed", row.concept_id, aliasId, { rawPhrase: row.raw_phrase }, "user");
+}
+
+export function mergeTaxonomyConcept(sourceId: string, targetId: string) {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+  const source = getDatabase().prepare("select * from keyword_concepts where id = @sourceId").get({ sourceId }) as TaxonomyConceptRow | undefined;
+  const target = getDatabase().prepare("select * from keyword_concepts where id = @targetId").get({ targetId }) as TaxonomyConceptRow | undefined;
+  if (!source || !target) return;
+
+  const aliases = getDatabase().prepare("select * from keyword_aliases where concept_id = @sourceId").all({ sourceId }) as TaxonomyAliasRow[];
+  for (const alias of aliases) {
+    ensureAlias(targetId, alias.raw_phrase, alias.source, alias.confidence);
+  }
+
+  const storyLinks = getDatabase().prepare("select * from story_keyword_concepts where concept_id = @sourceId").all({ sourceId }) as Array<{
+    story_id: string;
+    raw_keyword: string;
+    normalized_keyword: string;
+    source: string;
+    confidence: number;
+  }>;
+  const storyStmt = getDatabase().prepare(
+    `insert or ignore into story_keyword_concepts (story_id, raw_keyword, normalized_keyword, concept_id, source, confidence)
+     values (@storyId, @rawKeyword, @normalizedKeyword, @targetId, @source, @confidence)`
+  );
+  for (const link of storyLinks) {
+    storyStmt.run({
+      storyId: link.story_id,
+      rawKeyword: link.raw_keyword,
+      normalizedKeyword: link.normalized_keyword,
+      targetId,
+      source: link.source,
+      confidence: link.confidence
+    });
+  }
+
+  const jobLinks = getDatabase().prepare("select * from job_keyword_concepts where concept_id = @sourceId").all({ sourceId }) as Array<{
+    job_id: string;
+    evaluation_id: string | null;
+    raw_keyword: string;
+    normalized_keyword: string;
+    source: string;
+    confidence: number;
+  }>;
+  const jobStmt = getDatabase().prepare(
+    `insert or ignore into job_keyword_concepts (job_id, evaluation_id, raw_keyword, normalized_keyword, concept_id, source, confidence)
+     values (@jobId, @evaluationId, @rawKeyword, @normalizedKeyword, @targetId, @source, @confidence)`
+  );
+  for (const link of jobLinks) {
+    jobStmt.run({
+      jobId: link.job_id,
+      evaluationId: link.evaluation_id,
+      rawKeyword: link.raw_keyword,
+      normalizedKeyword: link.normalized_keyword,
+      targetId,
+      source: link.source,
+      confidence: link.confidence
+    });
+  }
+
+  getDatabase().prepare("delete from story_keyword_concepts where concept_id = @sourceId").run({ sourceId });
+  getDatabase().prepare("delete from job_keyword_concepts where concept_id = @sourceId").run({ sourceId });
+  getDatabase().prepare("delete from keyword_aliases where concept_id = @sourceId").run({ sourceId });
+  archiveTaxonomyConcept(sourceId);
+  logTaxonomyActivity("merged", targetId, sourceId, { sourceLabel: source.label, targetLabel: target.label }, "user");
+}
+
+/** Cap on how many of a job's extracted ATS keywords carry over as story tags. */
+const EVALUATION_STORY_KEYWORD_TAG_LIMIT = 12;
+
 /**
  * Replaces all auto-saved Block F stories for a job with the new set.
  * Called automatically after every LLM evaluation via runAndSaveJobWithAI.
  * Manually-added or voice-practice stories are never touched.
+ *
+ * Tags reuse the job's own ATS keywords (Block E) rather than a generic
+ * fallback — same vocabulary on both sides is what lets autoMatchJobsForStory
+ * connect a story back to *other* positions that share that keyword.
  */
-export function autoSaveEvaluationStories(jobId: string, stories: StructuredStory[]) {
+export function autoSaveEvaluationStories(jobId: string, stories: StructuredStory[], jobKeywords: string[] = []) {
   const db = getDatabase();
+  const tags = normalizeTags(
+    {
+      tags: jobKeywords,
+      skills: [],
+      themes: [],
+      storyKind: "evaluation_suggestion"
+    },
+    EVALUATION_STORY_KEYWORD_TAG_LIMIT
+  );
+  const tagsJson = JSON.stringify(tags);
+
   db.transaction(() => {
     // Delete previously auto-saved stories for this job only
     db.prepare("delete from story_bank where source_job_id = @jobId and source_block_f = 'evaluation'").run({ jobId });
     const stmt = db.prepare(
       `insert into story_bank (
         id, title, situation, task, action, result, reflection,
-        skills_json, themes_json, source_job_id, source_block_f,
-        updated_at
+        skills_json, themes_json, tags_json, source_job_id, source_block_f,
+        story_kind, prompt_text, quality_status, quality_notes,
+        last_evaluated_at, updated_at
       ) values (
         @id, @title, @situation, @task, @action, @result, @reflection,
-        '[]', '[]', @sourceJobId, 'evaluation',
-        current_timestamp
+        @tagsJson, @tagsJson, @tagsJson, @sourceJobId, 'evaluation',
+        'evaluation_suggestion', @title, @qualityStatus, @qualityNotes,
+        current_timestamp, current_timestamp
       )`
     );
     for (const story of stories) {
+      const qualityStatus = story.result.trim() ? "ready" : "missing_result";
+      const id = `eval-story-${jobId}-${randomUUID().slice(0, 8)}`;
       stmt.run({
-        id: `eval-story-${jobId}-${randomUUID().slice(0, 8)}`,
+        id,
         title: story.question,
         situation: story.situation,
         task: story.task,
         action: story.action,
         result: story.result,
         reflection: story.reflection,
-        sourceJobId: jobId
+        sourceJobId: jobId,
+        tagsJson,
+        qualityStatus,
+        qualityNotes: qualityStatus === "missing_result" ? "Add a concrete outcome or impact before using this in an interview." : ""
       });
+      linkStoryConcepts(id, tags, "job_evaluation_story");
     }
   })();
 }
