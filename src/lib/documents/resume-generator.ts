@@ -7,7 +7,7 @@ import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
 import { keywordCoverageFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
-import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics } from "./evidence-audit";
+import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceAuditIssue } from "./evidence-audit";
 
 export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
 
@@ -15,6 +15,16 @@ export type GeneratedResumeResult = GeneratedDocumentInput & {
   pageCount: number;
   sizeBytes: number;
 };
+
+export class UnsupportedResumeClaimsError extends Error {
+  readonly issues: EvidenceAuditIssue[];
+
+  constructor(issues: EvidenceAuditIssue[]) {
+    super("Review unsupported claims before exporting this PDF.");
+    this.name = "UnsupportedResumeClaimsError";
+    this.issues = issues;
+  }
+}
 
 export async function generateTailoredResume(jobId: string, sectionModes: ResumeSectionModeInput[] = []): Promise<GeneratedResumeResult> {
   const job = getJobById(jobId);
@@ -196,7 +206,11 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   return { documentId, draft, tailoringStatus: aiTailoring ? reverted.audit.status : "source-only", evidenceAudit: reverted.audit, fallbackReason };
 }
 
-export async function createPdfForDocument(documentId: string, draft: ResumeTemplateInput): Promise<{ pdfUrl: string }> {
+export async function createPdfForDocument(
+  documentId: string,
+  draft: ResumeTemplateInput,
+  options: { allowUnsupportedClaims?: boolean } = {}
+): Promise<{ pdfUrl: string }> {
   const doc = getGeneratedDocumentById(documentId);
   if (!doc) throw new Error(`Document not found: ${documentId}`);
 
@@ -216,8 +230,9 @@ export async function createPdfForDocument(documentId: string, draft: ResumeTemp
     getProfileSupplements().filter((supplement) => supplement.qualityStatus === "addressed")
   );
   const audit = auditDraftAgainstEvidence(draft, evidenceText);
-  if (audit.status === "unsupported-claims") {
-    throw new Error(`PDF export blocked: remove or confirm unsupported claims (${audit.issues.map((issue) => issue.claim).join(", ")}).`);
+  const hasExplicitExportOverride = options.allowUnsupportedClaims === true;
+  if (audit.status === "unsupported-claims" && !hasExplicitExportOverride) {
+    throw new UnsupportedResumeClaimsError(audit.issues);
   }
   const html = renderResumeHtml(draft);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -228,7 +243,10 @@ export async function createPdfForDocument(documentId: string, draft: ResumeTemp
   const render = await renderHtmlToPdf({ html, htmlPath, pdfPath, format: paperFormatFor(job) });
 
   updateDocumentDraft(documentId, JSON.stringify(draft));
-  updateDocumentPdf(documentId, html, render.htmlPath, render.pdfPath);
+  updateDocumentPdf(documentId, html, render.htmlPath, render.pdfPath, JSON.stringify({
+    ...audit,
+    exportOverride: audit.status === "unsupported-claims" && hasExplicitExportOverride,
+  }));
 
   return { pdfUrl: render.pdfPath };
 }

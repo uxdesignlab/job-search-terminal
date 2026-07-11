@@ -2260,17 +2260,18 @@ export function updateDocumentDraft(id: string, draftJson: string) {
     .run({ id, draftJson });
 }
 
-export function updateDocumentPdf(id: string, html: string, htmlUrl: string, pdfUrl: string) {
+export function updateDocumentPdf(id: string, html: string, htmlUrl: string, pdfUrl: string, evidenceAuditJson: string) {
   getDatabase()
     .prepare(
       `update generated_documents set
         content = @html,
         html_url = @htmlUrl,
         pdf_url = @pdfUrl,
+        evidence_audit_json = @evidenceAuditJson,
         status = 'Ready'
       where id = @id`
     )
-    .run({ id, html, htmlUrl, pdfUrl });
+    .run({ id, html, htmlUrl, pdfUrl, evidenceAuditJson });
   getDatabase()
     .prepare("update jobs set status = 'Resume generated' where id = (select job_id from generated_documents where id = @id)")
     .run({ id });

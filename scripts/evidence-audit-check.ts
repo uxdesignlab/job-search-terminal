@@ -38,7 +38,7 @@ const unsupported: ResumeTemplateInput = {
 const audit = auditDraftAgainstEvidence(unsupported, evidence);
 assert.equal(audit.status, "unsupported-claims");
 assert.equal(audit.issues.some((issue) => issue.claim === "20%"), true);
-assert.equal(audit.issues.some((issue) => issue.claim === "kubernetes"), true);
+assert.equal(audit.issues.some((issue) => issue.text.includes("Increased revenue")), true);
 
 const reverted = revertUnsupportedMetrics(source, unsupported, evidence);
 assert.equal(reverted.draft.experience[0].bullets[0], source.experience[0].bullets[0]);

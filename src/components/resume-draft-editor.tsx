@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, LinkButton } from "@/components/ui";
+import { Button, LinkButton, Modal } from "@/components/ui";
 import { keywordStrengthDetailsForText } from "@/lib/documents/keyword-coverage";
 import { renderResumeHtml, type ResumeTemplateInput } from "@/lib/documents/resume-template";
 
@@ -46,6 +46,29 @@ type KeywordProposal = {
   text: string;
   included: boolean;
 };
+
+type UnsupportedClaim = {
+  path: string;
+  claim: string;
+  reason: string;
+  text: string;
+};
+
+function claimLocationLabel(path: string) {
+  if (path === "headline") return "Headline";
+  if (path === "summary") return "Professional summary";
+  const impact = path.match(/^impactItems\[(\d+)]$/);
+  if (impact) return `Key achievement ${Number(impact[1]) + 1}`;
+  const skill = path.match(/^skills\[(\d+)]$/);
+  if (skill) return `Skills line ${Number(skill[1]) + 1}`;
+  const recognition = path.match(/^recognition\[(\d+)]$/);
+  if (recognition) return `Recognition item ${Number(recognition[1]) + 1}`;
+  const experience = path.match(/^experience\[(\d+)]\.bullets\[(\d+)]$/);
+  if (experience) return `Experience ${Number(experience[1]) + 1}, bullet ${Number(experience[2]) + 1}`;
+  const extra = path.match(/^extraSections\[(\d+)]\.items\[(\d+)]$/);
+  if (extra) return `Additional section ${Number(extra[1]) + 1}, item ${Number(extra[2]) + 1}`;
+  return path;
+}
 
 function draftToState(draft: ResumeTemplateInput): EditorState {
   return {
@@ -229,6 +252,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
   const [sectionAI, setSectionAI] = useState<Record<string, SectionAIState>>({});
   const [pdfStatus, setPdfStatus] = useState<"idle" | "generating" | "done" | "error">("idle");
   const [pdfError, setPdfError] = useState("");
+  const [unsupportedClaims, setUnsupportedClaims] = useState<UnsupportedClaim[]>([]);
   const [previewHtml, setPreviewHtml] = useState(() => renderResumeHtml(initialDraft));
   const [activeHighlightKeyword, setActiveHighlightKeyword] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -515,7 +539,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
 
   // --- PDF creation ---
 
-  async function createPdf() {
+  async function createPdf(allowUnsupportedClaims = false) {
     setPdfStatus("generating");
     setPdfError("");
     const draft = stateToDraft(state, initialDraft, sectionOrder);
@@ -523,10 +547,21 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
       const res = await fetch(`/api/generated-documents/${documentId}/render-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft }),
+        body: JSON.stringify({ draft, allowUnsupportedClaims }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
+      const data = (await res.json()) as {
+        ok?: boolean;
+        code?: string;
+        error?: string;
+        issues?: UnsupportedClaim[];
+      };
+      if (res.status === 409 && data.code === "unsupported-claims" && data.issues?.length) {
+        setUnsupportedClaims(data.issues);
+        setPdfStatus("idle");
+        return;
+      }
       if (!res.ok || !data.ok) throw new Error(data.error ?? "PDF creation failed");
+      setUnsupportedClaims([]);
       setPdfStatus("done");
       router.push(`/jobs/${jobId}`);
     } catch (err) {
@@ -780,7 +815,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           )}
           <Button
             disabled={pdfStatus === "generating"}
-            onClick={createPdf}
+            onClick={() => createPdf()}
             variant="primary"
           >
             {pdfStatus === "generating" ? "Creating PDF…" : "Create PDF →"}
@@ -1231,6 +1266,60 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           </section>
         </div>
       )}
+      <Modal
+        description="These numbers are not present in the approved resume lane or confirmed evidence. Review them before deciding how to continue."
+        footer={(
+          <div className="grid gap-3">
+            {pdfStatus === "error" && pdfError ? (
+              <p className="text-xs leading-5 text-danger" role="alert">{pdfError}</p>
+            ) : null}
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                disabled={pdfStatus === "generating"}
+                onClick={() => {
+                  setUnsupportedClaims([]);
+                  setPdfError("");
+                  setPdfStatus("idle");
+                }}
+                variant="secondary"
+              >
+                Review and fix
+              </Button>
+              <Button
+                disabled={pdfStatus === "generating"}
+                onClick={() => createPdf(true)}
+                variant="primary"
+              >
+                {pdfStatus === "generating" ? "Exporting PDF…" : "Export anyway"}
+              </Button>
+            </div>
+          </div>
+        )}
+        onClose={pdfStatus === "generating" ? undefined : () => {
+          setUnsupportedClaims([]);
+          setPdfError("");
+          setPdfStatus("idle");
+        }}
+        open={unsupportedClaims.length > 0}
+        size="lg"
+        title={`${unsupportedClaims.length} unsupported ${unsupportedClaims.length === 1 ? "claim" : "claims"} found`}
+      >
+        <div className="grid gap-3 p-5">
+          {unsupportedClaims.map((issue, index) => (
+            <article className="rounded-control border border-warning/40 bg-warning/8 p-3" key={`${issue.path}-${issue.claim}-${index}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-ink">{issue.claim}</p>
+                <p className="text-xs font-medium text-warning">{claimLocationLabel(issue.path)}</p>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-ink">{issue.text}</p>
+              <p className="mt-2 text-xs leading-5 text-muted">{issue.reason}</p>
+            </article>
+          ))}
+          <p className="text-xs leading-5 text-muted">
+            Exporting anyway keeps your edits exactly as written. Confirm that each claim is accurate before using the PDF in an application.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

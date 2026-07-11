@@ -806,7 +806,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Export PDF",
-            body: "Download the final PDF after review. Export is blocked if edits still contain unsupported metrics or substantive claims. Use the employer's requested format if the application instructions specify something else.",
+            body: "Download the final PDF after review. If edits contain unsupported quantified claims, the app shows every flagged claim and where it appears. Return to the draft to fix them, or explicitly export anyway after confirming the wording is accurate. Use the employer's requested format if the application instructions specify something else.",
           },
         ],
       },
