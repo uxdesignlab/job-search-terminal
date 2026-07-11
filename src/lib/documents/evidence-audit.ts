@@ -4,6 +4,7 @@ export type EvidenceAuditIssue = {
   path: string;
   claim: string;
   reason: string;
+  text: string;
 };
 
 export type EvidenceAudit = {
@@ -71,6 +72,7 @@ function issuesForText(path: string, text: string, evidenceText: string): Eviden
         path,
         claim: metric,
         reason: "This quantified claim is not present in a related approved resume line or confirmed evidence.",
+        text,
       });
     }
   }
@@ -80,6 +82,7 @@ function issuesForText(path: string, text: string, evidenceText: string): Eviden
         path,
         claim: term,
         reason: "This substantive claim term is not present in the approved resume lane or confirmed profile evidence.",
+        text,
       });
     }
   }
@@ -97,6 +100,7 @@ function metricIssuesForText(path: string, text: string, evidenceText: string): 
         path,
         claim: metric,
         reason: "This quantified claim is not present in a related approved resume line or confirmed evidence.",
+        text,
       });
     }
   }

@@ -569,8 +569,12 @@ approved-resume builder experience with identical section controls on every sect
 - **Evidence guard** — AI-proposed headline, summary, impact, skill,
   recognition, experience, and extra-section claims are checked against the
   approved resume lane plus confirmed gap answers and supplements. Unsupported
-  AI changes revert to source wording. PDF export is blocked if manual edits
-  still introduce an unsupported metric or substantive claim.
+  AI changes revert to source wording. If manual edits introduce unsupported
+  quantified claims, PDF export opens a review dialog listing every claim, its
+  location, and the affected line. The user can return to the editor to fix the
+  claims or explicitly choose **Export anyway** to preserve the draft as written.
+  The saved document audit records both the flagged claims and the explicit
+  export override.
 - Live preview pane updates automatically with a 400 ms debounce; Refresh button
   forces an immediate update.
 - Keyword coverage percentage shown in the page header (color-coded green/yellow/red).
