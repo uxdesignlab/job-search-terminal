@@ -2,7 +2,8 @@ import { getActiveProvider } from "../ai/factory";
 import { withRetry, isMalformedJsonResponse } from "../ai/retry";
 import type { AIMessage, AIProvider } from "../ai/provider";
 import { getJobById, getRoleDirections, getResumes, getSkills, getStories, getUserProfile, saveJobEvaluation } from "../db/queries";
-import type { EvaluationSections, JobEvaluationResultInput, JobRecord, StructuredStory } from "../db/types";
+import type { EvaluationSections, JobEvaluationResultInput, JobKeywordSignal, JobRecord, StructuredStory } from "../db/types";
+import { normalizeKeywordSignals } from "./keyword-signals";
 import { coerceResumeBaseToLane, pickResumeBase } from "./resume-lane-picker";
 import { buildJobContext, buildSystemPrompt, type ResumeExcerpt } from "./prompts";
 
@@ -140,15 +141,9 @@ Include: estimated base salary band for this role/seniority/location, total comp
 
 // ─── Block E: Personalization Plan ────────────────────────────────────────
 
-export type KeywordEntry = {
-  keyword: string;
-  priority: "required" | "preferred";
-  category: "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential";
-};
-
 type BlockEResult = {
   plan: string[];
-  keywords: KeywordEntry[];
+  keywords: JobKeywordSignal[];
 };
 
 async function runBlockE(provider: AIProvider, systemPrompt: string, jobCtx: string, blockA: BlockAResult, blockB: BlockBResult): Promise<BlockEResult> {
@@ -162,36 +157,37 @@ Archetype: ${blockA.archetype} | Gaps: ${blockB.gaps.slice(0, 3).join("; ")}
 
 Create a CV/LinkedIn personalization roadmap. Return JSON:
 - "plan": up to 6 bullet strings — specific summary rewrites, bullet reorders, skills to emphasize, LinkedIn headline changes
-- "keywords": 20-25 ATS keyword objects. ATS systems do exact-phrase scanning — precision matters more than breadth.
+- "keywords": 12-18 high-signal job keyword objects. These support recruiter search, resume parsing, and skills/context matching; they are not a universal ATS score.
 
 EXTRACTION RULES (follow strictly):
-1. Use the verbatim phrase from the job posting — never paraphrase or invent a synonym.
-2. ALWAYS include the target job title and its closest 1-2 variants as "title" category keywords (e.g. "Senior Product Designer", "Product Design Lead"). These carry the highest ATS weight.
-3. Extract every named tool, platform, certification, and framework exactly as written (Figma, Workday, AWS, PMP, etc.) — these are exact-match signals.
-4. Pull hard-skill phrases from Required/Qualifications sections; mark those "required".
-5. Pull soft-skill and context phrases from Preferred/Nice-to-have; mark those "preferred".
-6. For "X+ years of [skill]" requirements, extract the skill phrase (e.g. "product design leadership", "enterprise UX") — not the years number itself.
-7. Include domain phrases that distinguish this role from generic ones (e.g. "healthcare SaaS", "B2B enterprise", "design operations").
-8. Do NOT include standalone adjectives ("strong", "excellent") — only include them inside a meaningful phrase.
-9. Do NOT duplicate semantically identical phrases — pick the longer/more specific one.
-10. Aim for 20-25 keywords covering: title variants, hard skills, soft skills, tools, domain context, and methodology.
+1. Use a verbatim phrase that appears in the title or posting. Never invent title variants or synonyms.
+2. Include the exact target job title once. Do not add another title unless that title also appears in the posting.
+3. Extract every named tool, platform, certification, license, and framework exactly as written.
+4. Mark the title and explicit Basic/Required/Must-have qualifications "critical".
+5. Mark core responsibilities and repeated job-specific competencies "required".
+6. Mark Preferred/Nice-to-have qualifications and useful one-off context "preferred".
+7. For "X+ years of [skill]", extract the skill phrase, not the years number.
+8. Include only domain phrases that distinguish this role from generic roles.
+9. Exclude employer marketing language, benefits, generic traits, and low-signal wording such as "best-in-class," "team player," "attention to detail," or "fast-paced environment."
+10. Do not turn full responsibility sentences into keywords. Prefer concise 1-6 word skills, methods, tools, credentials, and domains.
+11. Do not duplicate semantically identical phrases. Prefer the more specific phrase.
+12. Precision is more important than reaching the maximum count.
 
 Each keyword object:
 - "keyword": verbatim phrase (1-6 words; single-word tools/certs are fine)
-- "priority": "required" (in Required/Must-have section or stated multiple times) | "preferred" (Preferred/Nice-to-have or mentioned once)
-- "category": "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential"`
+- "priority": "critical" | "required" | "preferred"
+- "category": "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential"
+- "source": "job_title" | "basic_qualification" | "required_qualification" | "preferred_qualification" | "responsibility" | "description"
+- "rationale": one short sentence explaining why this phrase matters`
     }
   ];
   const raw = await provider.generateJSON<{ plan: string[]; keywords: unknown[] }>(messages, '{"plan":[],"keywords":[]}');
-  const keywords: KeywordEntry[] = (raw.keywords ?? [])
-    .filter((k): k is KeywordEntry => typeof k === "object" && k !== null && "keyword" in k)
-    .map((k) => ({
-      keyword: String((k as KeywordEntry).keyword),
-      priority: (k as KeywordEntry).priority === "preferred" ? "preferred" : "required",
-      category: (["title", "technical", "soft", "domain", "tool", "methodology", "credential"] as const).includes((k as KeywordEntry).category)
-        ? (k as KeywordEntry).category
-        : "technical"
-    }));
+  const description = `${jobCtx}`;
+  const titleMatch = jobCtx.match(/Title:\s*([^\n]+)/);
+  const keywords = normalizeKeywordSignals(raw.keywords ?? [], {
+    title: titleMatch?.[1]?.trim() ?? "",
+    description,
+  });
   return { plan: raw.plan ?? [], keywords };
 }
 
@@ -418,11 +414,7 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   const score = Math.max(10, Math.min(98, blockB.fitScore));
   const resumeBase = pickResumeBase(blockA.archetype, resumes.map((r) => r.name));
 
-  // Required keywords first, then preferred — used for ATS prioritization in tailoring
-  const orderedKeywords = [
-    ...blockE.keywords.filter((k) => k.priority === "required"),
-    ...blockE.keywords.filter((k) => k.priority === "preferred"),
-  ].map((k) => k.keyword);
+  const orderedKeywords = blockE.keywords.map((keyword) => keyword.keyword);
 
   return {
     id: `evaluation-${job.id}`,
@@ -441,6 +433,7 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
     sections,
     legitimacyLabel: blockGResult.assessment,
     keywords: orderedKeywords,
+    keywordSignals: blockE.keywords,
     userCorrection: {},
     providerUsed: provider.name,
     modelUsed: provider.effectiveModel,

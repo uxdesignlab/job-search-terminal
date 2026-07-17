@@ -8,6 +8,7 @@ import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
 import { keywordCoverageFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
 import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceAuditIssue } from "./evidence-audit";
+import { legacyKeywordSignals } from "../evaluation/keyword-signals";
 
 export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
 
@@ -48,6 +49,7 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   const approvedVersion = getApprovedResumeVersion(baseResume);
   const resolvedSectionModes = resolveSectionModes(approvedVersion.sections, sectionModes);
   const sourceDraft = buildTailoredContent(job, evaluation, profile, skills, approvedVersion, resolvedSectionModes);
+  const keywordSignals = effectiveKeywordSignals(evaluation, job);
 
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
@@ -61,11 +63,12 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
 
   if (hasAIKey) {
     try {
+      const keywordInputs = keywordSignals.length > 0 ? keywordSignals : evaluation.keywords;
       const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
-        evidenceTextForDraft(sourceDraft), evaluation.keywords
+        evidenceTextForDraft(sourceDraft), keywordInputs
       );
       // Keywords whose words are already in the full evidence corpus → safe to use verbatim.
-      const confirmedKws = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
+      const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
       const notExactInDraft = [...partialInDraft, ...missingFromDraft];
       aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws);
     } catch (error) {
@@ -73,10 +76,13 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     }
   }
 
-  const confirmedKwsForInjection = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
+  const confirmedKwsForInjection = keywordSignals
+    .filter((signal) => signal.priority !== "preferred" && signal.category !== "title")
+    .map((signal) => signal.keyword)
+    .filter((keyword) => isKeywordInText(evidenceText, keyword));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
   const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const content = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes);
+  const content = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -89,7 +95,7 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     pdfPath,
     format: paperFormatFor(job)
   });
-  const keywordCoverage = keywordCoverageFor(content, evaluation.keywords);
+  const keywordCoverage = keywordCoverageFor(content, keywordSignals.length > 0 ? keywordSignals : evaluation.keywords);
   const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
   const document: GeneratedDocumentInput = {
     id,
@@ -150,6 +156,7 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const approvedVersion = getApprovedResumeVersion(baseResume);
   const resolvedSectionModes = resolveSectionModes(approvedVersion.sections, sectionModes);
   const sourceDraft = buildTailoredContent(job, evaluation, profile, skills, approvedVersion, resolvedSectionModes);
+  const keywordSignals = effectiveKeywordSignals(evaluation, job);
 
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
@@ -162,10 +169,11 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
 
   if (hasAIKey) {
     try {
+      const keywordInputs = keywordSignals.length > 0 ? keywordSignals : evaluation.keywords;
       const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
-        evidenceTextForDraft(sourceDraft), evaluation.keywords
+        evidenceTextForDraft(sourceDraft), keywordInputs
       );
-      const confirmedKws = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
+      const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
       const notExactInDraft = [...partialInDraft, ...missingFromDraft];
       aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws);
     } catch (error) {
@@ -173,11 +181,14 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     }
   }
 
-  const confirmedKwsForInjection = evaluation.keywords.filter((kw) => isKeywordInText(evidenceText, kw));
+  const confirmedKwsForInjection = keywordSignals
+    .filter((signal) => signal.priority !== "preferred" && signal.category !== "title")
+    .map((signal) => signal.keyword)
+    .filter((keyword) => isKeywordInText(evidenceText, keyword));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
   const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const draft = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes);
-  const keywordCoverage = keywordCoverageFor(draft, evaluation.keywords);
+  const draft = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
+  const keywordCoverage = keywordCoverageFor(draft, keywordSignals.length > 0 ? keywordSignals : evaluation.keywords);
   const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
   const date = new Date().toISOString().slice(0, 10);
   const documentId = `document-${job.id}`;
@@ -256,13 +267,23 @@ function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume
     ?? resumes.find((resume) => resume.name === doc.baseResume);
 }
 
+function effectiveKeywordSignals(evaluation: EvaluationRecord, job: JobRecord) {
+  return evaluation.keywordSignals.length > 0
+    ? evaluation.keywordSignals
+    : legacyKeywordSignals(evaluation.keywords, {
+        title: job.title,
+        description: job.rawDescription || job.parsedDescription || "",
+      });
+}
+
 // After AI tailoring, inject any confirmed keywords that are still not present as exact phrases
 // directly into the skills list. This handles cases where the AI placed the concept correctly
 // but used a slight paraphrase. Only injects short phrases (≤3 words) to avoid awkward skill entries.
 function injectMissingConfirmedKeywordsIntoSkills(
   draft: ResumeTemplateInput,
   confirmedKeywords: string[],
-  sectionModes: ResumeSectionModeInput[]
+  sectionModes: ResumeSectionModeInput[],
+  keywordSignals: EvaluationRecord["keywordSignals"] = []
 ): ResumeTemplateInput {
   if (confirmedKeywords.length === 0) return draft;
   if (modeForSection("skills", sectionModes) === "keep") return draft;
@@ -271,7 +292,9 @@ function injectMissingConfirmedKeywordsIntoSkills(
   );
   const toInject = [...stillPartial, ...stillMissing].filter((kw) => {
     const wordCount = kw.trim().split(/\s+/).length;
-    return wordCount <= 3;
+    const signal = keywordSignals.find((entry) => entry.keyword.toLowerCase() === kw.toLowerCase());
+    const skillSafeCategory = !signal || ["technical", "tool", "methodology", "credential"].includes(signal.category);
+    return wordCount <= 3 && skillSafeCategory;
   });
   if (toInject.length === 0) return draft;
   // keywordStrengthDetailsForText returns lowercased labels; restore original casing.
@@ -354,7 +377,10 @@ function buildTailoredContent(
   approvedVersion: ResumeBuilderVersionRecord,
   sectionModes: ResumeSectionModeInput[]
 ) {
-  const keywords = evaluation.keywords.slice(0, 8);
+  const keywordSignals = effectiveKeywordSignals(evaluation, job);
+  const keywords = (keywordSignals.length > 0
+    ? keywordSignals.filter((signal) => signal.priority !== "preferred").map((signal) => signal.keyword)
+    : evaluation.keywords).slice(0, 12);
   const preferredSkillNames = skills
     .filter((skill) => skill.usePreference !== "use_less")
     .map((skill) => skill.skillName);

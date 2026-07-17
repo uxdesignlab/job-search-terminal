@@ -123,6 +123,14 @@ export type EvaluationSections = {
   storiesStructured?: StructuredStory[];
 };
 
+export type JobKeywordSignal = {
+  keyword: string;
+  priority: "critical" | "required" | "preferred";
+  category: "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential";
+  source: "job_title" | "basic_qualification" | "required_qualification" | "preferred_qualification" | "responsibility" | "description";
+  rationale: string;
+};
+
 export type EvaluationRecord = {
   id: string;
   jobId: string;
@@ -140,6 +148,7 @@ export type EvaluationRecord = {
   sections: EvaluationSections;
   legitimacyLabel: string;
   keywords: string[];
+  keywordSignals: JobKeywordSignal[];
   userCorrection: Record<string, JsonValue>;
   providerUsed: string;
   modelUsed: string;

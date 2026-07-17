@@ -1,4 +1,6 @@
 import type { ResumeTemplateInput } from "./resume-template";
+import type { JobKeywordSignal } from "../db/types";
+import { keywordSignalWeight } from "../evaluation/keyword-signals";
 
 const STOP_WORDS = new Set([
   "a",
@@ -45,28 +47,31 @@ export type KeywordCoverageDetails = {
   percentage: number;
 };
 
-// Three-tier ATS coverage: exact phrase > partial word match > missing entirely.
-// "exact"   = the full phrase appears verbatim → ATS will reliably score this.
-// "partial" = individual terms appear but not as a phrase → ATS may miss it.
-// "missing" = not present at all.
+// Three-tier text alignment: exact phrase > related wording in context > missing.
+// This describes the app's own comparison and does not reproduce an employer ATS score.
 export type KeywordStrengthDetails = {
   exact: string[];
   partial: string[];
   missing: string[];
   total: number;
-  exactScore: number;   // % of keywords with full phrase — the honest ATS number
-  broadScore: number;   // % with exact OR partial — the loose legacy number
+  exactScore: number;   // Unweighted share of phrases present verbatim.
+  broadScore: number;   // Unweighted share with exact or related-term presence.
+  alignmentScore: number; // Priority-weighted text alignment; partial matches earn half credit.
+  matchedWeight: number;
+  totalWeight: number;
 };
 
-export function keywordCoverageFor(content: ResumeTemplateInput, keywords: string[]) {
-  return keywordCoverageDetailsForText(extractTextValues(content), keywords).percentage;
+export type KeywordInput = string | JobKeywordSignal;
+
+export function keywordCoverageFor(content: ResumeTemplateInput, keywords: KeywordInput[]) {
+  return keywordStrengthDetailsForText(extractVisibleResumeText(content), keywords).alignmentScore;
 }
 
-export function keywordStrengthDetailsForText(text: string, keywords: string[]): KeywordStrengthDetails {
+export function keywordStrengthDetailsForText(text: string, keywords: KeywordInput[]): KeywordStrengthDetails {
   const normalizedText = normalizeForKeywordMatching(text);
   const relevant = uniqueKeywordEntries(keywords);
   if (relevant.length === 0) {
-    return { exact: [], partial: [], missing: [], total: 0, exactScore: 0, broadScore: 0 };
+    return { exact: [], partial: [], missing: [], total: 0, exactScore: 0, broadScore: 0, alignmentScore: 0, matchedWeight: 0, totalWeight: 0 };
   }
   const exact: string[] = [];
   const partial: string[] = [];
@@ -80,6 +85,14 @@ export function keywordStrengthDetailsForText(text: string, keywords: string[]):
       missing.push(entry.label);
     }
   }
+  const exactSet = new Set(exact);
+  const partialSet = new Set(partial);
+  const totalWeight = relevant.reduce((sum, entry) => sum + entry.weight, 0);
+  const matchedWeight = relevant.reduce((sum, entry) => {
+    if (exactSet.has(entry.label)) return sum + entry.weight;
+    if (partialSet.has(entry.label)) return sum + entry.weight * 0.5;
+    return sum;
+  }, 0);
   return {
     exact,
     partial,
@@ -87,6 +100,9 @@ export function keywordStrengthDetailsForText(text: string, keywords: string[]):
     total: relevant.length,
     exactScore: Math.round((exact.length / relevant.length) * 100),
     broadScore: Math.round(((exact.length + partial.length) / relevant.length) * 100),
+    alignmentScore: totalWeight ? Math.round((matchedWeight / totalWeight) * 100) : 0,
+    matchedWeight,
+    totalWeight,
   };
 }
 
@@ -97,11 +113,11 @@ export function isKeywordInText(text: string, keyword: string): boolean {
   return keywordHit(normalizedText, normalizedKeyword);
 }
 
-export function missingKeywordsFor(content: ResumeTemplateInput, keywords: string[]): string[] {
+export function missingKeywordsFor(content: ResumeTemplateInput, keywords: KeywordInput[]): string[] {
   return keywordCoverageDetailsForText(extractTextValues(content), keywords).missing;
 }
 
-export function keywordCoverageDetailsForText(text: string, keywords: string[]): KeywordCoverageDetails {
+export function keywordCoverageDetailsForText(text: string, keywords: KeywordInput[]): KeywordCoverageDetails {
   const normalizedText = normalizeForKeywordMatching(text);
   const relevant = uniqueKeywordEntries(keywords);
   if (relevant.length === 0) {
@@ -126,6 +142,26 @@ function extractTextValues(value: unknown): string {
     return Object.values(value as Record<string, unknown>).map(extractTextValues).join(" ");
   }
   return "";
+}
+
+function extractVisibleResumeText(content: ResumeTemplateInput): string {
+  return extractTextValues({
+    name: content.name,
+    headline: content.headline,
+    contactItems: content.contactItems,
+    summaryHeading: content.summaryHeading,
+    summary: content.summary,
+    impactHeading: content.impactHeading,
+    impactItems: content.impactItems,
+    experienceHeading: content.experienceHeading,
+    experience: content.experience,
+    skillsHeading: content.skillsHeading,
+    skills: content.skills,
+    recognitionHeading: content.recognitionHeading,
+    recognition: content.recognition,
+    extraSections: content.extraSections,
+    education: content.education,
+  });
 }
 
 // Exact phrase match only — no term-by-term fallback.
@@ -156,14 +192,7 @@ function keywordPartHit(normalizedText: string, normalizedKeyword: string): bool
 
   const terms = keywordTerms(normalizedKeyword);
   if (terms.length === 0) return false;
-
-  const matchedTerms = terms.filter((term) => termHit(normalizedText, term));
-
-  if (terms.length <= 4) {
-    return matchedTerms.length === terms.length;
-  }
-
-  return matchedTerms.length >= Math.max(4, Math.ceil(terms.length * 0.65));
+  return termsWithinWindow(normalizedText, terms, 30);
 }
 
 function keywordTerms(keyword: string): string[] {
@@ -177,6 +206,17 @@ function keywordTerms(keyword: string): string[] {
 
 function termHit(normalizedText: string, term: string): boolean {
   return containsPhrase(normalizedText, term) || singularCandidates(term).some((candidate) => containsPhrase(normalizedText, candidate));
+}
+
+function termsWithinWindow(normalizedText: string, terms: string[], windowSize: number): boolean {
+  const words = normalizedText.split(" ").filter(Boolean);
+  const required = terms.length <= 4 ? terms.length : Math.max(4, Math.ceil(terms.length * 0.65));
+  for (let start = 0; start < words.length; start += 1) {
+    const window = ` ${words.slice(start, start + windowSize).join(" ")} `;
+    const matches = terms.filter((term) => termHit(window, term)).length;
+    if (matches >= required) return true;
+  }
+  return false;
 }
 
 function singularCandidates(term: string): string[] {
@@ -213,16 +253,21 @@ function unique<T>(items: T[]): T[] {
   return [...new Set(items)];
 }
 
-function uniqueKeywordEntries(keywords: string[]): Array<{ label: string; normalized: string }> {
+function uniqueKeywordEntries(keywords: KeywordInput[]): Array<{ label: string; normalized: string; weight: number }> {
   const seen = new Set<string>();
-  const entries: Array<{ label: string; normalized: string }> = [];
+  const entries: Array<{ label: string; normalized: string; weight: number }> = [];
 
-  for (const keyword of keywords) {
+  for (const keywordInput of keywords) {
+    const keyword = typeof keywordInput === "string" ? keywordInput : keywordInput.keyword;
     const label = keyword.trim().toLowerCase();
     const normalized = normalizeForKeywordMatching(keyword);
     if (!label || !normalized || seen.has(normalized)) continue;
     seen.add(normalized);
-    entries.push({ label, normalized });
+    entries.push({
+      label,
+      normalized,
+      weight: typeof keywordInput === "string" ? 3 : keywordSignalWeight(keywordInput.priority),
+    });
   }
 
   return entries;

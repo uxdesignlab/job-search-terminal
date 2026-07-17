@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, LinkButton, Modal } from "@/components/ui";
 import { keywordStrengthDetailsForText } from "@/lib/documents/keyword-coverage";
+import type { JobKeywordSignal } from "@/lib/db/types";
 import { renderResumeHtml, type ResumeTemplateInput } from "@/lib/documents/resume-template";
 
 type SectionAIState = {
@@ -146,6 +147,7 @@ type Props = {
   baseResume: string;
   keywordCoverage: number;
   keywords: string[];
+  keywordSignals: JobKeywordSignal[];
   supportedKeywords: string[];
   tailoringStatus: string;
   fallbackReason: string;
@@ -238,7 +240,7 @@ const inputCls = "w-full rounded-control border border-border bg-surface px-3 py
 const textareaCls = `${inputCls} resize-y leading-5`;
 const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted";
 
-export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, supportedKeywords, tailoringStatus, fallbackReason }: Props) {
+export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, keywordSignals, supportedKeywords, tailoringStatus, fallbackReason }: Props) {
   const router = useRouter();
   const [state, setState] = useState<EditorState>(() => draftToState(initialDraft));
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => {
@@ -276,10 +278,10 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
 
   const kwStrength = useMemo(() => {
     if (!keywords.length) {
-      return { exact: [], partial: [], missing: [], total: 0, exactScore: keywordCoverage, broadScore: keywordCoverage };
+      return { exact: [], partial: [], missing: [], total: 0, exactScore: keywordCoverage, broadScore: keywordCoverage, alignmentScore: keywordCoverage, matchedWeight: 0, totalWeight: 0 };
     }
-    return keywordStrengthDetailsForText(extractStateText(state), keywords);
-  }, [state, keywords, keywordCoverage]);
+    return keywordStrengthDetailsForText(extractStateText(state), keywordSignals.length > 0 ? keywordSignals : keywords);
+  }, [state, keywords, keywordSignals, keywordCoverage]);
 
   const keywordTotal = kwStrength.total;
   // All keywords not present as exact phrases or partial matches
@@ -289,6 +291,25 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
   // Missing keywords
   const missingSupportedKw = missingKw.filter((kw) => supportedKeywordSet.has(kw.toLowerCase()));
   const unsupportedGapKw = missingKw.filter((kw) => !supportedKeywordSet.has(kw.toLowerCase()));
+  const signalByKeyword = useMemo(
+    () => new Map(keywordSignals.map((signal) => [signal.keyword.toLowerCase(), signal])),
+    [keywordSignals],
+  );
+
+  function keywordTitle(keyword: string, fallback: string) {
+    const signal = signalByKeyword.get(keyword.toLowerCase());
+    if (!signal) return fallback;
+    const priority = signal.priority === "critical" ? "Must-have" : signal.priority === "required" ? "Core" : "Preferred";
+    return `${priority} · ${signal.category}${signal.rationale ? ` · ${signal.rationale}` : ""}`;
+  }
+
+  function keywordPriorityLabel(keyword: string) {
+    const priority = signalByKeyword.get(keyword.toLowerCase())?.priority;
+    if (priority === "critical") return "Must";
+    if (priority === "required") return "Core";
+    if (priority === "preferred") return "Pref";
+    return "";
+  }
 
   function addKeywordToSkills(keyword: string) {
     setState((previous) => {
@@ -795,14 +816,11 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           <h1 className="text-lg font-semibold text-ink">{documentTitle}</h1>
           <p className="mt-0.5 text-xs text-muted">
             Base: {baseResume} ·{" "}
-            <span className={kwStrength.exactScore >= 70 ? "text-success font-medium" : kwStrength.exactScore >= 40 ? "text-warning font-medium" : "text-danger font-medium"}>
-              {kwStrength.exactScore}% ATS coverage
+            <span className={kwStrength.alignmentScore >= 70 ? "text-success font-medium" : kwStrength.alignmentScore >= 40 ? "text-warning font-medium" : "text-danger font-medium"}>
+              {kwStrength.alignmentScore}% job keyword alignment
             </span>
             {kwStrength.partial.length > 0 && (
-              <span className="ml-1 text-warning font-medium">· {kwStrength.partial.length} partial</span>
-            )}
-            {kwStrength.exactScore < 70 && (
-              <span className="ml-1 text-muted">(target: 70%+ exact phrases)</span>
+              <span className="ml-1 text-warning font-medium">· {kwStrength.partial.length} related</span>
             )}
           </p>
         </div>
@@ -831,7 +849,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
         {/* Left: editor */}
         <div className="overflow-y-auto border-b border-border bg-panel p-5 lg:border-b-0 lg:border-r">
           <p className="mb-4 text-xs text-muted">
-            Edit any section below. Use ✨ Improve to refine content with AI — it will incorporate job keywords into suggestions. The preview updates automatically.
+            Edit any section below. Use ✨ Improve to refine content with AI — it will prioritize evidence-supported job language. The preview updates automatically.
           </p>
           {tailoringStatus === "source-only" && (
             <p className="mb-4 rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-xs leading-5 text-muted">
@@ -843,15 +861,17 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           {keywords.length > 0 && (
             <div className="mb-4 overflow-hidden rounded-control border border-border bg-surface">
               <button
-                className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-border/40 transition-colors"
+                aria-controls="job-keyword-alignment-details"
+                aria-expanded={kwExpanded}
+                className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-border/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent"
                 onClick={() => setKwExpanded((v) => !v)}
                 type="button"
               >
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted">Keyword Coverage</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted">Job keyword alignment</span>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-semibold tabular-nums ${
-                    kwStrength.exactScore >= 70 ? "text-success"
-                    : kwStrength.exactScore >= 40 ? "text-warning"
+                    kwStrength.alignmentScore >= 70 ? "text-success"
+                    : kwStrength.alignmentScore >= 40 ? "text-warning"
                     : "text-danger"
                   }`}>
                     {kwStrength.exact.length}/{keywordTotal}
@@ -866,13 +886,17 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                 </div>
               </button>
               {kwExpanded && (
-                <div className="border-t border-border px-3 pb-3 pt-2 grid gap-2.5">
+                <div className="border-t border-border px-3 pb-3 pt-2 grid gap-2.5" id="job-keyword-alignment-details">
 
-                  {/* Exact phrase matches — ATS safe */}
+                  <p className="text-[11px] leading-4 text-muted">
+                    Weighted by must-have, core, and preferred language from the posting. This is the app&apos;s text-alignment check, not a score from the employer&apos;s ATS.
+                  </p>
+
+                  {/* Exact phrase matches */}
                   {kwStrength.exact.length > 0 && (
                     <div>
                       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-success/80">
-                        Exact phrase match — ATS safe
+                        Exact wording found
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {kwStrength.exact.map((kw) => {
@@ -881,15 +905,15 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                             <button
                               key={kw}
                               type="button"
-                              title={isActive ? "Click to clear highlight" : "Phrase appears verbatim — ATS will score this"}
+                              title={isActive ? "Click to clear highlight" : keywordTitle(kw, "Phrase appears verbatim in the resume")}
                               onClick={() => setActiveHighlightKeyword(isActive ? null : kw)}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent ${
                                 isActive
                                   ? "border-success bg-success text-white"
                                   : "border-success/25 bg-success/10 text-success hover:border-success/60 hover:bg-success/20"
                               }`}
                             >
-                              ✓ {kw}
+                              ✓ {keywordPriorityLabel(kw) && <span className="opacity-70">{keywordPriorityLabel(kw)} ·</span>} {kw}
                             </button>
                           );
                         })}
@@ -901,7 +925,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                   {kwStrength.partial.length > 0 && (
                     <div>
                       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-warning/80">
-                        Words present, not as a phrase — ATS may miss
+                        Related wording found
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {kwStrength.partial.map((kw) => {
@@ -911,23 +935,23 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                             <button
                               key={kw}
                               type="button"
-                              title={isActive ? "Click to clear" : isSupported ? "Your evidence supports this — add it as an exact phrase" : "Confirm evidence, then add as exact phrase"}
+                              title={isActive ? "Click to clear" : keywordTitle(kw, isSupported ? "Your evidence supports this wording" : "Confirm evidence before adding this wording")}
                               onClick={() => {
                                 setActiveHighlightKeyword(isActive ? null : kw);
                               }}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent ${
                                 isActive
                                   ? "border-warning bg-warning text-white"
                                   : "border-warning/35 bg-warning/10 text-warning hover:border-warning/60"
                               }`}
                             >
-                              ~ {kw}
+                              ~ {keywordPriorityLabel(kw) && <span className="opacity-70">{keywordPriorityLabel(kw)} ·</span>} {kw}
                             </button>
                           );
                         })}
                       </div>
                       <p className="mt-1 text-[10px] text-muted leading-4">
-                        Click a keyword to highlight where the words appear, then weave the exact phrase into that sentence.
+                        Click to compare the related words in context. Use the job&apos;s exact wording only when it stays natural and true.
                       </p>
                     </div>
                   )}
@@ -942,12 +966,12 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                         {missingSupportedKw.map((kw) => (
                           <button
                             key={kw}
-                            className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-xs text-accent hover:border-accent hover:bg-accent/10"
+                            className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/5 px-2 py-0.5 text-xs text-accent hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent"
                             onClick={() => addKeywordToSkills(kw)}
-                            title="Evidence confirmed — click to add to Skills"
+                            title={keywordTitle(kw, "Evidence confirmed — click to add to Skills")}
                             type="button"
                           >
-                            + {kw}
+                            + {keywordPriorityLabel(kw) && <span className="opacity-70">{keywordPriorityLabel(kw)} ·</span>} {kw}
                           </button>
                         ))}
                       </div>
@@ -963,13 +987,13 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                       <div className="flex flex-wrap gap-1.5">
                         {[...partialUnsupportedKw, ...unsupportedGapKw].map((keyword) => (
                           <button
-                            className="rounded-full border border-border bg-panel px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-accent"
+                            className="rounded-full border border-border bg-panel px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent"
                             key={keyword}
                             onClick={() => beginKeywordConfirmation(keyword)}
-                            title="Confirm evidence before adding this keyword"
+                            title={keywordTitle(keyword, "Confirm evidence before adding this keyword")}
                             type="button"
                           >
-                            ! {keyword}
+                            ! {keywordPriorityLabel(keyword) && <span className="opacity-70">{keywordPriorityLabel(keyword)} ·</span>} {keyword}
                           </button>
                         ))}
                       </div>
@@ -980,7 +1004,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                     <p aria-live="polite" className="text-xs text-muted">{keywordConfirmationStatus}</p>
                   )}
                   {kwStrength.exact.length === keywordTotal && keywordTotal > 0 && (
-                    <p className="text-xs font-medium text-success">All keywords present as exact phrases — strong ATS coverage.</p>
+                    <p className="text-xs font-medium text-success">All selected job phrases are present verbatim. Review readability before export.</p>
                   )}
                 </div>
               )}

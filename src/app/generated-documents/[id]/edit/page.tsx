@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { Shell } from "@/components/ui/shell";
-import { getGeneratedDocumentById, getEvaluationByJobId, getJobGapResponses, getProfileSupplements, getResumes } from "@/lib/db/queries";
+import { getGeneratedDocumentById, getEvaluationByJobId, getJobById, getJobGapResponses, getProfileSupplements, getResumes } from "@/lib/db/queries";
 import { ResumeDraftEditor } from "@/components/resume-draft-editor";
 import type { ResumeTemplateInput } from "@/lib/documents/resume-template";
 import { keywordCoverageFor, isKeywordInText } from "@/lib/documents/keyword-coverage";
+import { legacyKeywordSignals } from "@/lib/evaluation/keyword-signals";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +28,15 @@ export default async function EditResumePage({ params }: EditPageProps) {
   }
 
   const evaluation = getEvaluationByJobId(doc.jobId);
+  const job = getJobById(doc.jobId);
+  const keywordSignals = evaluation?.keywordSignals?.length
+    ? evaluation.keywordSignals
+    : legacyKeywordSignals(evaluation?.keywords ?? [], {
+        title: job?.title ?? "",
+        description: job?.rawDescription || job?.parsedDescription || "",
+      });
   const keywordCoverage = evaluation?.keywords?.length
-    ? keywordCoverageFor(draft, evaluation.keywords)
+    ? keywordCoverageFor(draft, keywordSignals.length > 0 ? keywordSignals : evaluation.keywords)
     : doc.keywordCoverage;
   const resumes = getResumes();
   const lane = resumes.find((resume) => resume.id === doc.baseResumeId)
@@ -51,6 +59,7 @@ export default async function EditResumePage({ params }: EditPageProps) {
         baseResume={doc.baseResume}
         keywordCoverage={keywordCoverage}
         keywords={evaluation?.keywords ?? []}
+        keywordSignals={keywordSignals}
         supportedKeywords={supportedKeywords}
         tailoringStatus={doc.tailoringStatus}
         fallbackReason={doc.fallbackReason}

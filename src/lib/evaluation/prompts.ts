@@ -42,7 +42,7 @@ ${roleDirections.map((r) => `- ${r.roleFamily}: ${r.fitLevel} (${r.score}%) — 
 }
 
 export function buildJobContext(job: JobRecord): string {
-  const description = (job.rawDescription || job.parsedDescription || "").slice(0, 6000);
+  const description = (job.rawDescription || job.parsedDescription || "").slice(0, 12000);
   return `## Job Posting
 Title: ${job.title}
 Company: ${job.company}
