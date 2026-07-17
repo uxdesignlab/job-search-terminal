@@ -797,8 +797,8 @@ export const helpPages: HelpPage[] = [
             body: "Tailoring uses approved resume content plus gap answers and profile supplements that have enough concrete detail. Draft gap answers marked Needs detail are not used until completed.",
           },
           {
-            title: "Review keyword coverage",
-            body: "Coverage is a guide, not a guarantee. Add already-supported keywords directly. For a missing keyword, select the roles where you applied it, optionally add context, then review distinct rewrites of the most relevant existing bullets. Edit or remove any change before approval.",
+            title: "Review job keyword alignment",
+            body: "Alignment is the app's weighted text check, not a score from the employer's ATS. Must-have language counts more than preferred wording. Add only evidence-supported phrases; for a missing requirement, select the roles where you used it, add context, and review the proposed bullet before accepting it.",
           },
           {
             title: "Edit the draft",

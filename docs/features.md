@@ -276,22 +276,20 @@ Tabbed view for a single job. Four tabs:
   not inferred from skill abstractions alone.
 
 **ATS keyword extraction (Block E):**
-- Extracts **20–25 keywords** per job posting using verbatim-phrase discipline:
-  the LLM is instructed to pull the exact phrasing from the JD, never paraphrase.
-- The target **job title and close variants** are always extracted first as `"title"`
-  category keywords — these carry the highest ATS weight and drive summary positioning.
-- Named tools, platforms, certifications, and frameworks are extracted exactly as written
-  (Figma, Workday, AWS, PMP, etc.) for exact-match ATS signals.
-- Hard-skill phrases from Required/Qualifications sections → `priority: "required"`.
-- Soft-skill and context phrases from Preferred/Nice-to-have → `priority: "preferred"`.
-- Domain context phrases (e.g. "healthcare SaaS", "B2B enterprise") are captured to
-  distinguish the role from generic postings.
-- For "X+ years of [skill]" requirements, the skill phrase itself is captured (not the
-  number) so it can be verified against the candidate's resume.
+- Extracts **12–18 high-signal phrases** per job posting. Precision is preferred
+  over filling a quota; employer marketing copy and generic traits are excluded.
+- The exact target title is captured once. Title variants are kept only when they
+  also appear in the posting; the evaluator cannot invent synonyms.
+- Named tools, platforms, certifications, and frameworks are extracted exactly as written.
+- Exact title and explicit Basic/Required/Must-have qualifications → `priority: "critical"`.
+- Core responsibilities and repeated job-specific competencies → `priority: "required"`.
+- Preferred/Nice-to-have qualifications and useful one-off context → `priority: "preferred"`.
+- Domain context phrases are captured only when they distinguish the role.
 - Categories: `"title"` | `"technical"` | `"soft"` | `"domain"` | `"tool"` |
   `"methodology"` | `"credential"`.
-- Keywords are stored in priority order (required first, title category first within
-  required) and used during resume tailoring.
+- Each signal stores its category, source section, priority, and short rationale.
+- A deterministic validator rejects phrases that are absent from the posting, longer
+  than six words, duplicated, or known low-signal wording.
 
 ### Resume tab
 - Generate tailored resume for this job: picks best base resume, produces
@@ -303,8 +301,7 @@ Tabbed view for a single job. Four tabs:
 **Tailored resume AI context:**
 - Source resume full text (up to 5,000 chars) — the AI must verify every keyword
   and strength against this text before using it.
-- All evaluation keywords in priority order (required first, then preferred); the
-  previous cap of 12 has been removed — all 20-25 extracted keywords are passed.
+- All validated keyword signals with their priority, category, source, and rationale.
 - **Missing keywords** — keywords absent from the pre-AI source draft are identified
   before the AI call and passed as a separate priority list so the AI knows exactly
   which terms to weave in where the source resume provides supporting evidence.
@@ -336,49 +333,53 @@ Tabbed view for a single job. Four tabs:
   showing the AI question and the saved response, with a textarea for more detail.
 - Escape key closes the modal.
 - Modal slides up from the bottom on mobile, centers on desktop.
-- Job description excerpt (up to 3,000 chars) — allows the AI to verify keyword
+- Job description excerpt (up to 10,000 chars) — allows the AI to verify keyword
   context and understand requirement weight, not just the extracted keyword list.
 - Skills preference flags — skills the user wants to emphasize or de-emphasize
   (derived from `use_more` / `use_less` preference on each skill record).
 
 **Keyword placement strategy (added to tailoring prompt):**
-- "required" and title-category keywords that are supported by the candidate's evidence
-  should appear at least once as an exact verbatim phrase — ATS systems do phrase-level
-  matching, so split words don't reliably score.
+- Evidence-supported, high-priority language is considered first. Exact wording is
+  preserved when natural and accurate because recruiters can use literal or Boolean
+  searches, but no phrase is forced merely to raise a percentage.
 - Tool/methodology keywords belong in Skills or within the experience bullet where
   that tool was actually used.
-- Soft-skill phrases fit best in the summary or a high-impact bullet.
-- The target job title or a close variant is worked into the summary when supported.
-- Aim for supported required keywords to appear 1-2 times (once for ATS; twice for
-  human reviewers).
+- Unsupported requirements remain gaps and are never inserted into Skills.
+- The target title is never copied into held job titles. It appears in positioning copy
+  only when the source resume supports that professional identity.
+- Repetition and keyword dumping are explicitly prohibited.
 
 **Three-tier keyword coverage (resume draft editor):**
 The keyword panel in the draft editor classifies each keyword into one of three tiers:
 
 | Tier | Display | Meaning |
 |------|---------|---------|
-| **Exact phrase** | ✓ green chip | Full verbatim phrase present — ATS will reliably score this |
-| **Partial** | ~ amber chip | Individual terms present but not as a phrase — ATS may miss; add as exact phrase |
+| **Exact phrase** | ✓ green chip | Full verbatim phrase is present in the resume |
+| **Related wording** | ~ amber chip | Significant terms are present, but not as the same phrase |
 | **Missing** | + or ! chip | Not found; either add to Skills (if evidence confirmed) or confirm evidence first |
 
-- The header score shows **ATS coverage %** (exact phrases only) — this is the
-  realistic number an ATS parser would produce.
+- The header shows **job keyword alignment**, not an employer ATS score. Critical,
+  required, and preferred signals receive weights of 5, 3, and 1; related wording
+  receives half credit.
+- The UI shows Must/Core/Pref labels and explains that different ATS products and
+  employer configurations search, parse, and match resumes differently.
 - Clicking any chip highlights the keyword in the preview panel (exact phrase = bright
   yellow outline; term occurrences = faint yellow).
 - `supportedKeywords` detection uses the same phrase-aware matching algorithm as
   coverage (previously used raw `string.includes()` which gave false positives).
 
-**Keyword coverage metric:**
+**Job-keyword alignment metric:**
 - For each evaluation keyword, first tries an exact phrase match in the resume text; if that
   fails, splits the keyword into significant words (stripping stop words and single-character
-  tokens), then checks whether any of those words appears in the resume. This word-level
+  tokens), then checks whether the meaningful terms appear within a 30-word context window
+  instead of anywhere in the document. This related-term
   fallback handles multi-word phrases like "agile methodologies" or "Healthcare SaaS" that
   the LLM evaluator commonly produces. Specific acronyms (HIPAA, HL7, FHIR) still require an
   exact match and correctly flag as gaps when missing.
 - Displayed as a percentage on the edit-draft page subtitle and is recomputed live from the
   current evaluation keywords each time the page loads (not cached from generation time).
-- Color-coded threshold: green ≥ 70% (target), orange 40–69%, red < 40%. The target label
-  "(target: 70%+)" appears when coverage is below 70%.
+- Color-coded bands remain green ≥ 70%, orange 40–69%, and red < 40% for quick
+  comparison, without presenting 70% as a universal ATS cutoff.
 
 ### Apply tab
 - Prepare application answers: paste common or custom application questions,

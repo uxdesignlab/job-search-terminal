@@ -1,5 +1,5 @@
 import { getJobById, getResumes, getRoleDirections, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
-import type { EvaluationSections, JobEvaluationResultInput, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
+import type { EvaluationSections, JobEvaluationResultInput, JobKeywordSignal, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { formatPostedDate } from "../dates";
 import { pickResumeBase } from "./resume-lane-picker";
 
@@ -150,6 +150,13 @@ export function buildEvaluation(
     sections,
     legitimacyLabel,
     keywords,
+    keywordSignals: keywords.map((keyword, index): JobKeywordSignal => ({
+      keyword,
+      priority: index < 5 ? "required" : "preferred",
+      category: "technical",
+      source: "description",
+      rationale: "Rule-based fallback keyword found in the posting and candidate profile.",
+    })),
     userCorrection: {},
     providerUsed: "",
     modelUsed: "",

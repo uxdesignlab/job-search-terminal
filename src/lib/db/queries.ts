@@ -28,6 +28,7 @@ import type {
   GeneratedDocumentInput,
   GeneratedDocumentRecord,
   JobEvaluationResultInput,
+  JobKeywordSignal,
   JobRecord,
   JsonValue,
   InterviewQuestionInput,
@@ -203,6 +204,7 @@ type EvaluationRow = {
   sections_json: string;
   legitimacy_label: string;
   keywords_json: string;
+  keyword_signals_json: string;
   user_correction_json: string;
   provider_used: string;
   model_used: string;
@@ -1240,6 +1242,7 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
           sections_json,
           legitimacy_label,
           keywords_json,
+          keyword_signals_json,
           user_correction_json
         ) values (
           @id,
@@ -1258,6 +1261,7 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
           @sectionsJson,
           @legitimacyLabel,
           @keywordsJson,
+          @keywordSignalsJson,
           @userCorrectionJson
         )`
       )
@@ -1270,6 +1274,7 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
         resumeEvidenceJson: JSON.stringify(normalized.resumeEvidence),
         sectionsJson: JSON.stringify(normalized.sections),
         keywordsJson: JSON.stringify(normalized.keywords),
+        keywordSignalsJson: JSON.stringify(normalized.keywordSignals),
         userCorrectionJson: JSON.stringify(normalized.userCorrection)
       });
 
@@ -2220,6 +2225,7 @@ function mapEvaluation(row: EvaluationRow): EvaluationRecord {
     },
     legitimacyLabel: row.legitimacy_label,
     keywords: parseJson<string[]>(row.keywords_json || "[]"),
+    keywordSignals: parseJson<JobKeywordSignal[]>(row.keyword_signals_json || "[]"),
     userCorrection: parseJson<Record<string, JsonValue>>(row.user_correction_json || "{}"),
     providerUsed: row.provider_used ?? "",
     modelUsed: row.model_used ?? "",

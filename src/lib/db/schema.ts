@@ -1209,5 +1209,11 @@ export const migrations = [
         updated_at text not null default current_timestamp
       );
     `
+  },
+  {
+    id: "0056_evaluation_keyword_signals",
+    sql: `
+      alter table evaluations add column keyword_signals_json text not null default '[]';
+    `
   }
 ];
