@@ -96,9 +96,11 @@ The modal has 5 steps — 4 required and 1 optional:
    becomes enabled anyway with a note that extraction can be re-run from the
    Profile page; the user is never trapped.
 3. **Job preferences** — requires desired positions, include title filters, and
-   location work modes. Resume upload or extraction may prefill these values;
-   readiness follows the saved data regardless of whether it came from the
-   onboarding wizard, Profile, Settings, or resume extraction.
+   an explicitly saved location work mode. Resume upload or extraction may
+   prefill role and title values; readiness follows saved data regardless of
+   whether it came from the onboarding wizard, Profile, Settings, or resume
+   extraction. A compatibility mode inferred from an older remote-preference
+   value does not count as the user's work-mode selection.
 4. **Integrations** *(optional)* — covers two free API keys that extend job
    coverage. Each card shows a short explanation, a "Help →" link to the
    relevant help section, and inline input fields with a "Leave blank to keep
@@ -121,7 +123,8 @@ The resume step is considered complete as soon as a PDF has been uploaded to any
 lane (regardless of whether AI extraction succeeded). The dashboard derives
 readiness from the actual saved setup data: a configured provider in the active
 chain, an uploaded resume, desired positions, at least one included title filter,
-and a location work mode. It does not depend on a wizard-only confirmation flag.
+and an explicitly saved location work mode. It does not depend on a wizard-only
+confirmation flag, and inferred compatibility defaults do not satisfy readiness.
 When setup is incomplete, the dashboard names each missing item and links to the
 screen where it can be completed. When ready, the header shows **Profile ready**.
 The Integrations step is never a gate — completing it only enables optional

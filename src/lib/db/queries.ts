@@ -250,6 +250,7 @@ type ApplicationAnswerDraftRow = {
 
 export function getUserProfile(): UserProfileRecord {
   const row = getDatabase().prepare("select * from user_profile order by created_at asc limit 1").get() as ProfileRow;
+  const savedWorkModes = parseJson<string[]>(row.work_modes_json ?? "[]", []);
 
   return {
     id: row.id,
@@ -262,7 +263,8 @@ export function getUserProfile(): UserProfileRecord {
     desiredIndustries: parseJson<string[]>(row.desired_industries_json),
     compensationNeeds: row.compensation_needs,
     workPreferences: parseJson<string[]>(row.work_preferences_json),
-    workModes: normalizeWorkModes(parseJson<string[]>(row.work_modes_json ?? "[]"), parseJson<string[]>(row.work_preferences_json), row.remote_preference),
+    workModes: normalizeWorkModes(savedWorkModes, parseJson<string[]>(row.work_preferences_json), row.remote_preference),
+    hasExplicitWorkModes: getExplicitWorkModes(savedWorkModes).length > 0,
     dealBreakers: parseJson<string[]>(row.deal_breakers_json),
     careerIntent: row.career_intent,
     careerChangeInterest: row.career_change_interest,
@@ -2159,10 +2161,14 @@ function mapJob(row: JobRow): JobRecord {
   };
 }
 
+function getExplicitWorkModes(values: string[]): WorkMode[] {
+  return [...new Set(values.filter((value): value is WorkMode => WORK_MODE_VALUES.has(value as WorkMode)))];
+}
+
 function normalizeWorkModes(values: string[], workPreferences: string[], remotePreference: string): WorkMode[] {
-  const explicit = values.filter((value): value is WorkMode => WORK_MODE_VALUES.has(value as WorkMode));
+  const explicit = getExplicitWorkModes(values);
   if (explicit.length > 0) {
-    return [...new Set(explicit)];
+    return explicit;
   }
 
   const inferred = new Set<WorkMode>();
