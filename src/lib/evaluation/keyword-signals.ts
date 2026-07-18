@@ -1,4 +1,5 @@
 import type { JobKeywordSignal } from "../db/types";
+import { normalizeKeywordText as normalize } from "../text/normalize-keyword";
 
 type RawKeywordSignal = Partial<JobKeywordSignal> & { keyword?: unknown };
 
@@ -38,8 +39,13 @@ export function normalizeKeywordSignals(
   const searchablePosting = normalize(`${job.title}\n${job.description}`);
   const normalizedTitle = normalize(job.title);
   const normalizedDescription = normalize(job.description);
-  const searchableDescription = normalizedDescription.startsWith(normalizedTitle)
-    ? normalizedDescription.slice(normalizedTitle.length).trim()
+  // The description we pass in commonly repeats the title (the evaluator feeds
+  // the whole job context, which starts with a "Title: …" line). Remove every
+  // occurrence of the title so that a sub-phrase of the title only survives the
+  // invented-variant check below when it also appears in the posting body on
+  // its own — otherwise the title itself would satisfy the check.
+  const searchableDescription = normalizedTitle
+    ? stripPhrase(normalizedDescription, normalizedTitle)
     : normalizedDescription;
   const seen = new Set<string>();
   const accepted: JobKeywordSignal[] = [];
@@ -95,12 +101,15 @@ export function legacyKeywordSignals(
     keywords.map((keyword) => {
       const source = inferSource(keyword, description);
       const appearances = countNormalizedPhrase(normalize(description), normalize(keyword));
-      const coreMethod = ["prototyping early and often", "multiple rounds of testing"].includes(normalize(keyword));
       return {
         keyword,
         source,
         category: normalize(keyword) === normalize(job.title) ? "title" : "technical",
-        priority: coreMethod || source === "responsibility" || appearances >= 2 ? "required" : "preferred",
+        // A phrase is "required" when it comes from a responsibilities section
+        // or is repeated in the posting; section detection in `priorityFor`
+        // handles explicit qualification sections. No domain-specific phrase
+        // list — that generalizes across postings instead of hard-coding one.
+        priority: source === "responsibility" || appearances >= 2 ? "required" : "preferred",
         rationale: sourceLabel(source),
       };
     }),
@@ -122,9 +131,26 @@ function priorityFor(
 }
 
 function inferSource(keyword: string, description: string): JobKeywordSignal["source"] {
-  const keywordIndex = normalize(description).indexOf(normalize(keyword));
-  if (keywordIndex < 0) return "description";
-  const before = normalize(description).slice(0, keywordIndex);
+  const normDesc = normalize(description);
+  const normKw = normalize(keyword);
+  if (!normKw) return "description";
+  // A phrase can appear in several sections (e.g. under both Responsibilities
+  // and Preferred). Scan every occurrence and keep the strongest section rather
+  // than blindly trusting the first match.
+  let best: JobKeywordSignal["source"] = "description";
+  let bestStrength = -1;
+  for (let idx = normDesc.indexOf(normKw); idx >= 0; idx = normDesc.indexOf(normKw, idx + 1)) {
+    const source = sectionForPrefix(normDesc.slice(0, idx));
+    const strength = sourceStrength(source);
+    if (strength > bestStrength) {
+      bestStrength = strength;
+      best = source;
+    }
+  }
+  return best;
+}
+
+function sectionForPrefix(before: string): JobKeywordSignal["source"] {
   const lastBasic = Math.max(before.lastIndexOf("basic qualifications"), before.lastIndexOf("required qualifications"), before.lastIndexOf("requirements"));
   const lastPreferred = Math.max(before.lastIndexOf("preferred qualifications"), before.lastIndexOf("nice to have"));
   const lastResponsibilities = Math.max(before.lastIndexOf("what you will do"), before.lastIndexOf("responsibilities"), before.lastIndexOf("what youll do"));
@@ -132,6 +158,14 @@ function inferSource(keyword: string, description: string): JobKeywordSignal["so
   if (lastBasic > lastPreferred && lastBasic > lastResponsibilities) return "basic_qualification";
   if (lastResponsibilities >= 0) return "responsibility";
   return "description";
+}
+
+// Higher = stronger requirement signal, used to break ties across sections.
+function sourceStrength(source: JobKeywordSignal["source"]): number {
+  if (source === "basic_qualification" || source === "required_qualification") return 3;
+  if (source === "responsibility") return 2;
+  if (source === "preferred_qualification") return 1;
+  return 0;
 }
 
 function sourceLabel(source: JobKeywordSignal["source"]): string {
@@ -154,19 +188,17 @@ function containsNormalizedPhrase(text: string, phrase: string): boolean {
   return ` ${text} `.includes(` ${phrase} `);
 }
 
+// Remove every whole-phrase occurrence of `phrase` from space-delimited `text`.
+function stripPhrase(text: string, phrase: string): string {
+  const needle = ` ${phrase} `;
+  let padded = ` ${text} `;
+  while (padded.includes(needle)) {
+    padded = padded.replace(needle, "  ");
+  }
+  return padded.replace(/\s+/g, " ").trim();
+}
+
 function countNormalizedPhrase(text: string, phrase: string): number {
   if (!phrase) return 0;
   return ` ${text} `.split(` ${phrase} `).length - 1;
-}
-
-function normalize(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/&/g, " and ")
-    .replace(/[’']/g, "")
-    .replace(/[^a-zA-Z0-9+#]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
 }
