@@ -64,10 +64,11 @@ escape hatch.
 **Type:** bug / UX
 **Source:** User feedback round 3 (June 2026), GitHub issue #29
 **Fixed:** July 2026 — Dashboard readiness now derives from saved provider,
-resume, role, title-filter, and work-mode data instead of the onboarding wizard
-confirmation flag. The incomplete state names and links each missing item, and
-the ready state is explicit in the dashboard header. Resume extraction and
-manual profile editing now update the same readiness model.
+resume, role, title-filter, and explicit work-mode data instead of the onboarding
+wizard confirmation flag. Inferred compatibility defaults do not count as a
+user selection. The incomplete state names and links each missing item, and the
+ready state is explicit in the dashboard header. Resume extraction and manual
+profile editing now update the same readiness model.
 
 ### FB3-8 — Adzuna scan ended in Settings without a path to results ✓ Fixed
 

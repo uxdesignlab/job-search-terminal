@@ -16,6 +16,7 @@ export type UserProfileRecord = {
   compensationNeeds: string;
   workPreferences: string[];
   workModes: WorkMode[];
+  hasExplicitWorkModes: boolean;
   dealBreakers: string[];
   careerIntent: string;
   careerChangeInterest: string;

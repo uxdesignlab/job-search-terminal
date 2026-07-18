@@ -3,7 +3,7 @@ export type ProfileReadinessInput = {
   hasUploadedResume: boolean;
   hasTargetRoles: boolean;
   hasPositiveTitleFilters: boolean;
-  hasWorkModes: boolean;
+  hasExplicitWorkModes: boolean;
 };
 
 export type MissingProfileSetupItem = {
@@ -56,7 +56,7 @@ const SETUP_ITEMS: Array<{
   },
   {
     id: "work-modes",
-    isComplete: "hasWorkModes",
+    isComplete: "hasExplicitWorkModes",
     label: "Location mode",
     guidance: "Choose remote, hybrid, or on-site work.",
     href: "/profile",
@@ -79,7 +79,7 @@ export function getProfileReadiness(input: ProfileReadinessInput) {
     isReady: missingItems.length === 0,
     missingItems,
     hasRolePreferences: input.hasTargetRoles && input.hasPositiveTitleFilters,
-    hasLocationPreferences: input.hasWorkModes,
-    hasPreferences: input.hasTargetRoles && input.hasPositiveTitleFilters && input.hasWorkModes,
+    hasLocationPreferences: input.hasExplicitWorkModes,
+    hasPreferences: input.hasTargetRoles && input.hasPositiveTitleFilters && input.hasExplicitWorkModes,
   };
 }
