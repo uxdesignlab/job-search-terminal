@@ -40,6 +40,14 @@ describe("profile work-mode state", () => {
 
     expect(profile.workModes).toEqual(["onsite"]);
     expect(profile.hasExplicitWorkModes).toBe(false);
+
+    queries.updateUserProfile({ ...profile, targetRoles: ["Product Designer"] });
+
+    const stored = database.prepare("select work_modes_json as workModesJson from user_profile").get() as {
+      workModesJson: string;
+    };
+    expect(stored.workModesJson).toBe("[]");
+    expect(queries.getUserProfile().hasExplicitWorkModes).toBe(false);
   });
 
   it("recognizes a saved work-mode selection", async () => {
@@ -50,5 +58,13 @@ describe("profile work-mode state", () => {
 
     expect(profile.workModes).toEqual(["remote"]);
     expect(profile.hasExplicitWorkModes).toBe(true);
+
+    queries.updateUserProfile({ ...profile, targetRoles: ["Product Designer"] });
+
+    const stored = database.prepare("select work_modes_json as workModesJson from user_profile").get() as {
+      workModesJson: string;
+    };
+    expect(stored.workModesJson).toBe('["remote"]');
+    expect(queries.getUserProfile().hasExplicitWorkModes).toBe(true);
   });
 });

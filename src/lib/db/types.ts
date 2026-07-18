@@ -506,6 +506,7 @@ export type ProfileUpdateInput = {
   compensationNeeds: string;
   workPreferences: string[];
   workModes: WorkMode[];
+  hasExplicitWorkModes: boolean;
   constraints: string[];
   dealBreakers: string[];
   careerIntent: string;
