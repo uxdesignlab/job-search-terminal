@@ -125,6 +125,8 @@ readiness from the actual saved setup data: a configured provider in the active
 chain, an uploaded resume, desired positions, at least one included title filter,
 and an explicitly saved location work mode. It does not depend on a wizard-only
 confirmation flag, and inferred compatibility defaults do not satisfy readiness.
+Unrelated profile edits and resume uploads preserve this distinction instead of
+writing an inferred compatibility mode back as an explicit selection.
 When setup is incomplete, the dashboard names each missing item and links to the
 screen where it can be completed. When ready, the header shows **Profile ready**.
 The Integrations step is never a gate — completing it only enables optional

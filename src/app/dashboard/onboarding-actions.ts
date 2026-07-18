@@ -58,6 +58,7 @@ export async function saveOnboardingPreferencesAction(formData: FormData) {
     ...previous,
     targetRoles,
     workModes,
+    hasExplicitWorkModes: workModes.length > 0,
     remotePreference: remotePreferenceFromWorkModes(workModes),
   });
   saveTitleFilters(positive, negative);

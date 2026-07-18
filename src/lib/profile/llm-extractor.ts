@@ -191,6 +191,7 @@ ${resumeText}`
     compensationNeeds: result.profile.compensationNeeds || "",
     workPreferences: result.profile.workPreferences || [],
     workModes: previous.workModes.length > 0 ? previous.workModes : [],
+    hasExplicitWorkModes: previous.hasExplicitWorkModes,
     constraints: result.profile.constraints || [],
     dealBreakers: result.profile.dealBreakers || [],
     careerIntent: result.profile.careerIntent || "",

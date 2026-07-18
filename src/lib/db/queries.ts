@@ -1144,7 +1144,7 @@ export function updateUserProfile(input: ProfileUpdateInput) {
       targetRolesJson: JSON.stringify(input.targetRoles),
       desiredIndustriesJson: JSON.stringify(input.desiredIndustries),
       workPreferencesJson: JSON.stringify(input.workPreferences),
-      workModesJson: JSON.stringify(input.workModes),
+      workModesJson: JSON.stringify(input.hasExplicitWorkModes ? input.workModes : []),
       constraintsJson: JSON.stringify(input.constraints),
       dealBreakersJson: JSON.stringify(input.dealBreakers),
       skillsToUseMoreJson: JSON.stringify(input.skillsToUseMore),
