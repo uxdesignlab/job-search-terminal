@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
 import { LocalDateLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
+import { hasConfiguredAIProvider } from "@/lib/ai";
+import { getProfileReadiness } from "@/lib/profile/readiness";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -64,12 +66,14 @@ export default function DashboardPage() {
   const settings = getAISettings();
   const profile = getUserProfile();
   const titleFilters = getTitleFilters();
-  const hasResume = resumes.some((r) => r.sourceFile != null);
-  const hasKey = Boolean(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
-  const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
-  const hasLocationPreferences = profile.workModes.length > 0;
-  const preferencesConfirmed = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
-  const onboardingComplete = hasKey && hasResume && preferencesConfirmed;
+  const profileReadiness = getProfileReadiness({
+    hasConfiguredAIProvider: hasConfiguredAIProvider(settings),
+    hasUploadedResume: resumes.some((resume) => Boolean(resume.sourceFile)),
+    hasTargetRoles: profile.targetRoles.length > 0,
+    hasPositiveTitleFilters: titleFilters.positive.length > 0,
+    hasWorkModes: profile.workModes.length > 0,
+  });
+  const onboardingComplete = profileReadiness.isReady;
   const showOnboarding = !settings.onboardingDismissed;
 
   const actionQueue = getDashboardActionQueue();
@@ -95,15 +99,46 @@ export default function DashboardPage() {
     <Shell activeItem="Dashboard">
       <div className="grid gap-4">
         <PageHeader
-          actions={onboardingComplete ? <ScanForNewJobsButton runScan={scanForJobsAction} /> : undefined}
+          actions={onboardingComplete ? (
+            <>
+              <Badge tone="success">Profile ready</Badge>
+              <ScanForNewJobsButton runScan={scanForJobsAction} />
+            </>
+          ) : undefined}
           description={!onboardingComplete
-            ? "Set up your profile to get started."
+            ? `Profile setup needs ${profileReadiness.missingItems.length} more ${profileReadiness.missingItems.length === 1 ? "item" : "items"}.`
             : "Your job search command center — what to do next, progress, and recent wins."}
           eyebrow="Search overview"
           title="Dashboard"
         />
 
         {showOnboarding && <NewUserOnboarding />}
+
+        {!onboardingComplete && (
+          <Card aria-labelledby="profile-readiness-title">
+            <CardHeader>
+              <CardTitle id="profile-readiness-title">Finish profile setup</CardTitle>
+              <CardDescription>
+                Resume extraction can prefill some details, and you can enter or correct every item manually. Complete
+                the missing items below to enable job scans and the full dashboard.
+              </CardDescription>
+            </CardHeader>
+            <ul className="grid gap-2">
+              {profileReadiness.missingItems.map((item) => (
+                <li className="flex flex-col gap-2 rounded-control border border-border bg-surface px-3 py-3 sm:flex-row sm:items-center" key={item.id}>
+                  <Badge tone="warning">Missing</Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink">{item.label}</p>
+                    <p className="text-xs leading-5 text-muted">{item.guidance}</p>
+                  </div>
+                  <Link className="text-sm font-medium text-accent hover:underline" href={item.href}>
+                    {item.actionLabel}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
         {/* Returning user: full dashboard */}
         {onboardingComplete && (
