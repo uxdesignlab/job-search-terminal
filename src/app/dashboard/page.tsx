@@ -71,7 +71,7 @@ export default function DashboardPage() {
     hasUploadedResume: resumes.some((resume) => Boolean(resume.sourceFile)),
     hasTargetRoles: profile.targetRoles.length > 0,
     hasPositiveTitleFilters: titleFilters.positive.length > 0,
-    hasWorkModes: profile.workModes.length > 0,
+    hasExplicitWorkModes: profile.hasExplicitWorkModes,
   });
   const onboardingComplete = profileReadiness.isReady;
   const showOnboarding = !settings.onboardingDismissed;

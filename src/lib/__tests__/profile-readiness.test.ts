@@ -6,7 +6,7 @@ const COMPLETE_PROFILE = {
   hasUploadedResume: true,
   hasTargetRoles: true,
   hasPositiveTitleFilters: true,
-  hasWorkModes: true,
+  hasExplicitWorkModes: true,
 };
 
 describe("getProfileReadiness", () => {
@@ -24,7 +24,7 @@ describe("getProfileReadiness", () => {
       hasUploadedResume: false,
       hasTargetRoles: false,
       hasPositiveTitleFilters: false,
-      hasWorkModes: false,
+      hasExplicitWorkModes: false,
     });
 
     expect(readiness.missingItems.map((item) => item.id)).toEqual([
@@ -47,5 +47,16 @@ describe("getProfileReadiness", () => {
     expect(readiness.hasLocationPreferences).toBe(true);
     expect(readiness.missingItems.map((item) => item.label)).toEqual(["Included title filters"]);
     expect(readiness.missingItems[0]?.href).toBe("/settings?tab=preferences");
+  });
+
+  it("requires an explicit work-mode selection", () => {
+    const readiness = getProfileReadiness({
+      ...COMPLETE_PROFILE,
+      hasExplicitWorkModes: false,
+    });
+
+    expect(readiness.isReady).toBe(false);
+    expect(readiness.hasLocationPreferences).toBe(false);
+    expect(readiness.missingItems.map((item) => item.id)).toEqual(["work-modes"]);
   });
 });
