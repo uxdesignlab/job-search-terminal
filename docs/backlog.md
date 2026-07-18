@@ -59,6 +59,24 @@ escape hatch.
 
 ### High
 
+### FB3-5 — Dashboard profile readiness stayed incomplete after setup ✓ Fixed
+
+**Type:** bug / UX
+**Source:** User feedback round 3 (June 2026), GitHub issue #29
+**Fixed:** July 2026 — Dashboard readiness now derives from saved provider,
+resume, role, title-filter, and work-mode data instead of the onboarding wizard
+confirmation flag. The incomplete state names and links each missing item, and
+the ready state is explicit in the dashboard header. Resume extraction and
+manual profile editing now update the same readiness model.
+
+### FB3-8 — Adzuna scan ended in Settings without a path to results ✓ Fixed
+
+**Type:** UX / job discovery
+**Source:** User feedback round 3 (June 2026), GitHub issue #32
+**Fixed:** July 2026 — Standalone Adzuna scans now refresh Jobs and Dashboard,
+then show a **View N found jobs** action in the completion dialog. The combined
+Dashboard scan remains the primary discovery entry point.
+
 ### OB-2 — Onboarding re-appears after git pull despite prior dismissal ✓ Fixed
 
 **Type:** bug

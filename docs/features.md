@@ -95,10 +95,10 @@ The modal has 5 steps — 4 required and 1 optional:
    MAX_TOKENS on a long resume), the "Continue to job preferences →" button
    becomes enabled anyway with a note that extraction can be re-run from the
    Profile page; the user is never trapped.
-3. **Job preferences** — requires the user to review and explicitly save desired
-   positions, include/exclude title filters, and location work modes. Resume
-   upload or extraction may prefill these values, but the step does not become
-   complete until the user confirms them.
+3. **Job preferences** — requires desired positions, include title filters, and
+   location work modes. Resume upload or extraction may prefill these values;
+   readiness follows the saved data regardless of whether it came from the
+   onboarding wizard, Profile, Settings, or resume extraction.
 4. **Integrations** *(optional)* — covers two free API keys that extend job
    coverage. Each card shows a short explanation, a "Help →" link to the
    relevant help section, and inline input fields with a "Leave blank to keep
@@ -118,9 +118,12 @@ The modal has 5 steps — 4 required and 1 optional:
    imported matches.
 
 The resume step is considered complete as soon as a PDF has been uploaded to any
-lane (regardless of whether AI extraction succeeded). Job preferences and the
-dashboard are gated until an AI key, at least one uploaded resume, and confirmed
-preferences all exist.
+lane (regardless of whether AI extraction succeeded). The dashboard derives
+readiness from the actual saved setup data: a configured provider in the active
+chain, an uploaded resume, desired positions, at least one included title filter,
+and a location work mode. It does not depend on a wizard-only confirmation flag.
+When setup is incomplete, the dashboard names each missing item and links to the
+screen where it can be completed. When ready, the header shows **Profile ready**.
 The Integrations step is never a gate — completing it only enables optional
 features.
 
@@ -980,7 +983,8 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 3. Open Settings → Sources — the Job aggregators card appears at the bottom
 4. Click **Scan with Adzuna**; clicking opens a blocking `ProgressModal`
    ("Scanning Adzuna" + spinner). On completion the modal shows "Found N
-   listings — X new, Y duplicates." and can be dismissed with Close.
+   listings — X new, Y duplicates." and a **View N found jobs** action that
+   opens the refreshed Jobs page. The modal can also be dismissed with Close.
 5. New jobs enter the same import pipeline as browser-board scans — duplicate detection, title filtering, and source badges all apply
 
 **What it covers:** Adzuna aggregates from multiple sources and covers roles that may not appear in direct ATS portals or browser-board searches. It is best used alongside browser-board and CareerOps ATS scans.

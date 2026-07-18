@@ -1,6 +1,8 @@
 import { OnboardingWizardModal } from "@/components/onboarding-wizard-modal";
 import { getAISettings, getResumes, getTitleFilters, getUserProfile } from "@/lib/db/queries";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
+import { hasConfiguredAIProvider } from "@/lib/ai";
+import { getProfileReadiness } from "@/lib/profile/readiness";
 
 function maskSettings(settings: ReturnType<typeof getAISettings>) {
   return {
@@ -16,11 +18,19 @@ export async function NewUserOnboarding() {
   const resumes = getResumes();
   const profile = getUserProfile();
   const titleFilters = getTitleFilters();
-  const hasKey = Boolean(settings.openaiApiKey || settings.anthropicApiKey || settings.geminiApiKey);
-  const hasResume = resumes.some((r) => Boolean(r.sourceFile));
-  const hasRolePreferences = profile.targetRoles.length > 0 && titleFilters.positive.length > 0;
-  const hasLocationPreferences = profile.workModes.length > 0;
-  const hasConfirmedPreferences = settings.onboardingPreferencesConfirmed && hasRolePreferences && hasLocationPreferences;
+  const readiness = getProfileReadiness({
+    hasConfiguredAIProvider: hasConfiguredAIProvider(settings),
+    hasUploadedResume: resumes.some((resume) => Boolean(resume.sourceFile)),
+    hasTargetRoles: profile.targetRoles.length > 0,
+    hasPositiveTitleFilters: titleFilters.positive.length > 0,
+    hasWorkModes: profile.workModes.length > 0,
+  });
+  const hasKey = hasConfiguredAIProvider(settings);
+  const hasResume = resumes.some((resume) => Boolean(resume.sourceFile));
+  const hasRolePreferences = readiness.hasRolePreferences;
+  const hasLocationPreferences = readiness.hasLocationPreferences;
+  // Readiness follows the saved data, regardless of which screen populated it.
+  const hasConfirmedPreferences = readiness.hasPreferences;
   const hasAdzunaKeys = Boolean(settings.adzunaAppId && settings.adzunaApiKey);
   const hasBraveKey = Boolean(settings.braveSearchApiKey);
   // currentSearchGoal is only populated by AI extraction, not by resume upload

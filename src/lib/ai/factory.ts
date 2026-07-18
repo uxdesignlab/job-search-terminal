@@ -51,6 +51,10 @@ function resolveCandidates(settings: AISettingsRecord): AIProviderName[] {
   return order.filter((name) => Boolean(providerKey(settings, name)));
 }
 
+export function hasConfiguredAIProvider(settings: AISettingsRecord): boolean {
+  return resolveCandidates(settings).length > 0;
+}
+
 function buildProvider(settings: AISettingsRecord, candidates: AIProviderName[]): AIProvider | null {
   if (candidates.length === 0) return null;
   const providers = candidates.map((name) =>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { AggregatorScanResult } from "@/lib/scanner/aggregator-scanner";
 import { ProgressModal } from "@/components/ui/progress-modal";
 
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
+  const router = useRouter();
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "error">("idle");
   const [result, setResult] = useState<AggregatorScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,11 @@ export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
   function closeModal() {
     setPhase("idle");
     setError(null);
+  }
+
+  function viewJobs() {
+    closeModal();
+    router.push("/jobs");
   }
 
   if (!hasCredentials) {
@@ -72,7 +79,18 @@ export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
         error={isError ? (error ?? resultText ?? "Scan failed") : null}
         onClose={closeModal}
       >
-        <p className="text-sm text-success">{resultText}</p>
+        <div className="grid gap-3">
+          <p className="text-sm text-success">{resultText}</p>
+          {result?.status === "ok" ? (
+            <button
+              className="inline-flex min-h-11 w-fit items-center justify-center rounded-control border border-accent bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[rgb(var(--color-accent-strong))]"
+              onClick={viewJobs}
+              type="button"
+            >
+              View {result.totalFound} found {result.totalFound === 1 ? "job" : "jobs"}
+            </button>
+          ) : null}
+        </div>
       </ProgressModal>
     </>
   );
