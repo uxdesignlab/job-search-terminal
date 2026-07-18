@@ -1,6 +1,7 @@
 import type { ResumeTemplateInput } from "./resume-template";
 import type { JobKeywordSignal } from "../db/types";
 import { keywordSignalWeight } from "../evaluation/keyword-signals";
+import { normalizeKeywordText as normalizeForKeywordMatching } from "../text/normalize-keyword";
 
 const STOP_WORDS = new Set([
   "a",
@@ -114,7 +115,10 @@ export function isKeywordInText(text: string, keyword: string): boolean {
 }
 
 export function missingKeywordsFor(content: ResumeTemplateInput, keywords: KeywordInput[]): string[] {
-  return keywordCoverageDetailsForText(extractTextValues(content), keywords).missing;
+  // Match keywordCoverageFor: only look at rendered resume text, never the
+  // hidden target-role `title` metadata field (which would otherwise mask a
+  // missing title keyword as already covered).
+  return keywordCoverageDetailsForText(extractVisibleResumeText(content), keywords).missing;
 }
 
 export function keywordCoverageDetailsForText(text: string, keywords: KeywordInput[]): KeywordCoverageDetails {
@@ -211,10 +215,35 @@ function termHit(normalizedText: string, term: string): boolean {
 function termsWithinWindow(normalizedText: string, terms: string[], windowSize: number): boolean {
   const words = normalizedText.split(" ").filter(Boolean);
   const required = terms.length <= 4 ? terms.length : Math.max(4, Math.ceil(terms.length * 0.65));
-  for (let start = 0; start < words.length; start += 1) {
-    const window = ` ${words.slice(start, start + windowSize).join(" ")} `;
-    const matches = terms.filter((term) => termHit(window, term)).length;
-    if (matches >= required) return true;
+  if (words.length === 0) return false;
+  // Precompute, per word position, which term indices it satisfies (one pass),
+  // then slide a fixed-width window counting distinct terms present. This is
+  // O(words × terms) instead of re-joining and re-scanning a 30-word slice at
+  // every start index, which mattered because this runs live on every keystroke
+  // in the resume editor.
+  const matchedTermsAt: number[][] = words.map((word) => {
+    const wrapped = ` ${word} `;
+    const matched: number[] = [];
+    for (let t = 0; t < terms.length; t += 1) {
+      if (termHit(wrapped, terms[t])) matched.push(t);
+    }
+    return matched;
+  });
+  const countInWindow = new Array<number>(terms.length).fill(0);
+  let distinct = 0;
+  for (let end = 0; end < words.length; end += 1) {
+    for (const t of matchedTermsAt[end]) {
+      if (countInWindow[t] === 0) distinct += 1;
+      countInWindow[t] += 1;
+    }
+    const outgoing = end - windowSize;
+    if (outgoing >= 0) {
+      for (const t of matchedTermsAt[outgoing]) {
+        countInWindow[t] -= 1;
+        if (countInWindow[t] === 0) distinct -= 1;
+      }
+    }
+    if (distinct >= required) return true;
   }
   return false;
 }
@@ -235,18 +264,6 @@ function singularCandidates(term: string): string[] {
 
 function containsPhrase(normalizedText: string, normalizedPhrase: string): boolean {
   return ` ${normalizedText} `.includes(` ${normalizedPhrase} `);
-}
-
-function normalizeForKeywordMatching(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/&/g, " and ")
-    .replace(/[’']/g, "")
-    .replace(/[^a-zA-Z0-9+#]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
 }
 
 function unique<T>(items: T[]): T[] {

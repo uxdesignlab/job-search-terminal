@@ -355,6 +355,10 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   const resumeExcerpts = buildResumeExcerpts(resumes);
   const systemPrompt = buildSystemPrompt(profile, skills, roleDirections, resumeExcerpts);
   const jobCtx = buildJobContext(job);
+  // Keyword extraction (Block E) needs a fuller view of the posting to find
+  // verbatim phrases and to validate them against the description; other blocks
+  // stay on the leaner shared context.
+  const keywordJobCtx = buildJobContext(job, 12000);
 
   // All blocks run sequentially — avoids rate-limit/503 from parallel API calls,
   // and gives better streaming UX (one block appears at a time).
@@ -375,7 +379,7 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
   onBlock?.({ block: "d", label: "D. Comp and demand", content: blockDContent });
 
   onBlockStart?.("e");
-  const blockE = await withRetry(() => runBlockE(provider, systemPrompt, jobCtx, blockA, blockB));
+  const blockE = await withRetry(() => runBlockE(provider, systemPrompt, keywordJobCtx, blockA, blockB));
   onBlock?.({ block: "e", label: "E. Personalization plan", content: blockE.plan });
 
   // Fetch existing story bank titles to feed as context into Block F
