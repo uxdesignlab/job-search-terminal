@@ -68,7 +68,9 @@ resume, role, title-filter, and explicit work-mode data instead of the onboardin
 wizard confirmation flag. Inferred compatibility defaults do not count as a
 user selection. The incomplete state names and links each missing item, and the
 ready state is explicit in the dashboard header. Resume extraction and manual
-profile editing now update the same readiness model.
+profile editing now update the same readiness model. Unrelated profile and
+resume saves preserve whether work modes were explicitly selected and cannot
+promote an inferred compatibility value into a saved preference.
 
 ### FB3-8 — Adzuna scan ended in Settings without a path to results ✓ Fixed
 
