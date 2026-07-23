@@ -890,16 +890,18 @@ custom URLs configured in Settings.
 **How a scan works:**
 1. User clicks "Scan for new jobs" on the Dashboard.
 2. The CareerOps ATS scanner queries each enabled Ashby/Greenhouse/Lever source in parallel.
-3. If Adzuna credentials are configured (Settings → AI Provider → Discovery & Aggregators), an Adzuna aggregator scan runs in parallel alongside the ATS scan.
+3. Dice runs in parallel with the ATS scan. If Adzuna credentials are configured (Settings → AI Provider → Discovery & Aggregators), Adzuna runs in parallel too.
 4. Title filters remove irrelevant roles.
 5. Profile location and remote preferences remove listings outside the user's constraints.
 6. Listings outside the selected fresh-posting window are filtered out.
 7. Duplicate URLs are skipped.
 8. New jobs are written to the `jobs` table with `status = found`.
 9. A `scan_runs` record is created with metrics.
-10. The Dashboard updates with a combined scan summary (ATS + Adzuna totals merged).
+10. The Dashboard updates with a combined scan summary across company career sites, Dice, and Adzuna when configured.
 
-**Scan results dialog** (Dashboard “Scan for new jobs” and Settings → Sources per-company scan): the modal is scrollable when there are many errors or new listings. Each error shows a **category badge** — *Dead or missing* (404/410, bad URL, unknown host), *Timed out* (no response within the fetch limit; the board may still be live), or *Other error*. A summary line counts how many sources reported issues, how many can be disabled as YAML/custom career sources, and a breakdown by category. **Select all** / **Clear selection** / **Disable selected** bulk-update `scan_source_overrides`; per-row **Disable** does the same for one company. Aggregator-only rows (e.g. **Adzuna**) are not disabled as career sources — the UI points to AI Provider settings instead.
+**Scan progress and results dialog** (Dashboard “Scan for new jobs” and Settings → Sources per-company scan): while the Dashboard scan runs, the modal receives live server progress and shows the actual state of the company career-site, Dice, and Adzuna lanes. Parallel lanes can be marked **Scanning now** at the same time; each changes to **Complete**, **Skipped**, or **Stopped** as its state changes. The current activity is exposed through a polite, atomic live region for screen readers. Adzuna is shown as skipped when it is not configured.
+
+The results view is scrollable when there are many errors or new listings. Each error shows a **category badge** — *Dead or missing* (404/410, bad URL, unknown host), *Timed out* (no response within the fetch limit; the board may still be live), or *Other error*. A summary line counts how many sources reported issues, how many can be disabled as YAML/custom career sources, and a breakdown by category. **Select all** / **Clear selection** / **Disable selected** bulk-update `scan_source_overrides`; per-row **Disable** does the same for one company. Aggregator-only rows (e.g. **Adzuna**) are not disabled as career sources — the UI points to AI Provider settings instead.
 
 The Jobs page can also verify whether saved postings still exist. The liveness
 check updates `liveness_status` but does not automatically archive or delete

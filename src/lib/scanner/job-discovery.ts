@@ -3,6 +3,7 @@ import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 import { getAISettings, getTitleFilters, getUserProfile } from "@/lib/db/queries";
 import type { FreshnessWindowHours, ScanTrigger } from "@/lib/db/types";
+import type { JobDiscoveryProgressUpdate, JobDiscoverySourceId } from "@/lib/scan-progress-types";
 import { careerOpsRunToJobSummary } from "@/lib/careerops-scan-to-summary";
 import { runAggregatorScan } from "./aggregator-scanner";
 import { runCareerOpsScanner } from "./careerops-scanner";
@@ -12,6 +13,7 @@ import { DEFAULT_FRESHNESS_WINDOW_HOURS } from "./freshness";
 export async function runJobDiscoveryScan(input: {
   trigger: ScanTrigger;
   freshnessWindowHours?: FreshnessWindowHours;
+  onProgress?: (update: JobDiscoveryProgressUpdate) => void;
 }): Promise<ScanJobResultSummary> {
   const settings = getAISettings();
   const profile = getUserProfile();
@@ -19,26 +21,97 @@ export async function runJobDiscoveryScan(input: {
   const freshnessWindowHours = input.freshnessWindowHours ?? DEFAULT_FRESHNESS_WINDOW_HOURS;
   const hasAdzuna = Boolean(settings.adzunaAppId && settings.adzunaApiKey);
 
+  const reportProgress = (update: JobDiscoveryProgressUpdate) => {
+    try {
+      input.onProgress?.(update);
+    } catch {
+      // Progress reporting must never interrupt a scan if the client disconnects.
+    }
+  };
+
+  const runSource = async <T>(
+    sourceId: JobDiscoverySourceId,
+    sourceLabel: string,
+    runningDetail: string,
+    run: () => Promise<T>,
+    completedDetail: (result: T) => string,
+  ): Promise<T> => {
+    reportProgress({ sourceId, sourceLabel, status: "running", detail: runningDetail });
+    try {
+      const result = await run();
+      reportProgress({ sourceId, sourceLabel, status: "completed", detail: completedDetail(result) });
+      return result;
+    } catch (error) {
+      reportProgress({
+        sourceId,
+        sourceLabel,
+        status: "failed",
+        detail: error instanceof Error ? error.message : "Scan failed",
+      });
+      throw error;
+    }
+  };
+
+  reportProgress({
+    sourceId: "career-sites",
+    sourceLabel: "Company career sites",
+    status: "pending",
+    detail: "Waiting to scan enabled Greenhouse, Ashby, and Lever sources",
+  });
+  reportProgress({
+    sourceId: "dice",
+    sourceLabel: "Dice",
+    status: "pending",
+    detail: "Waiting to search Dice",
+  });
+  reportProgress({
+    sourceId: "adzuna",
+    sourceLabel: "Adzuna",
+    status: hasAdzuna ? "pending" : "skipped",
+    detail: hasAdzuna ? "Waiting to search Adzuna" : "Not configured",
+  });
+
   const [careerOps, adzuna, dice] = await Promise.all([
-    runCareerOpsScanner({ trigger: input.trigger, freshnessWindowHours }),
+    runSource(
+      "career-sites",
+      "Company career sites",
+      "Checking enabled Greenhouse, Ashby, and Lever sources",
+      () => runCareerOpsScanner({ trigger: input.trigger, freshnessWindowHours }),
+      (result) =>
+        `Checked ${result.companiesScanned} company ${result.companiesScanned === 1 ? "source" : "sources"}`,
+    ),
     hasAdzuna
-      ? runAggregatorScan({
-          adzunaAppId: settings.adzunaAppId,
-          adzunaApiKey: settings.adzunaApiKey,
+      ? runSource(
+          "adzuna",
+          "Adzuna",
+          "Searching saved roles and locations on Adzuna",
+          () =>
+            runAggregatorScan({
+              adzunaAppId: settings.adzunaAppId,
+              adzunaApiKey: settings.adzunaApiKey,
+              titles: profile.targetRoles,
+              locations: profile.preferredLocations,
+              remotePreference: profile.remotePreference,
+              titleFilters,
+              freshnessWindowHours,
+            }),
+          (result) => `Checked Adzuna — ${result.totalFound} ${result.totalFound === 1 ? "listing" : "listings"} found`,
+        )
+      : null,
+    runSource(
+      "dice",
+      "Dice",
+      "Searching saved roles and locations on Dice",
+      () =>
+        runDiceScan({
           titles: profile.targetRoles,
           locations: profile.preferredLocations,
           remotePreference: profile.remotePreference,
           titleFilters,
           freshnessWindowHours,
-        })
-      : null,
-    runDiceScan({
-      titles: profile.targetRoles,
-      locations: profile.preferredLocations,
-      remotePreference: profile.remotePreference,
-      titleFilters,
-      freshnessWindowHours,
-    }),
+        }),
+      (result) => `Checked Dice — ${result.totalFound} ${result.totalFound === 1 ? "listing" : "listings"} found`,
+    ),
   ]);
 
   const careerSummary = careerOpsRunToJobSummary(careerOps, "All enabled sources");

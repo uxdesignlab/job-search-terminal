@@ -66,7 +66,7 @@ export const helpPages: HelpPage[] = [
     highlights: [
       "Everything runs locally on your machine.",
       "One AI provider is required. Cloud providers (OpenAI, Anthropic, Gemini) need an API key; Ollama is free and needs no key — it runs models locally on your machine.",
-      "The Dashboard scan runs ATS sources and Adzuna together once credentials are configured.",
+      "The Dashboard scan runs company career sites and Dice together, plus Adzuna once credentials are configured.",
     ],
     sections: [
       {
@@ -105,7 +105,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Run your first scan",
-            body: "Return to the Dashboard and click Scan for new jobs. The scan checks all enabled ATS career portals and, if Adzuna credentials are configured, runs an Adzuna aggregator scan in parallel. New jobs appear in Jobs.",
+            body: "Return to the Dashboard and click Scan for new jobs. The scan checks all enabled ATS career portals and Dice, plus Adzuna when its credentials are configured. The progress dialog shows which sources are active as the parallel scans run. New jobs appear in Jobs.",
           },
         ],
       },
@@ -135,7 +135,7 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Scan or import",
-            body: "Click Scan for new jobs on the Dashboard — ATS portals and Adzuna (if configured) run together. Or use manual Add Job, or the browser job board scanner for LinkedIn and similar boards.",
+            body: "Click Scan for new jobs on the Dashboard — ATS portals, Dice, and Adzuna (if configured) run together. Or use manual Add Job, or the browser job board scanner for LinkedIn and similar boards.",
           },
           {
             title: "Review and evaluate",
@@ -508,11 +508,11 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Start the scan",
-            body: "Click Scan for new jobs from the Dashboard. The app checks all enabled ATS sources and, if Adzuna credentials are configured, also runs an Adzuna aggregator scan in parallel.",
+            body: "Click Scan for new jobs from the Dashboard. The app checks all enabled ATS sources and Dice, and also runs Adzuna when its credentials are configured. The dialog updates each source from waiting to scanning and complete.",
           },
           {
             title: "Read the scan summary",
-            body: "The Dashboard reports companies scanned, new jobs (ATS + Adzuna combined), filtered jobs, duplicates, skipped sources, and any source errors.",
+            body: "The Dashboard reports companies scanned, new jobs from all scan lanes, filtered jobs, duplicates, skipped sources, and any source errors.",
           },
           {
             title: "Review Fresh matches",
