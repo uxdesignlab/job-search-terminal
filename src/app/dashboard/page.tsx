@@ -18,9 +18,7 @@ import {
   getUserProfile,
   setScanSourceEnabled,
 } from "@/lib/db/queries";
-import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 import { isScanSourceEnabled } from "@/lib/scanner/careerops-scanner";
-import { runJobDiscoveryScan } from "@/lib/scanner/job-discovery";
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
@@ -43,16 +41,6 @@ function freshMatchBadgeLabel(datePosted: string | null, firstSeenDate: string):
 }
 
 export default function DashboardPage() {
-  async function scanForJobsAction(): Promise<ScanJobResultSummary> {
-    "use server";
-
-    const schedule = getScanSchedule();
-    const summary = await runJobDiscoveryScan({ trigger: "manual", freshnessWindowHours: schedule.freshnessWindowHours });
-    revalidatePath("/dashboard");
-    revalidatePath("/jobs");
-    return summary;
-  }
-
   async function disableSourceAction(formData: FormData) {
     "use server";
 
@@ -102,7 +90,7 @@ export default function DashboardPage() {
           actions={onboardingComplete ? (
             <>
               <Badge tone="success">Profile ready</Badge>
-              <ScanForNewJobsButton runScan={scanForJobsAction} />
+              <ScanForNewJobsButton />
             </>
           ) : undefined}
           description={!onboardingComplete

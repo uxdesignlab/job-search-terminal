@@ -66,7 +66,7 @@ export const helpPages: HelpPage[] = [
     highlights: [
       "Everything runs locally on your machine.",
       "One AI provider is required. Cloud providers (OpenAI, Anthropic, Gemini) need an API key; Ollama is free and needs no key — it runs models locally on your machine.",
-      "The Dashboard scan runs ATS sources and Adzuna together once credentials are configured.",
+      "The Dashboard scan runs company career sites and Dice together, plus Adzuna once credentials are configured.",
     ],
     sections: [
       {
@@ -105,7 +105,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Run your first scan",
-            body: "Return to the Dashboard and click Scan for new jobs. The scan checks all enabled ATS career portals and, if Adzuna credentials are configured, runs an Adzuna aggregator scan in parallel. New jobs appear in Jobs.",
+            body: "Return to the Dashboard and click Scan for new jobs. The scan checks all enabled ATS career portals and Dice, plus Adzuna when its credentials are configured. The progress dialog shows which sources are active as the parallel scans run. New jobs appear in Jobs.",
           },
         ],
       },
@@ -135,7 +135,7 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Scan or import",
-            body: "Click Scan for new jobs on the Dashboard — ATS portals and Adzuna (if configured) run together. Or use manual Add Job, or the browser job board scanner for LinkedIn and similar boards.",
+            body: "Click Scan for new jobs on the Dashboard — ATS portals, Dice, and Adzuna (if configured) run together. Or use manual Add Job, or the browser job board scanner for LinkedIn and similar boards.",
           },
           {
             title: "Review and evaluate",
@@ -508,19 +508,19 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Start the scan",
-            body: "Click Scan for new jobs from the Dashboard. The app checks all enabled ATS sources and, if Adzuna credentials are configured, also runs an Adzuna aggregator scan in parallel.",
+            body: "Click Scan for new jobs from the Dashboard. The app checks all enabled ATS sources and Dice, and also runs Adzuna when its credentials are configured. The dialog updates each source from waiting to scanning and complete.",
           },
           {
             title: "Read the scan summary",
-            body: "The Dashboard reports companies scanned, new jobs (ATS + Adzuna combined), filtered jobs, duplicates, skipped sources, and any source errors.",
+            body: "The Dashboard reports companies scanned, new jobs from all scan lanes, filtered jobs, duplicates, skipped sources, and any source errors.",
           },
           {
             title: "Review Fresh matches",
             body: "Fresh matches is the scan inbox at the top of the Dashboard. It only shows newly discovered scan results inside your selected freshness window. Manually added jobs and anything already applied to or rejected stay out.",
           },
           {
-            title: "Choose the freshness schedule",
-            body: "Open Account → Settings → Data & Backup to enable optional six-hour scans while the local app is running and select a fresh-posting window: 24 hours, 72 hours by default, or 7 days. CareerOps and Adzuna scans use that selected window.",
+            title: "Choose the freshness window and schedule",
+            body: "Open Account → Settings → Sources and use the Fresh posting window card to select how far back scans accept postings: 24 hours, 72 hours by default, or 7 days. Company career-site, Dice, and Adzuna scans all use that selected window. Optional six-hour automatic scans are enabled separately under Account → Settings → Data & Backup.",
           },
         ],
       },
@@ -530,6 +530,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Open Account → Settings → Sources.",
           "Enable or disable existing company sources.",
+          "Set the Fresh posting window (24 hours, 72 hours by default, or 7 days) to control how old a posting can be before scans skip it as stale.",
           "Add a supported career page (Ashby, Greenhouse, or Lever) when you want the scanner to watch a new company.",
           "Use title include filters for roles you want and exclude filters for titles you never want.",
           "Disable noisy or failing sources instead of deleting useful search criteria.",

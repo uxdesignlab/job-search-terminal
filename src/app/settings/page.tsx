@@ -265,11 +265,23 @@ export default async function SettingsPage({
 
   async function saveScheduleAction(formData: FormData) {
     "use server";
-    const freshness = Number(formData.get("freshnessWindowHours"));
-    const freshnessWindowHours = freshness === 24 || freshness === 168 ? freshness : 72;
     saveScanSchedule({
       enabled: formData.get("enabled") === "on",
       intervalHours: 6,
+      freshnessWindowHours: getScanSchedule().freshnessWindowHours,
+    });
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
+  }
+
+  async function saveFreshnessAction(formData: FormData) {
+    "use server";
+    const freshness = Number(formData.get("freshnessWindowHours"));
+    const freshnessWindowHours = freshness === 24 || freshness === 168 ? freshness : 72;
+    const schedule = getScanSchedule();
+    saveScanSchedule({
+      enabled: schedule.enabled,
+      intervalHours: schedule.intervalHours,
       freshnessWindowHours,
     });
     revalidatePath("/settings");
@@ -279,7 +291,10 @@ export default async function SettingsPage({
   async function scanCompanyJobsAction(companyName: string): Promise<CompanyScanResultSummary> {
     "use server";
     const { careerOpsRunToJobSummary } = await import("@/lib/careerops-scan-to-summary");
-    const result = await runCareerOpsScanner({ companyExact: companyName });
+    const result = await runCareerOpsScanner({
+      companyExact: companyName,
+      freshnessWindowHours: getScanSchedule().freshnessWindowHours,
+    });
     revalidatePath("/settings");
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
@@ -289,7 +304,9 @@ export default async function SettingsPage({
   async function scanAllEnabledCareerSourcesAction(): Promise<CompanyScanResultSummary> {
     "use server";
     const { careerOpsRunToJobSummary } = await import("@/lib/careerops-scan-to-summary");
-    const result = await runCareerOpsScanner();
+    const result = await runCareerOpsScanner({
+      freshnessWindowHours: getScanSchedule().freshnessWindowHours,
+    });
     revalidatePath("/settings");
     revalidatePath("/dashboard");
     revalidatePath("/jobs");
@@ -396,6 +413,28 @@ export default async function SettingsPage({
                 onScanAllEnabled={scanAllEnabledCareerSourcesAction}
                 onValidateAll={validateAllSourcesAction}
               />
+            </Card>
+
+            {/* Fresh posting window */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Fresh posting window</CardTitle>
+                <CardDescription>
+                  Scans only keep roles posted within this window — older postings are skipped as stale. Applies to
+                  company career-site, Dice, and Adzuna scans, both manual and scheduled.
+                </CardDescription>
+              </CardHeader>
+              <form action={saveFreshnessAction} className="grid gap-4">
+                <label className="grid max-w-xs gap-1 text-sm text-ink">
+                  Keep postings from the last
+                  <select className="rounded-control border border-border bg-surface px-3 py-2" defaultValue={scanSchedule.freshnessWindowHours} name="freshnessWindowHours">
+                    <option value="24">Last 24 hours</option>
+                    <option value="72">Last 72 hours (default)</option>
+                    <option value="168">Last 7 days</option>
+                  </select>
+                </label>
+                <div><SubmitButton label="Save window" savedLabel="Window saved" /></div>
+              </form>
             </Card>
 
             {/* Add a company */}
@@ -547,14 +586,10 @@ export default async function SettingsPage({
                   <input defaultChecked={scanSchedule.enabled} name="enabled" type="checkbox" />
                   Enable scans every six hours
                 </label>
-                <label className="grid max-w-xs gap-1 text-sm text-ink">
-                  Fresh posting window
-                  <select className="rounded-control border border-border bg-surface px-3 py-2" defaultValue={scanSchedule.freshnessWindowHours} name="freshnessWindowHours">
-                    <option value="24">Last 24 hours</option>
-                    <option value="72">Last 72 hours</option>
-                    <option value="168">Last 7 days</option>
-                  </select>
-                </label>
+                <p className="text-xs text-muted">
+                  Scans keep postings from the last {scanSchedule.freshnessWindowHours} hours — change this under{" "}
+                  <Link className="underline" href="/settings?tab=sources">Sources → Fresh posting window</Link>.
+                </p>
                 <p className="text-xs text-muted">
                   {scanSchedule.nextRunAt ? `Next scheduled scan: ${scanSchedule.nextRunAt}` : "Scheduling is currently off."}
                 </p>
