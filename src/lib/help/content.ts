@@ -519,8 +519,8 @@ export const helpPages: HelpPage[] = [
             body: "Fresh matches is the scan inbox at the top of the Dashboard. It only shows newly discovered scan results inside your selected freshness window. Manually added jobs and anything already applied to or rejected stay out.",
           },
           {
-            title: "Choose the freshness schedule",
-            body: "Open Account → Settings → Data & Backup to enable optional six-hour scans while the local app is running and select a fresh-posting window: 24 hours, 72 hours by default, or 7 days. CareerOps and Adzuna scans use that selected window.",
+            title: "Choose the freshness window and schedule",
+            body: "Open Account → Settings → Sources and use the Fresh posting window card to select how far back scans accept postings: 24 hours, 72 hours by default, or 7 days. Company career-site, Dice, and Adzuna scans all use that selected window. Optional six-hour automatic scans are enabled separately under Account → Settings → Data & Backup.",
           },
         ],
       },
@@ -530,6 +530,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Open Account → Settings → Sources.",
           "Enable or disable existing company sources.",
+          "Set the Fresh posting window (24 hours, 72 hours by default, or 7 days) to control how old a posting can be before scans skip it as stale.",
           "Add a supported career page (Ashby, Greenhouse, or Lever) when you want the scanner to watch a new company.",
           "Use title include filters for roles you want and exclude filters for titles you never want.",
           "Disable noisy or failing sources instead of deleting useful search criteria.",

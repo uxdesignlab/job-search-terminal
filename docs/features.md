@@ -831,6 +831,12 @@ Four configuration tabs:
   to rate-limit when hundreds of sources are validated at once. Hover an
   **Unknown** badge to see the last error string (for example `HTTP 429`).
   **Re-validate sources** re-runs the full check.
+- **Fresh posting window** card: select how far back scans accept postings —
+  24 hours, 72 hours (default), or 7 days. Postings older than the window are
+  skipped as stale. The selected window applies to company career-site
+  (CareerOps), Dice, and Adzuna scans, whether triggered manually or by the
+  six-hour schedule. (This selector previously lived under Data & Backup; it
+  moved to Sources so it sits next to the scan tools it governs.)
 
 ### Preferences
 - Edit title include / exclude filters.
@@ -841,9 +847,8 @@ Four configuration tabs:
 
 ### Data & Backup
 - Enable or disable automatic scans every six hours while the local app is
-  running.
-- Select the fresh-posting window: 24 hours, 72 hours by default, or 7 days.
-  CareerOps and Adzuna scans use the selected window.
+  running. The schedule card shows the currently selected fresh-posting window
+  and links to Sources → Fresh posting window, where the selector now lives.
 - Create a portable `.jst-backup` archive with optional password protection.
 - Restore only after archive validation, preview, explicit confirmation, and an
   automatic rollback backup.
