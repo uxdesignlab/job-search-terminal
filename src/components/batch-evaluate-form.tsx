@@ -325,12 +325,30 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
           />
         )}
 
-        {/* No overflow-x here on purpose: `overflow-x: auto` makes overflow-y compute as
-            a scroll container, which breaks the viewport-relative sticky header. The grid
-            ancestors carry min-w-0 instead, and cells break long tokens, so the table
-            fits the Shell width without a scroll box. */}
+        {/* `table-fixed` + explicit column widths is what keeps this inside the card.
+            Auto layout sizes columns to content, which overflowed the panel; and
+            `overflow-x: auto` is not an option because setting overflow-x makes
+            overflow-y compute as a scroll container, breaking the viewport-relative
+            sticky header. Fixed layout derives widths from the table's own 100%, so
+            content wraps instead of pushing the table wider. */}
         <div className="w-full max-w-full" role="region" aria-label="Jobs table">
-          <table className={cn(dataTableClass, dataTableStickyHeadClass, "break-words")}>
+          <table className={cn(dataTableClass, dataTableStickyHeadClass, "table-fixed break-words")}>
+            {/* Widths total 100%. Date columns need enough room for `07/24/26` on one
+                line; Preference needs room for its header not to collide with Fit. */}
+            <colgroup>
+              <col className="w-[3%]" />
+              <col className="w-[16%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[9%]" />
+              <col className="w-[4%]" />
+              <col className="w-[7%]" />
+              <col className="w-[9%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+              <col className="w-[6%]" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="pb-3 pr-3 text-left">
