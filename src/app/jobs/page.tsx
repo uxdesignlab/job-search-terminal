@@ -13,7 +13,6 @@ import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
 import { getJobSourceLabel } from "@/lib/job-table-helpers";
-import { approveReviewAction, dismissReviewAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +40,9 @@ export default async function JobsPage() {
 
   return (
     <Shell activeItem="Jobs">
-      <div className="grid gap-6">
+      {/* min-w-0: grid items default to min-width:auto, so a wide table would stretch
+          the track and push every sibling past the Shell's max width. */}
+      <div className="grid min-w-0 gap-6 [&>*]:min-w-0">
         <PageHeader
           description="Discovered jobs with fit scoring, posted dates, status, and recommended action."
           eyebrow="Position dashboard"
@@ -66,7 +67,7 @@ export default async function JobsPage() {
             <span className="font-medium text-ink">
               {reviewQueueCount} job{reviewQueueCount !== 1 ? "s" : ""} need{reviewQueueCount === 1 ? "s" : ""} review — short or missing description
             </span>
-            <span className="text-xs text-muted">Approve to keep · Dismiss to archive</span>
+            <span className="text-xs text-muted">Open a job to add the missing detail</span>
           </div>
         ) : null}
 
@@ -125,11 +126,7 @@ export default async function JobsPage() {
         {/* Desktop table with column filters + batch actions */}
         {jobs.length > 0 ? (
           <div className="hidden lg:block">
-            <BatchEvaluateForm
-              jobs={jobs}
-              onApproveReview={approveReviewAction}
-              onDismissReview={dismissReviewAction}
-            />
+            <BatchEvaluateForm jobs={jobs} />
           </div>
         ) : null}
       </div>

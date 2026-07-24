@@ -74,8 +74,6 @@ function fmtPostedCell(iso: string | null | undefined): string {
 
 export type BatchEvaluateFormProps = {
   jobs: MainJobTableRecord[];
-  onApproveReview?: (jobId: string) => Promise<void>;
-  onDismissReview?: (jobId: string) => Promise<void>;
 };
 
 const COL_DEFS: Array<{ col: SortCol; label: string }> = [
@@ -91,7 +89,7 @@ const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "source", label: "Source" },
 ];
 
-export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: BatchEvaluateFormProps) {
+export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [jobStatus, setJobStatus] = useState<Record<string, JobRowStatus>>({});
@@ -327,8 +325,12 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
           />
         )}
 
+        {/* No overflow-x here on purpose: `overflow-x: auto` makes overflow-y compute as
+            a scroll container, which breaks the viewport-relative sticky header. The grid
+            ancestors carry min-w-0 instead, and cells break long tokens, so the table
+            fits the Shell width without a scroll box. */}
         <div className="w-full max-w-full" role="region" aria-label="Jobs table">
-          <table className={cn(dataTableClass, dataTableStickyHeadClass)}>
+          <table className={cn(dataTableClass, dataTableStickyHeadClass, "break-words")}>
             <thead>
               <tr>
                 <th className="pb-3 pr-3 text-left">
@@ -354,11 +356,6 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
                 <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
                   Link
                 </th>
-                {(onApproveReview ?? onDismissReview) ? (
-                  <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-muted">
-                    Review
-                  </th>
-                ) : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -477,36 +474,6 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
                         <Badge tone="warning">Needs posting</Badge>
                       ) : null}
                     </td>
-                    {(onApproveReview ?? onDismissReview) ? (
-                      <td className="py-3">
-                        {job.reviewStatus === "pending_review" ? (
-                          <div className="flex items-center gap-1.5">
-                            {onApproveReview ? (
-                              <button
-                                className="rounded border border-success/40 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/8"
-                                disabled={isRunning}
-                                onClick={() => void onApproveReview(job.id)}
-                                title="Approve — move to normal pipeline"
-                                type="button"
-                              >
-                                Approve
-                              </button>
-                            ) : null}
-                            {onDismissReview ? (
-                              <button
-                                className="rounded border border-danger/40 px-2 py-0.5 text-xs font-medium text-danger hover:bg-danger/8"
-                                disabled={isRunning}
-                                onClick={() => void onDismissReview(job.id)}
-                                title="Dismiss — archive this job"
-                                type="button"
-                              >
-                                Dismiss
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </td>
-                    ) : null}
                   </tr>
                 );
               })}

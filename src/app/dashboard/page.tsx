@@ -85,7 +85,9 @@ export default function DashboardPage() {
 
   return (
     <Shell activeItem="Dashboard">
-      <div className="grid gap-4">
+      {/* min-w-0: grid items default to min-width:auto, so one wide descendant would
+          stretch the track and push the whole page past the Shell's max width. */}
+      <div className="grid min-w-0 gap-4 [&>*]:min-w-0">
         <PageHeader
           actions={onboardingComplete ? (
             <>
@@ -270,11 +272,13 @@ export default function DashboardPage() {
                                   key={`${error.company}-${error.error}`}
                                 >
                                   <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                    <span>
+                                    <span className="min-w-0">
                                       <span className={cn("font-medium", sourceIsOff && "text-ink/80")}>
                                         {error.company}:
                                       </span>{" "}
-                                      <span className="text-muted">{error.error}</span>
+                                      {/* Scanner errors can embed 250-char URLs with no spaces. Without
+                                          an explicit break the min-content width forces the page grid open. */}
+                                      <span className="text-muted [overflow-wrap:anywhere]">{error.error}</span>
                                     </span>
                                     {sourceIsOff && <Badge tone="neutral">Disabled</Badge>}
                                   </span>

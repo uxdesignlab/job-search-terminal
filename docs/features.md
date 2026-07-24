@@ -235,6 +235,15 @@ status, posting maintenance, and bulk tools.
   and Jobs pages and polls every 8 seconds for new arrivals. Jobs without a
   direct posting URL are imported as email leads that can be resolved via
   **Resolve posting** on the job detail page.
+- **Table width** — the Jobs table fits inside the Shell's `max-w-6xl` container
+  rather than widening the page. Grid wrappers carry `min-w-0` (grid items
+  otherwise default to `min-width: auto`, so one wide descendant stretches the
+  track and drags every sibling out with it), and cells use `break-words` for long
+  tokens. The table deliberately does **not** use `overflow-x-auto`: setting
+  `overflow-x` makes `overflow-y` compute as a scroll container, which breaks the
+  viewport-relative sticky header (`.data-table-sticky-head`). The same `min-w-0`
+  treatment is applied to the Dashboard, whose scan-error list can contain
+  250-character URLs with no spaces.
 - **Column filters** — click any column header to open a sort + multi-value
   checkbox filter dropdown. Active filters show a count summary ("X of Y jobs")
   with a "Clear all filters" link.
@@ -243,10 +252,12 @@ status, posting maintenance, and bulk tools.
   survive page reloads. Click a chip to re-apply; click × to delete.
 - **Review queue banner** — when low-confidence imports are present (jobs with a
   description under 100 characters), a yellow banner appears at the top of the
-  Jobs page showing the count of jobs pending review. Per-row **Approve** and
-  **Dismiss** buttons let you promote a low-confidence job into the normal
-  pipeline (clears `review_status`) or archive it. The banner auto-hides when
-  the queue is empty.
+  Jobs page showing the count of jobs pending review. The banner auto-hides when
+  the queue is empty. It is informational: the per-row Review column with
+  **Approve** / **Dismiss** buttons was removed to keep the table inside the page
+  width. `approveReviewAction` and `dismissReviewAction` remain in
+  `src/app/jobs/actions.ts` but are not currently wired to any UI, so
+  `review_status` is not clearable from the Jobs table.
 
 ---
 
