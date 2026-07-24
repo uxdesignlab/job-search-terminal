@@ -189,10 +189,14 @@ status, posting maintenance, and bulk tools.
   immediately — it is auto-archived and moves to the Archived page.
 - Bulk delete asks for confirmation. If selected jobs have user activity, the
   confirmation warns before deleting.
-- Maintenance tool to verify posting liveness, confirm deletion for expired
-  untouched jobs, and identify active jobs whose titles no longer match saved
-  title filters. Out-of-scope cleanup only bulk-deletes untouched jobs; jobs with
-  user activity must be removed through explicit selected-job actions. Clicking
+- Maintenance tool to verify posting liveness, archive expired untouched jobs,
+  and identify active jobs whose titles no longer match saved title filters.
+  Automatic cleanup **archives** rather than deletes — a single unauthenticated
+  liveness fetch is not strong enough evidence to destroy a row and its
+  evaluations, and archived jobs are permanently protected from further automatic
+  removal. Out-of-scope cleanup only bulk-deletes unprotected jobs; jobs with user
+  activity or recent discovery must be removed through explicit selected-job
+  actions. Clicking
   **Verify active postings** opens a blocking `ProgressModal` while the liveness
   check runs; on completion the modal shows a badge summary (checked / active /
   uncertain / expired counts) and prompts the user to close and take action on
@@ -204,6 +208,21 @@ status, posting maintenance, and bulk tools.
 - Add job manually via modal (paste URL or fill in details). Jobs added this
   way are stored with `source = 'manual'` and display a **Manual** badge in
   the Source column.
+- **Source column** — shows where a job came from, resolved in this order
+  (`getJobSourceLabel` in `src/lib/job-table-helpers.ts`): the browser-board
+  source name (LinkedIn, Wellfound, Indeed, …), then the ATS provider for
+  `<provider>-api` sources (Greenhouse, Lever, Ashby — previously blank), then the
+  originating site derived from `source_url`, and finally **Scanner** when there is
+  no usable URL. Sites the public host list does not name render as their bare
+  hostname; `config/source-labels.local.json` (gitignored, see
+  `config/source-labels.example.json`) can give them friendly names without
+  publishing that list. When the job has an HTTP(S) `source_url` the label is a
+  link that opens the original search result in a new tab; otherwise it stays a
+  plain badge. `javascript:` and other non-HTTP URLs are never linked. The label is
+  resolved on the server and reused for display, sorting, and filtering, so all
+  three always agree. **Scanner** remains a filter option even when no job
+  currently uses it, so a saved filter from before per-site labels existed stays
+  selectable — and it still matches every source without a browser-board name.
 - **Email job alert imports** — drop `.eml`, `.html`, or `.txt` files into
   `data/email-job-alert-imports/`. The local watcher parses them and queues
   extracted candidates in the **Email approval modal** — jobs are never added
@@ -910,9 +929,34 @@ The results view is scrollable when there are many errors or new listings. Each 
 
 The Jobs page can also verify whether saved postings still exist. The liveness
 check updates `liveness_status` but does not automatically archive or delete
-anything. Expired jobs with no user activity are shown for confirmation before
-deletion. Jobs with activity, such as reviewed, skipped, resume-generated, or
-applied jobs, are kept unless the user explicitly selects and deletes them.
+anything. Expired jobs with no user activity are shown for confirmation, and
+confirming **archives** them rather than deleting them.
+
+**Removal protection** (`src/lib/jobs/job-protection.ts`). A job is protected from
+automatic removal when any of these hold:
+
+- it is already archived;
+- it has user activity — reviewed, skipped, resume-generated, or applied;
+- it was discovered within the last day (`DISCOVERY_GRACE_DAYS`). Boards that
+  challenge bots routinely look expired on one check and active on the next, so a
+  posting a scan found this morning is never swept the same afternoon.
+
+Protected jobs are kept unless the user explicitly selects and deletes them. The
+maintenance panel reads this decision from the server rather than re-deriving it,
+so the "kept" and "can be cleaned up" counts always match what the server will do.
+
+**Liveness evidence quality** (`src/lib/scanner/liveness-checker.ts`). Only HTTP
+404/410 and explicit expiry copy mark a posting expired. Two host lists soften
+that where unauthenticated checks are unreliable:
+
+- *Session-gated hosts* (LinkedIn by default) serve login walls and generic
+  "no longer accepting applications" copy for roles that are still open, so no
+  text-based verdict from them is trusted — only a hard 404/410 counts.
+- *Ambiguous hosts* (Monster by default) can return HTTP 200 challenge pages, so a
+  pattern-free 200 falls back to `uncertain` instead of `active`.
+
+Both lists can be extended locally via `config/liveness-hosts.local.json`
+(gitignored; see `config/liveness-hosts.example.json`).
 
 The Jobs table also re-checks current profile preferences at render time and is
 refreshed after Preferences or Constraints are saved. Jobs that still fit show

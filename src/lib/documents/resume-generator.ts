@@ -660,7 +660,7 @@ function parseHeader(lines: string[], profile: Pick<UserProfileRecord, "name" | 
       continue;
     }
 
-    // Bare domain like "pavel.ux.business" without http/www prefix
+    // Bare domain like "portfolio.example.com" without http/www prefix
     if (isDomainLike(line)) {
       contactItems.push(line);
       continue;
@@ -779,7 +779,7 @@ function isLocationLike(line: string): boolean {
 }
 
 function isDomainLike(line: string): boolean {
-  // "pavel.ux.business" or "ux.design" — no spaces, no @, at least one dot
+  // "portfolio.example.com" or "ux.design" — no spaces, no @, at least one dot
   return /^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i.test(line) && !line.includes(" ");
 }
 

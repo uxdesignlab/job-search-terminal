@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkJobLiveness } from "@/lib/scanner/liveness-checker";
-import { deleteJob, getJobById, getJobs, saveJobLiveness, saveJobScopeStatus, getTitleFilters } from "@/lib/db/queries";
+import { archiveJob, getJobById, getJobs, saveJobLiveness, saveJobScopeStatus, getTitleFilters } from "@/lib/db/queries";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import type { JobRecord } from "@/lib/db/types";
 import { hasResolvedPosting } from "@/lib/jobs/posting-resolution";
@@ -21,6 +21,8 @@ type LivenessJobSummary = {
   company: string;
   location: string;
   status: string;
+  /** Server-computed so callers never re-derive protection from `status` alone. */
+  protectedFromRemoval: boolean;
   reason: string;
 };
 
@@ -51,6 +53,10 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "No IDs provided" }, { status: 400 });
     }
 
+    // Automatic cleanup archives rather than deletes. Liveness evidence comes from a
+    // single unauthenticated fetch, which is not strong enough to justify destroying a
+    // row and its evaluations. Archived jobs leave the active pipeline and become
+    // permanently protected; explicit purge remains available in job maintenance.
     let deleted = 0;
     const kept: LivenessJobSummary[] = [];
 
@@ -61,11 +67,11 @@ export async function DELETE(req: Request) {
         kept.push(summarizeJob(job, "Protected from automatic cleanup"));
         continue;
       }
-      deleteJob(id);
+      archiveJob(id);
       deleted++;
     }
 
-    return NextResponse.json({ ok: true, deleted, kept });
+    return NextResponse.json({ ok: true, deleted, archived: deleted, kept });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
@@ -139,6 +145,7 @@ function summarizeJob(job: JobRecord, reason: string): LivenessJobSummary {
     company: job.company,
     location: job.location,
     status: job.status,
+    protectedFromRemoval: isJobProtectedFromAutomaticRemoval(job),
     reason,
   };
 }

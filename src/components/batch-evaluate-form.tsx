@@ -24,13 +24,13 @@ import {
   type MainJobsSortCol,
   getMainJobColOptions,
   getMainJobColValue,
+  matchesMainJobColFilter,
 } from "@/lib/job-table-helpers";
 import {
   TABLE_SAVED_FILTER_STORAGE_KEYS,
   TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
 } from "@/lib/table-saved-filter-storage-keys";
-import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
-import { hasResolvedPosting } from "@/lib/jobs/posting-resolution";
+import { hasResolvedPosting, isHttpPostingUrl } from "@/lib/jobs/posting-resolution";
 
 type JobRowStatus = "loading" | "done" | "error";
 type SortCol = MainJobsSortCol;
@@ -141,10 +141,9 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
 
   const colOptions = useMemo(
     () =>
-      Object.fromEntries(COL_DEFS.map(({ col }) => [col, getMainJobColOptions(jobs, col)])) as Record<
-        SortCol,
-        string[]
-      >,
+      Object.fromEntries(
+        COL_DEFS.map(({ col }) => [col, getMainJobColOptions(jobs, col)]),
+      ) as Record<SortCol, string[]>,
     [jobs],
   );
 
@@ -162,7 +161,7 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
     let result = jobs;
     for (const [col, allowed] of Object.entries(filters) as [SortCol, Set<string>][]) {
       if (!allowed) continue;
-      result = result.filter((j) => allowed.has(getMainJobColValue(j, col)));
+      result = result.filter((j) => matchesMainJobColFilter(j, col, allowed));
     }
     if (duplicateGroupFilter) {
       const { company, title } = duplicateGroupFilter;
@@ -182,7 +181,7 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
         case "recommendation": cmp = a.recommendation.localeCompare(b.recommendation); break;
         case "posted": cmp = (a.datePosted ?? "").localeCompare(b.datePosted ?? ""); break;
         case "scanned": cmp = (a.firstSeenDate ?? "").localeCompare(b.firstSeenDate ?? ""); break;
-        case "source": cmp = a.source.localeCompare(b.source); break;
+        case "source": cmp = getMainJobColValue(a, "source").localeCompare(getMainJobColValue(b, "source")); break;
         case "duplicate": cmp = (a.isDuplicate ? 1 : 0) - (b.isDuplicate ? 1 : 0); break;
       }
       return sort.dir === "asc" ? cmp : -cmp;
@@ -365,7 +364,9 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
             <tbody className="divide-y divide-border">
               {displayJobs.map((job) => {
                 const rowStatus = jobStatus[job.id];
-                const sourceLabel = sourceLabelFromJobSource(job.source);
+                const sourceLabel = getMainJobColValue(job, "source");
+                const sourceUrl = job.sourceUrl.trim();
+                const hasSourceLink = isHttpPostingUrl(sourceUrl);
                 return (
                   <tr
                     key={job.id}
@@ -428,7 +429,20 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
                     <td className="py-3 pr-4 tabular-nums text-muted">{fmtDate(job.firstSeenDate)}</td>
                     <td className="py-3 pr-4">
                       <div className="flex flex-wrap gap-1">
-                        {sourceLabel && <Badge tone="neutral">{sourceLabel}</Badge>}
+                        {hasSourceLink ? (
+                          <a
+                            aria-label={`Open source on ${sourceLabel} in a new tab`}
+                            className="inline-flex min-h-7 items-center rounded-control border border-border px-2.5 text-xs font-medium text-accent hover:bg-accent/5"
+                            href={sourceUrl}
+                            rel="noreferrer"
+                            target="_blank"
+                            title={`Open source on ${sourceLabel}`}
+                          >
+                            {sourceLabel} ↗
+                          </a>
+                        ) : (
+                          <Badge tone="neutral">{sourceLabel}</Badge>
+                        )}
                         {job.isDuplicate && (() => {
                           const isActive = duplicateGroupFilter?.company === job.company && duplicateGroupFilter?.title === job.title;
                           return (
@@ -467,28 +481,28 @@ export function BatchEvaluateForm({ jobs, onApproveReview, onDismissReview }: Ba
                       <td className="py-3">
                         {job.reviewStatus === "pending_review" ? (
                           <div className="flex items-center gap-1.5">
-                            {onApproveReview && (
+                            {onApproveReview ? (
                               <button
-                                type="button"
+                                className="rounded border border-success/40 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/8"
                                 disabled={isRunning}
                                 onClick={() => void onApproveReview(job.id)}
-                                className="rounded border border-success/40 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/8"
                                 title="Approve — move to normal pipeline"
+                                type="button"
                               >
                                 Approve
                               </button>
-                            )}
-                            {onDismissReview && (
+                            ) : null}
+                            {onDismissReview ? (
                               <button
-                                type="button"
+                                className="rounded border border-danger/40 px-2 py-0.5 text-xs font-medium text-danger hover:bg-danger/8"
                                 disabled={isRunning}
                                 onClick={() => void onDismissReview(job.id)}
-                                className="rounded border border-danger/40 px-2 py-0.5 text-xs font-medium text-danger hover:bg-danger/8"
                                 title="Dismiss — archive this job"
+                                type="button"
                               >
                                 Dismiss
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         ) : null}
                       </td>

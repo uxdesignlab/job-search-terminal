@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy to source-labels.local.json (gitignored) to give friendly names to job boards the public host list does not cover. Without it, unknown hosts render as their bare hostname. Keys are hostnames (subdomains match automatically); values are the label shown in the Source column and its filter.",
+
+  "hosts": {
+    "example.com": "Example Board"
+  }
+}

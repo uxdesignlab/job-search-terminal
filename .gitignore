@@ -29,6 +29,10 @@ assets/*
 # portals.example.yml ships with the repo as the public default.
 config/portals.yml
 
+# Personal local config — the boards you scan and how their labels render.
+# The matching *.example.json files ship with the repo as public defaults.
+config/*.local.json
+
 # Internal planning docs — historical notes, personal references, archived phases.
 # These stay local; they are not part of the public repo.
 docs/archive/

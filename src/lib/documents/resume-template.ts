@@ -251,7 +251,7 @@ function renderContact(items: string[]) {
       const url = item.startsWith("http") ? item : `https://${item}`;
       return `<a href="${safeHref(url)}">${escapeHtml(item)}</a>`;
     }
-    // Bare domain like "pavel.ux.business" — no spaces, has at least one dot
+    // Bare domain like "portfolio.example.com" — no spaces, has at least one dot
     if (/^[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}$/i.test(item)) {
       return `<a href="${safeHref(`https://${item}`)}">${escapeHtml(item)}</a>`;
     }

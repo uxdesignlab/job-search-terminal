@@ -139,7 +139,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Review and evaluate",
-            body: "Filter the Jobs table, open promising roles, and run AI evaluation to understand fit, gaps, red flags, and recommended next action.",
+            body: "Filter the Jobs table, use the Source link to inspect where each role came from, open promising roles, and run AI evaluation to understand fit, gaps, red flags, and recommended next action.",
           },
           {
             title: "Tailor and apply manually",

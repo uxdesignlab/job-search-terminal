@@ -2,6 +2,8 @@
 // Returns "active" | "expired" | "uncertain".
 // No browser — just HTTP + text heuristics (fast, no Playwright dependency).
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { safeFetch } from "../safe-fetch";
 
 const EXPIRED_PATTERNS = [
@@ -14,8 +16,11 @@ const EXPIRED_PATTERNS = [
   /sorry[,.]? this (job|role|position) is no longer/i,
   /sorry[,.]?\s*that job has expired/i,
   /application deadline (has )?passed/i,
-  /requisition.*closed/i,
-  /opening.*closed/i,
+  // Bounded on purpose. Unanchored `.*` matched any page that happened to contain
+  // both words anywhere inside the 30 KB sample, which made long career pages and
+  // bot-challenge interstitials read as expired.
+  /requisition[^.<>]{0,40}closed/i,
+  /opening[^.<>]{0,40}closed/i,
   /listing.*no longer active/i,
 ];
 
@@ -42,13 +47,60 @@ const UNCERTAIN_ON_AMBIGUOUS_HOSTS = [
   "monster.com",
 ];
 
-function isUncertainOnAmbiguous(url: string): boolean {
+// Hosts that gate postings behind a signed-in session. Without one they serve login
+// walls, bot challenges, or generic "no longer accepting applications" copy for roles
+// that are still open — so no unauthenticated verdict from them is trustworthy, not
+// even an explicit expiry match. Only a hard 404/410 is believed. Anything else is
+// "uncertain", which keeps the job in the pipeline instead of flagging it expired.
+const SESSION_GATED_HOSTS = [
+  "linkedin.com",
+];
+
+/**
+ * Extra hosts from `config/liveness-hosts.local.json`, which is gitignored so a local
+ * setup can list boards it scans without publishing them. Shape:
+ * `{ "sessionGated": ["example.com"], "uncertainOnAmbiguous": ["example.org"] }`
+ * Mirrors the `portals.yml` / `portals.example.yml` fallback in careerops-scanner.
+ */
+let localHostOverrides: { sessionGated: string[]; uncertainOnAmbiguous: string[] } | null = null;
+
+function getLocalHostOverrides() {
+  if (localHostOverrides) return localHostOverrides;
+  localHostOverrides = { sessionGated: [], uncertainOnAmbiguous: [] };
+  try {
+    const configPath = path.join(process.cwd(), "config", "liveness-hosts.local.json");
+    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const raw = parsed as Record<string, unknown>;
+      const list = (value: unknown) =>
+        Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+      localHostOverrides = {
+        sessionGated: list(raw.sessionGated),
+        uncertainOnAmbiguous: list(raw.uncertainOnAmbiguous),
+      };
+    }
+  } catch {
+    /* the local override file is optional */
+  }
+  return localHostOverrides;
+}
+
+function hostMatches(url: string, hosts: string[]): boolean {
+  if (hosts.length === 0) return false;
   try {
     const { hostname } = new URL(url);
-    return UNCERTAIN_ON_AMBIGUOUS_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`));
+    return hosts.some((h) => hostname === h || hostname.endsWith(`.${h}`));
   } catch {
     return false;
   }
+}
+
+function isUncertainOnAmbiguous(url: string): boolean {
+  return hostMatches(url, [...UNCERTAIN_ON_AMBIGUOUS_HOSTS, ...getLocalHostOverrides().uncertainOnAmbiguous]);
+}
+
+function isSessionGated(url: string): boolean {
+  return hostMatches(url, [...SESSION_GATED_HOSTS, ...getLocalHostOverrides().sessionGated]);
 }
 
 export async function checkJobLiveness(url: string): Promise<LivenessResult> {
@@ -81,6 +133,16 @@ export async function checkJobLiveness(url: string): Promise<LivenessResult> {
 
   if (res.status >= 400) {
     return { status: "uncertain", reason: `HTTP ${res.status}`, checkedAt };
+  }
+
+  // Past this point every verdict comes from page text. On session-gated hosts that
+  // text describes the login wall, not the posting, so stop here rather than trust it.
+  if (isSessionGated(url)) {
+    return {
+      status: "uncertain",
+      reason: "Host requires a signed-in session — cannot verify without one",
+      checkedAt,
+    };
   }
 
   // Sample up to 30 KB of text — enough to catch banners without huge parse cost

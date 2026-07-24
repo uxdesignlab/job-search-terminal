@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy to liveness-hosts.local.json (gitignored) to extend posting-liveness host handling without publishing your board list.",
+
+  "_sessionGated": "Hosts that only show real posting state to a signed-in session. Any text-based verdict from them is discarded; only HTTP 404/410 counts as expired. Use this for boards that serve login walls or bot challenges to unauthenticated fetches.",
+  "sessionGated": [],
+
+  "_uncertainOnAmbiguous": "Hosts whose CDN or bot detection can return HTTP 200 with no expiry or active signal. A pattern-free 200 from these falls back to uncertain instead of active. Explicit expiry and active matches are still trusted.",
+  "uncertainOnAmbiguous": []
+}

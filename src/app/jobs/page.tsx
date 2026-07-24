@@ -5,14 +5,15 @@ import { formatPostedDate } from "@/lib/dates";
 import { getJobs, getReviewQueueCount, getUserProfile } from "@/lib/db/queries";
 import { OUTSIDE_PREFERENCES_LABEL, buildJobPreferenceFilter } from "@/lib/jobs/preference-fit";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
-import { hasResolvedPosting } from "@/lib/jobs/posting-resolution";
+import { hasResolvedPosting, isHttpPostingUrl } from "@/lib/jobs/posting-resolution";
+import { getSourceLabelOverrides } from "@/lib/jobs/source-labels";
 import { AddJobModal } from "@/components/AddJobModal";
 import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
-import { approveReviewAction, dismissReviewAction } from "./actions";
 import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
-import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
+import { getJobSourceLabel } from "@/lib/job-table-helpers";
+import { approveReviewAction, dismissReviewAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,13 +27,14 @@ export default async function JobsPage() {
   const profile = getUserProfile();
   const preferenceFilter = buildJobPreferenceFilter(profile);
   const reviewQueueCount = getReviewQueueCount();
+  const sourceLabelOverrides = getSourceLabelOverrides();
   const jobs = getJobs().map((job) => {
     const preferenceDecision = preferenceFilter(job);
     return {
       ...job,
       preferenceLabel: preferenceDecision.accepted ? undefined : OUTSIDE_PREFERENCES_LABEL,
       removalProtected: isJobProtectedFromAutomaticRemoval(job),
-      sourceLabel: sourceLabelFromJobSource(job.source),
+      sourceLabel: getJobSourceLabel(job, sourceLabelOverrides),
       hasResolvedPosting: hasResolvedPosting(job),
     };
   });
@@ -64,7 +66,7 @@ export default async function JobsPage() {
             <span className="font-medium text-ink">
               {reviewQueueCount} job{reviewQueueCount !== 1 ? "s" : ""} need{reviewQueueCount === 1 ? "s" : ""} review — short or missing description
             </span>
-            <span className="text-muted text-xs">Approve to keep · Dismiss to archive</span>
+            <span className="text-xs text-muted">Approve to keep · Dismiss to archive</span>
           </div>
         ) : null}
 
@@ -89,7 +91,19 @@ export default async function JobsPage() {
                 <Badge>{job.fitScore}% fit</Badge>
                 <Badge>{formatPostedDate(job)}</Badge>
                 <Badge tone={toneForRecommendation(job.recommendation)}>{job.recommendation}</Badge>
-                {job.sourceLabel ? <Badge tone="neutral">{job.sourceLabel}</Badge> : null}
+                {isHttpPostingUrl(job.sourceUrl) ? (
+                  <a
+                    aria-label={`Open source on ${job.sourceLabel} in a new tab`}
+                    className="text-xs font-medium text-accent hover:underline"
+                    href={job.sourceUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {job.sourceLabel} ↗
+                  </a>
+                ) : (
+                  <Badge tone="neutral">{job.sourceLabel}</Badge>
+                )}
                 {job.preferenceLabel ? <Badge tone="warning">{job.preferenceLabel}</Badge> : null}
                 {job.livenessStatus === "expired" ? <Badge tone="danger">Posting expired</Badge> : null}
                 {job.hasResolvedPosting ? (

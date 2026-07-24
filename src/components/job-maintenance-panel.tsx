@@ -11,6 +11,8 @@ type LivenessJobSummary = {
   company: string;
   location: string;
   status: string;
+  /** Computed by the server — covers user activity and the recent-discovery grace period. */
+  protectedFromRemoval: boolean;
   reason: string;
 };
 
@@ -22,8 +24,6 @@ type LivenessSummary = {
   expiredProtected: LivenessJobSummary[];
   outOfScope: LivenessJobSummary[];
 };
-
-const UNTOUCHED_STATUS = "Found";
 
 export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
   const router = useRouter();
@@ -55,7 +55,7 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
   }
 
   async function deleteOutOfScope() {
-    const deletable = summary?.outOfScope.filter((job) => job.status === UNTOUCHED_STATUS) ?? [];
+    const deletable = summary?.outOfScope.filter((job) => !job.protectedFromRemoval) ?? [];
     if (deletable.length === 0) return;
     setDeletingOutOfScope(true);
     setError(null);
@@ -70,7 +70,7 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
       setSummary((current) => current
         ? {
           ...current,
-          outOfScope: current.outOfScope.filter((job) => job.status !== UNTOUCHED_STATUS),
+          outOfScope: current.outOfScope.filter((job) => job.protectedFromRemoval),
         }
         : current);
       router.refresh();
@@ -85,8 +85,8 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
     setSummary((current) => current ? { ...current, outOfScope: [] } : current);
   }
 
-  const outOfScopeUntouched = summary?.outOfScope.filter((job) => job.status === UNTOUCHED_STATUS) ?? [];
-  const outOfScopeProtected = summary?.outOfScope.filter((job) => job.status !== UNTOUCHED_STATUS) ?? [];
+  const outOfScopeUntouched = summary?.outOfScope.filter((job) => !job.protectedFromRemoval) ?? [];
+  const outOfScopeProtected = summary?.outOfScope.filter((job) => job.protectedFromRemoval) ?? [];
 
   async function deleteExpiredUntouched() {
     if (!summary?.expiredUntouched.length) return;
@@ -180,7 +180,7 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
           {summary.expiredUntouched.length > 0 && (
             <div className="mt-4 rounded-control border border-danger/30 bg-danger/8 p-3">
               <p className="text-sm font-medium text-ink">
-                Confirm deletion for {summary.expiredUntouched.length} expired job{summary.expiredUntouched.length !== 1 ? "s" : ""} with no user activity.
+                Archive {summary.expiredUntouched.length} expired job{summary.expiredUntouched.length !== 1 ? "s" : ""} with no user activity.
               </p>
               <ul className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-2 text-sm text-muted">
                 {summary.expiredUntouched.slice(0, 12).map((job) => (
@@ -199,7 +199,7 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
                 type="button"
                 variant="secondary"
               >
-                {deleting ? "Deleting..." : "Delete expired untouched jobs"}
+                {deleting ? "Archiving..." : "Archive expired untouched jobs"}
               </Button>
             </div>
           )}
@@ -207,7 +207,7 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
           {summary.expiredProtected.length > 0 && (
             <div className="mt-4 rounded-control border border-warning/30 bg-warning/8 p-3">
               <p className="text-sm font-medium text-ink">
-                Kept {summary.expiredProtected.length} expired job{summary.expiredProtected.length !== 1 ? "s" : ""} because user activity exists.
+                Kept {summary.expiredProtected.length} expired job{summary.expiredProtected.length !== 1 ? "s" : ""} — user activity exists, or they were discovered too recently to judge.
               </p>
               <p className="mt-1 text-xs text-muted">
                 These can only be removed through an explicit selected-job delete action.
@@ -239,7 +239,7 @@ export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
               )}
               {outOfScopeProtected.length > 0 && (
                 <p className="mt-2 text-xs leading-5 text-muted">
-                  Kept {outOfScopeProtected.length} out-of-scope job{outOfScopeProtected.length !== 1 ? "s" : ""} with user activity.
+                  Kept {outOfScopeProtected.length} out-of-scope job{outOfScopeProtected.length !== 1 ? "s" : ""} with user activity or recent discovery.
                   Remove them from the Jobs table if you decide they should be deleted.
                 </p>
               )}
