@@ -861,7 +861,8 @@ Four configuration tabs:
 - Add any company by pasting its careers page URL — Greenhouse, Ashby, and
   Lever are auto-detected.
 - "Scan for new sources" queries the Common Crawl index to discover additional
-  ATS boards automatically.
+  ATS boards automatically. See **Source discovery (Common Crawl)** below for how
+  the sweep is bounded and why it is incremental.
 - Discovered sources stay pending until the user reviews and explicitly selects
   the validated companies to add.
 - Cleanup review lists disabled or malformed user-added sources for explicit
@@ -886,6 +887,64 @@ Four configuration tabs:
   (CareerOps), Dice, and Adzuna scans, whether triggered manually or by the
   six-hour schedule. (This selector previously lived under Data & Backup; it
   moved to Sources so it sits next to the scan tools it governs.)
+
+#### Source discovery (Common Crawl)
+
+`src/lib/scanner/source-discovery.ts` harvests Greenhouse / Ashby / Lever company
+slugs from the Common Crawl URL index, validates each board's public ATS JSON
+endpoint, and writes candidates to `data/discovered-sources.json` for manual
+review. Nothing is scanned until the user imports it from Settings → Job Sources.
+
+**Resilience.** The CC index intermittently answers `502` / `503` / `504` under
+load. Requests retry up to five times with linear backoff. This matters: a run
+that hit gateway errors on all four URL patterns previously wrote
+`totalCrawled: 0` with no errors recorded, making a total outage look identical
+to "nothing new to find". Query failures are now recorded in the `errors` array
+of both the output file and the run summary.
+
+**Crawl selection.** Indexes resolve from `collinfo.json` at run time — the
+`CC_INDEX_COUNT` (3) most recent crawls, plus `CC_ARCHIVE_INDEXES`. The
+implementation previously pinned a single crawl that went 20 months stale. The
+archival index is coverage, not redundancy: `jobs.lever.co/*` returns a
+persistent `504` on every recent index while answering normally on
+`CC-MAIN-2024-51`, so a recent-only sweep finds almost no Lever boards (1 slug,
+versus 90 from the archival crawl). Slugs from older crawls are still validated
+live, so a stale crawl cannot introduce dead sources.
+
+**Pagination.** Each pattern is walked page by page via `showNumPages`. The old
+implementation fetched a flat `limit=1000` slice of page 0, capping patterns that
+hold tens of thousands of records.
+
+**Incremental by design.** `loadExistingSlugs()` skips slugs already in
+`portals.yml`, already in the custom-sources table, *and* already reported by an
+earlier run. Consulting only `portals.yml` (31 companies) meant every run
+re-validated the hundreds of sources already imported plus every candidate it had
+already reported, so each run redid the last one's work and buried genuinely new
+boards. Because prior discoveries are skipped, `MAX_NEW_CANDIDATES_PER_RUN`
+(1,500) is a rolling window rather than a permanent ceiling — rerun discovery to
+walk further through the backlog. A run that hits the cap sets `truncated`.
+
+**Where the cap is applied.** After the full sweep, never during it. Sweeping is
+cheap (parsing index lines); validation and AI classification are what cost time
+and money. Capping mid-sweep also aborted whole indexes before they were reached
+— including the archival one carrying essentially all Lever coverage, which
+silently defeated the Lever fix above. `selectBalancedCandidates` then draws
+round-robin across providers: a flat slice would be dominated by Greenhouse,
+which outnumbers Ashby roughly 2:1 and Lever by orders of magnitude, so Lever
+boards would never survive the cap.
+
+Since a run only carries newly-found slugs, its output is **merged** with prior
+entries before writing; otherwise each run would wipe the pending review list.
+
+**Cost control.** AI industry classification is capped at
+`MAX_AI_CLASSIFY_ENTRIES` (200) per run. The label only decorates the review
+list, and an uncapped wider sweep would issue roughly 55 model calls per run.
+Entries past the cap fall back to the existing slug heuristic.
+
+**Scale note.** A full sweep surfaces on the order of 9,000 candidate slugs, of
+which roughly 77% have a live endpoint. Importing thousands of sources would
+multiply CareerOps scan cost proportionally; staggered or incremental scanning is
+not yet implemented, so import selectively.
 
 ### Preferences
 - Edit title include / exclude filters.

@@ -8,16 +8,53 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
+import { getCustomScanSources } from "@/lib/db/queries";
 import { safeFetch } from "@/lib/safe-fetch";
 import type { AIMessage } from "@/lib/ai/provider";
 
 export const OUTPUT_PATH = path.join(process.cwd(), "data", "discovered-sources.json");
 const PORTALS_PATH = path.join(process.cwd(), "config", "portals.yml");
-const CC_INDEX = "https://index.commoncrawl.org/CC-MAIN-2024-51-index";
-const VALIDATE_CONCURRENCY = 10;
+const CC_COLLINFO = "https://index.commoncrawl.org/collinfo.json";
+/** Used only when collinfo.json cannot be reached; the newest known crawl at time of writing. */
+const CC_FALLBACK_INDEXES = ["CC-MAIN-2026-30"];
+/** Recent crawls to sweep. Different crawls capture different boards, so >1 materially widens coverage. */
+const CC_INDEX_COUNT = 3;
+/**
+ * Older crawls swept in addition to the recent ones.
+ *
+ * Not redundancy — coverage. `jobs.lever.co/*` returns a persistent 504 on every
+ * recent index while answering normally on this one, so recent-only sweeps yield
+ * almost no Lever boards (1 slug, versus 90 from this crawl). Slugs found here
+ * are still validated live, so a stale crawl cannot introduce dead sources.
+ */
+const CC_ARCHIVE_INDEXES = ["CC-MAIN-2024-51"];
+/** The CC index intermittently answers 502/503/504 under load; without retries a single blip drops a whole provider. */
+const CC_FETCH_ATTEMPTS = 5;
+const CC_FETCH_TIMEOUT_MS = 90_000;
+const CC_RETRY_BASE_MS = 1_500;
+const CC_INTER_PAGE_DELAY_MS = 200;
+const VALIDATE_CONCURRENCY = 25;
 const VALIDATE_TIMEOUT_MS = 10_000;
-const INTER_BATCH_DELAY_MS = 500;
+const INTER_BATCH_DELAY_MS = 250;
 const INDUSTRY_AI_BATCH_SIZE = 20;
+/**
+ * Cap on entries sent for AI industry classification per run.
+ *
+ * Previously the candidate pool was small enough that this was a handful of
+ * calls. With a wider sweep it would be ~55 model calls per run for a label that
+ * only decorates the review list, so it is bounded and degrades to the slug
+ * heuristic beyond the cap.
+ */
+const MAX_AI_CLASSIFY_ENTRIES = 200;
+/**
+ * Ceiling on newly-validated slugs per run.
+ *
+ * A full sweep surfaces ~9,000 candidates; validating all of them takes tens of
+ * minutes and produces a review list no one can work through. Discovery is
+ * incremental — already-known and previously-discovered slugs are skipped — so
+ * successive runs walk through the backlog instead of redoing it.
+ */
+const MAX_NEW_CANDIDATES_PER_RUN = 1_500;
 
 export type AtsProvider = "greenhouse" | "lever" | "ashby";
 export type ValidationStatus = "valid" | "dead" | "unknown";
@@ -42,6 +79,14 @@ export type DiscoveredSources = {
   fetchedAt: string;
   totalCrawled: number;
   entries: DiscoveredEntry[];
+  /**
+   * Per-pattern query failures from the last run. A run that cannot reach the
+   * index must say so — writing `totalCrawled: 0` with no errors previously made
+   * a total outage indistinguishable from "nothing new to find".
+   */
+  errors?: string[];
+  /** True when the candidate cap stopped the sweep early; rerun to continue. */
+  truncated?: boolean;
 };
 
 export type DiscoverySummary = {
@@ -50,6 +95,10 @@ export type DiscoverySummary = {
   valid: number;
   dead: number;
   unknown: number;
+  /** Query failures, surfaced so a failed sweep is never reported as an empty one. */
+  errors: string[];
+  /** True when the candidate cap stopped the sweep early. */
+  truncated: boolean;
 };
 
 type CcQueryPattern = { urlPattern: string; provider: AtsProvider };
@@ -63,12 +112,72 @@ const CC_PATTERNS: CcQueryPattern[] = [
 
 // ─── CC Query ─────────────────────────────────────────────────────────────────
 
-async function queryCcIndex(urlPattern: string): Promise<Array<{ url: string; timestamp: string }>> {
-  const query = new URLSearchParams({ url: urlPattern, output: "json", limit: "1000" });
-  const res = await safeFetch(`${CC_INDEX}?${query}`);
-  if (res.status === 404) return [];
-  if (!res.ok) throw new Error(`CC index returned HTTP ${res.status} for ${urlPattern}`);
-  const text = await res.text();
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Opts these requests out of Next.js's fetch cache.
+ *
+ * Next patches global `fetch` in server actions and buffers responses to cache
+ * them. Common Crawl index pages run to megabytes, and caching them fails with
+ * `Failed to set fetch cache … TypeError: terminated (UND_ERR_SOCKET)` — the
+ * socket is torn down mid-body, so every query fails. Discovery therefore worked
+ * from the CLI while the Settings button failed all 16 queries. Validation
+ * responses are excluded too: caching a liveness probe would return stale
+ * results on the next run.
+ */
+const NO_STORE: RequestInit = { cache: "no-store" };
+
+/** Retryable gateway/rate-limit statuses returned by the CC index under load. */
+const CC_RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+
+/**
+ * Fetches a CC index URL, retrying transient gateway failures with linear backoff.
+ *
+ * Returns `null` when the resource is genuinely absent (404) or every attempt
+ * failed. Callers must distinguish those from an empty result set, because
+ * "query failed" and "no records" previously collapsed into the same silent zero.
+ */
+async function ccFetchText(url: string): Promise<string | null> {
+  for (let attempt = 0; attempt < CC_FETCH_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CC_FETCH_TIMEOUT_MS);
+    try {
+      const res = await safeFetch(url, { signal: controller.signal, ...NO_STORE });
+      if (res.ok) return await res.text();
+      if (res.status === 404) return null;
+      if (!CC_RETRYABLE_STATUS.has(res.status)) return null;
+    } catch {
+      /* timeout or transport error — retry */
+    } finally {
+      clearTimeout(timer);
+    }
+    if (attempt < CC_FETCH_ATTEMPTS - 1) await sleep(CC_RETRY_BASE_MS * (attempt + 1));
+  }
+  return null;
+}
+
+/**
+ * Crawls to sweep: the `count` most recent, plus the archival ones.
+ *
+ * Resolved from collinfo.json so the sweep does not rot — the previous
+ * implementation pinned a single crawl that was 20 months stale.
+ */
+export async function resolveCcIndexes(count = CC_INDEX_COUNT): Promise<string[]> {
+  const text = await ccFetchText(CC_COLLINFO);
+  let recent = CC_FALLBACK_INDEXES.slice(0, count);
+  if (text) {
+    try {
+      const collections = JSON.parse(text) as Array<{ id?: string }>;
+      const ids = collections.map((c) => c.id).filter((id): id is string => Boolean(id));
+      if (ids.length > 0) recent = ids.slice(0, count);
+    } catch {
+      /* keep the fallback */
+    }
+  }
+  return [...new Set([...recent, ...CC_ARCHIVE_INDEXES])];
+}
+
+function parseCcRecords(text: string): Array<{ url: string; timestamp: string }> {
   const results: Array<{ url: string; timestamp: string }> = [];
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
@@ -79,6 +188,49 @@ async function queryCcIndex(urlPattern: string): Promise<Array<{ url: string; ti
     } catch { /* skip malformed lines */ }
   }
   return results;
+}
+
+export type CcQueryOutcome = {
+  records: Array<{ url: string; timestamp: string }>;
+  /** Pages the index reported. */
+  pages: number;
+  /** Pages that exhausted every retry — the caller surfaces these instead of silently under-reporting. */
+  failedPages: number;
+};
+
+/**
+ * Queries one crawl for one URL pattern, walking every page.
+ *
+ * The previous implementation fetched a flat `limit=1000` slice of page 0, which
+ * capped a pattern that can hold tens of thousands of records.
+ */
+async function queryCcIndex(index: string, urlPattern: string): Promise<CcQueryOutcome> {
+  const base = `https://index.commoncrawl.org/${index}-index`;
+  const countQuery = new URLSearchParams({ url: urlPattern, output: "json", showNumPages: "true" });
+  const countText = await ccFetchText(`${base}?${countQuery}`);
+  if (!countText) return { records: [], pages: 0, failedPages: 1 };
+
+  let pages = 0;
+  try {
+    pages = Number(JSON.parse(countText).pages ?? 0);
+  } catch {
+    return { records: [], pages: 0, failedPages: 1 };
+  }
+  if (!Number.isFinite(pages) || pages <= 0) return { records: [], pages: 0, failedPages: 0 };
+
+  const records: Array<{ url: string; timestamp: string }> = [];
+  let failedPages = 0;
+  for (let page = 0; page < pages; page += 1) {
+    const query = new URLSearchParams({ url: urlPattern, output: "json", page: String(page) });
+    const text = await ccFetchText(`${base}?${query}`);
+    if (text === null) {
+      failedPages += 1;
+      continue;
+    }
+    records.push(...parseCcRecords(text));
+    if (page < pages - 1) await sleep(CC_INTER_PAGE_DELAY_MS);
+  }
+  return { records, pages, failedPages };
 }
 
 // ─── Slug Helpers ─────────────────────────────────────────────────────────────
@@ -271,10 +423,21 @@ async function classifyIndustriesWithAI(
     return out;
   }
 
-  const targets = entries.filter((e) => e.validationStatus === "valid");
-  if (targets.length === 0) return out;
+  const valid = entries.filter((e) => e.validationStatus === "valid");
+  if (valid.length === 0) return out;
 
-  onProgress?.(`Classifying industries for ${targets.length} validated sources…`);
+  // Industry labels are a review-list nicety, not core data, and callers now
+  // hand us far more entries than before. Bound the spend; anything past the cap
+  // falls back to heuristicIndustry, which the caller already applies.
+  const targets = valid.slice(0, MAX_AI_CLASSIFY_ENTRIES);
+  if (valid.length > targets.length) {
+    onProgress?.(
+      `Classifying industries for the first ${targets.length} of ${valid.length} validated sources ` +
+      `(AI budget cap); the rest use slug heuristics.`,
+    );
+  } else {
+    onProgress?.(`Classifying industries for ${targets.length} validated sources…`);
+  }
 
   for (let i = 0; i < targets.length; i += INDUSTRY_AI_BATCH_SIZE) {
     const batch = targets.slice(i, i + INDUSTRY_AI_BATCH_SIZE);
@@ -326,7 +489,7 @@ async function validateEntry(entry: DiscoveredEntry): Promise<DiscoveredEntry> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
   try {
-    const res = await safeFetch(entry.apiUrl, { signal: controller.signal });
+    const res = await safeFetch(entry.apiUrl, { signal: controller.signal, ...NO_STORE });
     const text = await res.text();
     const status: ValidationStatus = res.ok ? "valid" : res.status === 404 ? "dead" : "unknown";
     let companyDisplayName: string | null = entry.companyDisplayName;
@@ -369,22 +532,87 @@ async function validateInBatches(
 
 // ─── Existing Sources ─────────────────────────────────────────────────────────
 
+function slugFromCareersUrl(url: string): string | null {
+  const match =
+    url.match(/(?:boards|job-boards)\.greenhouse\.io\/([^/?#]+)/) ||
+    url.match(/jobs\.lever\.co\/([^/?#]+)/) ||
+    url.match(/jobs\.ashbyhq\.com\/([^/?#]+)/i);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * Slugs a run should skip: already tracked, or already surfaced by an earlier run.
+ *
+ * All three sources matter. `portals.yml` alone covers 31 companies, so a run
+ * that consulted only it re-validated the hundreds of sources already imported
+ * into the database and every candidate it had already reported — making each
+ * run redo the last one's work and burying genuinely new boards in the review
+ * list. Including prior discoveries is what makes `MAX_NEW_CANDIDATES_PER_RUN`
+ * a rolling window rather than a permanent ceiling.
+ */
 function loadExistingSlugs(): Set<string> {
   const existing = new Set<string>();
+
   try {
     const config = yaml.load(readFileSync(PORTALS_PATH, "utf-8")) as {
       tracked_companies?: Array<{ careers_url?: string }>;
     };
     for (const c of config.tracked_companies ?? []) {
-      const url = c.careers_url ?? "";
-      const match =
-        url.match(/(?:boards|job-boards)\.greenhouse\.io\/([^/?#]+)/) ||
-        url.match(/jobs\.lever\.co\/([^/?#]+)/) ||
-        url.match(/jobs\.ashbyhq\.com\/([^/?#]+)/i);
-      if (match?.[1]) existing.add(match[1].toLowerCase());
+      const slug = slugFromCareersUrl(c.careers_url ?? "");
+      if (slug) existing.add(slug);
     }
   } catch { /* portals.yml is optional */ }
+
+  try {
+    for (const source of getCustomScanSources()) {
+      existing.add(source.name.toLowerCase());
+      const slug = slugFromCareersUrl(source.careersUrl ?? "");
+      if (slug) existing.add(slug);
+    }
+  } catch { /* database unavailable in CLI/test contexts */ }
+
+  // Entries reported by earlier runs, so a rerun advances the backlog rather
+  // than repeating it. Declared below; hoisting makes the ordering legal.
+  for (const entry of loadDiscoveredEntries()) {
+    existing.add(entry.slug.toLowerCase());
+  }
+
   return existing;
+}
+
+/**
+ * Takes up to `limit` candidates, round-robin across providers.
+ *
+ * A flat slice would be dominated by whichever provider the sweep happened to
+ * enumerate first — Greenhouse outnumbers Ashby roughly 2:1 and Lever by orders
+ * of magnitude, so Lever boards would never survive the cap.
+ */
+export function selectBalancedCandidates(
+  entries: DiscoveredEntry[],
+  limit: number,
+): DiscoveredEntry[] {
+  if (entries.length <= limit) return entries;
+
+  const queues = new Map<AtsProvider, DiscoveredEntry[]>();
+  for (const entry of entries) {
+    const queue = queues.get(entry.provider);
+    if (queue) queue.push(entry);
+    else queues.set(entry.provider, [entry]);
+  }
+
+  const selected: DiscoveredEntry[] = [];
+  const lanes = [...queues.values()];
+  let cursor = 0;
+  while (selected.length < limit) {
+    const before = selected.length;
+    for (const lane of lanes) {
+      if (selected.length >= limit) break;
+      if (cursor < lane.length) selected.push(lane[cursor]);
+    }
+    if (selected.length === before) break; // every lane exhausted
+    cursor += 1;
+  }
+  return selected;
 }
 
 // ─── Main Entry ───────────────────────────────────────────────────────────────
@@ -392,42 +620,66 @@ function loadExistingSlugs(): Set<string> {
 export async function runSourceDiscovery(
   onProgress?: (msg: string) => void,
 ): Promise<DiscoverySummary> {
+  const previousEntries = loadDiscoveredEntries();
   const existingSlugs = loadExistingSlugs();
   const seen = new Map<string, DiscoveredEntry>();
+  const queryErrors: string[] = [];
   let totalCrawled = 0;
+  let truncated = false;
 
-  for (const { urlPattern, provider } of CC_PATTERNS) {
-    onProgress?.(`Querying Common Crawl for ${urlPattern}…`);
-    let records: Array<{ url: string; timestamp: string }> = [];
-    try {
-      records = await queryCcIndex(urlPattern);
-    } catch (err) {
-      onProgress?.(`Warning: CC query failed for ${urlPattern}: ${(err as Error).message}`);
-      continue;
-    }
-    totalCrawled += records.length;
+  const indexes = await resolveCcIndexes();
+  onProgress?.(`Sweeping ${indexes.length} Common Crawl index(es): ${indexes.join(", ")}`);
 
-    for (const { url, timestamp } of records) {
-      const slug = extractSlug(url);
-      if (!slug || existingSlugs.has(slug)) continue;
-      const key = `${provider}::${slug}`;
-      if (seen.has(key)) continue;
-      seen.set(key, {
-        slug,
-        provider,
-        careersUrl: buildCareersUrl(slug, provider),
-        apiUrl: buildApiUrl(slug, provider),
-        validationStatus: "unknown",
-        checkedAt: null,
-        snapshotDate: timestamp.slice(0, 6) || null,
-        companyDisplayName: null,
-        industry: null,
-      });
+  for (const index of indexes) {
+    for (const { urlPattern, provider } of CC_PATTERNS) {
+      onProgress?.(`Querying ${index} for ${urlPattern}…`);
+      const { records, pages, failedPages } = await queryCcIndex(index, urlPattern);
+
+      if (failedPages > 0) {
+        const detail =
+          pages === 0
+            ? `${index} ${urlPattern}: index query failed after retries`
+            : `${index} ${urlPattern}: ${failedPages} of ${pages} pages failed after retries`;
+        queryErrors.push(detail);
+        onProgress?.(`Warning: ${detail}`);
+      }
+
+      totalCrawled += records.length;
+
+      for (const { url, timestamp } of records) {
+        const slug = extractSlug(url);
+        if (!slug || existingSlugs.has(slug)) continue;
+        const key = `${provider}::${slug}`;
+        if (seen.has(key)) continue;
+        seen.set(key, {
+          slug,
+          provider,
+          careersUrl: buildCareersUrl(slug, provider),
+          apiUrl: buildApiUrl(slug, provider),
+          validationStatus: "unknown",
+          checkedAt: null,
+          snapshotDate: timestamp.slice(0, 6) || null,
+          companyDisplayName: null,
+          industry: null,
+        });
+      }
     }
   }
 
-  const candidates = [...seen.values()];
-  onProgress?.(`Validating ${candidates.length} unique slugs…`);
+  // Cap *after* the full sweep, never during it. Sweeping is cheap (parsing
+  // index lines); validation and classification are what cost time and money.
+  // Breaking out mid-sweep also skipped whole indexes — including the archival
+  // one that carries essentially all Lever coverage.
+  const discovered = [...seen.values()];
+  const candidates = selectBalancedCandidates(discovered, MAX_NEW_CANDIDATES_PER_RUN);
+  truncated = candidates.length < discovered.length;
+  if (truncated) {
+    onProgress?.(
+      `Found ${discovered.length} new slugs; validating ${candidates.length} this run ` +
+      `(per-run cap). Run discovery again to continue through the backlog.`,
+    );
+  }
+  onProgress?.(`Validating ${candidates.length} new slugs…`);
 
   const validated = await validateInBatches(candidates, (done, total) => {
     onProgress?.(`Validating ${done}/${total}…`);
@@ -446,12 +698,20 @@ export async function runSourceDiscovery(
     return addReviewRanking({ ...e, companyDisplayName, industry });
   });
 
+  // Runs are incremental, so this run only carries newly-found slugs. Merge with
+  // what earlier runs reported, or the pending review list would be wiped each time.
+  const merged = new Map<string, DiscoveredEntry>();
+  for (const entry of previousEntries) merged.set(entryStableId(entry), entry);
+  for (const entry of withIndustries) merged.set(entryStableId(entry), entry);
+
   const output: DiscoveredSources = {
     fetchedAt: new Date().toISOString(),
     totalCrawled,
-    entries: withIndustries.sort(
+    entries: [...merged.values()].sort(
       (a, b) => a.provider.localeCompare(b.provider) || a.slug.localeCompare(b.slug),
     ),
+    errors: queryErrors,
+    truncated,
   };
 
   if (!existsSync(path.dirname(OUTPUT_PATH))) {
@@ -465,6 +725,8 @@ export async function runSourceDiscovery(
     valid: validated.filter((e) => e.validationStatus === "valid").length,
     dead: validated.filter((e) => e.validationStatus === "dead").length,
     unknown: validated.filter((e) => e.validationStatus === "unknown").length,
+    errors: queryErrors,
+    truncated,
   };
 }
 
@@ -531,6 +793,7 @@ export async function runSearchDiscovery(
   const prevKeys = new Set(prevEntries.map(entryStableId));
 
   const seen = new Map<string, DiscoveredEntry>();
+  const queryErrors: string[] = [];
   let totalCrawled = 0;
 
   for (const { query, provider } of SEARCH_PATTERNS) {
@@ -541,7 +804,9 @@ export async function runSearchDiscovery(
       try {
         results = await queryBraveSearch(braveApiKey, query, offset);
       } catch (err) {
-        onProgress?.(`Warning: Brave Search failed for ${query} offset ${offset}: ${(err as Error).message}`);
+        const detail = `Brave Search failed for ${query} offset ${offset}: ${(err as Error).message}`;
+        queryErrors.push(detail);
+        onProgress?.(`Warning: ${detail}`);
         break;
       }
       if (results.length === 0) break;
@@ -603,6 +868,8 @@ export async function runSearchDiscovery(
     entries: merged.sort(
       (a, b) => a.provider.localeCompare(b.provider) || a.slug.localeCompare(b.slug),
     ),
+    errors: queryErrors,
+    truncated: false,
   };
 
   if (!existsSync(path.dirname(OUTPUT_PATH))) {
@@ -616,5 +883,7 @@ export async function runSearchDiscovery(
     valid: validated.filter((e) => e.validationStatus === "valid").length,
     dead: validated.filter((e) => e.validationStatus === "dead").length,
     unknown: validated.filter((e) => e.validationStatus === "unknown").length,
+    errors: queryErrors,
+    truncated: false,
   };
 }
