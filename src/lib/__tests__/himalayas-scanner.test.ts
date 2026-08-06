@@ -133,18 +133,25 @@ describe("Himalayas locations against the preference filter", () => {
     expect(accepts(formatHimalayasLocation(["Germany", "United States"]))).toBe(true);
   });
 
-  /**
-   * Documents current behaviour, not desired behaviour.
-   *
-   * With work modes selected, the preference filter accepts any remote posting
-   * without checking its region, so EU-only remote roles are imported. This is
-   * the deferred "remote restriction" work; Himalayas makes it unusually
-   * tractable because `locationRestrictions` is a structured country list rather
-   * than free text needing a region vocabulary.
-   */
-  it("currently accepts region-restricted remote roles the user cannot take", () => {
-    expect(accepts(formatHimalayasLocation(["Germany"]))).toBe(true);
-    expect(accepts(formatHimalayasLocation(["United Kingdom", "Netherlands"]))).toBe(true);
+  it("rejects region-restricted remote roles the user cannot take", () => {
+    expect(accepts(formatHimalayasLocation(["Germany"]))).toBe(false);
+    expect(accepts(formatHimalayasLocation(["United Kingdom", "Netherlands"]))).toBe(false);
+    expect(accepts(formatHimalayasLocation(["Philippines"]))).toBe(false);
+    expect(accepts(formatHimalayasLocation(["India", "Pakistan"]))).toBe(false);
+  });
+
+  it("covers the real restriction vocabulary the feed uses", () => {
+    // The live feed's most common values, sampled directly from the API.
+    const inScope = ["United States"];
+    const outOfScope = [
+      "Canada", "Germany", "United Kingdom", "Mexico", "Philippines", "Poland",
+      "India", "Colombia", "Spain", "Brazil", "Argentina", "South Africa",
+      "Portugal", "Australia", "Czechia", "North Macedonia", "Netherlands",
+    ];
+    for (const country of inScope) expect(accepts(formatHimalayasLocation([country]))).toBe(true);
+    for (const country of outOfScope) {
+      expect(accepts(formatHimalayasLocation([country]))).toBe(false);
+    }
   });
 
   it("rejects region-restricted remote roles once work modes are cleared", () => {

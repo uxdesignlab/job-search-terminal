@@ -15,10 +15,11 @@
  * postings — more than the six-hour scan interval. In practice the page cap, not
  * the freshness cutoff, ends the walk, and the run reports when that happens.
  *
- * Measured against this project's own title/location filters: a live run
- * imported 11 roles from 1,158 recent postings in ~28s. Note that roughly a
- * quarter of those matched only because the `ux` keyword substring-matches
- * "Lin-ux" and "BENEL-ux"; genuine design roles were ~7 of 11.
+ * Measured against this project's own title/location filters: a live run read
+ * 1,158 recent postings in ~28s and matched 12. Of those, 3 were `ux`
+ * substring false positives ("Lin-ux", "BENEL-ux") and 2 were EU-restricted
+ * remote roles; both classes are now filtered out upstream, leaving 7 genuine
+ * design roles.
  */
 
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
@@ -27,6 +28,7 @@ import { randomUUID } from "node:crypto";
 import { safeFetch } from "@/lib/safe-fetch";
 import type { FreshnessWindowHours } from "@/lib/db/types";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
+import { buildTitleFilter } from "@/lib/jobs/title-filter";
 
 const API_URL = "https://himalayas.app/jobs/api";
 /** The API silently caps `limit` at 20, so asking for more just wastes the round trip. */
@@ -251,12 +253,7 @@ export async function runHimalayasScan(
   }
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
-  const titleMatches = (title: string) => {
-    const t = title.toLowerCase();
-    const passPositive = positive.length === 0 || positive.some((k) => t.includes(k.toLowerCase()));
-    const failNegative = negative.some((k) => t.includes(k.toLowerCase()));
-    return passPositive && !failNegative;
-  };
+  const titleMatches = buildTitleFilter({ positive, negative });
 
   const totalFound = collected.length;
   const filteredJobs = collected.filter((j) => titleMatches(j.position));

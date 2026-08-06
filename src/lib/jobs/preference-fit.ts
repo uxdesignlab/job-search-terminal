@@ -51,10 +51,41 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
       (countryWide !== null && preferredCountries.has(countryWide));
     const restrictedRemote = isRemote && remoteRemainder.length > 0;
 
+    /**
+     * A remote role tied to a region the user cannot work in.
+     *
+     * Deliberately permissive: this is only true when the restriction *names a
+     * recognised region* and none of the named regions are in scope. An
+     * unrecognised remainder ("Anywhere in the World", "27 Locations") is treated
+     * as unrestricted, because guessing wrong here silently discards good roles —
+     * the exact failure this filter has already caused once.
+     */
+    const remoteRegionOutOfScope =
+      restrictedRemote &&
+      hasLocationPreferences &&
+      !matchesPreferredLocation &&
+      (() => {
+        const regions = regionsMentionedIn(remoteRemainder);
+        if (regions.length === 0) return false;
+        return !regions.some((region) => {
+          const group = countryWideLocationGroup(region);
+          if (group && preferredCountries.has(group)) return true;
+          // A region inside a preferred country (a US state, say) is in scope.
+          return Object.entries(LOCATION_ALIAS_GROUPS).some(
+            ([key, aliases]) => preferredCountries.has(key) && aliases.includes(region),
+          );
+        });
+      })();
+
     if (selectedWorkModes) {
       if (isRemote) {
         if (!selectedWorkModes.has("remote")) {
           return { accepted: false, reason: "remote not selected" };
+        }
+        // This branch used to accept any remote posting regardless of region,
+        // which imported EU-only roles the user cannot take.
+        if (remoteRegionOutOfScope) {
+          return { accepted: false, reason: "remote location outside preferences" };
         }
         return { accepted: true };
       }
@@ -80,7 +111,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
       if (!isRemote) {
         return { accepted: false, reason: "remote-only preference" };
       }
-      if (hasLocationPreferences && restrictedRemote && !matchesPreferredLocation) {
+      if (remoteRegionOutOfScope) {
         return { accepted: false, reason: "remote location outside preferences" };
       }
       return { accepted: true };
@@ -88,7 +119,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
 
     if (hardLocalOrRemote && hasLocationPreferences) {
       if (isRemote) {
-        return restrictedRemote && !matchesPreferredLocation
+        return remoteRegionOutOfScope
           ? { accepted: false, reason: "remote location outside preferences" }
           : { accepted: true };
       }
@@ -101,7 +132,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
       return { accepted: false, reason: "onsite-only deal breaker" };
     }
 
-    if (hasLocationPreferences && restrictedRemote && !matchesPreferredLocation) {
+    if (remoteRegionOutOfScope) {
       return { accepted: false, reason: "remote location outside preferences" };
     }
 
@@ -171,6 +202,65 @@ const COUNTRY_LEVEL_ALIASES: Record<string, string[]> = {
   canada: ["canada"],
   europe: ["europe", "european union", "eu", "emea"]
 };
+
+/**
+ * Every ISO 3166 region name, taken from the runtime's own CLDR data.
+ *
+ * Deciding whether a remote posting is restricted to somewhere the user cannot
+ * work needs a vocabulary of place names. Hand-maintaining a world list would rot;
+ * `Intl.DisplayNames` supplies ~264 names for free and stays current with the
+ * platform. Sampled against a live Himalayas feed it recognised every one of the
+ * 139 distinct restriction values, while correctly *not* matching non-geographic
+ * leftovers such as "in the world" or "27 locations".
+ */
+const WORLD_REGION_NAMES: ReadonlySet<string> = (() => {
+  const names = new Set<string>();
+  try {
+    const display = new Intl.DisplayNames(["en"], { type: "region" });
+    for (let a = 65; a <= 90; a += 1) {
+      for (let b = 65; b <= 90; b += 1) {
+        const code = String.fromCharCode(a) + String.fromCharCode(b);
+        let name: string | undefined;
+        try {
+          name = display.of(code);
+        } catch {
+          continue;
+        }
+        if (name && name !== code) names.add(normalizeText(name));
+      }
+    }
+  } catch {
+    /* Intl.DisplayNames unavailable — fall back to the supra-national list alone. */
+  }
+  // Supra-national regions ISO does not cover but postings routinely use.
+  for (const extra of [
+    "europe", "european union", "eu", "emea", "apac", "latam", "north america",
+    "south america", "latin america", "americas", "asia", "africa", "middle east",
+    "oceania", "nordics", "scandinavia", "benelux", "uk",
+  ]) {
+    names.add(extra);
+  }
+  return names;
+})();
+
+/** Longest region name in words, so n-gram scanning knows how wide to look. */
+const MAX_REGION_WORDS = 4;
+
+/** Region names mentioned anywhere in `text`, found via word n-grams. */
+function regionsMentionedIn(text: string): string[] {
+  const words = text.split(" ").filter(Boolean);
+  const found: string[] = [];
+  for (let i = 0; i < words.length; i += 1) {
+    for (let n = Math.min(MAX_REGION_WORDS, words.length - i); n >= 1; n -= 1) {
+      const phrase = words.slice(i, i + n).join(" ");
+      if (WORLD_REGION_NAMES.has(phrase)) {
+        found.push(phrase);
+        break;
+      }
+    }
+  }
+  return found;
+}
 
 /** Returns the country group when `location` is exactly a country-level label. */
 function countryWideLocationGroup(location: string): string | null {

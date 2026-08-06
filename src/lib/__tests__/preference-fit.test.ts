@@ -209,3 +209,42 @@ describe("buildJobPreferenceFilter — local-or-remote preference (no work modes
     expect(accepts(localOrRemote, "Berlin, Germany | Remote")).toBe(true);
   });
 });
+
+describe("buildJobPreferenceFilter — region-restricted remote roles", () => {
+  it("rejects remote roles tied to a country the user cannot work in", () => {
+    expect(accepts(NASHVILLE, "Germany (Remote)")).toBe(false);
+    expect(accepts(NASHVILLE, "Remote - Europe")).toBe(false);
+    expect(accepts(NASHVILLE, "UK - Remote")).toBe(false);
+    expect(accepts(NASHVILLE, "Remote (Philippines)")).toBe(false);
+  });
+
+  it("accepts remote roles open to the user's country", () => {
+    expect(accepts(NASHVILLE, "United States (Remote)")).toBe(true);
+    expect(accepts(NASHVILLE, "Remote, US")).toBe(true);
+    expect(accepts(NASHVILLE, "U.S Remote")).toBe(true);
+  });
+
+  it("treats an unrecognised remainder as unrestricted rather than guessing", () => {
+    // Rejecting these is the failure mode this filter has already caused once;
+    // an unparseable location must never silently discard a role.
+    expect(accepts(NASHVILLE, "Anywhere in the World")).toBe(true);
+    expect(accepts(NASHVILLE, "27 Locations, Remote")).toBe(true);
+    expect(accepts(NASHVILLE, "Remote - Distributed Team")).toBe(true);
+  });
+
+  it("accepts a US state named as the remote restriction", () => {
+    // "Georgia" is both a country and a US state; the in-country reading wins
+    // for a US-based preference.
+    expect(accepts(NASHVILLE, "Remote (California)")).toBe(true);
+    expect(accepts(NASHVILLE, "Georgia (Remote)")).toBe(true);
+  });
+
+  it("accepts a multi-region role when any region is in scope", () => {
+    expect(accepts(NASHVILLE, "Germany (Remote); United States (Remote)")).toBe(true);
+  });
+
+  it("leaves on-site handling untouched", () => {
+    expect(accepts(NASHVILLE, "Berlin, Germany")).toBe(false);
+    expect(accepts(NASHVILLE, "Nashville, TN")).toBe(true);
+  });
+});

@@ -1106,13 +1106,45 @@ postings are actually written (`src/lib/jobs/preference-fit.ts`):
   alias. The gate matters: someone living outside their target region does not
   silently pull in local roles.
 
-Covered by `src/lib/__tests__/preference-fit.test.ts`, which uses verbatim
-location strings from real postings as fixtures.
+- **Remote roles restricted to a region the user cannot work in are rejected.**
+  A posting limited to `Germany (Remote)` or `Remote - Europe` is no longer
+  accepted merely for being remote. The rule is deliberately *permissive*: it
+  only rejects when the restriction **names a recognised region** and none of the
+  named regions are in scope. An unrecognised remainder — "Anywhere in the
+  World", "27 Locations, Remote" — counts as unrestricted, because guessing wrong
+  silently discards good roles, which is the failure this filter has already
+  caused once. A region inside a preferred country stays in scope, so
+  `Remote (California)` and `Georgia (Remote)` are accepted for a US preference
+  even though Georgia is also a country.
+
+  The place-name vocabulary comes from `Intl.DisplayNames`, which supplies ~264
+  ISO 3166 region names from the runtime's own CLDR data, plus a short list of
+  supra-national regions ISO omits (`europe`, `emea`, `apac`, `latam`, …). This
+  avoids hand-maintaining a world list that would rot. Sampled against a live
+  Himalayas feed it recognised all 139 distinct restriction values while
+  correctly ignoring non-geographic text.
+
+Covered by `src/lib/__tests__/preference-fit.test.ts` and
+`src/lib/__tests__/title-filter.test.ts`, which use verbatim location strings and
+job titles from real postings as fixtures.
 
 **Configuration:**
 - Built-in sources: enable/disable per company in Settings → Job Sources.
 - Custom sources: add any careers page URL.
 - Title filters: positive list (must match) and negative list (exclude if matched).
+  Matching lives in one place, `src/lib/jobs/title-filter.ts`, shared by the
+  CareerOps, Dice, Adzuna, and Himalayas lanes — it previously existed as four
+  near-identical copies that had to be fixed in lockstep.
+  - **Positive keywords must start at a word boundary.** Plain substring matching
+    made short keywords greedy: `ux` matched "Lin**ux**", "BENEL**UX**", and
+    "L**ux**embourg", which accounted for 3 of 12 results in one live Himalayas
+    import. Only the start is anchored; the end stays open so `product design`
+    still matches "Product Designer" and `ux research` still matches
+    "UX Researcher". Verified against 140 previously-imported jobs: zero
+    legitimate matches lost.
+  - **Negative keywords stay plain substrings** on purpose — they are meant to be
+    greedy, so `intern` also catches "Internship". A check over 2,629 real titles
+    found no case where that greediness rejected a wanted role.
 - Profile filters: selected location modes and preferred locations constrain
   scan inserts.
 - **Settings → Sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; until **Validate sources** has been run, Live shows **Not validated** for each row.
@@ -1203,15 +1235,10 @@ a degraded API is not hammered.
   `Remote`; otherwise each country is emitted as `<Country> (Remote)` joined with
   `; ` so the preference filter's multi-location splitting evaluates each one.
 
-**Measured yield:** a live run imported 11 roles from 1,158 recent postings in
-~28 seconds. Roughly a quarter matched only because the `ux` positive keyword
-substring-matches "Lin-ux" and "BENEL-ux"; genuine design roles were ~7 of 11.
-
-**Known gap:** region-restricted remote roles (for example EU-only) are still
-imported when work modes are selected, because that branch of the preference
-filter accepts any remote posting without checking its region. Himalayas makes
-this unusually tractable to fix, since `locationRestrictions` is structured
-country data rather than free text.
+**Measured yield:** a live run read 1,158 recent postings in ~28 seconds and
+matched 12. Three were `ux` substring false positives ("Lin-ux", "BENEL-ux") and
+two were EU-restricted remote roles; both classes are now filtered out upstream,
+leaving 7 genuine design roles.
 
 **Scan type recorded:** `himalayas-api-scan`. Jobs appear with a **Himalayas**
 source badge.

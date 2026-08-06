@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { safeFetch } from "@/lib/safe-fetch";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
 import type { FreshnessWindowHours } from "@/lib/db/types";
+import { buildTitleFilter } from "@/lib/jobs/title-filter";
 
 export type AggregatorScanOptions = {
   adzunaAppId: string;
@@ -168,12 +169,7 @@ export async function runAggregatorScan(
   }
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
-  const titleMatches = (title: string) => {
-    const t = title.toLowerCase();
-    const passPositive = positive.length === 0 || positive.some((k) => t.includes(k.toLowerCase()));
-    const failNegative = negative.some((k) => t.includes(k.toLowerCase()));
-    return passPositive && !failNegative;
-  };
+  const titleMatches = buildTitleFilter({ positive, negative });
   const totalFound = jobs.length;
   const filteredJobs = jobs.filter((j) => titleMatches(j.position));
   const skipped = totalFound - filteredJobs.length;

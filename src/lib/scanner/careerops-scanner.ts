@@ -5,6 +5,7 @@ import yaml from "js-yaml";
 import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, getUserProfile, insertScannedJobs, recordScanRun } from "../db/queries";
 import type { FreshnessWindowHours, ScannedJobInput, ScanRunRecord, ScanTrigger } from "../db/types";
 import { buildJobPreferenceFilter, type JobPreferenceProfile } from "../jobs/preference-fit";
+import { buildTitleFilter as buildSharedTitleFilter } from "../jobs/title-filter";
 import { classifyScanErrorMessage } from "../scan-error-category";
 import { safeFetch } from "../safe-fetch";
 import { localDateString } from "../dates";
@@ -326,16 +327,9 @@ export function detectApi(company: PortalCompany): DetectedApi | null {
   return null;
 }
 
+/** Re-exported so existing callers keep a single import site; logic lives in jobs/title-filter. */
 export function buildTitleFilter(titleFilter: ScanConfig["title_filter"]) {
-  const positive = (titleFilter?.positive ?? []).map((keyword) => keyword.toLowerCase());
-  const negative = (titleFilter?.negative ?? []).map((keyword) => keyword.toLowerCase());
-
-  return (title: string) => {
-    const normalized = title.toLowerCase();
-    const hasPositive = positive.length === 0 || positive.some((keyword) => normalized.includes(keyword));
-    const hasNegative = negative.some((keyword) => normalized.includes(keyword));
-    return hasPositive && !hasNegative;
-  };
+  return buildSharedTitleFilter(titleFilter);
 }
 
 export function parseGreenhouse(json: unknown, companyName: string): RawJob[] {

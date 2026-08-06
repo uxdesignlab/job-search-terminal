@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { safeFetch } from "@/lib/safe-fetch";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
 import type { FreshnessWindowHours } from "@/lib/db/types";
+import { buildTitleFilter } from "@/lib/jobs/title-filter";
 
 const DICE_MCP = "https://mcp.dice.com/mcp";
 
@@ -336,12 +337,7 @@ export async function runDiceScan(opts: DiceScanOptions): Promise<DiceScanResult
   }
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
-  const titleMatches = (t: string) => {
-    const lower = t.toLowerCase();
-    const passPos = positive.length === 0 || positive.some((k) => lower.includes(k.toLowerCase()));
-    const failNeg = negative.some((k) => lower.includes(k.toLowerCase()));
-    return passPos && !failNeg;
-  };
+  const titleMatches = buildTitleFilter({ positive, negative });
 
   const totalFound = jobs.length;
   const filteredJobs = jobs.filter((j) => titleMatches(j.position));
