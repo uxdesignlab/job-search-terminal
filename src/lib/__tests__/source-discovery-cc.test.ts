@@ -4,14 +4,21 @@ const mocks = vi.hoisted(() => ({ safeFetch: vi.fn() }));
 vi.mock("@/lib/safe-fetch", () => ({ safeFetch: mocks.safeFetch }));
 
 import {
+  computeRetryDelayMs,
   resolveCcIndexes,
+  retryAfterMs,
   selectBalancedCandidates,
   type AtsProvider,
   type DiscoveredEntry,
 } from "@/lib/scanner/source-discovery";
 
 const ok = (body: string) => ({ ok: true, status: 200, text: async () => body });
-const fail = (status: number) => ({ ok: false, status, text: async () => "" });
+const fail = (status: number) => ({
+  ok: false,
+  status,
+  headers: { get: () => null },
+  text: async () => "",
+});
 
 const COLLINFO = JSON.stringify([
   { id: "CC-MAIN-2026-30" },
@@ -65,8 +72,8 @@ describe("resolveCcIndexes", () => {
   it("falls back to the pinned crawl when every attempt fails", async () => {
     mocks.safeFetch.mockResolvedValue(fail(504));
     const indexes = await settle(resolveCcIndexes(3));
-    // 5 attempts, then the pinned fallback plus the archival index.
-    expect(mocks.safeFetch).toHaveBeenCalledTimes(5);
+    // Attempts are deliberately few: hammering a throttling index earns a block.
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(3);
     expect(indexes).toEqual(["CC-MAIN-2026-30", "CC-MAIN-2024-51"]);
   });
 
@@ -148,5 +155,50 @@ describe("selectBalancedCandidates", () => {
   it("never exceeds the limit", () => {
     const all = Array.from({ length: 100 }, (_, i) => entry(`gh${i}`, "greenhouse"));
     expect(selectBalancedCandidates(all, 7)).toHaveLength(7);
+  });
+});
+
+describe("computeRetryDelayMs", () => {
+  const noJitter = () => 0;
+
+  it("grows exponentially across attempts", () => {
+    const d0 = computeRetryDelayMs(0, null, noJitter);
+    const d1 = computeRetryDelayMs(1, null, noJitter);
+    const d2 = computeRetryDelayMs(2, null, noJitter);
+    expect(d0).toBe(2000);
+    expect(d1).toBe(6000);
+    expect(d2).toBe(18000);
+  });
+
+  it("adds jitter so parallel retries do not synchronise", () => {
+    expect(computeRetryDelayMs(0, null, () => 0.999)).toBeGreaterThan(computeRetryDelayMs(0, null, noJitter));
+  });
+
+  it("lets a server-supplied Retry-After win over backoff", () => {
+    expect(computeRetryDelayMs(2, 1500, noJitter)).toBe(1500);
+  });
+});
+
+describe("retryAfterMs", () => {
+  const withHeader = (value: string | null) => ({ headers: { get: () => value } });
+
+  it("parses a delay in seconds", () => {
+    expect(retryAfterMs(withHeader("7"))).toBe(7000);
+  });
+
+  it("parses an HTTP-date", () => {
+    const future = new Date(Date.now() + 30_000).toUTCString();
+    const ms = retryAfterMs(withHeader(future));
+    expect(ms).toBeGreaterThan(20_000);
+    expect(ms).toBeLessThanOrEqual(30_000);
+  });
+
+  it("never returns a negative delay for a past date", () => {
+    expect(retryAfterMs(withHeader(new Date(Date.now() - 60_000).toUTCString()))).toBe(0);
+  });
+
+  it("returns null when the header is absent or unparseable", () => {
+    expect(retryAfterMs(withHeader(null))).toBeNull();
+    expect(retryAfterMs(withHeader("soon"))).toBeNull();
   });
 });

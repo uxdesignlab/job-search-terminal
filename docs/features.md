@@ -896,11 +896,33 @@ endpoint, and writes candidates to `data/discovered-sources.json` for manual
 review. Nothing is scanned until the user imports it from Settings → Job Sources.
 
 **Resilience.** The CC index intermittently answers `502` / `503` / `504` under
-load. Requests retry up to five times with linear backoff. This matters: a run
-that hit gateway errors on all four URL patterns previously wrote
-`totalCrawled: 0` with no errors recorded, making a total outage look identical
-to "nothing new to find". Query failures are now recorded in the `errors` array
-of both the output file and the run summary.
+load. Requests retry with exponential backoff and jitter, honouring `Retry-After`
+when present. This matters: a run that hit gateway errors on all four URL
+patterns previously wrote `totalCrawled: 0` with no errors recorded, making a
+total outage look identical to "nothing new to find". Query failures are now
+recorded in the `errors` array of both the output file and the run summary.
+
+**Rate limiting — run discovery sparingly.** Common Crawl is a free community
+service with no published rate limit, and it throttles by refusing connections
+outright (`ECONNREFUSED`, not a 429). Repeated full sweeps *will* get the host
+blocked for a period; this was observed in practice after several back-to-back
+runs, at which point every query fails while unrelated hosts stay reachable.
+
+Three deliberate choices follow from that, and they should not be "optimised"
+away:
+
+- Attempts are capped at `CC_FETCH_ATTEMPTS` (3), not more. Retrying hard while
+  the index is throttling is a retry storm that converts a slowdown into a block.
+- Backoff is exponential (`CC_RETRY_BASE_MS` × `CC_RETRY_FACTOR ^ attempt`) with
+  jitter, so concurrent queries do not resynchronise their retries.
+- A circuit breaker aborts the whole sweep after `CC_MAX_CONSECUTIVE_FAILURES`
+  (3) consecutive failed queries. Grinding through the remaining patterns while
+  blocked deepens the block and wastes minutes; the run reports the abort as an
+  error instead.
+
+If a run reports "Common Crawl is rate-limiting or refusing this host", wait
+before retrying. Nothing is lost — discovery is incremental, so a later run
+resumes where this one stopped.
 
 **Crawl selection.** Indexes resolve from `collinfo.json` at run time — the
 `CC_INDEX_COUNT` (3) most recent crawls, plus `CC_ARCHIVE_INDEXES`. The

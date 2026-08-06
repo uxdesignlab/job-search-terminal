@@ -29,10 +29,29 @@ const CC_INDEX_COUNT = 3;
  */
 const CC_ARCHIVE_INDEXES = ["CC-MAIN-2024-51"];
 /** The CC index intermittently answers 502/503/504 under load; without retries a single blip drops a whole provider. */
-const CC_FETCH_ATTEMPTS = 5;
+const CC_FETCH_ATTEMPTS = 3;
 const CC_FETCH_TIMEOUT_MS = 90_000;
-const CC_RETRY_BASE_MS = 1_500;
-const CC_INTER_PAGE_DELAY_MS = 200;
+/**
+ * Exponential, not linear.
+ *
+ * Common Crawl is a free community service with no published rate limit, and it
+ * throttles by refusing connections outright. Retrying hard while it is throttling
+ * is a retry storm that turns a slowdown into a block — which is exactly what
+ * happened here: aggressive sweeps plus 5 linear retries across 16 paginated
+ * queries got this host connection-refused for a period.
+ */
+const CC_RETRY_BASE_MS = 2_000;
+const CC_RETRY_FACTOR = 3;
+/** Jitter avoids synchronising retries when several queries back off together. */
+const CC_RETRY_JITTER_MS = 500;
+const CC_INTER_PAGE_DELAY_MS = 1_000;
+/**
+ * Consecutive whole-query failures that trip the circuit breaker.
+ *
+ * Once the index is refusing us, continuing through the remaining patterns only
+ * deepens the block and wastes minutes. Abort the sweep and say so plainly.
+ */
+const CC_MAX_CONSECUTIVE_FAILURES = 3;
 const VALIDATE_CONCURRENCY = 25;
 const VALIDATE_TIMEOUT_MS = 10_000;
 const INTER_BATCH_DELAY_MS = 250;
@@ -118,12 +137,13 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * Opts these requests out of Next.js's fetch cache.
  *
  * Next patches global `fetch` in server actions and buffers responses to cache
- * them. Common Crawl index pages run to megabytes, and caching them fails with
- * `Failed to set fetch cache … TypeError: terminated (UND_ERR_SOCKET)` — the
- * socket is torn down mid-body, so every query fails. Discovery therefore worked
- * from the CLI while the Settings button failed all 16 queries. Validation
- * responses are excluded too: caching a liveness probe would return stale
- * results on the next run.
+ * them, which logs `Failed to set fetch cache … TypeError: terminated` on
+ * multi-megabyte index pages. That is wasted work regardless, and caching a
+ * liveness probe would return stale validation results on the next run.
+ *
+ * Note: this is hygiene, not a fix for a specific outage. A Settings run that
+ * failed all 16 queries was initially attributed to this; the real cause was
+ * Common Crawl rate-limiting the host (see CC_MAX_CONSECUTIVE_FAILURES).
  */
 const NO_STORE: RequestInit = { cache: "no-store" };
 
@@ -137,21 +157,49 @@ const CC_RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
  * failed. Callers must distinguish those from an empty result set, because
  * "query failed" and "no records" previously collapsed into the same silent zero.
  */
+/** Honours `Retry-After` (seconds or HTTP-date) when the server tells us how long to wait. */
+export function retryAfterMs(res: { headers: { get(name: string): string | null } }): number | null {
+  const raw = res.headers.get("retry-after");
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
+}
+
+/**
+ * Backoff for retry attempt `attempt` (0-based).
+ *
+ * A server-supplied `Retry-After` always wins; otherwise exponential with jitter.
+ */
+export function computeRetryDelayMs(
+  attempt: number,
+  serverDelayMs: number | null,
+  random: () => number = Math.random,
+): number {
+  if (serverDelayMs !== null) return serverDelayMs;
+  return CC_RETRY_BASE_MS * CC_RETRY_FACTOR ** attempt + Math.floor(random() * CC_RETRY_JITTER_MS);
+}
+
 async function ccFetchText(url: string): Promise<string | null> {
   for (let attempt = 0; attempt < CC_FETCH_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), CC_FETCH_TIMEOUT_MS);
+    let serverDelayMs: number | null = null;
     try {
       const res = await safeFetch(url, { signal: controller.signal, ...NO_STORE });
       if (res.ok) return await res.text();
       if (res.status === 404) return null;
       if (!CC_RETRYABLE_STATUS.has(res.status)) return null;
+      serverDelayMs = retryAfterMs(res);
     } catch {
-      /* timeout or transport error — retry */
+      /* timeout, connection refused, or transport error — retry */
     } finally {
       clearTimeout(timer);
     }
-    if (attempt < CC_FETCH_ATTEMPTS - 1) await sleep(CC_RETRY_BASE_MS * (attempt + 1));
+    if (attempt < CC_FETCH_ATTEMPTS - 1) {
+      await sleep(computeRetryDelayMs(attempt, serverDelayMs));
+    }
   }
   return null;
 }
@@ -630,7 +678,8 @@ export async function runSourceDiscovery(
   const indexes = await resolveCcIndexes();
   onProgress?.(`Sweeping ${indexes.length} Common Crawl index(es): ${indexes.join(", ")}`);
 
-  for (const index of indexes) {
+  let consecutiveFailures = 0;
+  sweep: for (const index of indexes) {
     for (const { urlPattern, provider } of CC_PATTERNS) {
       onProgress?.(`Querying ${index} for ${urlPattern}…`);
       const { records, pages, failedPages } = await queryCcIndex(index, urlPattern);
@@ -642,6 +691,22 @@ export async function runSourceDiscovery(
             : `${index} ${urlPattern}: ${failedPages} of ${pages} pages failed after retries`;
         queryErrors.push(detail);
         onProgress?.(`Warning: ${detail}`);
+      }
+
+      // Trip the breaker when the index is refusing us outright. Grinding through
+      // the remaining patterns deepens the block and burns minutes for nothing.
+      if (records.length === 0 && failedPages > 0) {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= CC_MAX_CONSECUTIVE_FAILURES) {
+          const detail =
+            `Aborted after ${consecutiveFailures} consecutive failed queries — Common Crawl is ` +
+            `rate-limiting or refusing this host. Wait before running discovery again.`;
+          queryErrors.push(detail);
+          onProgress?.(`Warning: ${detail}`);
+          break sweep;
+        }
+      } else {
+        consecutiveFailures = 0;
       }
 
       totalCrawled += records.length;
