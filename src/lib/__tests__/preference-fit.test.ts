@@ -133,3 +133,79 @@ describe("buildJobPreferenceFilter — regressions", () => {
     expect(buildJobPreferenceFilter()({ title: "Anything", location: "Anywhere" }).accepted).toBe(true);
   });
 });
+
+/**
+ * These branches are only reachable when `workModes` is empty — every other
+ * fixture in this file sets it, so they were previously never executed. Location
+ * splitting changed their behaviour, since `restrictedRemote` is now evaluated
+ * per listed location rather than against the concatenated string.
+ */
+describe("buildJobPreferenceFilter — remote-only preference (no work modes)", () => {
+  const remoteOnly: JobPreferenceProfile = {
+    ...NASHVILLE,
+    workModes: [],
+    remotePreference: "remote-only",
+  };
+
+  it("rejects anything not remote", () => {
+    expect(accepts(remoteOnly, "San Francisco, CA")).toBe(false);
+    expect(accepts(remoteOnly, "Nashville, TN")).toBe(false);
+  });
+
+  it("accepts unrestricted remote", () => {
+    expect(accepts(remoteOnly, "Remote")).toBe(true);
+  });
+
+  it("accepts US-wide remote against a US preference", () => {
+    expect(accepts(remoteOnly, "United States - Remote")).toBe(true);
+    expect(accepts(remoteOnly, "Remote (USA)")).toBe(true);
+  });
+
+  it("rejects remote restricted to a region outside preferences", () => {
+    expect(accepts(remoteOnly, "Remote - Europe")).toBe(false);
+    expect(accepts(remoteOnly, "UK - Remote")).toBe(false);
+  });
+
+  it("accepts a multi-location posting that offers an in-scope remote option", () => {
+    // Splitting matters here: evaluated as one string the trailing offices made
+    // this a restricted remote outside preferences.
+    expect(accepts(remoteOnly, "Remote; New York, NY")).toBe(true);
+    expect(accepts(remoteOnly, "Remote, Canada; Remote, US")).toBe(true);
+  });
+
+  it("still rejects when every listed remote option is out of region", () => {
+    expect(accepts(remoteOnly, "Remote - Europe; UK - Remote")).toBe(false);
+  });
+});
+
+describe("buildJobPreferenceFilter — local-or-remote preference (no work modes)", () => {
+  const localOrRemote: JobPreferenceProfile = {
+    ...NASHVILLE,
+    workModes: [],
+    remotePreference: "local-or-remote",
+  };
+
+  it("accepts in-region on-site roles", () => {
+    expect(accepts(localOrRemote, "Nashville, TN")).toBe(true);
+    expect(accepts(localOrRemote, "Nashville Metropolitan Area")).toBe(true);
+  });
+
+  it("rejects out-of-region on-site roles", () => {
+    expect(accepts(localOrRemote, "San Francisco, CA")).toBe(false);
+    expect(accepts(localOrRemote, "Prague, Czechia")).toBe(false);
+  });
+
+  it("accepts unrestricted and US-wide remote", () => {
+    expect(accepts(localOrRemote, "Remote")).toBe(true);
+    expect(accepts(localOrRemote, "United States - Remote")).toBe(true);
+  });
+
+  it("rejects remote restricted outside the preferred region", () => {
+    expect(accepts(localOrRemote, "Remote - Europe")).toBe(false);
+  });
+
+  it("accepts a multi-location posting when any listed option qualifies", () => {
+    expect(accepts(localOrRemote, "Berlin, Germany; Nashville, TN")).toBe(true);
+    expect(accepts(localOrRemote, "Berlin, Germany | Remote")).toBe(true);
+  });
+});

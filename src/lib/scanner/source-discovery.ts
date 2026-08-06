@@ -150,13 +150,6 @@ const NO_STORE: RequestInit = { cache: "no-store" };
 /** Retryable gateway/rate-limit statuses returned by the CC index under load. */
 const CC_RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
 
-/**
- * Fetches a CC index URL, retrying transient gateway failures with linear backoff.
- *
- * Returns `null` when the resource is genuinely absent (404) or every attempt
- * failed. Callers must distinguish those from an empty result set, because
- * "query failed" and "no records" previously collapsed into the same silent zero.
- */
 /** Honours `Retry-After` (seconds or HTTP-date) when the server tells us how long to wait. */
 export function retryAfterMs(res: { headers: { get(name: string): string | null } }): number | null {
   const raw = res.headers.get("retry-after");
@@ -181,6 +174,13 @@ export function computeRetryDelayMs(
   return CC_RETRY_BASE_MS * CC_RETRY_FACTOR ** attempt + Math.floor(random() * CC_RETRY_JITTER_MS);
 }
 
+/**
+ * Fetches a CC index URL, retrying transient gateway failures with exponential backoff.
+ *
+ * Returns `null` when the resource is genuinely absent (404) or every attempt
+ * failed. Callers must distinguish those from an empty result set, because
+ * "query failed" and "no records" previously collapsed into the same silent zero.
+ */
 async function ccFetchText(url: string): Promise<string | null> {
   for (let attempt = 0; attempt < CC_FETCH_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
@@ -244,41 +244,86 @@ export type CcQueryOutcome = {
   pages: number;
   /** Pages that exhausted every retry — the caller surfaces these instead of silently under-reporting. */
   failedPages: number;
+  /** True when consecutive page failures tripped the in-query breaker and pages were left unread. */
+  aborted: boolean;
 };
+
+/**
+ * Whether a query came back too damaged to treat as a success.
+ *
+ * Used to drive the sweep-level breaker. Checking only "zero records" was too
+ * weak: partial failure is the *typical* throttling signature, so a query that
+ * lost four of five pages but salvaged one record would reset the breaker and
+ * the sweep would keep hammering a rate-limited index.
+ */
+export function isQueryDegraded(outcome: CcQueryOutcome): boolean {
+  if (outcome.aborted) return true;
+  if (outcome.failedPages === 0) return false;
+  // The page-count request itself failed, so nothing was reachable.
+  if (outcome.pages === 0) return true;
+  return outcome.failedPages * 2 >= outcome.pages;
+}
 
 /**
  * Queries one crawl for one URL pattern, walking every page.
  *
- * The previous implementation fetched a flat `limit=1000` slice of page 0, which
- * capped a pattern that can hold tens of thousands of records.
+ * The original implementation fetched a flat `limit=1000` slice of page 0, which
+ * capped patterns holding tens of thousands of records.
+ *
+ * Stops early once `CC_MAX_CONSECUTIVE_FAILURES` pages fail back to back. The
+ * sweep-level breaker cannot help here — it only runs between queries, so a
+ * blocked multi-page pattern would otherwise burn every page (and every retry
+ * inside it) before yielding control.
  */
-async function queryCcIndex(index: string, urlPattern: string): Promise<CcQueryOutcome> {
+export async function queryCcIndex(index: string, urlPattern: string): Promise<CcQueryOutcome> {
   const base = `https://index.commoncrawl.org/${index}-index`;
   const countQuery = new URLSearchParams({ url: urlPattern, output: "json", showNumPages: "true" });
   const countText = await ccFetchText(`${base}?${countQuery}`);
-  if (!countText) return { records: [], pages: 0, failedPages: 1 };
+  if (!countText) return { records: [], pages: 0, failedPages: 1, aborted: false };
 
   let pages = 0;
   try {
-    pages = Number(JSON.parse(countText).pages ?? 0);
+    const parsed: unknown = JSON.parse(countText);
+    const raw = isRecord(parsed) ? parsed.pages : undefined;
+    // An unexpected-but-parseable payload is a failure, not "zero pages" —
+    // reporting it as a clean empty result would quietly reset the breaker.
+    if (typeof raw !== "number" || !Number.isFinite(raw)) {
+      return { records: [], pages: 0, failedPages: 1, aborted: false };
+    }
+    pages = raw;
   } catch {
-    return { records: [], pages: 0, failedPages: 1 };
+    return { records: [], pages: 0, failedPages: 1, aborted: false };
   }
-  if (!Number.isFinite(pages) || pages <= 0) return { records: [], pages: 0, failedPages: 0 };
+  if (pages <= 0) return { records: [], pages: 0, failedPages: 0, aborted: false };
 
   const records: Array<{ url: string; timestamp: string }> = [];
   let failedPages = 0;
+  let consecutivePageFailures = 0;
+  let aborted = false;
+
   for (let page = 0; page < pages; page += 1) {
     const query = new URLSearchParams({ url: urlPattern, output: "json", page: String(page) });
     const text = await ccFetchText(`${base}?${query}`);
+
     if (text === null) {
       failedPages += 1;
+      consecutivePageFailures += 1;
+      if (consecutivePageFailures >= CC_MAX_CONSECUTIVE_FAILURES) {
+        aborted = true;
+        break;
+      }
+      // Pace after a failure too. Skipping the delay here meant the loop ran
+      // fastest exactly when the index was least willing to serve it.
+      await sleep(CC_INTER_PAGE_DELAY_MS);
       continue;
     }
+
+    consecutivePageFailures = 0;
     records.push(...parseCcRecords(text));
     if (page < pages - 1) await sleep(CC_INTER_PAGE_DELAY_MS);
   }
-  return { records, pages, failedPages };
+
+  return { records, pages, failedPages, aborted };
 }
 
 // ─── Slug Helpers ─────────────────────────────────────────────────────────────
@@ -682,20 +727,22 @@ export async function runSourceDiscovery(
   sweep: for (const index of indexes) {
     for (const { urlPattern, provider } of CC_PATTERNS) {
       onProgress?.(`Querying ${index} for ${urlPattern}…`);
-      const { records, pages, failedPages } = await queryCcIndex(index, urlPattern);
+      const outcome = await queryCcIndex(index, urlPattern);
+      const { records, pages, failedPages, aborted } = outcome;
 
       if (failedPages > 0) {
         const detail =
           pages === 0
             ? `${index} ${urlPattern}: index query failed after retries`
-            : `${index} ${urlPattern}: ${failedPages} of ${pages} pages failed after retries`;
+            : `${index} ${urlPattern}: ${failedPages} of ${pages} pages failed after retries` +
+              (aborted ? " (stopped early — consecutive failures)" : "");
         queryErrors.push(detail);
         onProgress?.(`Warning: ${detail}`);
       }
 
-      // Trip the breaker when the index is refusing us outright. Grinding through
+      // Trip the breaker when queries keep coming back damaged. Grinding through
       // the remaining patterns deepens the block and burns minutes for nothing.
-      if (records.length === 0 && failedPages > 0) {
+      if (isQueryDegraded(outcome)) {
         consecutiveFailures += 1;
         if (consecutiveFailures >= CC_MAX_CONSECUTIVE_FAILURES) {
           const detail =

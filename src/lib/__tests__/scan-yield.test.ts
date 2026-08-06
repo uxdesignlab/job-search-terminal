@@ -39,8 +39,9 @@ describe("detectZeroYieldLanes", () => {
     expect(warnings[0].consecutiveRuns).toBe(3);
     expect(warnings[0].since).toBe("2026-08-03T12:00:00.000Z");
     expect(warnings[0].message).toContain("61 sources");
-    expect(warnings[0].truncated).toBe(true);
-    expect(warnings[0].message).toContain("all 3 sampled runs");
+    // No sample size declared, so the caller cannot claim the window was saturated.
+    expect(warnings[0].truncated).toBe(false);
+    expect(warnings[0].message).toContain("its last 3 runs");
   });
 
   it("counts only the leading streak, so a recovered lane is not reported", () => {
@@ -87,5 +88,59 @@ describe("detectZeroYieldLanes", () => {
 
   it("returns nothing for an empty history", () => {
     expect(detectZeroYieldLanes([])).toEqual([]);
+  });
+});
+
+describe("detectZeroYieldLanes — truncation semantics", () => {
+  const streakOf = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      run({ startedAt: `2026-08-${String(20 - i).padStart(2, "0")}T12:00:00.000Z` })
+    );
+
+  it("does not claim truncation when the sample window was not filled", () => {
+    // Three runs sampled out of a window of twelve: `since` really is the start.
+    const [w] = detectZeroYieldLanes(streakOf(3), 12);
+    expect(w.truncated).toBe(false);
+    expect(w.message).toContain("its last 3 runs");
+  });
+
+  it("claims truncation only when the streak fills the sample window", () => {
+    const [w] = detectZeroYieldLanes(streakOf(12), 12);
+    expect(w.truncated).toBe(true);
+    expect(w.message).toContain("all 12 sampled runs");
+  });
+
+  it("does not mark a lane's first-ever failing run as truncated", () => {
+    // Regression: this previously reported "since at least", claiming the outage
+    // predated the only run the lane has ever had.
+    const [w] = detectZeroYieldLanes(streakOf(1), 12);
+    expect(w.truncated).toBe(false);
+    expect(w.message).toContain("its last 1 run");
+    expect(w.message).not.toContain("runs.");
+  });
+
+  it("pluralises sources and runs correctly", () => {
+    const [single] = detectZeroYieldLanes(
+      [run({ companiesScanned: 1, totalJobsFound: 0 })],
+      12
+    );
+    // companiesScanned of 1 is below ZERO_YIELD_MIN_SOURCES, so nothing is flagged.
+    expect(single).toBeUndefined();
+
+    const [many] = detectZeroYieldLanes(streakOf(2), 12);
+    expect(many.message).toContain("61 sources");
+    expect(many.message).toContain("its last 2 runs");
+  });
+
+  it("sorts ISO timestamps chronologically without locale collation", () => {
+    const [w] = detectZeroYieldLanes(
+      [
+        run({ startedAt: "2026-08-09T12:00:00.000Z" }),
+        run({ startedAt: "2026-08-10T12:00:00.000Z" }),
+        run({ startedAt: "2026-08-08T12:00:00.000Z" }),
+      ],
+      12
+    );
+    expect(w.since).toBe("2026-08-08T12:00:00.000Z");
   });
 });

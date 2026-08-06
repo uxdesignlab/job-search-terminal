@@ -20,7 +20,7 @@ import {
   setScanSourceEnabled,
 } from "@/lib/db/queries";
 import { isScanSourceEnabled } from "@/lib/scanner/careerops-scanner";
-import { detectZeroYieldLanes } from "@/lib/scanner/scan-yield";
+import { detectZeroYieldLanes, SCAN_YIELD_SAMPLE_PER_LANE } from "@/lib/scanner/scan-yield";
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
@@ -78,7 +78,10 @@ export default function DashboardPage() {
   const activity = getActivity();
   const latestScan = getLatestScanRun();
   const latestScanTime = latestScan?.completedAt ?? latestScan?.startedAt;
-  const zeroYieldLanes = detectZeroYieldLanes(getRecentScanYieldRuns());
+  const zeroYieldLanes = detectZeroYieldLanes(
+    getRecentScanYieldRuns(SCAN_YIELD_SAMPLE_PER_LANE),
+    SCAN_YIELD_SAMPLE_PER_LANE,
+  );
   const schedule = getScanSchedule();
   const freshMatches = getFreshMatches(schedule.freshnessWindowHours);
   const freshMatchesPreview = freshMatches.slice(0, 5);

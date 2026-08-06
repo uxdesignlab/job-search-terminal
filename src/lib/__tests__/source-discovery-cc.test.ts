@@ -5,10 +5,13 @@ vi.mock("@/lib/safe-fetch", () => ({ safeFetch: mocks.safeFetch }));
 
 import {
   computeRetryDelayMs,
+  isQueryDegraded,
+  queryCcIndex,
   resolveCcIndexes,
   retryAfterMs,
   selectBalancedCandidates,
   type AtsProvider,
+  type CcQueryOutcome,
   type DiscoveredEntry,
 } from "@/lib/scanner/source-discovery";
 
@@ -200,5 +203,100 @@ describe("retryAfterMs", () => {
   it("returns null when the header is absent or unparseable", () => {
     expect(retryAfterMs(withHeader(null))).toBeNull();
     expect(retryAfterMs(withHeader("soon"))).toBeNull();
+  });
+});
+
+describe("isQueryDegraded", () => {
+  const outcome = (over: Partial<CcQueryOutcome> = {}): CcQueryOutcome => ({
+    records: [],
+    pages: 5,
+    failedPages: 0,
+    aborted: false,
+    ...over,
+  });
+
+  it("is clean when nothing failed", () => {
+    expect(isQueryDegraded(outcome({ records: [{ url: "u", timestamp: "t" }] }))).toBe(false);
+  });
+
+  it("is degraded when the in-query breaker aborted", () => {
+    expect(isQueryDegraded(outcome({ aborted: true }))).toBe(true);
+  });
+
+  it("is degraded when the page-count request itself failed", () => {
+    expect(isQueryDegraded(outcome({ pages: 0, failedPages: 1 }))).toBe(true);
+  });
+
+  it("is degraded when a majority of pages failed even if some records survived", () => {
+    // Regression: the old check was `records.length === 0`, so one salvaged
+    // record reset the sweep breaker while the index was throttling.
+    expect(isQueryDegraded(outcome({ pages: 5, failedPages: 4, records: [{ url: "u", timestamp: "t" }] }))).toBe(true);
+    expect(isQueryDegraded(outcome({ pages: 4, failedPages: 2 }))).toBe(true);
+  });
+
+  it("tolerates a minority of failed pages", () => {
+    expect(isQueryDegraded(outcome({ pages: 5, failedPages: 1 }))).toBe(false);
+  });
+});
+
+describe("queryCcIndex", () => {
+  const pageCount = (n: number) => ok(JSON.stringify({ pages: n }));
+  const recordPage = (slug: string) =>
+    ok(JSON.stringify({ url: `https://job-boards.greenhouse.io/${slug}`, timestamp: "20260719034542" }));
+
+  it("walks every page and accumulates records", async () => {
+    mocks.safeFetch
+      .mockResolvedValueOnce(pageCount(3))
+      .mockResolvedValueOnce(recordPage("a"))
+      .mockResolvedValueOnce(recordPage("b"))
+      .mockResolvedValueOnce(recordPage("c"));
+    const out = await settle(queryCcIndex("CC-MAIN-2026-30", "job-boards.greenhouse.io/*"));
+    expect(out.pages).toBe(3);
+    expect(out.records).toHaveLength(3);
+    expect(out.failedPages).toBe(0);
+    expect(out.aborted).toBe(false);
+  });
+
+  it("stops early once consecutive pages fail, leaving later pages unread", async () => {
+    // 20 pages, but every page request fails. Without the in-query breaker this
+    // would issue 20 pages x 3 attempts against an index that is refusing us.
+    mocks.safeFetch.mockImplementation(async (url: string) =>
+      url.includes("showNumPages") ? pageCount(20) : fail(504)
+    );
+    const out = await settle(queryCcIndex("CC-MAIN-2026-30", "jobs.lever.co/*"));
+    expect(out.aborted).toBe(true);
+    expect(out.failedPages).toBe(3); // CC_MAX_CONSECUTIVE_FAILURES
+    expect(isQueryDegraded(out)).toBe(true);
+    // 1 page-count call + 3 failed pages x 3 attempts each = 10, far short of 20 pages.
+    expect(mocks.safeFetch.mock.calls.length).toBeLessThan(20);
+  });
+
+  it("resets the consecutive counter when a page succeeds", async () => {
+    mocks.safeFetch
+      .mockResolvedValueOnce(pageCount(5))
+      .mockResolvedValueOnce(fail(502)).mockResolvedValueOnce(fail(502)).mockResolvedValueOnce(fail(502))
+      .mockResolvedValueOnce(fail(502)).mockResolvedValueOnce(fail(502)).mockResolvedValueOnce(fail(502))
+      .mockResolvedValueOnce(recordPage("a"))
+      .mockResolvedValue(recordPage("b"));
+    const out = await settle(queryCcIndex("CC-MAIN-2026-30", "jobs.ashbyhq.com/*"));
+    // Two isolated page failures separated by successes must not trip the breaker.
+    expect(out.aborted).toBe(false);
+    expect(out.failedPages).toBe(2);
+    expect(out.records.length).toBeGreaterThan(0);
+  });
+
+  it("treats a parseable but unexpected page-count payload as a failure", async () => {
+    // Reporting this as a clean zero would silently reset the sweep breaker.
+    mocks.safeFetch.mockResolvedValueOnce(ok(JSON.stringify({ unexpected: true })));
+    const out = await settle(queryCcIndex("CC-MAIN-2026-30", "boards.greenhouse.io/*"));
+    expect(out).toEqual({ records: [], pages: 0, failedPages: 1, aborted: false });
+    expect(isQueryDegraded(out)).toBe(true);
+  });
+
+  it("reports a genuine zero-page pattern as clean, not failed", async () => {
+    mocks.safeFetch.mockResolvedValueOnce(pageCount(0));
+    const out = await settle(queryCcIndex("CC-MAIN-2026-30", "boards.greenhouse.io/*"));
+    expect(out.failedPages).toBe(0);
+    expect(isQueryDegraded(out)).toBe(false);
   });
 });

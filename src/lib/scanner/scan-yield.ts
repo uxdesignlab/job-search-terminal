@@ -26,9 +26,13 @@ export type ScanYieldWarning = {
   /** ISO timestamp of the oldest run in the streak. */
   since: string;
   /**
-   * True when every sampled run for this lane is part of the streak, so the
-   * outage began at or before `since` — reported honestly rather than implying
-   * the sample window is the true start.
+   * True when the sample window was saturated by the streak, so the outage began
+   * at or before `since` and the real start is unknown.
+   *
+   * Requires the caller to say how many runs per lane it sampled. Without that,
+   * "the streak covers every run I was given" is indistinguishable from "this
+   * lane has only ever run twice" — and a brand-new lane's first failure would
+   * claim the outage predates its own first run.
    */
   truncated: boolean;
   message: string;
@@ -36,6 +40,11 @@ export type ScanYieldWarning = {
 
 /** A lane reaching at least this many sources yet retrieving nothing is almost certainly blocked. */
 export const ZERO_YIELD_MIN_SOURCES = 10;
+
+/** Runs sampled per lane by the default query; also the saturation threshold for `truncated`. */
+export const SCAN_YIELD_SAMPLE_PER_LANE = 12;
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** True when a single run reached real sources but came back empty. */
 export function isZeroYieldRun(run: ScanYieldRun): boolean {
@@ -49,7 +58,10 @@ export function isZeroYieldRun(run: ScanYieldRun): boolean {
  * internally. Only the leading (most recent) streak counts, so a lane that has
  * recovered is not reported.
  */
-export function detectZeroYieldLanes(runs: ScanYieldRun[]): ScanYieldWarning[] {
+export function detectZeroYieldLanes(
+  runs: ScanYieldRun[],
+  sampleSizePerLane?: number,
+): ScanYieldWarning[] {
   const byType = new Map<string, ScanYieldRun[]>();
   for (const run of runs) {
     const existing = byType.get(run.scanType);
@@ -59,7 +71,9 @@ export function detectZeroYieldLanes(runs: ScanYieldRun[]): ScanYieldWarning[] {
 
   const warnings: ScanYieldWarning[] = [];
   for (const [scanType, laneRuns] of byType) {
-    const ordered = [...laneRuns].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    // Plain comparison, not localeCompare: these are ISO-8601 strings, where
+    // lexical order is chronological order and locale collation is irrelevant.
+    const ordered = [...laneRuns].sort((a, b) => (a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0));
     const streak: ScanYieldRun[] = [];
     for (const run of ordered) {
       if (!isZeroYieldRun(run)) break;
@@ -69,16 +83,21 @@ export function detectZeroYieldLanes(runs: ScanYieldRun[]): ScanYieldWarning[] {
 
     const oldest = streak[streak.length - 1];
     const sources = Math.max(...streak.map((run) => run.companiesScanned));
-    const truncated = streak.length === ordered.length;
+    // Only "truncated" when the caller's sample window was actually filled and
+    // wholly consumed by the streak; otherwise `since` really is the start.
+    const truncated =
+      sampleSizePerLane !== undefined &&
+      ordered.length >= sampleSizePerLane &&
+      streak.length === ordered.length;
+
     warnings.push({
       scanType,
       consecutiveRuns: streak.length,
       since: oldest.startedAt,
       truncated,
       message:
-        `${scanType} reached ${sources} source${sources === 1 ? "" : "s"} but retrieved 0 postings ` +
-        `on ${truncated ? "all " : "its last "}${streak.length} ` +
-        `${truncated ? "sampled runs" : `run${streak.length === 1 ? "" : "s"}`}. ` +
+        `${scanType} reached ${plural(sources, "source")} but retrieved 0 postings on ` +
+        `${truncated ? `all ${plural(streak.length, "sampled run")}` : `its last ${plural(streak.length, "run")}`}. ` +
         `The source is likely blocking requests.`,
     });
   }

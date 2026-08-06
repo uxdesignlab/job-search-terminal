@@ -5,7 +5,7 @@ import { normalizePreferredLocations } from "../profile/locations";
 import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
 import { freshnessLabelFor } from "../scanner/freshness";
-import type { ScanYieldRun } from "../scanner/scan-yield";
+import { SCAN_YIELD_SAMPLE_PER_LANE, type ScanYieldRun } from "../scanner/scan-yield";
 import { filterFreshScanMatches } from "../jobs/fresh-match-dedupe";
 import type {
   AIProviderName,
@@ -530,7 +530,7 @@ export function getLatestScanRun(): ScanRunRecord | undefined {
  * Pulls a window per scan type rather than a flat `limit`, so a high-frequency
  * lane (careerops) cannot crowd a low-frequency one out of the sample.
  */
-export function getRecentScanYieldRuns(perScanType = 12): ScanYieldRun[] {
+export function getRecentScanYieldRuns(perScanType = SCAN_YIELD_SAMPLE_PER_LANE): ScanYieldRun[] {
   const rows = getDatabase()
     .prepare(
       `select scan_type, started_at, companies_scanned, total_jobs_found

@@ -35,14 +35,21 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
     const location = normalizeText(rawLocation);
     const isRemote = isRemoteLocation(location);
     const isHybrid = isHybridLocation(location);
-    // A posting whose entire location is a country ("United States", "USA") is
+    // A posting whose location is a country ("United States", "USA") is
     // country-wide availability, not an unspecified on-site office. Treat it as
     // matching any preference inside that country.
-    const countryWide = countryWideLocationGroup(location);
+    //
+    // For a remote posting the country may be the *restriction* rather than the
+    // whole string ("United States - Remote"), so check the remainder too —
+    // otherwise US-wide remote roles are rejected for not being in Tennessee.
+    const remoteRemainder = isRemote ? remoteRestrictionRemainder(location) : "";
+    const countryWide =
+      countryWideLocationGroup(location) ??
+      (remoteRemainder ? countryWideLocationGroup(remoteRemainder) : null);
     const matchesPreferredLocation =
       (hasLocationPreferences && locationMatchers.some((matcher) => matcher(location))) ||
       (countryWide !== null && preferredCountries.has(countryWide));
-    const restrictedRemote = isRemote && hasRemoteLocationRestriction(location);
+    const restrictedRemote = isRemote && remoteRemainder.length > 0;
 
     if (selectedWorkModes) {
       if (isRemote) {
@@ -279,14 +286,25 @@ function isHybridLocation(location: string) {
   return containsLocationToken(location, "hybrid");
 }
 
-function hasRemoteLocationRestriction(location: string) {
-  const unrestricted = ["remote", "anywhere", "distributed", "worldwide", "global", "work from home", "wfh"];
+const UNRESTRICTED_REMOTE_TERMS = [
+  "remote", "anywhere", "distributed", "worldwide", "global", "work from home", "wfh",
+];
+
+/**
+ * What is left of a location once the remote-ness words are removed.
+ *
+ * `""` means the posting is remote without a stated region. Anything else is the
+ * region the remote role is restricted to — which is the part that actually has
+ * to be compared against preferences.
+ */
+function remoteRestrictionRemainder(location: string) {
   let remainder = location;
-  for (const term of unrestricted) {
+  for (const term of UNRESTRICTED_REMOTE_TERMS) {
     remainder = remainder.replace(new RegExp(`(^|\\s)${escapeRegExp(term)}(\\s|$)`, "gi"), " ");
   }
-  return remainder.trim().length > 0;
+  return remainder.replace(/\s+/g, " ").trim();
 }
+
 
 function hasJuniorDealBreaker(dealBreakers: string[]) {
   return dealBreakers.some((item) => {
