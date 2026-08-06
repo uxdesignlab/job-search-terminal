@@ -392,7 +392,7 @@ History of job scan executions.
 | `duplicate_count` | Duplicate jobs skipped |
 | `new_jobs_count` | Net new jobs added |
 | `errors_json` | Array of `{ company, error, category? }` — `category` is `dead_or_unreachable`, `timeout_or_slow`, or `other` when set (CareerOps / Adzuna); older rows may omit it |
-| `scan_type` | `careerops`, `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, or `monster-browser-scan` |
+| `scan_type` | `careerops` plus every board scan type. Current values: `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`, `adzuna-api-scan`, `email-alert-import`, `dice-mcp-scan`, `himalayas-api-scan`. **Single source of truth:** `BrowserBoardScanType` in `src/lib/scanner/browser-board-sources.ts` — the TypeScript types now derive from that registry rather than restating it, so adding a board only requires editing the registry. Rows written by external agents may carry other values (for example `private-page-scan`). |
 
 ### evaluation_feedback
 

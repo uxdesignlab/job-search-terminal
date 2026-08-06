@@ -1,3 +1,5 @@
+import type { BrowserBoardScanType, BrowserBoardSource } from "../scanner/browser-board-sources";
+
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export type WorkMode = "remote" | "hybrid" | "onsite";
@@ -207,17 +209,8 @@ export type ScanRunRecord = {
   freshCount?: number;
   unknownDateCount?: number;
   staleFilteredCount?: number;
-  scanType:
-    | "careerops"
-    | "linkedin-claude-scan"
-    | "wellfound-browser-scan"
-    | "workatastartup-browser-scan"
-    | "glassdoor-browser-scan"
-    | "indeed-browser-scan"
-    | "monster-browser-scan"
-    | "adzuna-api-scan"
-    | "email-alert-import"
-    | "dice-mcp-scan";
+  /** "careerops" plus every browser/API board, taken from the shared registry. */
+  scanType: "careerops" | BrowserBoardScanType;
 };
 
 export type ImportResult = {
@@ -257,7 +250,10 @@ export type LinkedInScanFile = {
 
 export type BrowserBoardScanFile = {
   metadata: {
-    source: "linkedin" | "wellfound" | "workatastartup" | "glassdoor" | "indeed" | "monster" | "adzuna" | "email" | "dice";
+    // Sourced from the single registry in browser-board-sources rather than
+    // duplicated inline; the previous hand-copied union silently drifted out of
+    // sync whenever a board was added.
+    source: BrowserBoardSource;
     scanTimestamp: string;
     scanDurationSeconds: number;
     totalJobsDiscovered: number;

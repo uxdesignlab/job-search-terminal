@@ -1168,6 +1168,63 @@ Dice is a tech-focused job board. JST integrates with Dice via Dice's free, publ
 
 ---
 
+## Himalayas Remote Board Scanner (In-App, No Credentials)
+
+Himalayas is a remote-only job board with a large public feed (~97,000 live
+postings, ~2,900 added per day). No key or login is required. It runs
+automatically as a lane of the Dashboard scan alongside CareerOps, Dice, and
+Adzuna.
+
+**Two API constraints shape the implementation** (`src/lib/scanner/himalayas-scanner.ts`):
+
+- **No server-side filtering.** `search`, `category`, and similar parameters are
+  accepted and then ignored — every query returns the same feed. Verified
+  directly: `?search=designer` and `?category=design` return results identical to
+  an unfiltered call. Titles are therefore filtered client-side with the same
+  positive/negative lists the other lanes use.
+- **`limit` is hard-capped at 20** regardless of the value requested.
+
+**Why it is still viable:** the feed is strictly newest-first, so a scan reads
+the newest pages and stops instead of walking all ~4,800. `MAX_PAGES` (60) covers
+the newest ~1,200 postings — roughly ten hours at the observed rate, comfortably
+ahead of the six-hour schedule.
+
+**Partial sweeps are reported.** In practice the page cap, not the freshness
+cutoff, ends the walk: a 72-hour window would need ~435 pages. When the cap is
+hit before the cutoff, the run records that older postings were not seen, rather
+than reporting a clean result. Three consecutive page failures abort the walk so
+a degraded API is not hammered.
+
+**Data handling:**
+- `pubDate` is UNIX epoch **seconds**, not milliseconds.
+- The API emits raw control characters inside JSON strings, which `JSON.parse`
+  rejects. `parseHimalayasPayload` sanitises them before parsing.
+- `locationRestrictions` is a country array. Empty means unrestricted and maps to
+  `Remote`; otherwise each country is emitted as `<Country> (Remote)` joined with
+  `; ` so the preference filter's multi-location splitting evaluates each one.
+
+**Measured yield:** a live run imported 11 roles from 1,158 recent postings in
+~28 seconds. Roughly a quarter matched only because the `ux` positive keyword
+substring-matches "Lin-ux" and "BENEL-ux"; genuine design roles were ~7 of 11.
+
+**Known gap:** region-restricted remote roles (for example EU-only) are still
+imported when work modes are selected, because that branch of the preference
+filter accepts any remote posting without checking its region. Himalayas makes
+this unusually tractable to fix, since `locationRestrictions` is structured
+country data rather than free text.
+
+**Scan type recorded:** `himalayas-api-scan`. Jobs appear with a **Himalayas**
+source badge.
+
+**Sources evaluated and rejected:** Remotive and RemoteOK were tested and are not
+viable. Remotive's entire public feed is 34 jobs spanning twelve unrelated
+categories with its filters ignored, of which one is Design. RemoteOK's feed is
+100 jobs, of which two match a design pattern and neither is a product/UX role.
+Both also carry link-back terms aimed at republishing sites. Neither is worth a
+lane.
+
+---
+
 ## Adzuna Job Aggregator (Direct API Scanner)
 
 Adzuna is a job aggregator that indexes listings from many sources including Indeed, CareerBuilder, and direct employer feeds. Unlike browser-board scanning, Adzuna requires no browser or logged-in session — the app queries its public API directly.
@@ -1189,10 +1246,10 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 **Scan type recorded:** `adzuna-api-scan`. Jobs appear in the Jobs table with an **Adzuna** source badge.
 
 **UI indicators on the Jobs table:**
-- **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, **Monster**, **Dice**, or **Adzuna** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans, MCP scans, or aggregator API scans
+- **LinkedIn**, **Wellfound**, **Work at a Startup**, **Glassdoor**, **Indeed**, **Monster**, **Dice**, **Adzuna**, or **Himalayas** badge (neutral gray) — source column — identifies jobs discovered via browser-board scans, MCP scans, or aggregator API scans
 - **Manual** badge (neutral gray) — source column — identifies jobs added manually via the Add Job modal
 - **Duplicate** badge (amber, clickable) — flagged jobs whose URL or company+title already existed in the database. Clicking the badge instantly filters the table to show only duplicate-flagged jobs. Clicking again clears the filter.
-- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Dice", "Adzuna", "Manual", and "Scanner"
+- **Source** column — filterable and sortable; options are "LinkedIn", "Wellfound", "Work at a Startup", "Glassdoor", "Indeed", "Monster", "Dice", "Adzuna", "Himalayas", "Manual", and "Scanner"
 
 **URL behavior:** Browser-board imports prefer a visible job-specific employer/ATS apply URL. If one is not available, the platform job URL is used and preserved as provenance.
 

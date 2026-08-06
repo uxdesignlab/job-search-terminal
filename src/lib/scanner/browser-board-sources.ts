@@ -7,7 +7,8 @@ export const BROWSER_BOARD_SOURCES = [
   "monster",
   "adzuna",
   "email",
-  "dice"
+  "dice",
+  "himalayas"
 ] as const;
 
 export type BrowserBoardSource = (typeof BROWSER_BOARD_SOURCES)[number];
@@ -21,7 +22,8 @@ export type BrowserBoardScanType =
   | "monster-browser-scan"
   | "adzuna-api-scan"
   | "email-alert-import"
-  | "dice-mcp-scan";
+  | "dice-mcp-scan"
+  | "himalayas-api-scan";
 
 const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   linkedin: "LinkedIn",
@@ -32,7 +34,8 @@ const SOURCE_LABELS: Record<BrowserBoardSource, string> = {
   monster: "Monster",
   adzuna: "Adzuna",
   email: "Email",
-  dice: "Dice"
+  dice: "Dice",
+  himalayas: "Himalayas"
 };
 
 const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
@@ -44,7 +47,8 @@ const SOURCE_TO_SCAN_TYPE: Record<BrowserBoardSource, BrowserBoardScanType> = {
   monster: "monster-browser-scan",
   adzuna: "adzuna-api-scan",
   email: "email-alert-import",
-  dice: "dice-mcp-scan"
+  dice: "dice-mcp-scan",
+  himalayas: "himalayas-api-scan"
 };
 
 const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
@@ -56,7 +60,8 @@ const SCAN_TYPE_TO_SOURCE: Record<BrowserBoardScanType, BrowserBoardSource> = {
   "monster-browser-scan": "monster",
   "adzuna-api-scan": "adzuna",
   "email-alert-import": "email",
-  "dice-mcp-scan": "dice"
+  "dice-mcp-scan": "dice",
+  "himalayas-api-scan": "himalayas"
 };
 
 export function isBrowserBoardSource(value: unknown): value is BrowserBoardSource {

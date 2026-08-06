@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   runAggregatorScan: vi.fn(),
   runCareerOpsScanner: vi.fn(),
   runDiceScan: vi.fn(),
+  runHimalayasScan: vi.fn(),
 }));
 
 vi.mock("@/lib/db/queries", () => ({
@@ -22,6 +23,7 @@ vi.mock("@/lib/careerops-scan-to-summary", () => ({
 vi.mock("@/lib/scanner/aggregator-scanner", () => ({ runAggregatorScan: mocks.runAggregatorScan }));
 vi.mock("@/lib/scanner/careerops-scanner", () => ({ runCareerOpsScanner: mocks.runCareerOpsScanner }));
 vi.mock("@/lib/scanner/dice-scanner", () => ({ runDiceScan: mocks.runDiceScan }));
+vi.mock("@/lib/scanner/himalayas-scanner", () => ({ runHimalayasScan: mocks.runHimalayasScan }));
 
 import { runJobDiscoveryScan } from "@/lib/scanner/job-discovery";
 
@@ -57,6 +59,7 @@ describe("runJobDiscoveryScan progress", () => {
     });
     mocks.runAggregatorScan.mockResolvedValue({ ...emptySourceResult, totalFound: 3 });
     mocks.runDiceScan.mockResolvedValue({ ...emptySourceResult, totalFound: 4 });
+    mocks.runHimalayasScan.mockResolvedValue({ ...emptySourceResult, totalFound: 6 });
     mocks.careerOpsRunToJobSummary.mockReturnValue({
       companyName: "All enabled sources",
       status: "completed",

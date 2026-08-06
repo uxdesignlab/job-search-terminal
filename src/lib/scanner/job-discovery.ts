@@ -8,6 +8,7 @@ import { careerOpsRunToJobSummary } from "@/lib/careerops-scan-to-summary";
 import { runAggregatorScan } from "./aggregator-scanner";
 import { runCareerOpsScanner } from "./careerops-scanner";
 import { runDiceScan } from "./dice-scanner";
+import { runHimalayasScan } from "./himalayas-scanner";
 import { DEFAULT_FRESHNESS_WINDOW_HOURS } from "./freshness";
 
 export async function runJobDiscoveryScan(input: {
@@ -65,13 +66,19 @@ export async function runJobDiscoveryScan(input: {
     detail: "Waiting to search Dice",
   });
   reportProgress({
+    sourceId: "himalayas",
+    sourceLabel: "Himalayas",
+    status: "pending",
+    detail: "Waiting to search Himalayas",
+  });
+  reportProgress({
     sourceId: "adzuna",
     sourceLabel: "Adzuna",
     status: hasAdzuna ? "pending" : "skipped",
     detail: hasAdzuna ? "Waiting to search Adzuna" : "Not configured",
   });
 
-  const [careerOps, adzuna, dice] = await Promise.all([
+  const [careerOps, adzuna, dice, himalayas] = await Promise.all([
     runSource(
       "career-sites",
       "Company career sites",
@@ -112,6 +119,13 @@ export async function runJobDiscoveryScan(input: {
         }),
       (result) => `Checked Dice — ${result.totalFound} ${result.totalFound === 1 ? "listing" : "listings"} found`,
     ),
+    runSource(
+      "himalayas",
+      "Himalayas",
+      "Scanning recent Himalayas remote postings",
+      () => runHimalayasScan({ titleFilters, freshnessWindowHours }),
+      (result) => `Checked Himalayas — ${result.totalFound} recent ${result.totalFound === 1 ? "posting" : "postings"} found`,
+    ),
   ]);
 
   const careerSummary = careerOpsRunToJobSummary(careerOps, "All enabled sources");
@@ -126,10 +140,16 @@ export async function runJobDiscoveryScan(input: {
     error,
     category: classifyScanErrorMessage(error),
   }));
+  const himalayasErrors = himalayas.errors.map((error) => ({
+    company: "Himalayas",
+    error,
+    category: classifyScanErrorMessage(error),
+  }));
   const allJobs = [
     ...careerOps.jobs.map((job) => ({ title: job.title, url: job.url, company: job.company })),
     ...(adzuna?.jobs ?? []),
     ...dice.jobs,
+    ...himalayas.jobs,
   ];
   const max = SCAN_RESULT_JOBS_PREVIEW_MAX;
 
@@ -141,17 +161,18 @@ export async function runJobDiscoveryScan(input: {
         : careerSummary.status === "completed_with_errors" ||
             adzuna?.status === "error" ||
             adzunaErrors.length > 0 ||
-            (dice.status === "error" && diceErrors.length > 0)
+            (dice.status === "error" && diceErrors.length > 0) ||
+            (himalayas.status === "error" && himalayasErrors.length > 0)
           ? "completed_with_errors"
           : "completed",
-    newJobsCount: careerSummary.newJobsCount + (adzuna?.imported ?? 0) + dice.imported,
-    totalJobsFound: careerSummary.totalJobsFound + (adzuna?.totalFound ?? 0) + dice.totalFound,
-    duplicateCount: careerSummary.duplicateCount + (adzuna?.duplicates ?? 0) + dice.duplicates,
-    errors: [...careerSummary.errors, ...adzunaErrors, ...diceErrors],
+    newJobsCount: careerSummary.newJobsCount + (adzuna?.imported ?? 0) + dice.imported + himalayas.imported,
+    totalJobsFound: careerSummary.totalJobsFound + (adzuna?.totalFound ?? 0) + dice.totalFound + himalayas.totalFound,
+    duplicateCount: careerSummary.duplicateCount + (adzuna?.duplicates ?? 0) + dice.duplicates + himalayas.duplicates,
+    errors: [...careerSummary.errors, ...adzunaErrors, ...diceErrors, ...himalayasErrors],
     jobs: allJobs.slice(0, max),
     jobsTotal: allJobs.length > max ? allJobs.length : undefined,
-    freshCount: (careerOps.freshCount ?? careerOps.newJobsCount) + (adzuna?.fresh ?? 0) + dice.fresh,
-    unknownDateCount: (careerOps.unknownDateCount ?? 0) + (adzuna?.unknownDate ?? 0) + dice.unknownDate,
-    staleFilteredCount: (careerOps.staleFilteredCount ?? 0) + (adzuna?.staleFiltered ?? 0) + dice.staleFiltered,
+    freshCount: (careerOps.freshCount ?? careerOps.newJobsCount) + (adzuna?.fresh ?? 0) + dice.fresh + himalayas.fresh,
+    unknownDateCount: (careerOps.unknownDateCount ?? 0) + (adzuna?.unknownDate ?? 0) + dice.unknownDate + himalayas.unknownDate,
+    staleFilteredCount: (careerOps.staleFilteredCount ?? 0) + (adzuna?.staleFiltered ?? 0) + dice.staleFiltered + himalayas.staleFiltered,
   };
 }

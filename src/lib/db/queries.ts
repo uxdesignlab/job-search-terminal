@@ -6,6 +6,11 @@ import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
 import { freshnessLabelFor } from "../scanner/freshness";
 import { SCAN_YIELD_SAMPLE_PER_LANE, type ScanYieldRun } from "../scanner/scan-yield";
+import {
+  browserBoardSourceLabel,
+  scanTypeToBrowserBoardSource,
+  type BrowserBoardScanType,
+} from "../scanner/browser-board-sources";
 import { filterFreshScanMatches } from "../jobs/fresh-match-dedupe";
 import type {
   AIProviderName,
@@ -1647,16 +1652,7 @@ export type BrowserBoardJobInput = {
   sourceUrl: string;
   originalPostingUrl: string;
   originalPostingKey: string;
-  source:
-    | "linkedin-claude-scan"
-    | "wellfound-browser-scan"
-    | "workatastartup-browser-scan"
-    | "glassdoor-browser-scan"
-    | "indeed-browser-scan"
-    | "monster-browser-scan"
-    | "adzuna-api-scan"
-    | "email-alert-import"
-    | "dice-mcp-scan";
+  source: BrowserBoardScanType;
   location: string;
   rawDescription: string;
   datePosted: string | null;
@@ -2338,16 +2334,12 @@ function inferRemoteType(location: string) {
   return location.toLowerCase().includes("remote") ? "Remote" : "Not specified";
 }
 
+/**
+ * Reads the label from the shared registry instead of an if-chain, which ended
+ * in `return "Email"` and so mislabelled every newly added board as Email.
+ */
 function sourceNameForSummary(source: BrowserBoardJobInput["source"]) {
-  if (source === "linkedin-claude-scan") return "LinkedIn";
-  if (source === "wellfound-browser-scan") return "Wellfound";
-  if (source === "workatastartup-browser-scan") return "Work at a Startup";
-  if (source === "glassdoor-browser-scan") return "Glassdoor";
-  if (source === "indeed-browser-scan") return "Indeed";
-  if (source === "monster-browser-scan") return "Monster";
-  if (source === "adzuna-api-scan") return "Adzuna";
-  if (source === "dice-mcp-scan") return "Dice";
-  return "Email";
+  return browserBoardSourceLabel(scanTypeToBrowserBoardSource(source));
 }
 
 function scanActivityLabel(run: ScanRunRecord) {
