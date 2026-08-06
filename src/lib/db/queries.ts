@@ -5,6 +5,7 @@ import { normalizePreferredLocations } from "../profile/locations";
 import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
 import { freshnessLabelFor } from "../scanner/freshness";
+import type { ScanYieldRun } from "../scanner/scan-yield";
 import { filterFreshScanMatches } from "../jobs/fresh-match-dedupe";
 import type {
   AIProviderName,
@@ -521,6 +522,43 @@ export function getLatestScanRun(): ScanRunRecord | undefined {
     .get() as ScanRunRow | undefined;
 
   return row ? mapScanRun(row) : undefined;
+}
+
+/**
+ * Recent runs reduced to the fields zero-yield detection needs.
+ *
+ * Pulls a window per scan type rather than a flat `limit`, so a high-frequency
+ * lane (careerops) cannot crowd a low-frequency one out of the sample.
+ */
+export function getRecentScanYieldRuns(perScanType = 12): ScanYieldRun[] {
+  const rows = getDatabase()
+    .prepare(
+      `select scan_type, started_at, companies_scanned, total_jobs_found
+       from (
+         select
+           scan_type,
+           started_at,
+           companies_scanned,
+           total_jobs_found,
+           row_number() over (partition by scan_type order by started_at desc) as rn
+         from scan_runs
+       )
+       where rn <= ?
+       order by started_at desc`
+    )
+    .all(perScanType) as Array<{
+      scan_type: string;
+      started_at: string;
+      companies_scanned: number;
+      total_jobs_found: number;
+    }>;
+
+  return rows.map((row) => ({
+    scanType: row.scan_type,
+    startedAt: row.started_at,
+    companiesScanned: row.companies_scanned,
+    totalJobsFound: row.total_jobs_found,
+  }));
 }
 
 export function getScanSchedule(): ScanScheduleRecord {

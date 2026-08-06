@@ -151,9 +151,28 @@ features.
   card shows company, title, fit score, and recommended next action.
 - **Stat cards** — supporting metrics for priority matches, applications sent,
   new jobs this week, generated PDFs, follow-ups, interviews, and skipped jobs.
-- **Recent activity log** — "Latest scan" summary appears first (status badges
-  and per-source errors with inline "Disable source"), followed by the
-  timestamped list of user actions.
+- **Recent activity log** — a "Source not returning jobs" warning appears first
+  when any scan lane is failing silently (see below), then the "Latest scan"
+  summary (status badges and per-source errors with inline "Disable source"),
+  followed by the timestamped list of user actions.
+- **Zero-yield warning** — a lane can break without ever reporting an error. The
+  `private-page-scan` lane returned `total_jobs_found = 0` on every run for a
+  week while still reporting 31–61 "companies scanned" and a
+  `completed_with_errors` status, so nothing surfaced and the outage went
+  unnoticed. `detectZeroYieldLanes` (`src/lib/scanner/scan-yield.ts`) flags any
+  lane whose most recent runs all reached at least `ZERO_YIELD_MIN_SOURCES` (10)
+  sources yet retrieved zero postings, reporting the streak length and start.
+  Only the leading streak counts, so a recovered lane clears itself.
+
+  A run that retrieves postings but imports none is deliberately **not** flagged
+  — that is the normal steady state for the careerops lane, where every match is
+  already in the database, and flagging it would train the warning to be ignored.
+
+  History comes from `getRecentScanYieldRuns()`, which windows runs *per scan
+  type* rather than applying a flat limit, so a high-frequency lane cannot crowd
+  a low-frequency one out of the sample. When a lane's whole sample is one
+  streak, the warning reads "since at least <date>" rather than implying the
+  sample boundary is the true start.
 - **Scan for new jobs** button in page header (hidden for new users).
 
 ---
@@ -980,6 +999,34 @@ Location matching uses the selected Location mode checkboxes:
   one of the preferred locations.
 - `On-site` includes on-site opportunities only when the posting location
   matches one of the preferred locations.
+
+Three rules make "matches one of the preferred locations" behave the way
+postings are actually written (`src/lib/jobs/preference-fit.ts`):
+
+- **Multi-location postings are split.** ATS boards routinely pack several
+  locations into one field — `San Francisco, CA • New York, NY • United States`.
+  The field is split on `•`, `·`, `|`, `;`, and newlines, and the job is accepted
+  when **any** listed location qualifies. Commas are *not* split on, because they
+  separate parts within a single location (`San Francisco, CA`). Splitting
+  happens on the raw string, before normalization strips the separators.
+- **A bare country label means country-wide, not on-site.** A posting whose whole
+  location is `United States`, `USA`, or `US` is available across that country
+  and is accepted for any preference inside it. Without this, such postings have
+  no `remote` token, fall through to the on-site branch, and are rejected as
+  "outside preferred locations" — which silently dropped most US-wide remote
+  roles. Country detection uses a country-only alias list, deliberately separate
+  from `LOCATION_ALIAS_GROUPS`, whose `united states` entry folds in all 50 state
+  aliases and would otherwise classify `Ohio` as country-wide. A trailing country
+  on a city (`Chicago, Illinois, United States`) is still treated as on-site.
+- **The user's home metro matches a state-level preference.** Metro labels such
+  as `Nashville Metropolitan Area` contain no state token, so a preference of
+  `Tennessee, United States` misses them. When the profile's own `location`
+  already falls inside a preferred region, its city name is added as an accepted
+  alias. The gate matters: someone living outside their target region does not
+  silently pull in local roles.
+
+Covered by `src/lib/__tests__/preference-fit.test.ts`, which uses verbatim
+location strings from real postings as fixtures.
 
 **Configuration:**
 - Built-in sources: enable/disable per company in Settings → Job Sources.

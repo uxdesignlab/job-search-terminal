@@ -12,6 +12,7 @@ import {
   getJobSourceBreakdown,
   getLatestScanRun,
   getFreshMatches,
+  getRecentScanYieldRuns,
   getScanSchedule,
   getResumes,
   getTitleFilters,
@@ -19,6 +20,7 @@ import {
   setScanSourceEnabled,
 } from "@/lib/db/queries";
 import { isScanSourceEnabled } from "@/lib/scanner/careerops-scanner";
+import { detectZeroYieldLanes } from "@/lib/scanner/scan-yield";
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
@@ -76,6 +78,7 @@ export default function DashboardPage() {
   const activity = getActivity();
   const latestScan = getLatestScanRun();
   const latestScanTime = latestScan?.completedAt ?? latestScan?.startedAt;
+  const zeroYieldLanes = detectZeroYieldLanes(getRecentScanYieldRuns());
   const schedule = getScanSchedule();
   const freshMatches = getFreshMatches(schedule.freshnessWindowHours);
   const freshMatchesPreview = freshMatches.slice(0, 5);
@@ -233,6 +236,25 @@ export default function DashboardPage() {
                   <CardTitle>Recent activity</CardTitle>
                   <CardDescription>Latest events from your search.</CardDescription>
                 </CardHeader>
+                {zeroYieldLanes.length > 0 && (
+                  <div className="mb-4 grid gap-2 rounded-control border border-danger/30 bg-danger/8 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-danger">
+                      {zeroYieldLanes.length === 1 ? "Source not returning jobs" : "Sources not returning jobs"}
+                    </p>
+                    <ul className="grid gap-1" aria-label="Scan lanes returning no jobs">
+                      {zeroYieldLanes.map((lane) => (
+                        <li className="text-xs text-ink" key={lane.scanType}>
+                          {lane.message}{" "}
+                          <span className="text-muted">
+                            {lane.truncated ? "Since at least " : "Since "}
+                            <LocalDateLabel value={lane.since} />.
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <div className="mb-4 grid gap-2 border-b border-border pb-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted">Latest scan</p>
                   {latestScan ? (

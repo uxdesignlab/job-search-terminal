@@ -22,25 +22,27 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
     return (): JobPreferenceDecision => ({ accepted: true });
   }
 
-  const locationMatchers = buildLocationMatchers(profile.preferredLocations);
+  const locationMatchers = buildLocationMatchers(profile.preferredLocations, profile.location);
   const hasLocationPreferences = locationMatchers.length > 0;
+  const preferredCountries = derivePreferredCountries(profile.preferredLocations);
   const hardRemoteOnly = profile.remotePreference === "remote-only";
   const hardLocalOrRemote = profile.remotePreference === "local-or-remote";
   const avoidsOnsiteOnly = profile.dealBreakers.some((item) => normalizeText(item).includes("onsite only") || normalizeText(item).includes("on site only"));
   const hasRemotePreferenceText = [...profile.workPreferences, ...profile.constraints].some((item) => normalizeText(item).includes("remote"));
   const selectedWorkModes = profile.workModes.length > 0 ? new Set(profile.workModes) : null;
 
-  return (job: PreferenceCheckJob): JobPreferenceDecision => {
-    const title = normalizeText(job.title);
-    const location = normalizeText(job.location);
+  const evaluateLocation = (rawLocation: string): JobPreferenceDecision => {
+    const location = normalizeText(rawLocation);
     const isRemote = isRemoteLocation(location);
     const isHybrid = isHybridLocation(location);
-    const matchesPreferredLocation = hasLocationPreferences && locationMatchers.some((matcher) => matcher(location));
+    // A posting whose entire location is a country ("United States", "USA") is
+    // country-wide availability, not an unspecified on-site office. Treat it as
+    // matching any preference inside that country.
+    const countryWide = countryWideLocationGroup(location);
+    const matchesPreferredLocation =
+      (hasLocationPreferences && locationMatchers.some((matcher) => matcher(location))) ||
+      (countryWide !== null && preferredCountries.has(countryWide));
     const restrictedRemote = isRemote && hasRemoteLocationRestriction(location);
-
-    if (hasJuniorDealBreaker(profile.dealBreakers) && isJuniorTitle(title)) {
-      return { accepted: false, reason: "junior deal breaker" };
-    }
 
     if (selectedWorkModes) {
       if (isRemote) {
@@ -98,6 +100,37 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
 
     return { accepted: true };
   };
+
+  return (job: PreferenceCheckJob): JobPreferenceDecision => {
+    // Title-level deal breakers are location-independent, so they short-circuit
+    // before any per-location evaluation.
+    if (hasJuniorDealBreaker(profile.dealBreakers) && isJuniorTitle(normalizeText(job.title))) {
+      return { accepted: false, reason: "junior deal breaker" };
+    }
+
+    // Postings routinely list several locations in one field
+    // ("San Francisco, CA • New York, NY • United States"). Accept the job when
+    // any single listed location is acceptable.
+    let rejection: JobPreferenceDecision = { accepted: false, reason: "outside preferred locations" };
+    for (const candidate of splitLocationCandidates(job.location)) {
+      const decision = evaluateLocation(candidate);
+      if (decision.accepted) return decision;
+      rejection = decision;
+    }
+    return rejection;
+  };
+}
+
+/** Strong separators used by ATS boards to join several locations in one field. */
+const LOCATION_SEPARATOR_RE = /[•·|;\n]+/;
+
+export function splitLocationCandidates(rawLocation: string): string[] {
+  // Split on the raw string — normalizeText strips these separators.
+  const parts = rawLocation
+    .split(LOCATION_SEPARATOR_RE)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts : [rawLocation];
 }
 
 const US_STATE_ALIASES = [
@@ -120,7 +153,43 @@ const LOCATION_ALIAS_GROUPS: Record<string, string[]> = {
   europe: ["europe", "european union", "eu", "emea"]
 };
 
-function buildLocationMatchers(preferences: string[]) {
+/**
+ * Country-level tokens only — deliberately NOT reusing LOCATION_ALIAS_GROUPS,
+ * whose "united states" entry folds in all 50 state aliases and would classify
+ * "Ohio" as country-wide.
+ */
+const COUNTRY_LEVEL_ALIASES: Record<string, string[]> = {
+  "united states": ["united states", "united states of america", "usa", "u s a", "us", "u s", "america"],
+  "united kingdom": ["united kingdom", "uk", "u k", "great britain", "britain"],
+  canada: ["canada"],
+  europe: ["europe", "european union", "eu", "emea"]
+};
+
+/** Returns the country group when `location` is exactly a country-level label. */
+function countryWideLocationGroup(location: string): string | null {
+  if (!location) return null;
+  for (const [group, aliases] of Object.entries(COUNTRY_LEVEL_ALIASES)) {
+    if (aliases.includes(location)) return group;
+  }
+  return null;
+}
+
+/** Country groups implied by the user's preferred locations (state names included). */
+function derivePreferredCountries(preferences: string[]): Set<string> {
+  const countries = new Set<string>();
+  for (const preference of preferences) {
+    const normalized = normalizeText(preference);
+    if (!normalized) continue;
+    for (const [group, aliases] of Object.entries(LOCATION_ALIAS_GROUPS)) {
+      if (aliases.some((alias) => containsLocationToken(normalized, alias))) {
+        countries.add(group);
+      }
+    }
+  }
+  return countries;
+}
+
+function buildLocationMatchers(preferences: string[], homeLocation?: string) {
   const aliases = new Set<string>();
 
   for (const preference of preferences) {
@@ -144,6 +213,21 @@ function buildLocationMatchers(preferences: string[]) {
         if (!isFinalCompositePart) {
           addLocationAlias(aliases, normalizedPart);
         }
+      }
+    }
+  }
+
+  // Metro labels ("Nashville Metropolitan Area") do not contain their state, so a
+  // state-level preference misses them. When the user's own city already falls
+  // inside a preferred region, accept that city name too. Gated on the home
+  // location matching first, so someone living outside their target region does
+  // not silently pull in local roles.
+  if (homeLocation) {
+    const normalizedHome = normalizeText(homeLocation);
+    const homeIsPreferred = [...aliases].some((alias) => containsLocationToken(normalizedHome, alias));
+    if (homeIsPreferred) {
+      for (const part of locationLabelParts(homeLocation)) {
+        addLocationAlias(aliases, normalizeText(part));
       }
     }
   }
