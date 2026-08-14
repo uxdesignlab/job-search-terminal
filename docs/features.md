@@ -991,7 +991,7 @@ The app supports four AI providers interchangeably:
 
 | Provider | Default model | Used for |
 |---|---|---|
-| OpenAI | `gpt-5.4-mini` | Evaluation, answers, outreach, research, transcription |
+| OpenAI | `latest` (auto-resolved) | Evaluation, answers, outreach, research, transcription |
 | Anthropic | `claude-sonnet-4-6` | Evaluation, answers, outreach, research |
 | Google Gemini | `gemini-2.5-flash` | Evaluation, answers, outreach, research, transcription |
 | Ollama (local) | user-selected | Evaluation, answers, outreach, research |
@@ -1003,6 +1003,35 @@ The first provider in the chain that has a credential configured is the active
 provider. Ollama uses a base URL (default `http://localhost:11434`) instead of an
 API key and supports any model installed on the local Ollama server. All AI calls
 use the `src/lib/ai/` provider abstraction with retry and failover logic.
+
+### OpenAI model selection
+
+The OpenAI model dropdown in Settings → AI Provider offers:
+
+- **Latest (auto)** — the default. Stored as the sentinel `latest` and resolved at
+  request time against OpenAI's `/v1/models` list. It takes the newest generation
+  the key can actually reach and, within it, the bare generation alias (`gpt-5.6`,
+  which routes to `gpt-5.6-sol`) or `-sol` when the account's list does not expose
+  the bare alias. Generations that only expose cheaper or off-product variants
+  (`-mini`, `-nano`, `-terra`, `-luna`, `-pro`, `-codex`, `-chat-latest`, dated
+  snapshots) are skipped, so `latest` changes the model's *generation* but never
+  its tier. The resolved id is cached for one hour per key; if the lookup fails the
+  call falls back to `gpt-5.6` rather than erroring. The dropdown shows which id
+  `latest` currently resolves to, with a Refresh link.
+- **Named GPT-5.6 variants** — `gpt-5.6` (generation alias, routes to
+  `gpt-5.6-sol`), `gpt-5.6-sol` (highest capability), `gpt-5.6-terra` (balanced,
+  lower price), `gpt-5.6-luna` (fast, high volume).
+- **Older pinned models** — `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
+- **Anything else the saved key can reach**, merged in live from
+  `GET /api/ai/openai-models` (which lists `gpt-*` models using the saved key and
+  reports the current `latest` resolution).
+
+Migration `0057_openai_latest_model` moves installs still on the old default
+`gpt-5.4-mini` onto `latest`; explicitly pinned models are left untouched.
+
+The resolution logic lives in `src/lib/ai/openai-models.ts`
+(`OPENAI_LATEST_SENTINEL`, `pickLatestFlagship`, `resolveLatestOpenAIModel`) and is
+applied inside `OpenAIProvider` for text, JSON, streaming, and connection tests.
 
 **AI-powered features:**
 - Job fit evaluation (streaming, real-time output)

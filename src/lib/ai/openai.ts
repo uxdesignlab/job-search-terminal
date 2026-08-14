@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
+import { OPENAI_FALLBACK_MODEL, isLatestSentinel, resolveLatestOpenAIModel } from "./openai-models";
 
 function humanizeOpenAIError(error: unknown): Error {
   if (error instanceof OpenAI.AuthenticationError) {
@@ -38,7 +39,7 @@ function humanizeOpenAIError(error: unknown): Error {
 
 export class OpenAIProvider implements AIProvider {
   readonly name = "openai";
-  readonly defaultModel = "gpt-5.4-mini";
+  readonly defaultModel = OPENAI_FALLBACK_MODEL;
 
   private readonly client: OpenAI;
   private readonly config: AIProviderConfig;
@@ -56,6 +57,14 @@ export class OpenAIProvider implements AIProvider {
     return this.model;
   }
 
+  /** The stored model may be the "latest" sentinel; turn it into a concrete id.
+   *  Cached inside resolveLatestOpenAIModel, so this is a no-op on the hot path. */
+  private async resolveModel(override?: string): Promise<string> {
+    const requested = override ?? this.model;
+    if (!isLatestSentinel(requested)) return requested;
+    return resolveLatestOpenAIModel(this.client, this.config.apiKey ?? "");
+  }
+
   private toOpenAIMessages(messages: AIMessage[]): OpenAI.Chat.ChatCompletionMessageParam[] {
     return messages.map((m) => ({
       role: m.role,
@@ -66,7 +75,7 @@ export class OpenAIProvider implements AIProvider {
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     try {
       const response = await this.client.chat.completions.create({
-        model: config?.model ?? this.model,
+        model: await this.resolveModel(config?.model),
         max_completion_tokens: config?.maxTokens ?? 4096,
         temperature: config?.temperature,
         messages: this.toOpenAIMessages(messages)
@@ -80,7 +89,7 @@ export class OpenAIProvider implements AIProvider {
   async generateJSON<T>(messages: AIMessage[], _hint: string, config?: Partial<AIProviderConfig>): Promise<T> {
     try {
       const response = await this.client.chat.completions.create({
-        model: config?.model ?? this.model,
+        model: await this.resolveModel(config?.model),
         max_completion_tokens: config?.maxTokens ?? 4096,
         temperature: config?.temperature,
         response_format: { type: "json_object" },
@@ -95,7 +104,7 @@ export class OpenAIProvider implements AIProvider {
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {
     try {
       const stream = this.client.chat.completions.stream({
-        model: config?.model ?? this.model,
+        model: await this.resolveModel(config?.model),
         max_completion_tokens: config?.maxTokens ?? 4096,
         temperature: config?.temperature,
         messages: this.toOpenAIMessages(messages)
@@ -116,7 +125,7 @@ export class OpenAIProvider implements AIProvider {
     const start = Date.now();
     try {
       const response = await this.client.chat.completions.create({
-        model: this.model,
+        model: await this.resolveModel(),
         max_completion_tokens: 10,
         messages: [{ role: "user", content: "hi" }]
       });

@@ -421,7 +421,7 @@ Singleton row holding AI provider configuration.
 | `openai_api_key` | OpenAI key |
 | `anthropic_model` | Default Anthropic model slug |
 | `gemini_model` | Default Gemini model slug |
-| `openai_model` | Default OpenAI model slug |
+| `openai_model` | OpenAI model slug, or the sentinel `latest` (default) which resolves to the newest generation alias at request time |
 | `ollama_base_url` | Ollama server base URL (default `http://localhost:11434`) |
 | `ollama_model` | Selected Ollama model name (default `llama3.1:8b`) |
 | `fallback_provider` | Legacy fallback (derived from `provider_order_json[1]`). Kept for backward compatibility. |
