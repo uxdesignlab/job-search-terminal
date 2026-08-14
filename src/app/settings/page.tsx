@@ -22,6 +22,7 @@ import {
 import { Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { AISettingsForm } from "@/components/ai-settings-form";
+import { maskApiKey } from "@/lib/ai/masked-key";
 import { TitleFiltersEditor } from "@/components/title-filters-editor";
 import { ProfileSupplementsEditor } from "@/components/profile-supplements-editor";
 import { DiscoveredSourcesButton } from "@/components/discovered-sources-button";
@@ -87,9 +88,11 @@ export default async function SettingsPage({
   // skips re-saving unchanged fields.
   const maskedSettings = {
     ...settings,
-    anthropicApiKey: settings.anthropicApiKey ? `••••${settings.anthropicApiKey.slice(-4)}` : "",
-    openaiApiKey: settings.openaiApiKey ? `••••${settings.openaiApiKey.slice(-4)}` : "",
-    geminiApiKey: settings.geminiApiKey ? `••••${settings.geminiApiKey.slice(-4)}` : "",
+    anthropicApiKey: maskApiKey(settings.anthropicApiKey),
+    openaiApiKey: maskApiKey(settings.openaiApiKey),
+    geminiApiKey: maskApiKey(settings.geminiApiKey),
+    braveSearchApiKey: maskApiKey(settings.braveSearchApiKey),
+    adzunaApiKey: maskApiKey(settings.adzunaApiKey),
   };
   const scanConfig = loadScanConfig();
   const yamlCompanies = scanConfig.tracked_companies ?? [];

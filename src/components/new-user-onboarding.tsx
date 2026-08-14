@@ -3,13 +3,16 @@ import { getAISettings, getResumes, getTitleFilters, getUserProfile } from "@/li
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import { hasConfiguredAIProvider } from "@/lib/ai";
 import { getProfileReadiness } from "@/lib/profile/readiness";
+import { maskApiKey } from "@/lib/ai/masked-key";
 
 function maskSettings(settings: ReturnType<typeof getAISettings>) {
   return {
     ...settings,
-    anthropicApiKey: settings.anthropicApiKey ? `••••${settings.anthropicApiKey.slice(-4)}` : "",
-    geminiApiKey: settings.geminiApiKey ? `••••${settings.geminiApiKey.slice(-4)}` : "",
-    openaiApiKey: settings.openaiApiKey ? `••••${settings.openaiApiKey.slice(-4)}` : "",
+    anthropicApiKey: maskApiKey(settings.anthropicApiKey),
+    geminiApiKey: maskApiKey(settings.geminiApiKey),
+    openaiApiKey: maskApiKey(settings.openaiApiKey),
+    braveSearchApiKey: maskApiKey(settings.braveSearchApiKey),
+    adzunaApiKey: maskApiKey(settings.adzunaApiKey),
   };
 }
 

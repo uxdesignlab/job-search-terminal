@@ -1,6 +1,7 @@
 import { getAISettings } from "@/lib/db/queries";
 import type { AIProviderName } from "@/lib/db/types";
 import { createProvider } from "@/lib/ai/factory";
+import { resolveMaskedKey } from "@/lib/ai/masked-key";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -22,12 +23,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, latencyMs: 0, model: model ?? "", error: "API key required" }, { status: 400 });
     }
 
+    const storedKey =
+      provider === "anthropic" ? settings.anthropicApiKey
+      : provider === "gemini" ? settings.geminiApiKey
+      : settings.openaiApiKey;
+
+    // An untouched key field still holds the mask, which is not a usable credential.
+    const resolvedKey = resolveMaskedKey(apiKey, storedKey);
+
     const defaultModel =
       provider === "anthropic" ? settings.anthropicModel
       : provider === "gemini" ? settings.geminiModel
       : settings.openaiModel;
 
-    const instance = createProvider(provider, { apiKey, model: model ?? defaultModel });
+    const instance = createProvider(provider, { apiKey: resolvedKey, model: model ?? defaultModel });
     const result = await instance.testConnection();
 
     return NextResponse.json(result);

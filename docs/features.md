@@ -848,6 +848,14 @@ Four configuration tabs:
   - **Quality guide** — ≥64 GB: `qwen2.5:72b` / `llama3.1:70b` (near cloud quality); ≥12 GB: `qwen2.5:14b` / `mistral-nemo`; ≥8 GB: `llama3.1:8b` / `qwen2.5:7b`.
   - **Unreachability warning** — when Ollama is in the priority chain and the server is not reachable, an inline warning banner appears with a Retry button.
 - Test connection for any provider to verify credentials and measure latency.
+- **Key masking** — every stored secret (provider API keys, Brave, Adzuna) is
+  replaced with `••••` plus its last four characters before it reaches the
+  browser, so the full value never enters the RSC payload. Saving an untouched
+  field, or testing a connection without retyping the key, sends the mask back;
+  both the save action and `POST /api/ai/test` swap it for the stored key via
+  `resolveMaskedKey` in `src/lib/ai/masked-key.ts`. (Before this, Test connection
+  handed the mask straight to the provider SDK and failed with a ByteString
+  conversion error on the `•` character.)
 - **Model attribution** — every AI-generated result (evaluation, research, outreach drafts, application answers) shows the model and provider that produced it.
 
 ### Job Sources
