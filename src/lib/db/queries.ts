@@ -2388,7 +2388,7 @@ export function getAISettings(): AISettingsRecord {
       openaiApiKey: "",
       anthropicModel: "claude-sonnet-4-6",
       geminiModel: "gemini-2.5-flash",
-      openaiModel: "gpt-5.4-mini",
+      openaiModel: "latest",
       ollamaBaseUrl: "http://localhost:11434",
       ollamaModel: "llama3.1:8b",
       fallbackProvider: "",

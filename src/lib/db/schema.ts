@@ -247,7 +247,7 @@ export const migrations = [
         openai_api_key text not null default '',
         anthropic_model text not null default 'claude-sonnet-4-6',
         gemini_model text not null default 'gemini-2.5-flash',
-        openai_model text not null default 'gpt-5.4-mini',
+        openai_model text not null default 'latest',
         fallback_provider text not null default '',
         onboarding_dismissed integer not null default 0,
         updated_at text not null default current_timestamp
@@ -1214,6 +1214,15 @@ export const migrations = [
     id: "0056_evaluation_keyword_signals",
     sql: `
       alter table evaluations add column keyword_signals_json text not null default '[]';
+    `
+  },
+  {
+    id: "0057_openai_latest_model",
+    sql: `
+      -- Only the old default is moved onto the auto-resolving 'latest' alias; an
+      -- explicitly pinned model is left alone so nobody's choice is overridden.
+      update ai_settings set openai_model = 'latest'
+        where id = 'singleton' and openai_model = 'gpt-5.4-mini';
     `
   }
 ];

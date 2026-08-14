@@ -22,7 +22,7 @@ export async function saveAISettingsAction(formData: FormData) {
   const submittedOpenaiKey = (formData.get("openaiApiKey") as string) ?? "";
   const anthropicModel = (formData.get("anthropicModel") as string) || "claude-sonnet-4-6";
   const geminiModel = (formData.get("geminiModel") as string) || "gemini-2.5-flash";
-  const openaiModel = (formData.get("openaiModel") as string) || "gpt-5.4-mini";
+  const openaiModel = (formData.get("openaiModel") as string) || "latest";
   const ollamaBaseUrl = (formData.get("ollamaBaseUrl") as string) || "http://localhost:11434";
   const ollamaModel = (formData.get("ollamaModel") as string) || "llama3.1:8b";
   const fallbackProvider = (formData.get("fallbackProvider") as string) ?? "";

@@ -8,6 +8,7 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui";
 import type { AISettingsRecord, AIProviderName } from "@/lib/db/types";
+import { OPENAI_LATEST_SENTINEL, OPENAI_MODEL_OPTIONS } from "@/lib/ai/openai-models";
 import { saveAISettingsAction } from "@/app/settings/actions";
 
 type ProviderTestState = {
@@ -35,8 +36,18 @@ const ALL_PROVIDERS: AIProviderName[] = ["anthropic", "gemini", "openai", "ollam
 const CLOUD_MODEL_OPTIONS: Record<AIProviderName, string[]> = {
   anthropic: ["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"],
   gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"],
-  openai: ["gpt-5.4-mini", "gpt-5.5", "gpt-5.4", "gpt-5.4-nano"],
+  openai: OPENAI_MODEL_OPTIONS,
   ollama: []
+};
+
+/** OpenAI ships one alias per generation (`gpt-5.6` → `gpt-5.6-sol`) plus named
+ *  variants; `latest` is ours, resolved against /v1/models at request time. */
+const OPENAI_MODEL_LABELS: Record<string, string> = {
+  [OPENAI_LATEST_SENTINEL]: "Latest (auto — always newest flagship)",
+  "gpt-5.6": "gpt-5.6 (current flagship alias → sol)",
+  "gpt-5.6-sol": "gpt-5.6-sol (highest capability)",
+  "gpt-5.6-terra": "gpt-5.6-terra (balanced, lower price)",
+  "gpt-5.6-luna": "gpt-5.6-luna (fast, high volume)"
 };
 
 function SortableProviderRow({
@@ -93,7 +104,12 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
   // Cloud provider models
   const [anthropicModel, setAnthropicModel] = useState(settings.anthropicModel || "claude-sonnet-4-6");
   const [geminiModel, setGeminiModel] = useState(settings.geminiModel || "gemini-2.5-flash");
-  const [openaiModel, setOpenaiModel] = useState(settings.openaiModel || "gpt-5.4-mini");
+  const [openaiModel, setOpenaiModel] = useState(settings.openaiModel || OPENAI_LATEST_SENTINEL);
+
+  // Live model list from OpenAI's /v1/models, merged into the curated dropdown so new
+  // generations show up without a code change.
+  const [openaiLiveModels, setOpenaiLiveModels] = useState<string[]>([]);
+  const [openaiLatestResolved, setOpenaiLatestResolved] = useState<string>("");
 
   // Ollama
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollamaBaseUrl || "http://localhost:11434");
@@ -166,6 +182,22 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
     }
   }, [enabledProviders, checkOllamaReachability]);
 
+  const refreshOpenaiModels = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ai/openai-models");
+      const data = await res.json() as { models: string[]; latest: string | null; error?: string };
+      setOpenaiLiveModels(data.models ?? []);
+      setOpenaiLatestResolved(data.latest ?? "");
+    } catch {
+      setOpenaiLiveModels([]);
+      setOpenaiLatestResolved("");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (settings.openaiApiKey) refreshOpenaiModels();
+  }, [settings.openaiApiKey, refreshOpenaiModels]);
+
   function keyFor(p: AIProviderName): string {
     if (p === "anthropic") return anthropicKey;
     if (p === "gemini") return geminiKey;
@@ -178,6 +210,13 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
     if (p === "gemini") return geminiModel;
     if (p === "openai") return openaiModel;
     return ollamaModel;
+  }
+
+  /** Curated options first, then anything else the key can reach, then the currently
+   *  saved value so a model we do not know about still renders as selected. */
+  function modelOptionsFor(provider: AIProviderName, current: string): string[] {
+    const extras = provider === "openai" ? openaiLiveModels : [];
+    return Array.from(new Set([...CLOUD_MODEL_OPTIONS[provider], ...extras, current].filter(Boolean)));
   }
 
   async function testProvider(provider: AIProviderName) {
@@ -456,10 +495,22 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
                     onChange={(e) => setModel(e.target.value)}
                     value={model}
                   >
-                    {CLOUD_MODEL_OPTIONS[id].map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                    {modelOptionsFor(id, model).map((m) => (
+                      <option key={m} value={m}>{id === "openai" ? OPENAI_MODEL_LABELS[m] ?? m : m}</option>
                     ))}
                   </select>
+                  {id === "openai" && (
+                    <div className="flex items-center gap-2 text-xs text-muted">
+                      <span>
+                        {model === OPENAI_LATEST_SENTINEL
+                          ? openaiLatestResolved
+                            ? <>Resolves to <span className="font-mono">{openaiLatestResolved}</span> — rechecked hourly, no need to update this setting.</>
+                            : "Resolved from OpenAI's model list at request time — no need to update this setting."
+                          : "Pinned to a fixed model. Choose Latest to follow new releases automatically."}
+                      </span>
+                      <button className="ml-auto shrink-0 underline hover:text-ink" onClick={refreshOpenaiModels} type="button">Refresh</button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
