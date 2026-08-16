@@ -64,6 +64,8 @@ and initializes an empty local profile if the database is empty.
 | `0054_practice_attempts` | Adds `practice_attempts` (durable per-question rehearsal history) and `question_story_links` (question↔story matrix), and backfills both from existing `answered_question` stories |
 | `0055_story_consolidation_runs` | Adds `story_consolidation_runs`, a resumable JSON-blob state store for the one-time story consolidation wizard |
 | `0056_evaluation_keyword_signals` | Adds `evaluations.keyword_signals_json` (`text not null default '[]'`): structured ATS keyword signals with priority/category/source/rationale (the `JobKeywordSignal` type). Existing rows default to `'[]'` and fall back to signals reconstructed from `keywords_json` at read time (`legacyKeywordSignals`) |
+| `0057_openai_latest_model` | Moves the old default OpenAI model onto the auto-resolving `latest` alias; explicitly pinned models are left alone |
+| `0058_remote_location_preferences` | Adds `user_profile.remote_locations_json` (`text not null default '[]'`) and seeds it from `preferred_locations_json`. Splits location preferences in two: `preferred_locations_json` now governs hybrid/on-site matching only, `remote_locations_json` governs which regions' remote roles are in scope. Seeding makes the migration behaviour-preserving — one list previously drove both |
 
 ---
 
@@ -95,7 +97,8 @@ Career profile for the job seeker. Singleton in practice — one row.
 | `career_intent` | text | Stay on path vs. shift intent |
 | `career_change_interest` | text | Specific change interest |
 | `confidence_level` | text | Self-reported confidence |
-| `preferred_locations_json` | text | Acceptable cities / regions |
+| `preferred_locations_json` | text | Cities / regions the user would physically commute to. Matched against **hybrid and on-site** postings only |
+| `remote_locations_json` | text | Countries / regions whose **remote** roles are in scope. Empty means remote from anywhere is acceptable |
 | `remote_preference` | text | Legacy compatibility value derived from work modes |
 | `created_at` | text | ISO timestamp |
 | `updated_at` | text | ISO timestamp |
@@ -211,7 +214,8 @@ Every job discovered by scanning or added manually.
 
 The Jobs table Preference column is derived at render time from the current
 profile preferences and constraints. It is not persisted on `jobs`; displayed
-values are `Match` and `Out of scope`. Saving profile Preferences or
+values are `Match`, `Out of scope`, and `No location` (the board reported no
+location, so no location judgement was made). Saving profile Preferences or
 Constraints revalidates the Jobs page so this column reflects the latest profile
 rules.
 
@@ -388,7 +392,7 @@ History of job scan executions.
 | `companies_scanned` | Count of companies checked |
 | `skipped_companies` | Count of skipped companies |
 | `total_jobs_found` | Raw jobs found before filtering |
-| `filtered_count` | Jobs removed by title filters or profile preference filters |
+| `filtered_count` | Jobs removed by title filters or profile preference filters. For browser-board imports this is malformed records plus jobs dropped by the location preference filter |
 | `duplicate_count` | Duplicate jobs skipped |
 | `new_jobs_count` | Net new jobs added |
 | `errors_json` | Array of `{ company, error, category? }` — `category` is `dead_or_unreachable`, `timeout_or_slow`, or `other` when set (CareerOps / Adzuna); older rows may omit it |

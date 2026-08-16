@@ -24,6 +24,7 @@ src/instrumentation.ts
 importBrowserBoardJobs()
   ├─ validates metadata.source and jobs[]
   ├─ normalizes source URL, employer URL, and posting key
+  ├─ drops jobs outside the profile's location preferences
   ├─ dedupes by original posting key, URL, then company/title/location
   ├─ insertBrowserBoardJobs()
   ├─ recordScanRun()
@@ -33,6 +34,35 @@ importBrowserBoardJobs()
 Browser-board imports retain jobs posted during the past week. Callers such as
 Adzuna that use a user-selected freshness window pass that window through the
 shared importer so the final insertion filter matches the upstream query.
+
+### Location preference filtering
+
+Every board lane — Dice, Adzuna, Himalayas, the browser-board file watcher, the
+manual import route, the LinkedIn importer, and the email-alert importer — funnels
+through `importBrowserBoardJobs`, so it is the single place that keeps
+out-of-region roles out of the database. Before this existed those lanes wrote
+every job and the Jobs table merely labelled the unwanted ones "Out of scope",
+which is why out-of-country remote roles kept appearing.
+
+`importBrowserBoardJobs` builds a filter from the live profile
+(`buildJobPreferenceFilter(getUserProfile())`) and passes it to
+`prepareBrowserBoardJobs`. Two escape hatches keep the behaviour predictable:
+
+- `prepareBrowserBoardJobs` applies **no** filter unless one is passed, so fixture
+  callers such as `scripts/scanner-check.ts` are unaffected.
+- `importBrowserBoardJobs({ preferenceFilter: null })` imports without filtering.
+
+Jobs whose `location` the board did not report are **kept**. Filtering on a
+missing location would discard roles for want of data, the same failure mode the
+preference filter's permissive remote-region rule exists to avoid. The check is
+`isLocationReported` from `preference-fit.ts`, shared with the Jobs table's
+render-time label so the importer and the label cannot disagree — such jobs show
+`No location`, not `Out of scope`.
+
+Rejected jobs are counted as `preferenceFiltered` on the prepare result and on
+`ImportResult`, folded into `scan_runs.filtered_count` (alongside malformed
+records) so the browser-board lanes stay comparable with the CareerOps lane, and
+named in the import summary string when non-zero so the drop is never silent.
 
 ## Supported Sources
 

@@ -37,14 +37,23 @@ contract exactly.
 Database path: `data/job-search-terminal.sqlite` (or `$JST_DATABASE_PATH`).
 
 ```sql
-SELECT target_roles_json, preferred_locations_json, remote_preference
+SELECT target_roles_json, preferred_locations_json, remote_locations_json, remote_preference
 FROM user_profile ORDER BY updated_at DESC LIMIT 1;
 
 SELECT positive_json, negative_json FROM title_filters WHERE id = 'singleton';
 ```
 
 - `target_roles_json` → job titles to search
-- `preferred_locations_json` → locations
+- `preferred_locations_json` → on-site / hybrid locations. Use these as the board's
+  location / `where` parameter, and to judge hybrid and on-site listings
+- `remote_locations_json` → countries whose remote roles are in scope. Use these to
+  judge region-restricted remote listings (`Germany (Remote)`, `Remote - Europe`).
+  Empty means remote from anywhere is acceptable. Entries may be groups that expand
+  to member countries — `European Union`/`EU` (27 states), `Europe` (also UK,
+  Switzerland, Norway), `EMEA`, `North America`, `South America`, `Latin America`,
+  `Americas`, `APAC`, `Asia`, `Oceania`, `Africa`, `Middle East`, `Nordics`,
+  `Scandinavia`, `Benelux`. A listing open to a wider region than the user's still
+  qualifies
 - `remote_preference` → `"remote-only"` | `"local-or-remote"` | `"all"`
 - `positive_json` / `negative_json` → title keyword filters
 
@@ -64,7 +73,8 @@ Supported boards:
 | Indeed | `indeed` | `https://www.indeed.com/jobs` |
 | Monster | `monster` | `https://www.monster.com/jobs/search?recency=3&sort=newest` (append `&q=<title>&where=<location>` for each search) |
 
-For each title in `target_roles_json`, search with the title and first location.
+For each title in `target_roles_json`, search with the title and the first entry
+of `preferred_locations_json`.
 
 **Monster search URL:** Construct the URL directly with the recency filter baked
 in — do **not** rely on the UI filter alone. Use:
@@ -76,6 +86,12 @@ Apply visible filters matching preferences:
   above — no need to also set the UI filter.
 - **Remote:** Remote only when `remote_preference` is `"remote-only"`.
 - **Sort:** Most Recent when available.
+
+Skip any remote listing restricted to a country absent from
+`remote_locations_json`. A listing that names no region ("Remote", "Anywhere"), or
+that says "worldwide"/"global", is never skipped on this basis — the app
+deliberately treats an unstated or global region as unrestricted rather than
+guessing. Never skip a listing merely for having no visible location.
 
 For each visible listing:
 

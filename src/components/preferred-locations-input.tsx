@@ -5,9 +5,24 @@ import { Button } from "@/components/ui/button";
 
 type PreferredLocationsInputProps = {
   defaultLocations: string[];
+  /** Form field name. Defaults to the on-site/hybrid list. */
+  name?: string;
+  label?: string;
+  inputId?: string;
+  placeholder?: string;
+  hint?: string;
+  emptyLabel?: string;
 };
 
-export function PreferredLocationsInput({ defaultLocations }: PreferredLocationsInputProps) {
+export function PreferredLocationsInput({
+  defaultLocations,
+  name = "preferredLocations",
+  label = "Preferred locations",
+  inputId = "preferred-location-search",
+  placeholder = "Start typing a city, state, or country (for example Nashville, Tennessee, or Canada)",
+  hint = "Choose exact city, state, or country values used by filtering.",
+  emptyLabel = "No preferred locations set."
+}: PreferredLocationsInputProps) {
   const [locations, setLocations] = useState(defaultLocations);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<string[]>([]);
@@ -62,9 +77,9 @@ export function PreferredLocationsInput({ defaultLocations }: PreferredLocations
 
   return (
     <div className="space-y-2">
-      <input name="preferredLocations" type="hidden" value={hiddenValue} />
-      <label className="block text-sm font-medium text-ink" htmlFor="preferred-location-search">
-        Preferred locations
+      <input name={name} type="hidden" value={hiddenValue} />
+      <label className="block text-sm font-medium text-ink" htmlFor={inputId}>
+        {label}
       </label>
       <div className="flex flex-wrap gap-2">
         {locations.length > 0 ? locations.map((location) => (
@@ -82,15 +97,15 @@ export function PreferredLocationsInput({ defaultLocations }: PreferredLocations
               ×
             </button>
           </span>
-        )) : <p className="text-sm text-muted">No preferred locations set.</p>}
+        )) : <p className="text-sm text-muted">{emptyLabel}</p>}
       </div>
       <div className="relative">
         <input
           autoComplete="off"
           className="min-h-11 w-full rounded-control border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted"
-          id="preferred-location-search"
+          id={inputId}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Start typing a city, state, or country (for example Nashville, Tennessee, or Canada)"
+          placeholder={placeholder}
           type="search"
           value={query}
         />
@@ -113,9 +128,7 @@ export function PreferredLocationsInput({ defaultLocations }: PreferredLocations
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs leading-5 text-muted">
-          Choose exact city, state, or country values used by filtering.
-        </p>
+        <p className="text-xs leading-5 text-muted">{hint}</p>
         {query.trim() ? (
           <Button onClick={() => addLocation(query)} type="button" variant="quiet">
             Add typed location

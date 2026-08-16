@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses } from "../applications/status";
 import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
-import { normalizePreferredLocations } from "../profile/locations";
+import { cleanLocationList, normalizePreferredLocations } from "../profile/locations";
 import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
 import { freshnessLabelFor } from "../scanner/freshness";
@@ -119,6 +119,7 @@ type ProfileRow = {
   skills_to_use_more_json: string;
   skills_to_use_less_json: string;
   preferred_locations_json: string;
+  remote_locations_json: string;
   remote_preference: string;
 };
 
@@ -281,6 +282,11 @@ export function getUserProfile(): UserProfileRecord {
     skillsToUseMore: parseJson<string[]>(row.skills_to_use_more_json),
     skillsToUseLess: parseJson<string[]>(row.skills_to_use_less_json),
     preferredLocations: normalizePreferredLocations(parseJson<string[]>(row.preferred_locations_json ?? "[]")),
+    // Deliberately not normalizePreferredLocations: that repairs legacy values
+    // split into parts by joining adjacent comma-less entries, which would merge
+    // "United States" + "Canada" into one bogus region. Bare country names are
+    // the normal case here, and this column is new enough to have no legacy rows.
+    remoteLocations: cleanLocationList(parseJson<string[]>(row.remote_locations_json ?? "[]")),
     remotePreference: (row.remote_preference ?? "all") as UserProfileRecord["remotePreference"]
   };
 }
@@ -1177,6 +1183,7 @@ export function updateUserProfile(input: ProfileUpdateInput) {
         skills_to_use_more_json = @skillsToUseMoreJson,
         skills_to_use_less_json = @skillsToUseLessJson,
         preferred_locations_json = @preferredLocationsJson,
+        remote_locations_json = @remoteLocationsJson,
         remote_preference = @remotePreference,
         updated_at = current_timestamp
       where id = 'pavel'`
@@ -1193,6 +1200,7 @@ export function updateUserProfile(input: ProfileUpdateInput) {
       skillsToUseMoreJson: JSON.stringify(input.skillsToUseMore),
       skillsToUseLessJson: JSON.stringify(input.skillsToUseLess),
       preferredLocationsJson: JSON.stringify(input.preferredLocations),
+      remoteLocationsJson: JSON.stringify(input.remoteLocations),
       remotePreference: input.remotePreference
     });
 

@@ -200,6 +200,7 @@ ${resumeText}`
     skillsToUseMore: result.profile.skillsToUseMore || [],
     skillsToUseLess: result.profile.skillsToUseLess || [],
     preferredLocations: previous.preferredLocations.length > 0 ? previous.preferredLocations : [],
+    remoteLocations: previous.remoteLocations.length > 0 ? previous.remoteLocations : [],
     remotePreference: previous.remotePreference ?? "all"
   };
 

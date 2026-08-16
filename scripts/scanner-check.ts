@@ -37,6 +37,7 @@ assert.equal(filter("Backend Engineer"), false);
 const preferenceFilter = buildJobPreferenceFilter({
   location: "Chicago, IL",
   preferredLocations: ["United States"],
+  remoteLocations: ["United States", "Canada"],
   remotePreference: "local-or-remote",
   workPreferences: ["Remote first"],
   workModes: ["remote", "hybrid", "onsite"],
@@ -52,6 +53,7 @@ assert.equal(preferenceFilter({ title: "Junior Product Designer", location: "Rem
 const multiLocationPreferenceFilter = buildJobPreferenceFilter({
   location: "",
   preferredLocations: ["Nashville, Tennessee, United States", "Minsk, Belarus", "San Francisco, California, United States", "Melbourne, Victoria, Australia"],
+  remoteLocations: ["United States", "Europe"],
   remotePreference: "all",
   workPreferences: [],
   workModes: ["remote", "hybrid", "onsite"],
@@ -71,6 +73,7 @@ assert.equal(multiLocationPreferenceFilter({ title: "Product Designer", location
 const internationalCityPreferenceFilter = buildJobPreferenceFilter({
   location: "",
   preferredLocations: ["Berlin, Germany"],
+  remoteLocations: [],
   remotePreference: "all",
   workPreferences: [],
   workModes: ["hybrid", "onsite"],
@@ -267,6 +270,7 @@ async function main() {
     profile: {
       location: "Chicago, IL",
       preferredLocations: ["United States"],
+      remoteLocations: ["United States", "Canada"],
       remotePreference: "local-or-remote",
       workPreferences: ["Remote first"],
       workModes: ["remote", "hybrid", "onsite"],

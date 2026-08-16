@@ -26,6 +26,7 @@ import {
   getMainJobColValue,
   matchesMainJobColFilter,
 } from "@/lib/job-table-helpers";
+import { UNKNOWN_LOCATION_LABEL } from "@/lib/jobs/preference-fit";
 import {
   TABLE_SAVED_FILTER_STORAGE_KEYS,
   TABLE_SORT_FILTER_STATE_STORAGE_KEYS,
@@ -423,7 +424,11 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
                     <td className="py-3 pr-4 text-muted">{job.location}</td>
                     <td className="py-3 pr-4">
                       {job.preferenceLabel ? (
-                        <Badge tone="warning">{job.preferenceLabel}</Badge>
+                        // "No location" is missing data, not a mismatch, so it
+                        // stays neutral rather than flagging the row.
+                        <Badge tone={job.preferenceLabel === UNKNOWN_LOCATION_LABEL ? "neutral" : "warning"}>
+                          {job.preferenceLabel}
+                        </Badge>
                       ) : (
                         <Badge tone="success">{MATCHES_PREFERENCES_LABEL}</Badge>
                       )}

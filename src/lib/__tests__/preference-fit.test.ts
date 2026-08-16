@@ -9,6 +9,8 @@ import {
 const NASHVILLE: JobPreferenceProfile = {
   location: "Nashville, TN",
   preferredLocations: ["Tennessee, United States"],
+  // Matches what migration 0058 seeds, so these cases keep their original meaning.
+  remoteLocations: ["Tennessee, United States"],
   remotePreference: "all",
   workPreferences: [],
   workModes: ["remote", "hybrid", "onsite"],
@@ -224,6 +226,19 @@ describe("buildJobPreferenceFilter — region-restricted remote roles", () => {
     expect(accepts(NASHVILLE, "U.S Remote")).toBe(true);
   });
 
+  it("reads 'remotely' and the spaced 'world wide' as unrestricted remote", () => {
+    // Verbatim from a real Planet posting. Neither token was recognised, so the
+    // office cities beside them read as a region restriction and the role was
+    // discarded despite being open world wide.
+    expect(
+      accepts(
+        NASHVILLE,
+        "remotely world wide and joining us from offices in San Francisco, Washington DC, Germany, Austria, Slovenia",
+      ),
+    ).toBe(true);
+    expect(accepts(NASHVILLE, "Remotely, Germany")).toBe(false);
+  });
+
   it("treats an unrecognised remainder as unrestricted rather than guessing", () => {
     // Rejecting these is the failure mode this filter has already caused once;
     // an unparseable location must never silently discard a role.
@@ -246,5 +261,155 @@ describe("buildJobPreferenceFilter — region-restricted remote roles", () => {
   it("leaves on-site handling untouched", () => {
     expect(accepts(NASHVILLE, "Berlin, Germany")).toBe(false);
     expect(accepts(NASHVILLE, "Nashville, TN")).toBe(true);
+  });
+});
+
+/**
+ * The reason the two lists exist. Sharing one list made "I'll commute only in
+ * Nashville, but I'd take a remote role anywhere in the US or Canada"
+ * inexpressible: adding Canada to reach remote-Canada roles also admitted
+ * on-site Toronto offices, and omitting it rejected the remote roles.
+ */
+describe("buildJobPreferenceFilter — remote regions separate from commute locations", () => {
+  const split: JobPreferenceProfile = {
+    ...NASHVILLE,
+    preferredLocations: ["Nashville, Tennessee, United States"],
+    remoteLocations: ["United States", "Canada"],
+  };
+
+  it("accepts remote roles in a country it would not commute to", () => {
+    expect(accepts(split, "Remote, Canada")).toBe(true);
+    expect(accepts(split, "Canada (Remote)")).toBe(true);
+  });
+
+  it("rejects on-site roles in that same country", () => {
+    expect(accepts(split, "Toronto, Ontario, Canada")).toBe(false);
+    expect(accepts(split, "Hybrid - Vancouver, British Columbia, Canada")).toBe(false);
+  });
+
+  it("still rejects remote roles outside every accepted region", () => {
+    expect(accepts(split, "Remote - Europe")).toBe(false);
+    expect(accepts(split, "Germany (Remote)")).toBe(false);
+    expect(accepts(split, "Remote (Philippines)")).toBe(false);
+  });
+
+  it("keeps commute matching scoped to the on-site list", () => {
+    expect(accepts(split, "Hybrid - Nashville, TN")).toBe(true);
+    // Memphis rides along because a "City, State, Country" preference also
+    // registers its state — existing buildLocationMatchers behaviour, untouched here.
+    expect(accepts(split, "Memphis, TN")).toBe(true);
+    expect(accepts(split, "Hybrid - Austin, TX")).toBe(false);
+    expect(accepts(split, "Seattle, Washington, United States")).toBe(false);
+  });
+
+  it("treats an empty remote list as no region restriction", () => {
+    const anywhereRemote: JobPreferenceProfile = { ...split, remoteLocations: [] };
+    expect(accepts(anywhereRemote, "Remote - Europe")).toBe(true);
+    expect(accepts(anywhereRemote, "Germany (Remote)")).toBe(true);
+    // On-site is unaffected by the remote list being empty.
+    expect(accepts(anywhereRemote, "Berlin, Germany")).toBe(false);
+  });
+
+  it("still accepts remote roles with no stated region", () => {
+    expect(accepts(split, "Remote")).toBe(true);
+    expect(accepts(split, "Anywhere in the World")).toBe(true);
+    expect(accepts(split, "27 Locations, Remote")).toBe(true);
+  });
+
+  it("keeps a job whose location the board never reported", () => {
+    // Missing data, not a mismatch — the same rule the importer applies.
+    const unknown = buildJobPreferenceFilter(split)({ title: "Product Designer", location: "Not specified" });
+    expect(unknown.accepted).toBe(true);
+    expect(unknown.locationUnknown).toBe(true);
+    expect(buildJobPreferenceFilter(split)({ title: "Product Designer", location: "" }).accepted).toBe(true);
+    // A real location is still judged, and carries no unknown flag.
+    const known = buildJobPreferenceFilter(split)({ title: "Product Designer", location: "Berlin, Germany" });
+    expect(known.accepted).toBe(false);
+    expect(known.locationUnknown).toBeUndefined();
+  });
+
+  it("narrows remote regions without touching the commute list", () => {
+    // Same commute list, remote narrowed to the US alone: Canada now drops out.
+    const usRemoteOnly: JobPreferenceProfile = { ...split, remoteLocations: ["United States"] };
+    expect(accepts(usRemoteOnly, "Remote, Canada")).toBe(false);
+    expect(accepts(usRemoteOnly, "United States - Remote")).toBe(true);
+    expect(accepts(usRemoteOnly, "Hybrid - Nashville, TN")).toBe(true);
+  });
+});
+
+/**
+ * Selecting a continent or bloc expands to its member countries, so a user does
+ * not have to enumerate 27 nations to say "the EU".
+ */
+describe("buildJobPreferenceFilter — supra-national remote regions", () => {
+  const withRemote = (remoteLocations: string[]): JobPreferenceProfile => ({
+    ...NASHVILLE,
+    preferredLocations: ["Nashville, Tennessee, United States"],
+    remoteLocations,
+  });
+
+  it("expands Europe to its member countries", () => {
+    const europe = withRemote(["Europe"]);
+    expect(accepts(europe, "Germany (Remote)")).toBe(true);
+    expect(accepts(europe, "Remote - France")).toBe(true);
+    expect(accepts(europe, "Poland (Remote)")).toBe(true);
+    expect(accepts(europe, "India (Remote)")).toBe(false);
+    expect(accepts(europe, "Brazil (Remote)")).toBe(false);
+  });
+
+  it("treats the EU as a narrower set than Europe", () => {
+    const eu = withRemote(["European Union"]);
+    expect(accepts(eu, "Germany (Remote)")).toBe(true);
+    expect(accepts(eu, "Spain (Remote)")).toBe(true);
+    // The distinction that matters: "EU work authorization" excludes these.
+    expect(accepts(eu, "United Kingdom (Remote)")).toBe(false);
+    expect(accepts(eu, "Switzerland (Remote)")).toBe(false);
+    expect(accepts(eu, "Norway (Remote)")).toBe(false);
+
+    const europe = withRemote(["Europe"]);
+    expect(accepts(europe, "United Kingdom (Remote)")).toBe(true);
+    expect(accepts(europe, "Switzerland (Remote)")).toBe(true);
+    expect(accepts(europe, "Norway (Remote)")).toBe(true);
+  });
+
+  it("accepts the EU abbreviation as the bloc, not the continent", () => {
+    expect(accepts(withRemote(["EU"]), "Germany (Remote)")).toBe(true);
+    expect(accepts(withRemote(["EU"]), "United Kingdom (Remote)")).toBe(false);
+  });
+
+  it("accepts a posting open to a wider region than the user's", () => {
+    // Containment in the other direction: a role advertised across Europe is
+    // takeable by someone authorized only in the EU.
+    expect(accepts(withRemote(["European Union"]), "Remote - Europe")).toBe(true);
+    expect(accepts(withRemote(["European Union"]), "Remote - EMEA")).toBe(true);
+    expect(accepts(withRemote(["United States"]), "Remote - North America")).toBe(true);
+    expect(accepts(withRemote(["United States"]), "Remote - Americas")).toBe(true);
+    // But a wider region that does not contain the user's is still out.
+    expect(accepts(withRemote(["United States"]), "Remote - Europe")).toBe(false);
+    expect(accepts(withRemote(["United States"]), "Remote - APAC")).toBe(false);
+  });
+
+  it("supports the other regions postings name", () => {
+    expect(accepts(withRemote(["APAC"]), "Japan (Remote)")).toBe(true);
+    expect(accepts(withRemote(["APAC"]), "Australia (Remote)")).toBe(true);
+    expect(accepts(withRemote(["APAC"]), "Germany (Remote)")).toBe(false);
+    expect(accepts(withRemote(["Nordics"]), "Sweden (Remote)")).toBe(true);
+    expect(accepts(withRemote(["Nordics"]), "Germany (Remote)")).toBe(false);
+    expect(accepts(withRemote(["Latin America"]), "Brazil (Remote)")).toBe(true);
+    expect(accepts(withRemote(["Latin America"]), "Spain (Remote)")).toBe(false);
+  });
+
+  it("expands a supra-national on-site preference to member countries too", () => {
+    const europeOnsite: JobPreferenceProfile = {
+      ...NASHVILLE,
+      preferredLocations: ["Europe"],
+      remoteLocations: [],
+    };
+    expect(accepts(europeOnsite, "Berlin, Germany")).toBe(true);
+    expect(accepts(europeOnsite, "Hybrid - Paris, France")).toBe(true);
+    expect(accepts(europeOnsite, "Tokyo, Japan")).toBe(false);
+    // "Georgia" is a US state as well as a country, so a continent must not
+    // drag Atlanta in.
+    expect(accepts(europeOnsite, "Atlanta, Georgia")).toBe(false);
   });
 });

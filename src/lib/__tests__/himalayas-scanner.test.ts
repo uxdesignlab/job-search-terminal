@@ -7,6 +7,7 @@ import {
   parseHimalayasPayload,
 } from "@/lib/scanner/himalayas-scanner";
 import { buildJobPreferenceFilter, type JobPreferenceProfile } from "@/lib/jobs/preference-fit";
+import { parseBrowserBoardScanFile, prepareBrowserBoardJobs } from "@/lib/scanner/browser-board-importer";
 
 describe("parseHimalayasPayload", () => {
   it("parses ordinary JSON", () => {
@@ -115,6 +116,7 @@ describe("Himalayas locations against the preference filter", () => {
   const nashville: JobPreferenceProfile = {
     location: "Nashville, TN",
     preferredLocations: ["Tennessee, United States"],
+    remoteLocations: ["United States"],
     remotePreference: "all",
     workPreferences: [],
     workModes: ["remote", "hybrid", "onsite"],
@@ -162,5 +164,73 @@ describe("Himalayas locations against the preference filter", () => {
     expect(strict(formatHimalayasLocation(["Germany"]))).toBe(false);
     expect(strict(formatHimalayasLocation(["United States"]))).toBe(true);
     expect(strict(formatHimalayasLocation([]))).toBe(true);
+  });
+});
+
+/**
+ * Remote-board jobs used to be written to the database regardless of region and
+ * only labelled "Out of scope" when the jobs table rendered. The importer now
+ * drops them, which is what actually keeps them out of the user's list.
+ */
+describe("prepareBrowserBoardJobs — location preference filtering", () => {
+  const nashville: JobPreferenceProfile = {
+    location: "Nashville, TN",
+    preferredLocations: ["Nashville, Tennessee, United States"],
+    remoteLocations: ["United States"],
+    remotePreference: "all",
+    workPreferences: [],
+    workModes: ["remote", "hybrid", "onsite"],
+    constraints: [],
+    dealBreakers: [],
+  };
+
+  const scanOf = (jobs: Array<{ position: string; location?: string }>) =>
+    parseBrowserBoardScanFile({
+      metadata: { source: "himalayas", scanTimestamp: "2026-05-11T12:00:00Z" },
+      jobs: jobs.map((job, index) => ({
+        company: `Company ${index}`,
+        position: job.position,
+        sourceUrl: `https://himalayas.app/jobs/${index}`,
+        datePosted: "2026-05-11T09:00:00Z",
+        ...(job.location === undefined ? {} : { location: job.location }),
+      })),
+    });
+
+  const prepare = (
+    jobs: Array<{ position: string; location?: string }>,
+    preferenceFilter?: ReturnType<typeof buildJobPreferenceFilter>,
+  ) =>
+    prepareBrowserBoardJobs(scanOf(jobs), {
+      preferenceFilter,
+      now: new Date("2026-05-11T12:00:00Z"),
+    });
+
+  const feed = [
+    { position: "Product Designer", location: formatHimalayasLocation(["United States"]) },
+    { position: "Product Designer", location: formatHimalayasLocation(["Germany"]) },
+    { position: "Product Designer", location: formatHimalayasLocation([]) },
+  ];
+
+  it("keeps every job when no filter is supplied", () => {
+    const prepared = prepare(feed);
+    expect(prepared.jobs).toHaveLength(3);
+    expect(prepared.preferenceFiltered).toBe(0);
+  });
+
+  it("drops out-of-region remote jobs and counts them", () => {
+    const prepared = prepare(feed, buildJobPreferenceFilter(nashville));
+    expect(prepared.preferenceFiltered).toBe(1);
+    expect(prepared.jobs.map((job) => job.location)).toEqual([
+      "United States (Remote)",
+      "Remote",
+    ]);
+  });
+
+  it("keeps a job whose location the board did not report", () => {
+    // Filtering on a missing location would discard roles for want of data.
+    const prepared = prepare([{ position: "Product Designer" }], buildJobPreferenceFilter(nashville));
+    expect(prepared.jobs).toHaveLength(1);
+    expect(prepared.jobs[0].location).toBe("Not specified");
+    expect(prepared.preferenceFiltered).toBe(0);
   });
 });

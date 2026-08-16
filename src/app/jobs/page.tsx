@@ -3,7 +3,7 @@ import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
 import { getJobs, getReviewQueueCount, getUserProfile } from "@/lib/db/queries";
-import { OUTSIDE_PREFERENCES_LABEL, buildJobPreferenceFilter } from "@/lib/jobs/preference-fit";
+import { OUTSIDE_PREFERENCES_LABEL, UNKNOWN_LOCATION_LABEL, buildJobPreferenceFilter } from "@/lib/jobs/preference-fit";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import { hasResolvedPosting, isHttpPostingUrl } from "@/lib/jobs/posting-resolution";
 import { getSourceLabelOverrides } from "@/lib/jobs/source-labels";
@@ -31,7 +31,11 @@ export default async function JobsPage() {
     const preferenceDecision = preferenceFilter(job);
     return {
       ...job,
-      preferenceLabel: preferenceDecision.accepted ? undefined : OUTSIDE_PREFERENCES_LABEL,
+      preferenceLabel: !preferenceDecision.accepted
+        ? OUTSIDE_PREFERENCES_LABEL
+        : preferenceDecision.locationUnknown
+          ? UNKNOWN_LOCATION_LABEL
+          : undefined,
       removalProtected: isJobProtectedFromAutomaticRemoval(job),
       sourceLabel: getJobSourceLabel(job, sourceLabelOverrides),
       hasResolvedPosting: hasResolvedPosting(job),

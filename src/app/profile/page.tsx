@@ -9,7 +9,7 @@ import { CreateResumeButton } from "@/components/create-resume-button";
 import { createResumeLane, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import { splitListValue } from "@/lib/profile/intelligence";
-import { normalizePreferredLocations } from "@/lib/profile/locations";
+import { normalizePreferredLocations, splitLocationLines } from "@/lib/profile/locations";
 import type { WorkMode } from "@/lib/db/types";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +85,7 @@ async function updateOverviewAction(formData: FormData) {
     skillsToUseMore:    p.skillsToUseMore,
     skillsToUseLess:    p.skillsToUseLess,
     preferredLocations: p.preferredLocations,
+    remoteLocations:    p.remoteLocations,
     remotePreference:   p.remotePreference,
   });
   revalidatePath("/profile");
@@ -118,6 +119,7 @@ async function updateSkillsAction(formData: FormData) {
     constraints:          p.constraints,
     dealBreakers:         p.dealBreakers,
     preferredLocations:   p.preferredLocations,
+    remoteLocations:      p.remoteLocations,
     remotePreference:     p.remotePreference,
   });
   revalidatePath("/profile");
@@ -138,7 +140,8 @@ async function updatePreferencesAction(formData: FormData) {
     workModes,
     hasExplicitWorkModes: workModes.length > 0,
     compensationNeeds:  String(formData.get("compensationNeeds") ?? ""),
-    preferredLocations: normalizePreferredLocations(splitListValue(formData.get("preferredLocations"))),
+    preferredLocations: normalizePreferredLocations(splitLocationLines(formData.get("preferredLocations"))),
+    remoteLocations:    splitLocationLines(formData.get("remoteLocations")),
     remotePreference:   remotePreferenceFromWorkModes(workModes),
     // Preserve other tabs' fields
     currentSearchGoal:    p.currentSearchGoal,
@@ -185,6 +188,7 @@ async function updateConstraintsAction(formData: FormData) {
     skillsToUseMore:    p.skillsToUseMore,
     skillsToUseLess:    p.skillsToUseLess,
     preferredLocations: p.preferredLocations,
+    remoteLocations:    p.remoteLocations,
     remotePreference:   p.remotePreference,
   });
   revalidatePath("/profile");
@@ -590,12 +594,23 @@ export default async function ProfilePage({
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>Locations</CardTitle>
+                  <CardTitle>On-site / hybrid locations</CardTitle>
                 </CardHeader>
                 <div className="flex flex-wrap gap-1.5">
                   {profile.preferredLocations.length > 0
                     ? profile.preferredLocations.map((l) => <Badge key={l}>{l}</Badge>)
                     : <p className="text-sm text-muted">None set.</p>
+                  }
+                </div>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Remote regions</CardTitle>
+                </CardHeader>
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.remoteLocations.length > 0
+                    ? profile.remoteLocations.map((l) => <Badge key={l}>{l}</Badge>)
+                    : <p className="text-sm text-muted">Anywhere.</p>
                   }
                 </div>
               </Card>
@@ -631,7 +646,28 @@ export default async function ProfilePage({
                     Select the work arrangements this search should include.
                   </p>
                 </fieldset>
-                <PreferredLocationsInput defaultLocations={profile.preferredLocations} />
+                <PreferredLocationsInput
+                  defaultLocations={profile.preferredLocations}
+                  emptyLabel="No on-site or hybrid locations set."
+                  hint="Cities or regions you would physically commute to. Only hybrid and on-site postings are matched against these."
+                  label="On-site / hybrid locations"
+                  name="preferredLocations"
+                />
+                <PreferredLocationsInput
+                  defaultLocations={profile.remoteLocations}
+                  emptyLabel="No remote regions set — remote roles from anywhere are accepted."
+                  hint={
+                    "Countries whose remote roles you can take. Leave empty to accept remote roles from anywhere. " +
+                    "Groups expand to their member countries — type one and use “Add typed location”: " +
+                    "European Union (or EU), Europe, EMEA, North America, South America, Latin America, Americas, " +
+                    "APAC, Asia, Oceania, Africa, Middle East, Nordics, Scandinavia, Benelux. " +
+                    "EU covers the 27 member states; Europe also covers the UK, Switzerland and Norway."
+                  }
+                  inputId="remote-location-search"
+                  label="Remote regions"
+                  name="remoteLocations"
+                  placeholder="Start typing a country or region (for example United States, Canada, or Europe)"
+                />
                 <Textarea
                   defaultValue={profile.desiredIndustries.join("\n")}
                   hint="One industry per line."

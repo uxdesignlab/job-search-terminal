@@ -23,9 +23,10 @@ Search criteria are read directly from your Job Search Terminal profile. The age
 
 1. Open Job Search Terminal and go to **Profile → Preferences**
 2. Set your **target roles** — the job titles to search for (e.g., "Product Manager", "UX Designer")
-3. Set your **preferred locations** — e.g., "Remote", "Nashville, Tennessee, United States", "Tennessee, United States", or "Canada"
-4. Set your **remote preference** — Remote only, Local or remote, or All
-5. Optionally configure **positive title filters** (titles must contain these words) and **negative title filters** (titles containing these words are skipped) in **Settings → Scan Sources**
+3. Set your **on-site / hybrid locations** — places you would physically commute to, e.g., "Nashville, Tennessee, United States" or "Tennessee, United States". These become the board's location search term.
+4. Set your **remote regions** — countries whose remote roles you can take, e.g., "United States" or "Canada". Remote listings restricted to a country outside this list are skipped. Leave it empty to accept remote roles from anywhere. You can also enter a group such as "European Union", "Europe", "APAC", or "Latin America" and every member country matches — note that "EU" covers the 27 member states while "Europe" also covers the UK, Switzerland and Norway.
+5. Set your **location mode** — Remote, Hybrid, and/or On-site
+6. Optionally configure **positive title filters** (titles must contain these words) and **negative title filters** (titles containing these words are skipped) in **Settings → Scan Sources**
 
 The agent will use these exact settings when building the board search.
 

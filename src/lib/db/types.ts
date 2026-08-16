@@ -28,7 +28,10 @@ export type UserProfileRecord = {
   strongestSkills: string[];
   skillsToUseMore: string[];
   skillsToUseLess: string[];
+  /** Places the user would physically work — drives hybrid and on-site matching. */
   preferredLocations: string[];
+  /** Countries/regions whose remote roles the user can take. Empty means unrestricted. */
+  remoteLocations: string[];
   remotePreference: "remote-only" | "local-or-remote" | "all";
 };
 
@@ -220,6 +223,8 @@ export type ImportResult = {
   fresh: number;
   unknownDate: number;
   staleFiltered: number;
+  /** Dropped because the location fell outside the profile's location preferences. */
+  preferenceFiltered: number;
   errors: string[];
   summary: string;
   jobIds: string[];
@@ -511,6 +516,7 @@ export type ProfileUpdateInput = {
   skillsToUseMore: string[];
   skillsToUseLess: string[];
   preferredLocations: string[];
+  remoteLocations: string[];
   remotePreference: "remote-only" | "local-or-remote" | "all";
 };
 

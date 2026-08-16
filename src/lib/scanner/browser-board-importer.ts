@@ -3,11 +3,18 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   getJobDedupKeys,
+  getUserProfile,
   insertBrowserBoardJobs,
   logActivity,
   recordScanRun,
   type BrowserBoardJobInput
 } from "@/lib/db/queries";
+import {
+  buildJobPreferenceFilter,
+  isLocationReported,
+  type JobPreferenceDecision,
+  type PreferenceCheckJob
+} from "@/lib/jobs/preference-fit";
 import type { BrowserBoardScanFile, FreshnessWindowHours, ImportResult } from "@/lib/db/types";
 import {
   BROWSER_BOARD_SOURCES,
@@ -31,10 +38,14 @@ export type NormalizedBrowserBoardScan = {
   jobs: RawBrowserBoardJob[];
 };
 
+type PreferenceFilter = (job: PreferenceCheckJob) => JobPreferenceDecision;
+
 type PrepareOptions = {
   now?: Date;
   dedup?: ReturnType<typeof getJobDedupKeys>;
   freshnessWindowHours?: FreshnessWindowHours;
+  /** Omit to keep every job — callers working from fixtures rely on that default. */
+  preferenceFilter?: PreferenceFilter;
 };
 
 export function getBrowserBoardImportDirectory(): string {
@@ -80,7 +91,15 @@ export function parseBrowserBoardScanFile(raw: unknown, fallbackSource?: Browser
 export function prepareBrowserBoardJobs(
   scan: NormalizedBrowserBoardScan,
   options: PrepareOptions = {}
-): { jobs: BrowserBoardJobInput[]; skipped: number; duplicates: number; fresh: number; unknownDate: number; staleFiltered: number } {
+): {
+  jobs: BrowserBoardJobInput[];
+  skipped: number;
+  duplicates: number;
+  fresh: number;
+  unknownDate: number;
+  staleFiltered: number;
+  preferenceFiltered: number;
+} {
   const dedup = options.dedup ?? getJobDedupKeys();
   const firstSeenDate = localDateString(options.now ?? new Date());
   const jobs: BrowserBoardJobInput[] = [];
@@ -89,6 +108,7 @@ export function prepareBrowserBoardJobs(
   let fresh = 0;
   let unknownDate = 0;
   let staleFiltered = 0;
+  let preferenceFiltered = 0;
 
   for (const raw of scan.jobs) {
     const company = stringValue(raw.company).trim();
@@ -111,10 +131,17 @@ export function prepareBrowserBoardJobs(
       staleFiltered++;
       continue;
     }
+    const location = stringValue(raw.location).trim() || "Not specified";
+    // `isLocationReported` also gates the render-time label, so a posting the
+    // board never geocoded is treated the same way in both places.
+    if (isLocationReported(location) && options.preferenceFilter && !options.preferenceFilter({ title, location }).accepted) {
+      preferenceFiltered++;
+      continue;
+    }
+
     if (freshness === "unknown-date") unknownDate++;
     else fresh++;
 
-    const location = (stringValue(raw.location) || "Not specified").trim();
     const originalPostingUrl = externalUrl;
     const originalPostingKey = buildOriginalPostingKey({
       source: scan.source,
@@ -161,12 +188,17 @@ export function prepareBrowserBoardJobs(
     });
   }
 
-  return { jobs, skipped, duplicates, fresh, unknownDate, staleFiltered };
+  return { jobs, skipped, duplicates, fresh, unknownDate, staleFiltered, preferenceFiltered };
 }
 
 export async function importBrowserBoardJobs(
   jsonFilePath: string,
-  options: { source?: BrowserBoardSource; freshnessWindowHours?: FreshnessWindowHours } = {}
+  options: {
+    source?: BrowserBoardSource;
+    freshnessWindowHours?: FreshnessWindowHours;
+    /** Pass `null` to import without any location filtering. */
+    preferenceFilter?: PreferenceFilter | null;
+  } = {}
 ): Promise<ImportResult> {
   const scanRunId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
@@ -183,6 +215,7 @@ export async function importBrowserBoardJobs(
       fresh: 0,
       unknownDate: 0,
       staleFiltered: 0,
+      preferenceFiltered: 0,
       errors: [String(e)],
       summary: "Failed to parse job board import file.",
       jobIds: [],
@@ -192,7 +225,14 @@ export async function importBrowserBoardJobs(
   }
 
   const freshnessWindowHours = options.freshnessWindowHours ?? BROWSER_BOARD_FRESHNESS_WINDOW_HOURS;
-  const prepared = prepareBrowserBoardJobs(scan, { freshnessWindowHours });
+  // Every board lane funnels through here, so this is the one place that keeps
+  // out-of-region roles out of the database rather than merely labelling them
+  // "Out of scope" once they are already in the jobs table.
+  const preferenceFilter =
+    options.preferenceFilter === null
+      ? undefined
+      : options.preferenceFilter ?? buildJobPreferenceFilter(getUserProfile());
+  const prepared = prepareBrowserBoardJobs(scan, { freshnessWindowHours, preferenceFilter });
   const { inserted, jobIds } = insertBrowserBoardJobs(prepared.jobs);
   const insertedJobIds = new Set(jobIds);
   const importedJobs = prepared.jobs
@@ -214,7 +254,9 @@ export async function importBrowserBoardJobs(
     companiesScanned: 0,
     skippedCompanies: 0,
     totalJobsFound: scan.metadata.totalJobsDiscovered || scan.jobs.length,
-    filteredCount: prepared.skipped,
+    // Matches the careerops lane, where filtered_count already means "removed by
+    // filters", so the two lanes stay comparable in the scan history.
+    filteredCount: prepared.skipped + prepared.preferenceFiltered,
     duplicateCount: prepared.duplicates,
     newJobsCount: inserted,
     errors: errors.map((e) => ({ company: scan.source, error: e })),
@@ -230,12 +272,22 @@ export async function importBrowserBoardJobs(
     "browser-board-import",
     scanRunId,
     `${label} scan imported ${inserted} new jobs (${prepared.duplicates} duplicates)`,
-    { inserted, duplicateCount: prepared.duplicates, skipped: prepared.skipped, source: scan.source }
+    {
+      inserted,
+      duplicateCount: prepared.duplicates,
+      skipped: prepared.skipped,
+      preferenceFiltered: prepared.preferenceFiltered,
+      source: scan.source
+    }
   );
 
   const s = inserted !== 1 ? "s" : "";
   const ds = prepared.duplicates !== 1 ? "s" : "";
-  const summary = `Imported ${inserted} ${label} job${s}. ${prepared.duplicates} duplicate${ds} detected.`;
+  // Surfacing the count keeps the filter from dropping roles invisibly.
+  const outOfScope = prepared.preferenceFiltered > 0
+    ? ` ${prepared.preferenceFiltered} outside location preferences.`
+    : "";
+  const summary = `Imported ${inserted} ${label} job${s}. ${prepared.duplicates} duplicate${ds} detected.${outOfScope}`;
 
   return {
     success: true,
@@ -244,6 +296,7 @@ export async function importBrowserBoardJobs(
     fresh: prepared.fresh,
     unknownDate: prepared.unknownDate,
     staleFiltered: prepared.staleFiltered,
+    preferenceFiltered: prepared.preferenceFiltered,
     errors,
     summary,
     jobIds,

@@ -767,18 +767,42 @@ Resumes tab shows an upload banner when no extracted resumes exist.
   skills to use less (one per line).
 
 ### Tab: Preferences (`?tab=preferences`)
-- Summary cards: location mode, compensation, desired industries, preferred
-  locations.
-- Edit form: location mode checkboxes (`Remote`, `Hybrid`, `On-site`),
-  preferred locations, desired industries, compensation needs, and free-form
-  work preferences.
-- Preferred locations use an OpenStreetMap Nominatim lookup that supports city,
+- Summary cards: location mode, compensation, desired industries, on-site /
+  hybrid locations, remote regions.
+- Edit form: location mode checkboxes (`Remote`, `Hybrid`, `On-site`), on-site /
+  hybrid locations, remote regions, desired industries, compensation needs, and
+  free-form work preferences.
+- **Two independent location lists.** They answer different questions, and
+  sharing one list made them inexpressible together — widening it to reach
+  remote roles in another country also admitted that country's on-site offices.
+  - **On-site / hybrid locations** — places you would physically commute to.
+    Matched against hybrid and on-site postings only.
+  - **Remote regions** — countries or regions whose remote roles you can take.
+    Matched against region-restricted remote postings only. Leaving this empty
+    means remote roles from anywhere are accepted.
+- **Region groups expand to their member countries.** Rather than listing 27
+  nations, put a group in Remote regions and every member country matches:
+  `European Union` (or `EU`), `Europe`, `EMEA`, `North America`, `South America`,
+  `Latin America` (`LATAM`), `Americas`, `APAC`, `Asia`, `Oceania`, `Africa`,
+  `Middle East`, `Nordics`, `Scandinavia`, `Benelux`. Nominatim does not suggest
+  these, so type one and use **Add typed location**.
+  - `European Union` and `Europe` are **deliberately different sets.** EU is the
+    27 member states; Europe additionally covers the UK, Switzerland, Norway and
+    Ukraine. A posting requiring EU work authorization genuinely excludes the UK
+    and Switzerland, so folding them together would accept unreachable roles.
+  - Member countries are resolved from the same `Intl.DisplayNames` CLDR data
+    that supplies the region vocabulary, so the two always agree.
+  - Groups also expand on the on-site list, so `Europe` there matches an office
+    in Berlin. `Georgia` is excluded from that expansion — it names both a
+    country and a US state, and would otherwise make Atlanta match `Europe`.
+- Both lists use an OpenStreetMap Nominatim lookup that supports city,
   state/region, and country selections. You can save precise locations such as
   `Nashville, Tennessee, United States`, broader targets such as
   `Tennessee, United States`, or country-only values such as `Canada`. Each
   saved place displays as one label; legacy split values such as `Nashville`,
-  `Tennessee`, `United States` are normalized back into one preferred-location
-  label.
+  `Tennessee`, `United States` are normalized back into one label. Remote
+  regions are collapsed to their country when matching, so country-level entries
+  are the useful granularity there.
 - Work preferences are reserved for non-location preferences such as `small
   team`, `async-first`, or `mission-driven`; location modes are stored
   separately.
@@ -1064,7 +1088,13 @@ custom URLs configured in Settings.
 2. The CareerOps ATS scanner queries each enabled Ashby/Greenhouse/Lever source in parallel.
 3. Dice runs in parallel with the ATS scan. If Adzuna credentials are configured (Settings → AI Provider → Discovery & Aggregators), Adzuna runs in parallel too.
 4. Title filters remove irrelevant roles.
-5. Profile location and remote preferences remove listings outside the user's constraints.
+5. Profile location preferences remove listings outside the user's constraints — the
+   on-site / hybrid list for hybrid and on-site postings, the remote regions list for
+   region-restricted remote postings. This runs on every lane: the CareerOps scanner
+   applies it inline, and every board lane (Dice, Adzuna, Himalayas, browser-board and
+   email-alert imports) applies it at import so out-of-region roles are never written to
+   the database. Jobs whose location the board did not report are kept and labelled
+   `No location`, since filtering on missing data would discard roles for want of it.
 6. Listings outside the selected fresh-posting window are filtered out.
 7. Duplicate URLs are skipped.
 8. New jobs are written to the `jobs` table with `status = found`.
@@ -1110,16 +1140,23 @@ The Jobs table also re-checks current profile preferences at render time and is
 refreshed after Preferences or Constraints are saved. Jobs that still fit show
 `Match` in the Preference column; jobs that no longer fit show `Out of scope`.
 
-Location matching uses the selected Location mode checkboxes:
-- `Remote` includes all remote opportunities, even if the posting mentions a
-  region outside the preferred locations.
+Location matching uses the selected Location mode checkboxes, and each mode reads
+a **different** location list (`src/lib/jobs/preference-fit.ts`):
+- `Remote` includes remote opportunities whose region is in the **remote
+  regions** list. An empty remote list accepts remote roles from anywhere.
 - `Hybrid` includes hybrid opportunities only when the posting location matches
-  one of the preferred locations.
-- `On-site` includes on-site opportunities only when the posting location
-  matches one of the preferred locations.
+  one of the **on-site / hybrid locations**.
+- `On-site` includes on-site opportunities only when the posting location matches
+  one of the **on-site / hybrid locations**.
 
-Three rules make "matches one of the preferred locations" behave the way
-postings are actually written (`src/lib/jobs/preference-fit.ts`):
+The two lists are independent by design. Before they were split, one list drove
+both, so a user who would commute only within Nashville but would take a remote
+role anywhere in the US or Canada had no way to say so: adding `Canada` to reach
+remote-Canada roles also admitted on-site Toronto offices, and omitting it
+rejected the remote roles.
+
+Three rules make "matches one of the on-site / hybrid locations" behave the way
+postings are actually written:
 
 - **Multi-location postings are split.** ATS boards routinely pack several
   locations into one field — `San Francisco, CA • New York, NY • United States`.
@@ -1144,15 +1181,38 @@ postings are actually written (`src/lib/jobs/preference-fit.ts`):
   silently pull in local roles.
 
 - **Remote roles restricted to a region the user cannot work in are rejected.**
-  A posting limited to `Germany (Remote)` or `Remote - Europe` is no longer
-  accepted merely for being remote. The rule is deliberately *permissive*: it
-  only rejects when the restriction **names a recognised region** and none of the
-  named regions are in scope. An unrecognised remainder — "Anywhere in the
-  World", "27 Locations, Remote" — counts as unrestricted, because guessing wrong
-  silently discards good roles, which is the failure this filter has already
-  caused once. A region inside a preferred country stays in scope, so
-  `Remote (California)` and `Georgia (Remote)` are accepted for a US preference
-  even though Georgia is also a country.
+  A posting limited to `Germany (Remote)` or `Remote - Europe` is not accepted
+  merely for being remote. This rule reads the **remote regions** list only, so
+  it is independent of where the user would commute. The rule is deliberately
+  *permissive*: it only rejects when the restriction **names a recognised region**
+  and none of the named regions are in scope. An unrecognised remainder —
+  "Anywhere in the World", "27 Locations, Remote" — counts as unrestricted,
+  because guessing wrong silently discards good roles, which is the failure this
+  filter has already caused once. An empty remote regions list likewise means "no
+  restriction". A region inside an accepted country stays in scope, so
+  `Remote (California)` and `Georgia (Remote)` are accepted when the remote list
+  contains the United States, even though Georgia is also a country.
+
+  Matching is by **overlap, not containment**, in both directions. A posting may
+  name something *inside* an accepted region (`Germany` within `Europe`) or
+  something *wider* than it — someone authorized only in the EU can take a role
+  advertised across `Europe` or `EMEA`, and a US-only candidate can take one
+  advertised across `North America`. Requiring containment discarded both.
+
+  A term that positively asserts no restriction — `anywhere`, `worldwide`,
+  `world wide`, `global`, `distributed` — outranks any place names beside it.
+  Postings routinely read "remotely world wide, joining us from offices in San
+  Francisco, Germany, Austria"; those are the company's offices, not a
+  restriction. `remotely` and the spaced `world wide` are recognised alongside
+  `remote` and `worldwide`, since neither was matched as a token before.
+
+- **A posting with no reported location is never judged on location.** Boards
+  frequently omit the field, and the value arrives as `Not specified`. Treating
+  that as a location mismatch would discard roles for want of data — the same
+  principle as the unrecognised-remainder rule above. Such jobs are kept at
+  import and shown as `No location` rather than `Out of scope`. One helper,
+  `isLocationReported`, backs both the importer and the render-time label so the
+  two cannot drift.
 
   The place-name vocabulary comes from `Intl.DisplayNames`, which supplies ~264
   ISO 3166 region names from the runtime's own CLDR data, plus a short list of
@@ -1182,8 +1242,8 @@ job titles from real postings as fixtures.
   - **Negative keywords stay plain substrings** on purpose — they are meant to be
     greedy, so `intern` also catches "Internship". A check over 2,629 real titles
     found no case where that greediness rejected a wanted role.
-- Profile filters: selected location modes and preferred locations constrain
-  scan inserts.
+- Profile filters: selected location modes, on-site / hybrid locations, and
+  remote regions constrain scan inserts.
 - **Settings → Sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; until **Validate sources** has been run, Live shows **Not validated** for each row.
 
 **Performance tuning constants** (in `src/lib/scanner/careerops-scanner.ts`):
@@ -1225,8 +1285,8 @@ Dice is a tech-focused job board. JST integrates with Dice via Dice's free, publ
 **How it works:**
 1. Open Settings → Sources → Job aggregators
 2. Click **Scan with Dice**
-3. JST calls the Dice MCP `search_jobs` tool over HTTP with your target roles, location preferences, and remote preference from your profile
-4. Results are filtered by your title filters, written to `data/job-board-imports/dice-jobs-<timestamp>.json`, and imported automatically
+3. JST calls the Dice MCP `search_jobs` tool over HTTP with your target roles, on-site / hybrid locations, and remote preference from your profile. The remote regions list does not shape the query — it is applied as a filter at import.
+4. Results are filtered by your title filters, written to `data/job-board-imports/dice-jobs-<timestamp>.json`, and imported automatically. Jobs outside your location preferences are dropped at import rather than written and labelled
 5. New jobs appear in the Jobs table with a **Dice** source badge
 
 **What it covers:** Tech roles on Dice including software engineering, data, DevOps, security, and product. Results are filtered to the past 7 days and up to 50 jobs per scan.
@@ -1271,6 +1331,10 @@ a degraded API is not hammered.
 - `locationRestrictions` is a country array. Empty means unrestricted and maps to
   `Remote`; otherwise each country is emitted as `<Country> (Remote)` joined with
   `; ` so the preference filter's multi-location splitting evaluates each one.
+  Those countries are matched against the profile's **remote regions** list at
+  import, so a country outside it is dropped rather than written to the database.
+  This lane sends no location to the API — it cannot filter server-side — which
+  makes it the one most dependent on that import-time check.
 
 **Measured yield:** a live run read 1,158 recent postings in ~28 seconds and
 matched 12. Three were `ux` substring false positives ("Lin-ux", "BENEL-ux") and
