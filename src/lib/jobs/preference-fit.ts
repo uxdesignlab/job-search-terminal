@@ -2,7 +2,14 @@ import type { UserProfileRecord } from "../db/types";
 
 export type JobPreferenceProfile = Pick<
   UserProfileRecord,
-  "location" | "preferredLocations" | "remotePreference" | "workPreferences" | "workModes" | "constraints" | "dealBreakers"
+  | "location"
+  | "preferredLocations"
+  | "remoteLocations"
+  | "remotePreference"
+  | "workPreferences"
+  | "workModes"
+  | "constraints"
+  | "dealBreakers"
 >;
 
 export type PreferenceCheckJob = {
@@ -13,18 +20,42 @@ export type PreferenceCheckJob = {
 export type JobPreferenceDecision = {
   accepted: boolean;
   reason?: string;
+  /** The board never reported a location, so no location judgement was made. */
+  locationUnknown?: boolean;
 };
 
 export const OUTSIDE_PREFERENCES_LABEL = "Out of scope";
+export const UNKNOWN_LOCATION_LABEL = "No location";
+
+/** Placeholders boards and importers use when a posting carries no location. */
+const UNREPORTED_LOCATION_VALUES = new Set(["", "not specified", "unspecified", "unknown", "n a", "tbd"]);
+
+/**
+ * A missing location is missing *data*, not a location mismatch.
+ *
+ * Judging it would reject every posting a board declined to geocode — the same
+ * "never discard a role for want of parseable input" rule that keeps an
+ * unrecognised remote restriction in scope.
+ */
+export function isLocationReported(rawLocation: string | null | undefined): boolean {
+  return !UNREPORTED_LOCATION_VALUES.has(normalizeText(rawLocation ?? ""));
+}
 
 export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
   if (!profile) {
     return (): JobPreferenceDecision => ({ accepted: true });
   }
 
+  // Two independent lists. `preferredLocations` is where the user would physically
+  // work, so it governs hybrid and on-site postings. `remoteLocations` is which
+  // countries' remote roles they can accept, so it governs region-restricted remote
+  // postings. Sharing one list made these inseparable: widening it to catch remote
+  // roles in another country also pulled in that country's on-site offices.
   const locationMatchers = buildLocationMatchers(profile.preferredLocations, profile.location);
   const hasLocationPreferences = locationMatchers.length > 0;
-  const preferredCountries = derivePreferredCountries(profile.preferredLocations);
+  const onsiteCountries = derivePreferredCountries(profile.preferredLocations);
+  const remoteCountries = derivePreferredCountries(profile.remoteLocations);
+  const hasRemoteRegionPreferences = remoteCountries.size > 0;
   const hardRemoteOnly = profile.remotePreference === "remote-only";
   const hardLocalOrRemote = profile.remotePreference === "local-or-remote";
   const avoidsOnsiteOnly = profile.dealBreakers.some((item) => normalizeText(item).includes("onsite only") || normalizeText(item).includes("on site only"));
@@ -46,34 +77,41 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
     const countryWide =
       countryWideLocationGroup(location) ??
       (remoteRemainder ? countryWideLocationGroup(remoteRemainder) : null);
-    const matchesPreferredLocation =
+    /** Commutable match — reads `preferredLocations` only. */
+    const matchesOnsiteLocation =
       (hasLocationPreferences && locationMatchers.some((matcher) => matcher(location))) ||
-      (countryWide !== null && preferredCountries.has(countryWide));
-    const restrictedRemote = isRemote && remoteRemainder.length > 0;
+      (countryWide !== null && onsiteCountries.has(countryWide));
+    // An explicit "world wide" / "anywhere" outranks any place names beside it.
+    // Postings routinely say "remotely world wide, joining us from offices in
+    // San Francisco, Germany, Austria" — those are the company's offices, not a
+    // restriction, and reading them as one discards a globally open role.
+    const restrictedRemote = isRemote && !isGloballyOpen(location) && remoteRemainder.length > 0;
+
+    /** The remote posting's region is one of the countries in `remoteLocations`. */
+    const remoteRegionInScope = countryWide !== null && remoteCountries.has(countryWide);
 
     /**
-     * A remote role tied to a region the user cannot work in.
+     * A remote role tied to a region the user cannot work in — reads
+     * `remoteLocations` only, so it is independent of where the user would commute.
      *
      * Deliberately permissive: this is only true when the restriction *names a
      * recognised region* and none of the named regions are in scope. An
      * unrecognised remainder ("Anywhere in the World", "27 Locations") is treated
      * as unrestricted, because guessing wrong here silently discards good roles —
-     * the exact failure this filter has already caused once.
+     * the exact failure this filter has already caused once. An empty
+     * `remoteLocations` likewise means "remote from anywhere is fine".
      */
     const remoteRegionOutOfScope =
       restrictedRemote &&
-      hasLocationPreferences &&
-      !matchesPreferredLocation &&
+      hasRemoteRegionPreferences &&
+      !remoteRegionInScope &&
       (() => {
         const regions = regionsMentionedIn(remoteRemainder);
         if (regions.length === 0) return false;
         return !regions.some((region) => {
           const group = countryWideLocationGroup(region);
-          if (group && preferredCountries.has(group)) return true;
-          // A region inside a preferred country (a US state, say) is in scope.
-          return Object.entries(LOCATION_ALIAS_GROUPS).some(
-            ([key, aliases]) => preferredCountries.has(key) && aliases.includes(region),
-          );
+          if (group && remoteCountries.has(group)) return true;
+          return isRegionInScope(region, remoteCountries);
         });
       })();
 
@@ -94,7 +132,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
         if (!selectedWorkModes.has("hybrid")) {
           return { accepted: false, reason: "hybrid not selected" };
         }
-        return hasLocationPreferences && !matchesPreferredLocation
+        return hasLocationPreferences && !matchesOnsiteLocation
           ? { accepted: false, reason: "hybrid location outside preferences" }
           : { accepted: true };
       }
@@ -102,7 +140,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
       if (!selectedWorkModes.has("onsite")) {
         return { accepted: false, reason: "on-site not selected" };
       }
-      return hasLocationPreferences && !matchesPreferredLocation
+      return hasLocationPreferences && !matchesOnsiteLocation
         ? { accepted: false, reason: "on-site location outside preferences" }
         : { accepted: true };
     }
@@ -123,7 +161,7 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
           ? { accepted: false, reason: "remote location outside preferences" }
           : { accepted: true };
       }
-      return matchesPreferredLocation
+      return matchesOnsiteLocation
         ? { accepted: true }
         : { accepted: false, reason: "outside preferred locations" };
     }
@@ -144,6 +182,10 @@ export function buildJobPreferenceFilter(profile?: JobPreferenceProfile) {
     // before any per-location evaluation.
     if (hasJuniorDealBreaker(profile.dealBreakers) && isJuniorTitle(normalizeText(job.title))) {
       return { accepted: false, reason: "junior deal breaker" };
+    }
+
+    if (!isLocationReported(job.location)) {
+      return { accepted: true, locationUnknown: true };
     }
 
     // Postings routinely list several locations in one field
@@ -184,12 +226,145 @@ const US_STATE_ALIASES = [
   "wisconsin", "wi", "wyoming", "wy", "district of columbia", "dc"
 ];
 
+const REGION_DISPLAY_NAMES: Intl.DisplayNames | null = (() => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" });
+  } catch {
+    /* Intl.DisplayNames unavailable — callers fall back to the static lists. */
+    return null;
+  }
+})();
+
+/** Normalized English name for an ISO 3166 alpha-2 code, or `null` if unknown. */
+function regionDisplayName(code: string): string | null {
+  if (!REGION_DISPLAY_NAMES) return null;
+  try {
+    const name = REGION_DISPLAY_NAMES.of(code);
+    return name && name !== code ? normalizeText(name) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ISO 3166-1 alpha-2 members of each supra-national region, so selecting
+ * "Europe" accepts a role posted as "Germany (Remote)". Codes rather than names
+ * because the names are resolved through the same `Intl.DisplayNames` data that
+ * `WORLD_REGION_NAMES` uses — the two vocabularies therefore always agree.
+ */
+const EU_CODES = "AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE";
+/** Geographic Europe: the EU plus the non-member states, incl. transcontinental ones. */
+const EUROPE_CODES = `${EU_CODES} AL AD AM BA BY CH FO GE GI GG IS IM JE XK LI MC MD ME MK NO RS RU SM UA GB VA`;
+const MIDDLE_EAST_CODES = "AE BH CY IL IQ IR JO KW LB OM PS QA SA SY TR YE";
+const AFRICA_CODES =
+  "DZ AO BJ BW BF BI CM CV CF TD KM CD CG CI DJ EG GQ ER SZ ET GA GM GH GN GW KE LS LR LY MG MW ML " +
+  "MR MU MA MZ NA NE NG RW ST SN SC SL SO ZA SS SD TZ TG TN UG ZM ZW";
+const ASIA_CODES =
+  "AF AM AZ BH BD BT BN KH CN CY GE IN ID IR IQ IL JP JO KZ KW KG LA LB MY MV MN MM NP KP OM PK PS " +
+  "PH QA SA SG KR LK SY TW TJ TH TL TR TM AE UZ VN YE";
+const OCEANIA_CODES = "AU FJ KI MH FM NR NZ PW PG WS SB TO TV VU";
+const NORTH_AMERICA_CODES = "US CA MX";
+const CENTRAL_AMERICA_CODES = "BZ CR SV GT HN NI PA";
+const CARIBBEAN_CODES = "CU DO HT JM TT BS BB PR";
+const SOUTH_AMERICA_CODES = "AR BO BR CL CO EC GY PY PE SR UY VE";
+
+const REGION_MEMBER_CODES: Record<string, string> = {
+  "european union": EU_CODES,
+  europe: EUROPE_CODES,
+  emea: `${EUROPE_CODES} ${MIDDLE_EAST_CODES} ${AFRICA_CODES}`,
+  asia: ASIA_CODES,
+  apac: `${ASIA_CODES} ${OCEANIA_CODES}`,
+  africa: AFRICA_CODES,
+  "middle east": MIDDLE_EAST_CODES,
+  oceania: OCEANIA_CODES,
+  "north america": NORTH_AMERICA_CODES,
+  "south america": SOUTH_AMERICA_CODES,
+  "latin america": `MX ${CENTRAL_AMERICA_CODES} ${CARIBBEAN_CODES} ${SOUTH_AMERICA_CODES}`,
+  americas: `${NORTH_AMERICA_CODES} ${CENTRAL_AMERICA_CODES} ${CARIBBEAN_CODES} ${SOUTH_AMERICA_CODES}`,
+  nordics: "DK FI IS NO SE",
+  scandinavia: "DK NO SE",
+  benelux: "BE NL LU"
+};
+
+/** Region key → the normalized display names of its member countries. */
+const REGION_MEMBERS: Record<string, ReadonlySet<string>> = Object.fromEntries(
+  Object.entries(REGION_MEMBER_CODES).map(([group, codes]) => [
+    group,
+    new Set(
+      codes
+        .split(" ")
+        .map((code) => regionDisplayName(code))
+        .filter((name): name is string => Boolean(name))
+    )
+  ])
+);
+
+/**
+ * `europe` and `european union` are deliberately separate groups. A posting that
+ * says "EU work authorization required" genuinely excludes the UK, Switzerland
+ * and Norway, so folding them together would accept roles the user cannot take.
+ */
 const LOCATION_ALIAS_GROUPS: Record<string, string[]> = {
   "united states": ["united states", "united states of america", "usa", "u s a", "us", "u s", "america", ...US_STATE_ALIASES],
   "united kingdom": ["united kingdom", "uk", "u k", "great britain", "britain", "england", "scotland", "wales", "northern ireland"],
   canada: ["canada", "ontario", "british columbia", "quebec", "alberta"],
-  europe: ["europe", "european union", "eu", "emea"]
+  "european union": ["european union", "eu"],
+  europe: ["europe"],
+  emea: ["emea"],
+  asia: ["asia"],
+  apac: ["apac", "asia pacific"],
+  africa: ["africa"],
+  "middle east": ["middle east"],
+  oceania: ["oceania"],
+  "north america": ["north america"],
+  "south america": ["south america"],
+  "latin america": ["latin america", "latam"],
+  americas: ["americas"],
+  nordics: ["nordics", "nordic"],
+  scandinavia: ["scandinavia"],
+  benelux: ["benelux"]
 };
+
+/** Country names an accepted group covers; a plain country covers only itself. */
+function countriesCoveredBy(group: string): ReadonlySet<string> {
+  return REGION_MEMBERS[group] ?? new Set([group]);
+}
+
+/** The supra-national group a posting's region name refers to, if any. */
+function supranationalGroupFor(region: string): string | null {
+  for (const [group, aliases] of Object.entries(LOCATION_ALIAS_GROUPS)) {
+    if (REGION_MEMBERS[group] && aliases.includes(region)) return group;
+  }
+  return null;
+}
+
+/**
+ * Whether a region named by a posting overlaps the user's accepted regions.
+ *
+ * Overlap, not containment, in both directions:
+ * - The posting names something *inside* an accepted region — "Germany" within
+ *   "Europe", or a US state within "United States".
+ * - The posting names something *wider* than an accepted region. Someone who can
+ *   work in the EU can take a role advertised across Europe, and a US-only
+ *   candidate can take one advertised across North America; requiring
+ *   containment would discard both.
+ */
+function isRegionInScope(region: string, acceptedGroups: ReadonlySet<string>) {
+  for (const group of acceptedGroups) {
+    if (LOCATION_ALIAS_GROUPS[group]?.includes(region)) return true;
+    if (REGION_MEMBERS[group]?.has(region)) return true;
+  }
+
+  const postingGroup = supranationalGroupFor(region);
+  if (!postingGroup) return false;
+  const postingCountries = REGION_MEMBERS[postingGroup];
+  for (const group of acceptedGroups) {
+    for (const country of countriesCoveredBy(group)) {
+      if (postingCountries.has(country)) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Country-level tokens only — deliberately NOT reusing LOCATION_ALIAS_GROUPS,
@@ -200,7 +375,9 @@ const COUNTRY_LEVEL_ALIASES: Record<string, string[]> = {
   "united states": ["united states", "united states of america", "usa", "u s a", "us", "u s", "america"],
   "united kingdom": ["united kingdom", "uk", "u k", "great britain", "britain"],
   canada: ["canada"],
-  europe: ["europe", "european union", "eu", "emea"]
+  "european union": ["european union", "eu"],
+  europe: ["europe"],
+  emea: ["emea"]
 };
 
 /**
@@ -215,22 +392,11 @@ const COUNTRY_LEVEL_ALIASES: Record<string, string[]> = {
  */
 const WORLD_REGION_NAMES: ReadonlySet<string> = (() => {
   const names = new Set<string>();
-  try {
-    const display = new Intl.DisplayNames(["en"], { type: "region" });
-    for (let a = 65; a <= 90; a += 1) {
-      for (let b = 65; b <= 90; b += 1) {
-        const code = String.fromCharCode(a) + String.fromCharCode(b);
-        let name: string | undefined;
-        try {
-          name = display.of(code);
-        } catch {
-          continue;
-        }
-        if (name && name !== code) names.add(normalizeText(name));
-      }
+  for (let a = 65; a <= 90; a += 1) {
+    for (let b = 65; b <= 90; b += 1) {
+      const name = regionDisplayName(String.fromCharCode(a) + String.fromCharCode(b));
+      if (name) names.add(name);
     }
-  } catch {
-    /* Intl.DisplayNames unavailable — fall back to the supra-national list alone. */
   }
   // Supra-national regions ISO does not cover but postings routinely use.
   for (const extra of [
@@ -295,9 +461,16 @@ function buildLocationMatchers(preferences: string[], homeLocation?: string) {
     addLocationAlias(aliases, normalized);
     const broadPreference = isBroadLocationPreference(normalized);
 
-    for (const group of Object.values(LOCATION_ALIAS_GROUPS)) {
-      if (group.includes(normalized)) {
-        group.forEach((alias) => addLocationAlias(aliases, alias));
+    for (const [key, group] of Object.entries(LOCATION_ALIAS_GROUPS)) {
+      if (!group.includes(normalized)) continue;
+      group.forEach((alias) => addLocationAlias(aliases, alias));
+      // A supra-national preference should match its member countries, so
+      // "Europe" accepts an office in Berlin.
+      for (const member of REGION_MEMBERS[key] ?? []) {
+        // "Georgia" names both a country and a US state. Seeding it from a
+        // continent would make Atlanta match a Europe preference.
+        if (US_STATE_ALIASES.includes(member)) continue;
+        addLocationAlias(aliases, member);
       }
     }
 
@@ -366,9 +539,13 @@ function containsLocationToken(location: string, alias: string) {
 
 function isRemoteLocation(location: string) {
   return containsLocationToken(location, "remote") ||
+    // "Remotely" is a distinct token from "remote", so it needs naming: a
+    // posting reading "remotely world wide" was otherwise read as on-site.
+    containsLocationToken(location, "remotely") ||
     containsLocationToken(location, "anywhere") ||
     containsLocationToken(location, "distributed") ||
     containsLocationToken(location, "worldwide") ||
+    containsLocationToken(location, "world wide") ||
     containsLocationToken(location, "global");
 }
 
@@ -376,8 +553,19 @@ function isHybridLocation(location: string) {
   return containsLocationToken(location, "hybrid");
 }
 
+/** Terms that positively assert no geographic restriction, not merely remoteness. */
+const GLOBALLY_OPEN_TERMS = ["anywhere", "worldwide", "world wide", "global", "globally", "distributed"];
+
+function isGloballyOpen(location: string) {
+  return GLOBALLY_OPEN_TERMS.some((term) => containsLocationToken(location, term));
+}
+
 const UNRESTRICTED_REMOTE_TERMS = [
-  "remote", "anywhere", "distributed", "worldwide", "global", "work from home", "wfh",
+  // "world wide" before "worldwide" is irrelevant (both are matched as whole
+  // tokens), but both spellings must be listed or the spaced form survives into
+  // the remainder and the office cities beside it read as a region restriction.
+  "remote", "remotely", "anywhere", "distributed", "worldwide", "world wide", "global",
+  "work from home", "wfh",
 ];
 
 /**

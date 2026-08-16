@@ -23,6 +23,31 @@ const US_STATE_TOKENS = new Set([
   "wisconsin", "wi", "wyoming", "wy", "district of columbia", "dc",
 ]);
 
+/**
+ * Reads a location tag input's submitted value.
+ *
+ * Deliberately not `splitListValue`, which also splits on commas: a location is
+ * itself comma-separated ("Tennessee, United States"), so comma-splitting throws
+ * away the entry boundaries the tag input encoded as newlines and leaves
+ * `normalizePreferredLocations` to guess them back. It guesses wrong whenever one
+ * entry ends in a country name and another begins right after — saving
+ * "Tennessee, United States" plus "Canada" collapsed into the single bogus entry
+ * "Tennessee, United States, Canada".
+ */
+export function splitLocationLines(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string") return [];
+  return cleanLocationList(value.split("\n"));
+}
+
+/** Trims, drops blanks, and de-duplicates without re-joining anything. */
+export function cleanLocationList(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+/**
+ * Repairs legacy values that were stored already split into separate entries
+ * ("Nashville", "Tennessee", "United States" → "Nashville, Tennessee, United States").
+ */
 export function normalizePreferredLocations(values: string[]): string[] {
   const cleaned = values.map((value) => value.trim()).filter(Boolean);
   const normalized: string[] = [];

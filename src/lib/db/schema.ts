@@ -1224,5 +1224,15 @@ export const migrations = [
       update ai_settings set openai_model = 'latest'
         where id = 'singleton' and openai_model = 'gpt-5.4-mini';
     `
+  },
+  {
+    id: "0058_remote_location_preferences",
+    sql: `
+      alter table user_profile add column remote_locations_json text not null default '[]';
+      -- Seeding from the existing column keeps the current region scope intact:
+      -- one list used to drive both commute and remote matching, so copying it
+      -- makes this migration behaviour-preserving until the two are edited apart.
+      update user_profile set remote_locations_json = preferred_locations_json;
+    `
   }
 ];

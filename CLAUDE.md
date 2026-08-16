@@ -65,6 +65,7 @@ Open the database and run these queries:
 SELECT
   target_roles_json,
   preferred_locations_json,
+  remote_locations_json,
   remote_preference
 FROM user_profile
 ORDER BY updated_at DESC
@@ -79,7 +80,17 @@ WHERE id = 'singleton';
 Parse the JSON arrays:
 
 - `target_roles_json` → list of job titles to search.
-- `preferred_locations_json` → list of locations.
+- `preferred_locations_json` → on-site / hybrid locations. Use these as the board's
+  location / `where` search parameter, and to judge hybrid and on-site listings.
+- `remote_locations_json` → countries whose remote roles are in scope. Use these to
+  judge region-restricted remote listings (`Germany (Remote)`, `Remote - Europe`).
+  An empty list means remote roles from anywhere are acceptable. Entries may be
+  group names that expand to member countries — `European Union`/`EU` (27 member
+  states), `Europe` (also UK, Switzerland, Norway), `EMEA`, `North America`,
+  `South America`, `Latin America`/`LATAM`, `Americas`, `APAC`, `Asia`, `Oceania`,
+  `Africa`, `Middle East`, `Nordics`, `Scandinavia`, `Benelux`. A listing open to a
+  *wider* region than the user's still qualifies (EU authorization covers a
+  Europe-wide role).
 - `remote_preference` → one of `"remote-only"`, `"local-or-remote"`, `"all"`.
 - `positive_json` → title keywords that must appear.
 - `negative_json` → title keywords that disqualify a role.
@@ -99,6 +110,7 @@ Use Claude in Chrome to navigate the requested board:
    - **Date posted:** Past week, if available. For Monster specifically, the `recency=3` URL param (above) handles this — no need to also set the UI filter.
    - **Remote:** If `remote_preference` is `"remote-only"`, filter to Remote only when available.
 4. Sort by **Most Recent** when the board exposes sorting.
+5. Skip any remote listing restricted to a country absent from `remote_locations_json`. A listing that names no region ("Remote", "Anywhere in the World") is never skipped on this basis — the app deliberately treats an unstated region as unrestricted rather than guessing wrong and discarding a good role. The same applies when the listing says "worldwide", "world wide", "global", or "anywhere": those outrank any office cities named beside them. Never skip a listing merely because it has no visible location.
 
 For each visible job listing:
 
@@ -123,7 +135,7 @@ When scanning Dice, **do not use Claude in Chrome**. Instead call the `search_jo
 For each title in `target_roles_json`, call `search_jobs` with:
 
 - `keyword` = the job title
-- `location` = first entry from `preferred_locations_json` (omit when `remote_preference` is `"remote-only"`)
+- `location` = first entry from `preferred_locations_json` (omit when `remote_preference` is `"remote-only"`). The remote regions list is not a search parameter — it filters results.
 - `workplace_types`:
   - `["Remote"]` when `remote_preference` is `"remote-only"`
   - `["Remote", "On-Site"]` when `"local-or-remote"`
@@ -141,7 +153,7 @@ Map returned fields to the standard JSON schema:
 - `location`, `jobDescription`, `salaryNotes` ← directly from result
 - `discoveredAt` ← current UTC ISO datetime
 
-Apply `negative_json` title filters and skip excluded titles. Write the output file as `dice-jobs-<timestamp>.json`.
+Apply `negative_json` title filters and skip excluded titles, and skip remote results restricted to a country absent from `remote_locations_json`. Write the output file as `dice-jobs-<timestamp>.json`.
 
 ---
 

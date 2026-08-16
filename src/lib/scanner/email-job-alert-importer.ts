@@ -118,6 +118,7 @@ export async function importApprovedEmailCandidates(candidates: PendingEmailJobC
       fresh: 0,
       unknownDate: 0,
       staleFiltered: 0,
+      preferenceFiltered: 0,
       errors: [],
       summary: "No candidates to import.",
       jobIds: [],

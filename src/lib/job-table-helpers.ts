@@ -1,5 +1,5 @@
 import type { JobRecord } from "@/lib/db/types";
-import { OUTSIDE_PREFERENCES_LABEL } from "@/lib/jobs/preference-fit";
+import { OUTSIDE_PREFERENCES_LABEL, UNKNOWN_LOCATION_LABEL } from "@/lib/jobs/preference-fit";
 import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
 import type { AtsProvider } from "@/lib/scanner/source-discovery";
 
@@ -151,7 +151,7 @@ export function matchesMainJobColFilter(
 
 export function getMainJobColOptions(jobs: MainJobTableRecord[], col: MainJobsSortCol): string[] {
   if (col === "fit") return [...JOB_FIT_BUCKETS];
-  if (col === "preference") return [MATCHES_PREFERENCES_LABEL, OUTSIDE_PREFERENCES_LABEL];
+  if (col === "preference") return [MATCHES_PREFERENCES_LABEL, OUTSIDE_PREFERENCES_LABEL, UNKNOWN_LOCATION_LABEL];
   if (col === "posted" || col === "scanned") return ["Has date", "No date"];
   if (col === "source") {
     // "Scanner" is always offered even when no job currently carries it, so a saved
