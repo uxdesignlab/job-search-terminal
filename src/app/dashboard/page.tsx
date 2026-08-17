@@ -9,6 +9,7 @@ import {
   getDashboardMetrics,
   getDashboardActionQueue,
   getAISettings,
+  getGapEvidenceCounts,
   getJobSourceBreakdown,
   getLatestScanRun,
   getFreshMatches,
@@ -67,6 +68,7 @@ export default function DashboardPage() {
   const showOnboarding = !settings.onboardingDismissed;
 
   const actionQueue = getDashboardActionQueue();
+  const gapEvidenceCounts = getGapEvidenceCounts();
   const jobSources = getJobSourceBreakdown();
   const metrics = getDashboardMetrics();
   const applications = getApplications();
@@ -187,6 +189,47 @@ export default function DashboardPage() {
                 </div>
               )}
             </section>
+
+            {/* Unfinished gap answers weaken every application at once, so they
+                get a dashboard prompt rather than sitting inside one job page. */}
+            {gapEvidenceCounts.needsDetail + gapEvidenceCounts.recurringUnanswered > 0 && (
+              <Card>
+                <CardHeader className="mb-0">
+                  <CardTitle>Evidence gaps to finish</CardTitle>
+                  <CardDescription>
+                    Answers saved here are reused on every application, including future roles that raise the same gap.
+                  </CardDescription>
+                </CardHeader>
+                <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+                  {gapEvidenceCounts.needsDetail > 0 && (
+                    <div>
+                      <p className="text-3xl font-semibold text-warning">{gapEvidenceCounts.needsDetail}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        started, need{gapEvidenceCounts.needsDetail === 1 ? "s" : ""} more detail
+                      </p>
+                    </div>
+                  )}
+                  {gapEvidenceCounts.recurringUnanswered > 0 && (
+                    <div>
+                      <p className="text-3xl font-semibold text-ink">{gapEvidenceCounts.recurringUnanswered}</p>
+                      <p className="mt-0.5 text-xs text-muted">raised by 2+ roles, unanswered</p>
+                    </div>
+                  )}
+                  {gapEvidenceCounts.addressed > 0 && (
+                    <div>
+                      <p className="text-3xl font-semibold text-success">{gapEvidenceCounts.addressed}</p>
+                      <p className="mt-0.5 text-xs text-muted">answered and reused</p>
+                    </div>
+                  )}
+                  <Link
+                    className="ml-auto text-sm font-medium text-accent hover:underline"
+                    href="/evidence"
+                  >
+                    Open the Evidence bank →
+                  </Link>
+                </div>
+              </Card>
+            )}
 
             {/* Highest-intent actions stay directly below dashboard health tiles. */}
             <div className="grid gap-4 lg:grid-cols-2">

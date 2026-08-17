@@ -760,7 +760,7 @@ function extractHeaderName(
     }
 
     if (firstLower.startsWith(profileLower)) {
-      // e.g. "Pavel Bukengolts Executive UX & Product Design Leader..."
+      // e.g. "Jordan Rivera Executive UX & Product Design Leader..."
       const name = firstLine.slice(0, profile.name.length).trim();
       const rest = firstLine.slice(profile.name.length).trim();
       const remaining = rest ? [rest, ...lines.slice(1)] : lines.slice(1);

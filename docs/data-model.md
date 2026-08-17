@@ -747,10 +747,34 @@ Supplemental profile content used to fill skill gaps in evaluations and resumes.
 | `tags_json` | Array of tags for matching |
 | `quality_status` | `addressed` when the supplement is concrete enough for resume tailoring, otherwise `needs_followup` |
 | `follow_up_question` | Targeted question shown when the supplement needs more detail |
-| `assessment_json` | Assessment rationale and signal metadata |
+| `assessment_json` | Assessment rationale, signals, and the persisted `followUpQuestions` array |
 | `assessed_at` | Timestamp for the latest quality assessment |
 | `created_at` | ISO timestamp |
 | `updated_at` | ISO timestamp |
+
+`assessment_json.followUpQuestions` holds the open questions (max 2) so the UI re-reads
+them instead of regenerating a different set on each visit. Rows written before this field
+existed fall back to the single `follow_up_question` column via `followUpQuestionsFromJson()`.
+
+#### Gap evidence rows (no migration required)
+
+The global Evidence bank reuses this table rather than adding one. A supplement is a
+gap answer when `tags_json` contains `gap-evidence`; the second tag is the verbatim gap
+text. Its `id` is `gap-evidence-<sha1(gapText)>` (`gapEvidenceId()` in
+`src/lib/gaps/evidence-id.ts`), so the same gap raised by any number of jobs resolves to
+exactly one row and answering it once is enough.
+
+SHA1 of the full gap text is used rather than truncated base64 because evaluator gap
+sentences frequently share long opening clauses, which a truncated key would collide on.
+
+Both `/api/gaps/[jobId]` and `/api/gap-evidence` write through this ID, so the job-level
+gap panel and the Evidence bank edit the same record.
+
+**`needs_followup` rows are stored here too.** Promotion is no longer gated on
+`addressed`: an unfinished answer is still the user's work and belongs in one backlog they
+can finish later. This is safe because every resume-generation path filters supplements to
+`qualityStatus === "addressed"` (`resume-generator.ts`, `generated-documents/[id]/edit`),
+so a parked answer never reaches a generated document.
 
 ### company_profiles
 
@@ -805,7 +829,23 @@ npm run quality:check     # run accessibility, contrast, and screenshot checks
 npm run data:backup       # SQLite backup → output/backups/
 npm run data:export       # JSON export → output/exports/
 npm run discover:sources  # discover new job posting sources
+npm run gaps:clear-stale-questions -- --dry-run   # preview; omit --dry-run to apply
 ```
+
+### `gaps:clear-stale-questions`
+
+One-off maintenance for gap follow-up questions written before the "only ask what a
+resume needs" rules landed — questions that asked for employers, titles, and dates already
+on the resume, ran four or five deep, and were regenerated differently on every visit.
+
+Clears `follow_up_question` and `assessment_json.followUpQuestions` on `needs_followup`
+rows in both `job_gap_responses` and `profile_gap_supplements`. **Answer text, quality
+status, rationale, and signals are left untouched and no row is deleted.** Each gap is
+re-asked properly the next time its answer is saved; until then the UI falls back to a
+deterministic scale question via `followUpQuestionsFromJson(..., gapText)`, so no row
+renders a "Needs detail" badge with nothing beside it.
+
+Run `npm run data:backup` first. Supports `--dry-run` to report counts without writing.
 
 ---
 
@@ -825,6 +865,54 @@ In addition to the SQLite database, the app maintains several files under `data/
 ```json
 { "rollbackArchivePath": "path/to/rollback.jst-backup", "startedAt": "ISO timestamp" }
 ```
+
+---
+
+## Derived Types — Gap Evidence
+
+Defined in `src/lib/db/types.ts`, built by `src/lib/db/queries.ts`. None of these are
+stored; they are derived on read from `evaluations`, `job_gap_responses`, and
+`profile_gap_supplements`.
+
+**`GapEvidenceStatus`** — `"addressed" | "needs_followup" | "unanswered"`. The third value
+has no database representation: it means an evaluation raised the gap and nothing has been
+written for it yet.
+
+**`GapEvidenceEntry`** — one distinct gap anywhere in the pipeline: `gapText`, `status`,
+`content`, `followUpQuestion`, `followUpQuestions` (the persisted list, read back from
+`assessment_json`), `supplementId`, `jobs` (every role that raised it, for "Raised in …"
+links), `updatedAt`.
+
+**`GapEvidenceCounts`** — `needsDetail`, `recurringUnanswered`, `addressed`,
+`totalUnanswered`.
+
+**`ResolvedGapResponse`** — one job's gap answer after the bank is filled in behind it.
+Adds `fromBank: boolean`, which drives the `↻ From your evidence bank` badge.
+
+### Functions
+
+| Function | Purpose |
+|---|---|
+| `getAllJobGapResponses()` | Every gap response across all jobs |
+| `getGapEvidenceBacklog()` | One `GapEvidenceEntry` per distinct gap, sorted `needs_followup` → `unanswered` → `addressed`, then by role count |
+| `getGapEvidenceCounts()` | Headline counts for the Dashboard card and Evidence bank tiles |
+| `getResolvedJobGapResponses(jobId, gapTexts)` | A job's answers with bank auto-fill applied |
+| `isRecurringGap(entry)` | `entry.jobs.length >= RECURRING_GAP_MIN_ROLES` |
+
+**Merge precedence in `getGapEvidenceBacklog()`:** evaluation gaps establish the entry set;
+`job_gap_responses` back-fill content written before evidence went global (newest first);
+`profile_gap_supplements` tagged `gap-evidence` overwrite both, being authoritative.
+Gap strings of 10 characters or fewer are dropped as evaluation noise.
+
+**Precedence in `getResolvedJobGapResponses()`:** a job-specific answer wins, so tailoring
+a gap for one role never leaks to others — *except* when the job-level answer is still
+`needs_followup` and the bank's is `addressed`. Without that exception, completing a gap in
+the Evidence bank would leave the job page displaying the stale draft it replaced.
+
+**`RECURRING_GAP_MIN_ROLES` (= 2):** how many roles must raise the same gap before it is
+worth answering centrally. Evaluators phrase gaps per requisition, so exact-text matching
+collapses very little and the raw unanswered pile runs to hundreds of one-off sentences;
+those belong on their own job page, not in a global backlog.
 
 ---
 

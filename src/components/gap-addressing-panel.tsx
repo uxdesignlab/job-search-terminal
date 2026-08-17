@@ -8,6 +8,8 @@ type GapResponse = {
   polishedResponse: string;
   qualityStatus: "addressed" | "needs_followup";
   followUpQuestion: string;
+  /** Answer came from the global evidence bank, not from this job. */
+  fromBank?: boolean;
 };
 
 type PerGapState = {
@@ -15,6 +17,7 @@ type PerGapState = {
   polishedResponse: string;
   qualityStatus: "addressed" | "needs_followup";
   followUpQuestion: string;
+  fromBank: boolean;
 };
 
 type Company = { name: string; dateRange: string };
@@ -59,22 +62,39 @@ function parseExistingResponse(text: string): { companies: string[]; description
   return { companies, description: remaining.trim(), metrics };
 }
 
+const GAP_PREAMBLES = [
+  /^the posting requires?\s+(?:\d+\+?\s*years?\s+(?:of\s+)?)?/i,
+  /^requires?\s+(?:\d+\+?\s*years?\s+(?:of\s+)?)?/i,
+  /^the role requires?\s*/i,
+  /^no explicit (?:evidence|proof) of\s*/i,
+  /^no direct experience (?:with|in)\s*/i,
+  /^no evidence of\s*/i,
+  /^lacks?\s+/i,
+  /^limited\s+/i,
+];
+
 function buildPrefillFrom(gapText: string): string {
   // Strip "the resume evidence shows..." half (after the first semicolon)
   const core = gapText.split(/;\s*/)[0].trim();
 
-  const cleaned = core
-    .replace(/^the posting requires?\s+(?:\d+\+?\s*years?\s+(?:of\s+)?)?/i, "")
-    .replace(/^requires?\s+(?:\d+\+?\s*years?\s+(?:of\s+)?)?/i, "")
-    .replace(/^the role requires?\s*/i, "")
-    .replace(/^no explicit (?:evidence|proof) of\s*/i, "")
-    .replace(/^no direct experience (?:with|in)\s*/i, "")
-    .replace(/^no evidence of\s*/i, "")
-    .replace(/^lacks?\s+/i, "")
-    .replace(/^limited\s+/i, "")
-    .trim();
+  let cleaned = core;
+  let matched = false;
+  for (const preamble of GAP_PREAMBLES) {
+    if (preamble.test(cleaned)) {
+      cleaned = cleaned.replace(preamble, "");
+      matched = true;
+      break;
+    }
+  }
+  cleaned = cleaned.trim();
 
-  if (!cleaned) return "";
+  // No recognized preamble means the sentence is the evaluator's complaint, not
+  // a statement the candidate can make ("The available resume evidence does not
+  // explicitly document…"). Prefilling it verbatim put the complaint in the
+  // answer box, which then got saved as the candidate's own evidence and read
+  // back by the assessor as saying nothing. An empty box is the honest default.
+  if (!matched || !cleaned) return "";
+
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1) + (cleaned.endsWith(".") ? "" : ".");
 }
 
@@ -104,6 +124,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
           polishedResponse: initialResponses[item]?.polishedResponse ?? "",
           qualityStatus: initialResponses[item]?.qualityStatus ?? "addressed",
           followUpQuestion: initialResponses[item]?.followUpQuestion ?? "",
+          fromBank: initialResponses[item]?.fromBank ?? false,
         },
       ])
     )
@@ -138,6 +159,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
             polishedResponse: initialResponses[item]?.polishedResponse ?? "",
             qualityStatus: initialResponses[item]?.qualityStatus ?? "addressed",
             followUpQuestion: initialResponses[item]?.followUpQuestion ?? "",
+            fromBank: initialResponses[item]?.fromBank ?? false,
           };
           changed = true;
         }
@@ -243,6 +265,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
           polishedResponse: data.polishedResponse ?? "",
           qualityStatus: data.qualityStatus,
           followUpQuestion: data.followUpQuestion ?? "",
+          fromBank: false,
         },
       }));
       if (data.qualityStatus === "needs_followup") {
@@ -285,6 +308,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
           polishedResponse: data.polishedResponse ?? "",
           qualityStatus: data.qualityStatus,
           followUpQuestion: data.followUpQuestion ?? "",
+          fromBank: false,
         },
       }));
       if (data.qualityStatus !== "needs_followup") {
@@ -312,7 +336,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setGapStates((prev) => ({
         ...prev,
-        [gapText]: { savedResponse: "", polishedResponse: "", qualityStatus: "addressed", followUpQuestion: "" },
+        [gapText]: { savedResponse: "", polishedResponse: "", qualityStatus: "addressed", followUpQuestion: "", fromBank: false },
       }));
     } catch {
       // Leave UI unchanged if delete failed — avoids showing "cleared" when DB still has the record.
@@ -339,7 +363,7 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
           {items.map((item) => {
             const s = gapStates[item] ?? {
               savedResponse: "", polishedResponse: "",
-              qualityStatus: "addressed" as const, followUpQuestion: "",
+              qualityStatus: "addressed" as const, followUpQuestion: "", fromBank: false,
             };
             const isAddressed = !!s.savedResponse && s.qualityStatus === "addressed";
             const needsDetail = !!s.savedResponse && s.qualityStatus === "needs_followup";
@@ -350,6 +374,14 @@ export function GapAddressingPanel({ jobId, items, initialResponses }: Props) {
                   <div className="flex items-center gap-2 shrink-0 pt-0.5 flex-wrap justify-end">
                     {isAddressed && (
                       <Badge tone="success" className="text-[11px] px-2 min-h-0 py-0.5">Addressed</Badge>
+                    )}
+                    {s.fromBank && (
+                      <span
+                        className="text-[11px] font-medium text-muted"
+                        title="Reused from your Evidence bank because you already answered this gap on another role. Edit to change it just here."
+                      >
+                        ↻ From your evidence bank
+                      </span>
                     )}
                   {bankSavedGap === item && (
                       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success animate-pulse">

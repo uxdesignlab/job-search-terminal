@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
-import { GlobalGapAddressingPanel } from "@/components/global-gap-addressing-panel";
-import { getAllEvaluations, getApplications, getFunnelStages, getJobs, getProfileSupplements } from "@/lib/db/queries";
+import { getAllEvaluations, getApplications, getFunnelStages, getGapEvidenceBacklog, getGapEvidenceCounts, getJobs } from "@/lib/db/queries";
+import type { GapEvidenceStatus } from "@/lib/db/types";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,11 @@ export default function AnalyticsPage() {
   const evaluations = getAllEvaluations();
   const applications = getApplications();
   const funnelStages = getFunnelStages();
-  const supplements = getProfileSupplements();
+  const gapEvidence = getGapEvidenceBacklog();
+  const gapEvidenceCounts = getGapEvidenceCounts();
+  const gapStatusByText = new Map<string, GapEvidenceStatus>(
+    gapEvidence.map((entry) => [entry.gapText, entry.status])
+  );
 
   const appliedApps = applications.filter((a) =>
     ["Applied", "Follow-up needed", "Recruiter responded", "Interviewing", "Offer"].includes(a.status)
@@ -229,16 +233,52 @@ export default function AnalyticsPage() {
             )}
           </Card>
 
-          <GlobalGapAddressingPanel
-            topGaps={topGaps}
-            initialSupplements={supplements.map((s) => ({
-              id: s.id,
-              content: s.content,
-              tags: s.tags,
-              qualityStatus: s.qualityStatus,
-              followUpQuestion: s.followUpQuestion,
-            }))}
-          />
+          {/* Read-only here — answering happens in the Evidence bank, so one
+              answer covers every role instead of being edited per analysis. */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Top gap patterns</CardTitle>
+              <CardDescription>Most common gaps across evaluated roles. Answer them in the Evidence bank.</CardDescription>
+            </CardHeader>
+            {topGaps.length > 0 ? (
+              <>
+                <ol className="grid gap-2">
+                  {topGaps.map(({ gap, count }, i) => {
+                    const status = gapStatusByText.get(gap.trim()) ?? "unanswered";
+                    return (
+                      <li className="flex items-start gap-3 rounded-control border border-border bg-surface px-3 py-2.5" key={i}>
+                        <span className="mt-0.5 shrink-0 text-xs font-bold text-muted">{i + 1}</span>
+                        <p className="min-w-0 flex-1 text-sm leading-snug text-ink">{gap}</p>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {count > 1 && (
+                            <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">
+                              ×{count}
+                            </span>
+                          )}
+                          {status === "addressed" && (
+                            <Badge className="text-[11px] px-2 min-h-0 py-0.5" tone="success">Answered</Badge>
+                          )}
+                          {status === "needs_followup" && (
+                            <Badge className="text-[11px] px-2 min-h-0 py-0.5" tone="warning">Needs detail</Badge>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+                <Link
+                  className="mt-3 inline-flex text-sm font-medium text-accent hover:underline"
+                  href="/evidence"
+                >
+                  {gapEvidenceCounts.needsDetail + gapEvidenceCounts.recurringUnanswered > 0
+                    ? `Answer ${gapEvidenceCounts.needsDetail + gapEvidenceCounts.recurringUnanswered} open gaps in the Evidence bank →`
+                    : "Open the Evidence bank →"}
+                </Link>
+              </>
+            ) : (
+              <EmptyState description="Gap patterns are extracted from job evaluations." title="No gap data yet" />
+            )}
+          </Card>
         </section>
 
         {/* Recent evaluations */}

@@ -37,7 +37,7 @@ import {
   getEmailImportEvidence,
   getGeneratedDocumentById,
   getJobById,
-	  getJobGapResponses,
+	  getResolvedJobGapResponses,
 	  getMatchingStoriesForJob,
 	  getResumes,
 	  getUserProfile,
@@ -109,16 +109,10 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
           resumeLaneNames
         )
       : "";
-  const gapResponses = getJobGapResponses(id);
-  const gapResponseMap = Object.fromEntries(
-    gapResponses.map((r) => [r.gapText, {
-      rawResponse: r.rawResponse,
-      polishedResponse: r.polishedResponse,
-      qualityStatus: r.qualityStatus,
-      followUpQuestion: r.followUpQuestion,
-    }])
-  );
   const allGapItems = [...(evaluation?.gaps ?? job.gaps), ...(evaluation?.redFlags ?? job.redFlags)];
+  // Answers already in the global evidence bank fill themselves in here, so a
+  // gap answered on an earlier role never has to be typed a second time.
+  const gapResponseMap = getResolvedJobGapResponses(id, allGapItems);
 
   const hasDraft = (() => {
     try {
