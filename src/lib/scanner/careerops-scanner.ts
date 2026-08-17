@@ -74,7 +74,25 @@ type ScanOptions = {
   profile?: JobPreferenceProfile;
   freshnessWindowHours?: FreshnessWindowHours;
   trigger?: ScanTrigger;
+  /** Injected in tests; otherwise read from the jobs table when persisting. */
+  dedup?: JobDedupKeys;
 };
+
+export type JobDedupKeys = ReturnType<typeof getJobDedupKeys>;
+
+/** A dedup set that matches nothing — used for dry runs, which insert nothing. */
+export function emptyDedupKeys(): JobDedupKeys {
+  return {
+    urls: new Set(),
+    companyRoles: new Set(),
+    companyRoleLocations: new Set(),
+    urlToIds: new Map(),
+    originalPostingKeyToIds: new Map(),
+    companyRoleToIds: new Map(),
+    companyRoleLocationToIds: new Map(),
+    openIds: new Set()
+  };
+}
 
 export type ScanResult = ScanRunRecord & {
   jobs: ScannedJobInput[];
@@ -144,7 +162,7 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   const skippedCompanies = filterCompanyExactLower
     ? companiesForTargets.length - targets.length
     : enabledCompanies.length - targets.length;
-  const dedup = getJobDedupKeys();
+  const dedup = options.dedup ?? (persist ? getJobDedupKeys() : emptyDedupKeys());
   const date = localDateString(options.now ?? new Date());
   const newJobs: ScannedJobInput[] = [];
   const errors: ScanError[] = [...preflightErrors];
@@ -165,6 +183,7 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   let totalJobsFound = 0;
   let filteredCount = 0;
   let duplicateCount = 0;
+  let repostCount = 0;
   let freshCount = 0;
   let unknownDateCount = 0;
   let staleFilteredCount = 0;
@@ -199,21 +218,39 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
         if (freshness === "unknown-date") unknownDateCount++;
         else freshCount++;
 
-        const companyRoleKey = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
-        if (dedup.urls.has(job.url) || dedup.companyRoles.has(companyRoleKey)) {
+        // The posting URL is the requisition's identity: the same URL is always the
+        // same job, whatever its status.
+        if (dedup.urls.has(job.url)) {
           duplicateCount++;
           continue;
         }
 
+        // A new URL for a role already in the app is only a duplicate while that
+        // existing row is still live — the same role arriving via another lane in
+        // the current cycle. Once the user has closed it out (applied, rejected,
+        // skipped, archived), a fresh requisition is a real opportunity, and
+        // matching on company+title alone would hide it permanently.
+        const location = job.location || "Not specified";
+        const companyRoleLocationKey =
+          `${job.company.toLowerCase()}::${job.title.toLowerCase()}::${location.toLowerCase()}`;
+        const collidingIds = dedup.companyRoleLocationToIds.get(companyRoleLocationKey) ?? [];
+        if (collidingIds.some((id) => dedup.openIds.has(id))) {
+          duplicateCount++;
+          continue;
+        }
+        if (collidingIds.length > 0) repostCount++;
+
+        const id = stableJobId(job.url);
         dedup.urls.add(job.url);
-        dedup.companyRoles.add(companyRoleKey);
+        dedup.openIds.add(id);
+        addDedupId(dedup.companyRoleLocationToIds, companyRoleLocationKey, id);
         newJobs.push({
-          id: stableJobId(job.url),
+          id,
           company: job.company,
           title: job.title,
           url: job.url,
           source: `${company._api.type}-api`,
-          location: job.location || "Not specified",
+          location,
           datePosted: job.datePosted,
           firstSeenDate: date
         });
@@ -249,6 +286,7 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     , freshCount
     , unknownDateCount
     , staleFilteredCount
+    , repostCount
   };
 
   if (persist) {
@@ -356,7 +394,9 @@ export function parseAshby(json: unknown, companyName: string): RawJob[] {
       url: stringValue(record.jobUrl),
       company: companyName,
       location: stringValue(record.location),
-      datePosted: stringValue(record.publishedDate) || null
+      // Ashby's posting API names this `publishedAt`; `publishedDate` never
+      // existed, so every Ashby job used to arrive undated and skip freshness.
+      datePosted: stringValue(record.publishedAt) || null
     };
   });
 }
@@ -438,6 +478,12 @@ async function parallelFetch(tasks: Array<() => Promise<void>>, limit: number) {
 
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => next());
   await Promise.all(workers);
+}
+
+function addDedupId(map: Map<string, string[]>, key: string, id: string) {
+  const existing = map.get(key);
+  if (existing) existing.push(id);
+  else map.set(key, [id]);
 }
 
 function stableJobId(url: string) {

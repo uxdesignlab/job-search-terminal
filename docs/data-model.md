@@ -66,6 +66,7 @@ and initializes an empty local profile if the database is empty.
 | `0056_evaluation_keyword_signals` | Adds `evaluations.keyword_signals_json` (`text not null default '[]'`): structured ATS keyword signals with priority/category/source/rationale (the `JobKeywordSignal` type). Existing rows default to `'[]'` and fall back to signals reconstructed from `keywords_json` at read time (`legacyKeywordSignals`) |
 | `0057_openai_latest_model` | Moves the old default OpenAI model onto the auto-resolving `latest` alias; explicitly pinned models are left alone |
 | `0058_remote_location_preferences` | Adds `user_profile.remote_locations_json` (`text not null default '[]'`) and seeds it from `preferred_locations_json`. Splits location preferences in two: `preferred_locations_json` now governs hybrid/on-site matching only, `remote_locations_json` governs which regions' remote roles are in scope. Seeding makes the migration behaviour-preserving — one list previously drove both |
+| `0059_scan_run_repost_count` | Adds `scan_runs.repost_count` (`integer not null default 0`): the subset of `new_jobs_count` that re-posts a role already in the app at a different URL, admitted because the earlier row had been closed out. Existing rows default to `0` |
 
 ---
 
@@ -394,6 +395,7 @@ History of job scan executions.
 | `total_jobs_found` | Raw jobs found before filtering |
 | `filtered_count` | Jobs removed by title filters or profile preference filters. For browser-board imports this is malformed records plus jobs dropped by the location preference filter |
 | `duplicate_count` | Duplicate jobs skipped |
+| `repost_count` | Subset of `new_jobs_count` that re-posts a role already in the app at a different URL, admitted because the earlier row was closed out (`Applied`, `Rejected`, `Skipped`, `Archived`). Written by the CareerOps lane; other lanes leave it `0` |
 | `new_jobs_count` | Net new jobs added |
 | `errors_json` | Array of `{ company, error, category? }` — `category` is `dead_or_unreachable`, `timeout_or_slow`, or `other` when set (CareerOps / Adzuna); older rows may omit it |
 | `scan_type` | `careerops` plus every board scan type. Current values: `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`, `adzuna-api-scan`, `email-alert-import`, `dice-mcp-scan`, `himalayas-api-scan`. **Single source of truth:** `BrowserBoardScanType` in `src/lib/scanner/browser-board-sources.ts` — the TypeScript types now derive from that registry rather than restating it, so adding a board only requires editing the registry. Rows written by external agents may carry other values (for example `private-page-scan`). |

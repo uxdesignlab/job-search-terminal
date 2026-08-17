@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { activeApplicationStatuses } from "../applications/status";
+import { activeApplicationStatuses, suppressesRepost } from "../applications/status";
 import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
 import { cleanLocationList, normalizePreferredLocations } from "../profile/locations";
 import type { ScanRunErrorEntry } from "../scan-error-category";
@@ -181,6 +181,7 @@ type ScanRunRow = {
   fresh_count?: number;
   unknown_date_count?: number;
   stale_filtered_count?: number;
+  repost_count?: number;
 };
 
 type ResumeBuilderVersionRow = {
@@ -1517,7 +1518,7 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
 
 export function getJobDedupKeys() {
   const rows = getDatabase()
-    .prepare("select id, url, source_url, original_posting_url, original_posting_key, company, title, location from jobs")
+    .prepare("select id, url, source_url, original_posting_url, original_posting_key, company, title, location, status from jobs")
     .all() as Array<{
       id: string;
       url: string;
@@ -1527,11 +1528,16 @@ export function getJobDedupKeys() {
       company: string;
       title: string;
       location: string;
+      status: string;
     }>;
 
   const urlToIds = new Map<string, string[]>();
   const originalPostingKeyToIds = new Map<string, string[]>();
   const companyRoleLocationToIds = new Map<string, string[]>();
+  const companyRoleToIds = new Map<string, string[]>();
+  // Ids whose row still blocks the same role from being re-imported; a collision
+  // against an id outside this set is a re-post, not a duplicate.
+  const openIds = new Set<string>();
 
   const add = (map: Map<string, string[]>, key: string, id: string) => {
     if (!key) return;
@@ -1544,7 +1550,9 @@ export function getJobDedupKeys() {
     add(urlToIds, row.url, row.id);
     add(urlToIds, row.original_posting_url, row.id);
     add(originalPostingKeyToIds, row.original_posting_key, row.id);
+    add(companyRoleToIds, `${row.company.toLowerCase()}::${row.title.toLowerCase()}`, row.id);
     add(companyRoleLocationToIds, `${row.company.toLowerCase()}::${row.title.toLowerCase()}::${row.location.toLowerCase()}`, row.id);
+    if (suppressesRepost(row.status)) openIds.add(row.id);
   }
 
   return {
@@ -1555,7 +1563,9 @@ export function getJobDedupKeys() {
     ),
     urlToIds,
     originalPostingKeyToIds,
-    companyRoleLocationToIds
+    companyRoleToIds,
+    companyRoleLocationToIds,
+    openIds
   };
 }
 
@@ -2105,7 +2115,8 @@ export function recordScanRun(run: ScanRunRecord) {
         freshness_window_hours,
         fresh_count,
         unknown_date_count,
-        stale_filtered_count
+        stale_filtered_count,
+        repost_count
       ) values (
         @id,
         @status,
@@ -2123,7 +2134,8 @@ export function recordScanRun(run: ScanRunRecord) {
         @freshnessWindowHours,
         @freshCount,
         @unknownDateCount,
-        @staleFilteredCount
+        @staleFilteredCount,
+        @repostCount
       )`
     )
     .run({
@@ -2134,7 +2146,8 @@ export function recordScanRun(run: ScanRunRecord) {
       freshnessWindowHours: run.freshnessWindowHours ?? 72,
       freshCount: run.freshCount ?? run.newJobsCount,
       unknownDateCount: run.unknownDateCount ?? 0,
-      staleFilteredCount: run.staleFilteredCount ?? 0
+      staleFilteredCount: run.staleFilteredCount ?? 0,
+      repostCount: run.repostCount ?? 0
     });
 
   logActivity("scan", run.id, scanActivityLabel(run), {
@@ -2239,7 +2252,8 @@ function mapScanRun(row: ScanRunRow): ScanRunRecord {
     freshnessWindowHours: (row.freshness_window_hours ?? 72) as FreshnessWindowHours,
     freshCount: row.fresh_count ?? row.new_jobs_count,
     unknownDateCount: row.unknown_date_count ?? 0,
-    staleFilteredCount: row.stale_filtered_count ?? 0
+    staleFilteredCount: row.stale_filtered_count ?? 0,
+    repostCount: row.repost_count ?? 0
   };
 }
 

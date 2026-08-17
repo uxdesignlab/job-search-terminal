@@ -1,0 +1,12 @@
+# Minimal portal config for the careerops dedupe tests: one Ashby board whose
+# posting API URL is derived from the careers URL.
+title_filter:
+  positive:
+    - "Product Design"
+  negative:
+    - "Junior"
+
+tracked_companies:
+  - name: givebutter
+    careers_url: "https://jobs.ashbyhq.com/givebutter"
+    enabled: true
