@@ -37,6 +37,7 @@
     "scanner:check": "tsx scripts/scanner-check.ts",
     "fresh-matches:check": "tsx scripts/fresh-match-check.ts",
     "evaluation:check": "tsx scripts/evaluation-check.ts",
+    "gaps:clear-stale-questions": "tsx scripts/clear-stale-gap-questions.ts",
     "document:check": "tsx scripts/document-check.ts",
     "evidence-audit:check": "tsx scripts/evidence-audit-check.ts",
     "application:check": "tsx scripts/application-check.ts",

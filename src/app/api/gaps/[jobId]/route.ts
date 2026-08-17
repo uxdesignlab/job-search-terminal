@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { GAP_EVIDENCE_TAG, gapEvidenceId } from "@/lib/gaps/evidence-id";
 
 export const dynamic = "force-dynamic";
 
@@ -58,11 +58,10 @@ export async function POST(
 
   const { saveJobGapResponse, saveProfileSupplement } = await import("@/lib/db/queries");
   const { assessGapAnswer, assessmentToJson } = await import("@/lib/gaps/gap-answer-assessor");
+  const { loadGapEvidenceContext } = await import("@/lib/gaps/evidence-context");
 
   const id = `gap-${jobId}-${Buffer.from(body.gapText).toString("base64url").slice(0, 16)}`;
-  // Stable ID for the global experience bank — keyed on gap text, not job.
-  // SHA1 of the full gap text avoids the prefix-collision risk of truncated base64.
-  const globalId = `gap-evidence-${createHash("sha1").update(body.gapText).digest("hex")}`;
+  const globalId = gapEvidenceId(body.gapText);
 
   const assessment = isKeywordConfirmation
     ? {
@@ -70,9 +69,10 @@ export async function POST(
         followUpQuestion: "",
         rationale: "The user confirmed the companies where this keyword was applied and approved the resume wording.",
         signals: ["confirmed_companies", "approved_resume_wording"],
+        followUpQuestions: [] as string[],
         assessedBy: "heuristic" as const,
       }
-    : await assessGapAnswer(body.gapText, rawResponse);
+    : await assessGapAnswer(body.gapText, rawResponse, loadGapEvidenceContext());
   let polishedResponse = "";
 
   if (assessment.status === "addressed" && rawResponse.trim()) {
@@ -107,22 +107,27 @@ export async function POST(
     );
   }
 
-  // Promote addressed responses to the global experience bank (non-fatal).
+  // Promote to the global evidence bank (non-fatal) regardless of quality.
+  // Half-finished answers are promoted too: a gap is a fact about the person,
+  // so an unfinished story about it belongs in one backlog the user can finish
+  // later, not stranded on the requisition that happened to surface it.
+  // Resume generation only reads `addressed` supplements, so parking a
+  // `needs_followup` answer here never leaks into tailored documents.
   let savedToBank = false;
-  if (assessment.status === "addressed") {
-    const evidenceContent = (polishedResponse.trim() || rawResponse.trim());
-    if (evidenceContent) {
-      try {
-        saveProfileSupplement({
-          id: globalId,
-          content: evidenceContent,
-          tags: ["gap-evidence", body.gapText],
-          qualityStatus: "addressed",
-        });
-        savedToBank = true;
-      } catch {
-        // Non-fatal — job-specific record is already saved above.
-      }
+  const evidenceContent = polishedResponse.trim() || rawResponse.trim();
+  if (evidenceContent) {
+    try {
+      saveProfileSupplement({
+        id: globalId,
+        content: evidenceContent,
+        tags: [GAP_EVIDENCE_TAG, body.gapText],
+        qualityStatus: assessment.status,
+        followUpQuestion: assessment.followUpQuestion,
+        assessment: assessmentToJson(assessment),
+      });
+      savedToBank = assessment.status === "addressed";
+    } catch {
+      // Non-fatal — job-specific record is already saved above.
     }
   }
 
@@ -131,6 +136,7 @@ export async function POST(
     saved: true,
     qualityStatus: assessment.status,
     followUpQuestion: assessment.followUpQuestion,
+    followUpQuestions: assessment.followUpQuestions,
     savedToBank,
   });
 }
@@ -141,7 +147,11 @@ export async function DELETE(
 ) {
   const { jobId } = await params;
   const body = await req.json() as { gapText: string };
-  const { deleteJobGapResponse } = await import("@/lib/db/queries");
+  const { deleteJobGapResponse, deleteProfileSupplement } = await import("@/lib/db/queries");
   deleteJobGapResponse(jobId, body.gapText);
+  // The answer is global, so clearing it has to clear the bank too. Leaving the
+  // supplement behind would let it auto-fill straight back into this gap and
+  // make the Clear button look broken.
+  deleteProfileSupplement(gapEvidenceId(body.gapText));
   return Response.json({ deleted: true });
 }

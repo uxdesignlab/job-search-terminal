@@ -13,6 +13,11 @@ The Shell header provides two navigation groups:
 
 **Account dropdown** (hover on "Account"): Profile · Strategy · Settings
 
+**Not in the nav:** the Evidence bank at `/evidence` is deliberately kept out of the
+primary nav. It is reached from the "Top gap patterns" card on Analytics and from the
+"Evidence gaps to finish" card on the Dashboard, and it renders with Analytics lit in
+the nav plus a "← Back to Analytics" link so its place in the hierarchy stays clear.
+
 **Help link** appears immediately after Account and opens the in-app help site at
 `/help` in a **new browser tab** (`target="_blank"`) so the user doesn't lose their current context.
 
@@ -146,6 +151,12 @@ features.
   "Apply next" for consistent scanning, and row text wraps (no ellipsis
   truncation) so full titles and location lines remain visible on narrower
   viewports.
+- **Evidence gaps to finish** — appears above the action queue whenever there is
+  outstanding gap work. Shows three counts (started but still needing detail;
+  raised by 2+ roles and unanswered; answered and reused) and links to the Evidence
+  bank. Hidden entirely when nothing is outstanding. Unfinished gap answers weaken
+  every application at once, which is why they get a dashboard prompt rather than
+  sitting inside a single job page.
 - **Action queue** — "Apply next" shows high-score jobs not yet applied to and
   "In flight" shows active applications (interviewing, follow-up needed). Each
   card shows company, title, fit score, and recommended next action.
@@ -380,7 +391,11 @@ Tabbed view for a single job. Four tabs:
   "At Company A, Company B: [description]".
 - **What did you do?** — editable textarea, prefilled by parsing the gap text
   into a first-person statement (strips "The posting requires…" boilerplate,
-  extracts the core activity).
+  extracts the core activity). When the gap matches **no** known preamble it is the
+  evaluator's own complaint rather than a claim the candidate can make
+  ("The available resume evidence does not explicitly document…"), and the box is left
+  **empty**. Prefilling those verbatim wrote the complaint into the answer, saved it as
+  the candidate's evidence, and left the assessor reading the gap back to itself.
 - **Key metrics or outcomes** — optional single-line field; appended as
   "Key results: …" in the saved response.
 - **Polish with AI** — sends the structured response for AI polishing and quality
@@ -390,6 +405,19 @@ Tabbed view for a single job. Four tabs:
   showing the AI question and the saved response, with a textarea for more detail.
 - Escape key closes the modal.
 - Modal slides up from the bottom on mobile, centers on desktop.
+
+**Answers are global, not per-job.** Every saved gap answer — including ones the
+assessor marks `needs_followup` — is promoted to the Evidence bank keyed on the gap
+text, so unfinished work is never stranded on the requisition that surfaced it.
+Consequently:
+- A gap this job raised that was already answered elsewhere is **auto-filled**, badged
+  `↻ From your evidence bank`. Answering it again is never required.
+- A job-specific answer overrides the bank for that job only. The one exception is an
+  unfinished job-level draft (`needs_followup`): a completed bank answer replaces it,
+  otherwise finishing a gap in the Evidence bank would leave the job page showing the
+  stale draft it was meant to replace.
+- **Clear** removes both the job-level answer and the bank record, since the bank is the
+  single global copy — leaving it would let the answer auto-fill straight back in.
 - Job description excerpt (up to 10,000 chars) — allows the AI to verify keyword
   context and understand requirement weight, not just the extracted keyword list.
 - Skills preference flags — skills the user wants to emphasize or de-emphasize
@@ -857,6 +885,52 @@ Search performance metrics drawn from actual evaluation and application data.
 - Gap coverage: what percentage of evaluated gaps have been addressed.
 - Application funnel conversion rates.
 
+**Top gap patterns** is read-only here. It lists the six most frequent gaps with their
+recurrence count and their bank status (`Answered` / `Needs detail`), then links to the
+Evidence bank to answer them. Editing was moved off this page so a gap is answered once
+globally rather than per analysis view.
+
+---
+
+## Evidence Bank `/evidence`
+
+The single place to answer the gaps and red flags evaluations raise. A gap is a fact
+about the candidate, not about a requisition, so its answer is stored once — keyed on the
+gap text — and reused by every application that raises the same gap, including future ones.
+
+Reached from Analytics ("Top gap patterns") and the Dashboard ("Evidence gaps to finish").
+
+**Summary tiles:**
+- **Needs detail** — answers the user started that the AI assessor judged too thin to use.
+- **Recurring, unanswered** — untouched gaps that two or more roles raised.
+- **Answered** — complete answers, reused automatically.
+
+**Why the list is filtered.** Evaluators phrase gaps per requisition, so exact-text
+matching collapses very little and the raw unanswered pile runs into the hundreds. The
+default **Needs work** view therefore shows only answers already started plus gaps raised
+by 2+ roles (`RECURRING_GAP_MIN_ROLES`). A gap only one role raised is better answered on
+that job page. **Answered** and **Every gap (N)** filters show the rest.
+
+**Each row shows** the gap text, the roles that raised it (linked), a status badge, and an
+expand control labelled Answer / Add detail / Edit by status.
+
+**Expanded editor:**
+- The gap restated as a plain question.
+- *One thing left* / *N things left* — the assessor's persisted questions, for
+  `needs_followup` items. Capped at two; see "Only ask what a resume needs" under AI
+  Capabilities for the rules governing what may be asked.
+- **Draft with AI** — proposes a starting answer built strictly from the user's resume and
+  previously answered gaps. The draft is never auto-saved: it appears in a bordered
+  preview with a "Based on N items from your evidence" disclosure listing the fragments it
+  drew on, plus **Use this draft** / **Dismiss**. When the evidence does not support an
+  answer the model returns *no* draft and instead lists what the user must supply — it is
+  prompted never to stretch unrelated experience to cover a gap. Accepting a draft leaves a
+  standing "check every claim is true before saving" note above the buttons.
+- **Polish wording** — rewrites the current text without inventing facts (`/api/gaps/polish`).
+- **Save to profile** — assesses and stores the answer. `addressed` collapses the row;
+  `needs_followup` keeps it open with the new follow-up question visible.
+- **Clear everywhere** — deletes the bank record, since it is the single global copy.
+
 ---
 
 ## Settings `/settings`
@@ -1035,6 +1109,62 @@ The first provider in the chain that has a credential configured is the active
 provider. Ollama uses a base URL (default `http://localhost:11434`) instead of an
 API key and supports any model installed on the local Ollama server. All AI calls
 use the `src/lib/ai/` provider abstraction with retry and failover logic.
+
+**Gap evidence AI helpers** (`src/lib/gaps/`):
+
+| Module | Endpoint | Behavior without a provider |
+|---|---|---|
+| `evidence-context.ts` | — | Returns whatever is on file; no AI involved |
+| `gap-answer-assessor.ts` | (internal) | Falls back to a keyword heuristic holding the same line |
+| `llm-gap-polisher.ts` | `/api/gaps/polish` | Returns the input unchanged |
+| `llm-gap-drafter.ts` | `/api/gaps/draft` | Returns no draft, plus at most two generic questions |
+
+**Only ask what a resume needs.** The governing rule for every follow-up question is:
+*would the answer change the wording of a resume bullet?* If not, it is not asked.
+Concretely:
+
+- **Employers, job titles, dates, and durations are never asked for.** They are already
+  in the database. `loadGapEvidenceContext()` (`evidence-context.ts`) assembles the active
+  resume's text plus an `organization — title — dateRange` list from the resume builder,
+  and passes it into every assessment. Re-asking for a date that is already on file is
+  treated as a defect, not a thoroughness feature.
+- **Nothing the answer already states is re-asked**, including loosely. If the answer says
+  the candidate managed people at named companies, that is settled — it is not sent back
+  for confirmation or a re-listing of those companies.
+- **At most 2 questions, and one is preferred** (`MAX_FOLLOW_UPS`). Priority order is
+  (1) scale — headcount, users, budget; (2) a concrete outcome or deliverable.
+- **Questions are persisted, not regenerated.** The list is stored in
+  `assessment_json.followUpQuestions` and re-read via `followUpQuestionsFromJson()`, so it
+  does not change between page visits or button clicks. Regenerating produced a different
+  set each time and made the loop feel endless. A new question set is produced only when
+  the answer text itself changes and is re-assessed. When no question is stored — a row
+  cleared by `npm run gaps:clear-stale-questions` — the UI falls back to a deterministic
+  scale question rather than rendering nothing.
+- **Gap sentences are reduced before use.** `gapSubject()` in `gap-text.ts` strips the
+  evaluator's framing so questions read about the topic, not the complaint. It handles
+  leading forms ("The available resume evidence does not explicitly document X",
+  "The job calls for X", "No X"), trailing forms ("X is not demonstrated", "X is stated"),
+  dangling conjunctions, and the contrast form "X, but limited evidence of Y" — where the
+  gap is **Y**, since X is normally a compliment. When a sentence resists reduction it
+  returns "" and callers use generic wording instead of splicing the complaint into a
+  question. Shared by the assessor, the drafter, and the Evidence bank panel so all three
+  phrase a gap identically.
+- **One question box.** The assessor's persisted questions are authoritative; when a saved
+  answer exists, `Draft with AI` no longer prints a competing list of its own.
+- **An answer that only restates the gap counts as empty.** `isEchoOfGap()` catches it, so
+  the evaluator's own complaint can never read as evidence.
+
+The heuristic fallback holds the same bar: where + what + scale-or-outcome is enough
+(employers/titles/dates explicitly not required, since they are on the resume).
+
+`draftGapAnswer()` is grounded and refusal-capable by design: it is given only the
+active resume's extracted text and previously `addressed` answers (the gap being drafted
+is excluded so the model cannot echo it back), it is instructed never to invent employers,
+titles, dates, metrics, or outcomes, and it is told that returning an *empty* draft is the
+correct output when the evidence is silent — stretching unrelated experience to cover a
+gap is explicitly forbidden. It returns `basedOn` (the fragments it drew on, surfaced in
+the UI for verification) and `questions` (what the user still has to supply). Nothing it
+produces is persisted until the user reviews and saves it.
 
 ### OpenAI model selection
 
@@ -1441,7 +1571,6 @@ components don't repeat that boilerplate.
 | `AddJobModal` | lg | — | Add job manually form |
 | `EditJobModal` | lg | — | Edit job details form |
 | `GapAddressingPanel` | md | ✓ | Address gap / add detail (two-phase modal) |
-| `GlobalGapAddressingPanel` | md | — | Follow-up evidence detail per top gap |
 | `ProfileSupplementsEditor` | md | — | Follow-up evidence detail per supplement |
 
 ---

@@ -12,6 +12,8 @@ import {
   type BrowserBoardScanType,
 } from "../scanner/browser-board-sources";
 import { filterFreshScanMatches } from "../jobs/fresh-match-dedupe";
+import { GAP_EVIDENCE_TAG, gapEvidenceId } from "../gaps/evidence-id";
+import { followUpQuestionsFromJson } from "../gaps/gap-answer-assessor";
 import type {
   AIProviderName,
   AIPromptId,
@@ -61,6 +63,10 @@ import type {
   JobGapResponseInput,
   ProfileSupplementRecord,
   ProfileSupplementInput,
+  GapEvidenceCounts,
+  GapEvidenceEntry,
+  GapEvidenceStatus,
+  ResolvedGapResponse,
   ActionQueueData,
   FreshnessWindowHours,
   ScanScheduleRecord,
@@ -4789,6 +4795,205 @@ export function saveProfileSupplement(input: ProfileSupplementInput): void {
 export function deleteProfileSupplement(id: string): void {
   getDatabase().prepare("delete from profile_gap_supplements where id = @id").run({ id });
   logActivity("profile_supplement", id, "Profile supplement deleted", {});
+}
+
+// ─── Global Gap Evidence Bank ─────────────────────────────────────────────────
+
+/**
+ * Every job gap response across the whole pipeline. Used to build the global
+ * backlog and to back-fill answers written before gap evidence went global.
+ */
+export function getAllJobGapResponses(): JobGapResponseRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from job_gap_responses order by updated_at desc")
+    .all() as JobGapResponseRow[];
+  return rows.map(mapGapResponse);
+}
+
+/**
+ * One row per distinct gap or red flag anywhere in the pipeline, merged with
+ * whatever global answer exists for it.
+ *
+ * Answering a gap is a fact about the person, not about the requisition, so the
+ * answer lives once in `profile_gap_supplements` keyed by `gapEvidenceId` and
+ * every job that raises the same gap reads the same record.
+ */
+export function getGapEvidenceBacklog(): GapEvidenceEntry[] {
+  const evaluations = getAllEvaluations();
+  const jobRows = getDatabase()
+    .prepare("select id, coalesce(title, 'Untitled role') as position, coalesce(company, 'Unknown company') as company from jobs")
+    .all() as Array<{ id: string; position: string; company: string }>;
+  const jobsById = new Map(jobRows.map((row) => [row.id, row]));
+
+  const entries = new Map<string, GapEvidenceEntry>();
+
+  function ensure(rawGapText: string): GapEvidenceEntry | null {
+    const gapText = rawGapText.trim();
+    // Sub-sentence fragments are evaluation noise, not answerable gaps.
+    if (gapText.length <= 10) return null;
+    let entry = entries.get(gapText);
+    if (!entry) {
+      entry = {
+        gapText,
+        status: "unanswered",
+        content: "",
+        followUpQuestion: "",
+        followUpQuestions: [],
+        supplementId: null,
+        jobs: [],
+        updatedAt: null,
+      };
+      entries.set(gapText, entry);
+    }
+    return entry;
+  }
+
+  // 1. Every gap and red flag an evaluation raised, with the roles that raised it.
+  for (const evaluation of evaluations) {
+    for (const gap of [...(evaluation.gaps ?? []), ...(evaluation.redFlags ?? [])]) {
+      const entry = ensure(gap);
+      if (!entry) continue;
+      const job = jobsById.get(evaluation.jobId);
+      if (job && !entry.jobs.some((j) => j.id === job.id)) entry.jobs.push(job);
+    }
+  }
+
+  // 2. Answers written before evidence went global, so nothing already typed is lost.
+  for (const response of getAllJobGapResponses()) {
+    const entry = ensure(response.gapText);
+    if (!entry) continue;
+    const job = jobsById.get(response.jobId);
+    if (job && !entry.jobs.some((j) => j.id === job.id)) entry.jobs.push(job);
+    // getAllJobGapResponses is ordered newest-first, so the first hit wins.
+    if (!entry.content) {
+      entry.content = response.polishedResponse.trim() || response.rawResponse.trim();
+      entry.status = response.qualityStatus;
+      entry.followUpQuestion = response.followUpQuestion;
+      entry.followUpQuestions = followUpQuestionsFromJson(response.assessment, response.followUpQuestion, entry.gapText);
+      entry.updatedAt = response.updatedAt;
+    }
+  }
+
+  // 3. The global bank is authoritative — it overwrites any job-level fallback.
+  for (const supplement of getProfileSupplements()) {
+    if (!supplement.tags.includes(GAP_EVIDENCE_TAG)) continue;
+    const taggedGap = supplement.tags.find((tag) => tag !== GAP_EVIDENCE_TAG);
+    if (!taggedGap) continue;
+    const entry = ensure(taggedGap);
+    if (!entry) continue;
+    entry.content = supplement.content;
+    entry.status = supplement.qualityStatus;
+    entry.followUpQuestion = supplement.followUpQuestion;
+    entry.followUpQuestions = followUpQuestionsFromJson(supplement.assessment, supplement.followUpQuestion, entry.gapText);
+    entry.supplementId = supplement.id;
+    entry.updatedAt = supplement.updatedAt;
+  }
+
+  const statusRank: Record<GapEvidenceStatus, number> = {
+    needs_followup: 0,
+    unanswered: 1,
+    addressed: 2,
+  };
+
+  return Array.from(entries.values()).sort((a, b) => {
+    const byStatus = statusRank[a.status] - statusRank[b.status];
+    if (byStatus !== 0) return byStatus;
+    // Within a status, gaps blocking the most roles come first.
+    return b.jobs.length - a.jobs.length;
+  });
+}
+
+function getProfileSupplementById(id: string): ProfileSupplementRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from profile_gap_supplements where id = @id")
+    .get({ id }) as ProfileSupplementRow | undefined;
+  if (!row) return undefined;
+  return {
+    id: row.id,
+    content: row.content,
+    tags: parseJson<string[]>(row.tags_json),
+    qualityStatus: normalizeGapQualityStatus(row.quality_status),
+    followUpQuestion: row.follow_up_question,
+    assessment: parseJson<JsonValue>(row.assessment_json),
+    assessedAt: row.assessed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Gap answers for one job, with the global evidence bank filled in behind them.
+ *
+ * A gap this job raised that the user already answered elsewhere resolves to
+ * that saved answer automatically — they wrote it once and should not be asked
+ * again.
+ *
+ * A job-specific answer wins over the bank, so tailoring a gap for one role
+ * never leaks to the others. The exception is a job-specific answer still short
+ * on detail: a finished bank answer beats an unfinished local one, otherwise
+ * completing a gap in the Evidence bank would leave the job page showing the
+ * stale draft it was meant to replace.
+ */
+export function getResolvedJobGapResponses(
+  jobId: string,
+  gapTexts: string[]
+): Record<string, ResolvedGapResponse> {
+  const resolved: Record<string, ResolvedGapResponse> = {};
+
+  for (const response of getJobGapResponses(jobId)) {
+    resolved[response.gapText] = {
+      rawResponse: response.rawResponse,
+      polishedResponse: response.polishedResponse,
+      qualityStatus: response.qualityStatus,
+      followUpQuestion: response.followUpQuestion,
+      fromBank: false,
+    };
+  }
+
+  for (const gapText of gapTexts) {
+    const local = resolved[gapText];
+    if (local?.qualityStatus === "addressed") continue;
+
+    const supplement = getProfileSupplementById(gapEvidenceId(gapText));
+    if (!supplement?.content.trim()) continue;
+    if (local && supplement.qualityStatus !== "addressed") continue;
+
+    resolved[gapText] = {
+      rawResponse: supplement.content,
+      polishedResponse: "",
+      qualityStatus: supplement.qualityStatus,
+      followUpQuestion: supplement.followUpQuestion,
+      fromBank: true,
+    };
+  }
+
+  return resolved;
+}
+
+/**
+ * How many roles must raise the same gap before it is worth answering centrally.
+ *
+ * Evaluators phrase gaps per requisition, so exact-text matching collapses very
+ * little and the raw unanswered pile runs to hundreds of one-off sentences.
+ * Answering a gap only one role raised belongs on that job page; the bank is for
+ * evidence that pays off more than once.
+ */
+export const RECURRING_GAP_MIN_ROLES = 2;
+
+export function isRecurringGap(entry: GapEvidenceEntry): boolean {
+  return entry.jobs.length >= RECURRING_GAP_MIN_ROLES;
+}
+
+/** Headline counts for the dashboard card and the evidence bank summary row. */
+export function getGapEvidenceCounts(): GapEvidenceCounts {
+  const backlog = getGapEvidenceBacklog();
+  const unanswered = backlog.filter((entry) => entry.status === "unanswered");
+  return {
+    needsDetail: backlog.filter((entry) => entry.status === "needs_followup").length,
+    recurringUnanswered: unanswered.filter(isRecurringGap).length,
+    addressed: backlog.filter((entry) => entry.status === "addressed").length,
+    totalUnanswered: unanswered.length,
+  };
 }
 
 export function getDashboardActionQueue(): ActionQueueData {

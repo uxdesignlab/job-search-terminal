@@ -902,6 +902,47 @@ export type ProfileSupplementInput = {
   assessment?: JsonValue;
 };
 
+/** A job's gap answer after the global evidence bank has been filled in behind it. */
+export type ResolvedGapResponse = {
+  rawResponse: string;
+  polishedResponse: string;
+  qualityStatus: GapAnswerQualityStatus;
+  followUpQuestion: string;
+  /** true when this came from the global bank rather than being written for this job. */
+  fromBank: boolean;
+};
+
+/**
+ * A gap's state in the global evidence bank. `unanswered` has no database
+ * representation — it means the gap was raised by an evaluation and nothing has
+ * been written for it yet.
+ */
+export type GapEvidenceStatus = GapAnswerQualityStatus | "unanswered";
+
+export type GapEvidenceEntry = {
+  gapText: string;
+  status: GapEvidenceStatus;
+  /** The reusable answer, empty when `status` is `unanswered`. */
+  content: string;
+  followUpQuestion: string;
+  /** Persisted question list — re-read, never regenerated, so it stays stable. */
+  followUpQuestions: string[];
+  supplementId: string | null;
+  /** Every role that raised this gap — the reason it is worth answering. */
+  jobs: Array<{ id: string; position: string; company: string }>;
+  updatedAt: string | null;
+};
+
+export type GapEvidenceCounts = {
+  /** Answers the user started that the assessor judged too thin to use. */
+  needsDetail: number;
+  /** Untouched gaps that more than one role raised — worth answering once. */
+  recurringUnanswered: number;
+  addressed: number;
+  /** Every untouched gap, including one-off ones best handled on the job page. */
+  totalUnanswered: number;
+};
+
 export type ActionQueueData = {
   toApply: JobRecord[];
   recentlyApplied: ApplicationRecord[];
