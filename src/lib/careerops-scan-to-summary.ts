@@ -23,5 +23,6 @@ export function careerOpsRunToJobSummary(result: ScanResult, companyName: string
     errors: result.errors,
     jobs: jobs.slice(0, max).map((j) => ({ title: j.title, url: j.url, company: j.company })),
     jobsTotal: jobs.length > max ? jobs.length : undefined,
+    repostCount: result.repostCount,
   };
 }

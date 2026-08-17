@@ -270,6 +270,11 @@ export function ScanRunSummaryBody({
           <Badge tone="neutral">{summary.filteredCount} filtered by profile rules</Badge>
         )}
         {summary.duplicateCount > 0 && <Badge tone="neutral">{summary.duplicateCount} duplicates skipped</Badge>}
+        {(summary.repostCount ?? 0) > 0 && (
+          <Badge tone="neutral">
+            {summary.repostCount} re-post{summary.repostCount !== 1 ? "s" : ""} of a closed role
+          </Badge>
+        )}
       </div>
 
       {errorRows.length > 0 && (

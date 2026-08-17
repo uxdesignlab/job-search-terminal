@@ -212,6 +212,11 @@ export type ScanRunRecord = {
   freshCount?: number;
   unknownDateCount?: number;
   staleFilteredCount?: number;
+  /**
+   * Subset of `newJobsCount` that matched a role already in the app at a different
+   * URL, admitted because the existing row was closed out. Re-posted requisitions.
+   */
+  repostCount?: number;
   /** "careerops" plus every browser/API board, taken from the shared registry. */
   scanType: "careerops" | BrowserBoardScanType;
 };

@@ -1096,12 +1096,21 @@ custom URLs configured in Settings.
    the database. Jobs whose location the board did not report are kept and labelled
    `No location`, since filtering on missing data would discard roles for want of it.
 6. Listings outside the selected fresh-posting window are filtered out.
-7. Duplicate URLs are skipped.
+7. Duplicates are skipped. A listing at a **URL already in the app** is always a duplicate.
+   A *new* URL for a role already in the app (same company + title + location) is a
+   duplicate only while that existing row is still live — the same role arriving through
+   another lane in the current cycle. Once the user has closed the earlier row out
+   (**Applied**, **Rejected**, **Skipped**, **Archived**), a new URL is treated as a
+   **re-post**: the company opened a fresh requisition, so the listing is imported and
+   counted in `repost_count`. This is what keeps a re-opened role from being hidden
+   forever behind a requisition the user already dealt with months ago.
 8. New jobs are written to the `jobs` table with `status = found`.
 9. A `scan_runs` record is created with metrics.
 10. The Dashboard updates with a combined scan summary across company career sites, Dice, and Adzuna when configured.
 
 **Scan progress and results dialog** (Dashboard “Scan for new jobs” and Settings → Sources per-company scan): while the Dashboard scan runs, the modal receives live server progress and shows the actual state of the company career-site, Dice, and Adzuna lanes. Parallel lanes can be marked **Scanning now** at the same time; each changes to **Complete**, **Skipped**, or **Stopped** as its state changes. The current activity is exposed through a polite, atomic live region for screen readers. Adzuna is shown as skipped when it is not configured.
+
+The results header shows count badges: run status, **N new in app**, **N found at source**, **N sources scanned**, **N skipped**, **N filtered by profile rules**, **N duplicates skipped**, and **N re-posts of a closed role** (shown only when non-zero — new listings that re-open a role the user had already applied to, rejected, skipped, or archived).
 
 The results view is scrollable when there are many errors or new listings. Each error shows a **category badge** — *Dead or missing* (404/410, bad URL, unknown host), *Timed out* (no response within the fetch limit; the board may still be live), or *Other error*. A summary line counts how many sources reported issues, how many can be disabled as YAML/custom career sources, and a breakdown by category. **Select all** / **Clear selection** / **Disable selected** bulk-update `scan_source_overrides`; per-row **Disable** does the same for one company. Aggregator-only rows (e.g. **Adzuna**) are not disabled as career sources — the UI points to AI Provider settings instead.
 
@@ -1255,6 +1264,16 @@ job titles from real postings as fixtures.
   `FETCH_TIMEOUT_MS = 12_000` for individual job-description fetches.)
 - `ATS_JOB_LIST_FETCH_RETRIES = 1` — on timeout/abort, one immediate retry after
   a short pause (transient CDN saturation).
+
+**Posted dates per ATS** (`parseGreenhouse` / `parseAshby` / `parseLever`):
+Greenhouse supplies `updated_at` and Ashby supplies `publishedAt`; Lever's public
+postings API exposes no date, so Lever jobs are always `unknown-date` and are never
+filtered as stale. `parseAshby` previously read a `publishedDate` field the posting
+API has never returned, which left **every** Ashby job undated — so Ashby listings
+bypassed the fresh-posting window entirely. With the correct field in place, Ashby
+jobs are now subject to the selected freshness window like every other source; a
+72-hour window will drop Ashby postings older than three days that used to slip
+through as undated.
 
 **Pruning dead sources:** `npx tsx scripts/prune-dead-sources.ts` validates
 every enabled source (YAML + custom) and writes `scan_source_overrides` rows

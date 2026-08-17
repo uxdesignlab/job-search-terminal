@@ -1234,5 +1234,15 @@ export const migrations = [
       -- makes this migration behaviour-preserving until the two are edited apart.
       update user_profile set remote_locations_json = preferred_locations_json;
     `
+  },
+  {
+    id: "0059_scan_run_repost_count",
+    sql: `
+      -- Counts listings admitted because they matched a role the user had already
+      -- closed out (applied/rejected/skipped/archived) at a different URL. They are
+      -- new jobs, not duplicates, and the summary names them separately so a
+      -- re-posted requisition never looks like a dedupe artefact.
+      alter table scan_runs add column repost_count integer not null default 0;
+    `
   }
 ];

@@ -123,7 +123,9 @@ function emptyDedupKeys() {
     companyRoleLocations: new Set<string>(),
     urlToIds: new Map<string, string[]>(),
     originalPostingKeyToIds: new Map<string, string[]>(),
-    companyRoleLocationToIds: new Map<string, string[]>()
+    companyRoleToIds: new Map<string, string[]>(),
+    companyRoleLocationToIds: new Map<string, string[]>(),
+    openIds: new Set<string>()
   };
 }
 

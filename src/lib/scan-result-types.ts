@@ -17,4 +17,6 @@ export type ScanJobResultSummary = {
   freshCount?: number;
   unknownDateCount?: number;
   staleFilteredCount?: number;
+  /** Subset of `newJobsCount` that re-posts a role the user had already closed out. */
+  repostCount?: number;
 };
