@@ -1,9 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
+import {
+  ANTHROPIC_FALLBACK_MODELS,
+  anthropicSentinelFamily,
+  resolveLatestAnthropicModel,
+  webSearchToolType,
+} from "./anthropic-models";
 
 export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic";
-  readonly defaultModel = "claude-sonnet-4-6";
+  readonly defaultModel = ANTHROPIC_FALLBACK_MODELS.sonnet;
 
   private readonly client: Anthropic;
   private readonly config: AIProviderConfig;
@@ -21,8 +27,18 @@ export class AnthropicProvider implements AIProvider {
     return this.model;
   }
 
+  /** The stored model may be a "latest-<tier>" sentinel; turn it into a concrete
+   *  id. Cached inside resolveLatestAnthropicModel, so this is a no-op on the
+   *  hot path. */
+  private async resolveModel(override?: string): Promise<string> {
+    const requested = override ?? this.model;
+    const family = anthropicSentinelFamily(requested);
+    if (!family) return requested;
+    return resolveLatestAnthropicModel(this.client, this.config.apiKey ?? "", family);
+  }
+
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
-    const model = config?.model ?? this.model;
+    const model = await this.resolveModel(config?.model);
     const systemMessages = messages.filter((m) => m.role === "system");
     const userMessages = messages.filter((m) => m.role !== "system");
 
@@ -73,7 +89,7 @@ export class AnthropicProvider implements AIProvider {
   }
 
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {
-    const model = config?.model ?? this.model;
+    const model = await this.resolveModel(config?.model);
     const systemMessages = messages.filter((m) => m.role === "system");
     const userMessages = messages.filter((m) => m.role !== "system");
 
@@ -106,9 +122,12 @@ export class AnthropicProvider implements AIProvider {
 
   async testConnection(): Promise<ConnectionTestResult> {
     const start = Date.now();
+    // Resolved before the try so a failure reports the model that actually ran,
+    // not the "latest-…" sentinel, which says nothing about what went wrong.
+    const resolved = await this.resolveModel();
     try {
       const response = await this.client.messages.create({
-        model: this.model,
+        model: resolved,
         max_tokens: 10,
         messages: [{ role: "user", content: "hi" }]
       });
@@ -121,7 +140,7 @@ export class AnthropicProvider implements AIProvider {
       return {
         ok: false,
         latencyMs: Date.now() - start,
-        model: this.model,
+        model: resolved,
         error: error instanceof Error ? error.message : String(error)
       };
     }
@@ -129,11 +148,14 @@ export class AnthropicProvider implements AIProvider {
 
   async webSearch(query: string): Promise<string | null> {
     try {
+      const model = await this.resolveModel();
       const response = await this.client.messages.create({
-        model: this.model,
+        model,
         max_tokens: 800,
+        // The tool type tracks the model: current releases take the dynamic-filtering
+        // variant, older ones only the basic tool. Sending the wrong one is rejected.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tools: [{ type: "web_search_20250305" as any, name: "web_search", max_uses: 3 }],
+        tools: [{ type: webSearchToolType(model) as any, name: "web_search", max_uses: 3 }],
         messages: [{ role: "user", content: query }]
       });
       const texts: string[] = [];

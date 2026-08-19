@@ -567,6 +567,17 @@ structured AI call producing:
   most one live search (Brave, or your provider's web search). When neither is available it
   says so and falls back to your saved target rather than inventing a range.
 
+  Claude's server-side search tool comes in two variants, and the wrong one is rejected,
+  so `AnthropicProvider.webSearch` picks it from the model that actually resolved:
+  `web_search_20260209` (dynamic filtering) for Opus and Sonnet 4.6 and later, and the
+  basic `web_search_20250305` for everything else — including Haiku 4.5, which outranks
+  Sonnet 4.5 numerically but is not in the supported set, so the rule is per family
+  rather than one global cutoff. An id the app cannot parse gets the basic tool, which
+  every model accepts. Selecting it per model matters now that a Latest option can
+  change which model runs without anyone editing the setting
+  (`webSearchToolType` in `src/lib/ai/anthropic-models.ts`). Gemini uses its own
+  `googleSearch` tool, which has no such split.
+
 **Reuse and staleness.** A preparation is reused while both its job-description hash and
 its evidence hash still match, so editing a draft does not pay for it again. The evidence
 hash spans your whole evidence bank — answering a gap on `/evidence` for one role marks
@@ -1184,7 +1195,20 @@ Four configuration tabs:
   - **Model picker** — click "Choose…" to fetch the list of locally installed models from the running server and select one.
   - **Quality guide** — ≥64 GB: `qwen2.5:72b` / `llama3.1:70b` (near cloud quality); ≥12 GB: `qwen2.5:14b` / `mistral-nemo`; ≥8 GB: `llama3.1:8b` / `qwen2.5:7b`.
   - **Unreachability warning** — when Ollama is in the priority chain and the server is not reachable, an inline warning banner appears with a Retry button.
-- Test connection for any provider to verify credentials and measure latency.
+- Test connection for any provider to verify credentials and measure latency. On
+  failure the panel shows **one line** — the HTTP status and the sentence that says
+  what to do, e.g. `[429 Too Many Requests] You exceeded your current quota, please
+  check your plan and billing details.` — with the provider's full response behind a
+  **Full error** toggle (scrollable, nothing discarded). Provider SDKs return the
+  entire failure body: Google's 429 arrives as ~2,200 characters of quota metrics and
+  JSON violation objects, which pasted verbatim buried the actionable sentence. The
+  summarizer (`summarizeProviderError` in `src/lib/ai/provider-error-summary.ts`)
+  starts at the bracketed HTTP status when there is one — dropping the SDK's "Error
+  fetching from <url>" preamble — stops before any appended JSON payload, and keeps
+  the first sentence, hard-truncating at 180 characters only when the message has no
+  sentence break. A short message is shown as-is with no toggle. A failed test also
+  reports the model that actually ran, so an auto option shows the resolved id rather
+  than the `latest-…` sentinel.
 - **Key masking** — every stored secret (provider API keys, Brave, Adzuna) is
   replaced with `••••` plus its last four characters before it reaches the
   browser, so the full value never enters the RSC payload. Saving an untouched
@@ -1435,9 +1459,65 @@ gap is explicitly forbidden. It returns `basedOn` (the fragments it drew on, sur
 the UI for verification) and `questions` (what the user still has to supply). Nothing it
 produces is persisted until the user reviews and saves it.
 
-### OpenAI model selection
+### Model selection — keeping up with new releases
 
-The OpenAI model dropdown in Settings → AI Provider offers:
+All three cloud providers work the same way in Settings → AI Provider: the dropdown
+merges a curated list with **whatever the saved key can actually reach right now**,
+fetched from that provider's own model-list endpoint, and offers **auto options**
+that follow new releases without anyone editing the setting. Under each dropdown a
+line reports what the current auto option resolves to (`Resolves to gemini-3.7-flash
+— rechecked hourly`), with a **Refresh** link that re-queries the provider.
+
+An auto option changes which *release* runs, never which *tier*. Tier is the axis
+that decides price and capability, and that stays the user's choice:
+
+| Provider | Auto options | How the tier is held |
+|---|---|---|
+| Claude | Latest Sonnet (default), Latest Opus, Latest Haiku | Tier is in the model id, so there is one option per tier |
+| Gemini | Latest Flash (default), Latest Pro, Latest Flash-Lite | Same — one option per tier |
+| OpenAI | Latest (default) | Tier is a suffix, so one option is enough: cheaper and off-product variants are skipped |
+
+Resolution is cached for one hour per key, and every failure path falls back to a
+known-good pinned model rather than erroring — model discovery must never be able to
+fail a generation. Selecting a concrete model id instead pins it, and the line under
+the dropdown says so.
+
+#### Claude and Gemini
+
+- **Claude** — `latest-sonnet`, `latest-opus`, `latest-haiku` resolve against
+  Anthropic's `GET /v1/models`. Within a tier the highest version wins numerically
+  (`claude-opus-4-10` beats `claude-opus-4-8`, `claude-opus-5` beats both), and the
+  undated alias beats a dated snapshot of the same release because the alias keeps
+  following Anthropic's own pointer. Ids from the 3.x era (`claude-3-5-sonnet-…`,
+  which put the version before the tier) are still ranked correctly. Fallbacks:
+  `claude-sonnet-5` / `claude-opus-5` / `claude-haiku-4-5`. Curated pins:
+  `claude-opus-5`, `claude-sonnet-5`, `claude-opus-4-8`, `claude-sonnet-4-6`,
+  `claude-haiku-4-5`. Logic in `src/lib/ai/anthropic-models.ts`, live list from
+  `GET /api/ai/anthropic-models`.
+- **Gemini** — `latest-flash`, `latest-pro`, `latest-flash-lite` resolve against
+  `GET https://generativelanguage.googleapis.com/v1beta/models` (the
+  `@google/generative-ai` SDK exposes no listing call, so REST is used directly),
+  keeping only ids that support `generateContent`. Stable releases win: thinking
+  variants, dated builds (`-001`), image/TTS/custom-tool builds and Google's own
+  `-latest` aliases never match. **One exception** — a tier whose newest stable
+  release is a whole generation behind the newest stable generation the key can see
+  falls through to that tier's newest preview. This is Google's real behaviour
+  mid-transition: `gemini-2.5-pro` stays in the list long after it stops serving new
+  keys ("no longer available to new users"), while the current Pro exists only as
+  `gemini-3.1-pro-preview`. Running a preview is worse than running a current stable
+  model and better than running one that 404s; a tier whose stable release is current
+  is never moved onto a preview, however new that preview is. Fallbacks:
+  `gemini-2.5-flash` / `gemini-2.5-pro` / `gemini-2.5-flash-lite`. Logic in
+  `src/lib/ai/gemini-models.ts`, live list from `GET /api/ai/gemini-models`.
+
+Migration `0065_latest_claude_gemini_models` moves installs still holding the app's
+own old defaults (`claude-sonnet-4-6`, `gemini-2.5-flash`, `gemini-2.0-flash`) onto
+the matching auto option, keeping the same tier. A model the user picked themselves
+is left untouched, and switching back to a pinned id is one dropdown change.
+
+#### OpenAI
+
+The OpenAI model dropdown offers:
 
 - **Latest (auto)** — the default. Stored as the sentinel `latest` and resolved at
   request time against OpenAI's `/v1/models` list. It takes the newest generation
@@ -1455,7 +1535,9 @@ The OpenAI model dropdown in Settings → AI Provider offers:
 - **Older pinned models** — `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
 - **Anything else the saved key can reach**, merged in live from
   `GET /api/ai/openai-models` (which lists `gpt-*` models using the saved key and
-  reports the current `latest` resolution).
+  reports the current `latest` resolution). All three model-list routes answer in
+  the same shape — `{ models: string[], latest: Record<sentinel, modelId> }` — so
+  the settings form treats the providers identically.
 
 Migration `0057_openai_latest_model` moves installs still on the old default
 `gpt-5.4-mini` onto `latest`; explicitly pinned models are left untouched.

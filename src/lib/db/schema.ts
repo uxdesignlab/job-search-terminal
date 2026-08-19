@@ -245,8 +245,8 @@ export const migrations = [
         anthropic_api_key text not null default '',
         gemini_api_key text not null default '',
         openai_api_key text not null default '',
-        anthropic_model text not null default 'claude-sonnet-4-6',
-        gemini_model text not null default 'gemini-2.5-flash',
+        anthropic_model text not null default 'latest-sonnet',
+        gemini_model text not null default 'latest-flash',
         openai_model text not null default 'latest',
         fallback_provider text not null default '',
         onboarding_dismissed integer not null default 0,
@@ -1446,6 +1446,19 @@ export const migrations = [
 
       create index if not exists idx_outreach_messages_link
         on outreach_messages(job_contact_link_id);
+    `
+  },
+  {
+    id: "0065_latest_claude_gemini_models",
+    sql: `
+      -- Same rule as 0057 for OpenAI: only rows still holding a model the app itself
+      -- chose are moved onto the auto-resolving alias, so a deliberate pin is never
+      -- overridden. Both sentinels keep the tier the old default had (Sonnet, Flash),
+      -- so this changes which release runs, never how much a run costs.
+      update ai_settings set anthropic_model = 'latest-sonnet'
+        where id = 'singleton' and anthropic_model = 'claude-sonnet-4-6';
+      update ai_settings set gemini_model = 'latest-flash'
+        where id = 'singleton' and gemini_model in ('gemini-2.5-flash', 'gemini-2.0-flash');
     `
   }
 ];

@@ -14,8 +14,8 @@ export async function saveAISettingsAction(formData: FormData) {
   const submittedAnthropicKey = (formData.get("anthropicApiKey") as string) ?? "";
   const submittedGeminiKey = (formData.get("geminiApiKey") as string) ?? "";
   const submittedOpenaiKey = (formData.get("openaiApiKey") as string) ?? "";
-  const anthropicModel = (formData.get("anthropicModel") as string) || "claude-sonnet-4-6";
-  const geminiModel = (formData.get("geminiModel") as string) || "gemini-2.5-flash";
+  const anthropicModel = (formData.get("anthropicModel") as string) || "latest-sonnet";
+  const geminiModel = (formData.get("geminiModel") as string) || "latest-flash";
   const openaiModel = (formData.get("openaiModel") as string) || "latest";
   const ollamaBaseUrl = (formData.get("ollamaBaseUrl") as string) || "http://localhost:11434";
   const ollamaModel = (formData.get("ollamaModel") as string) || "llama3.1:8b";

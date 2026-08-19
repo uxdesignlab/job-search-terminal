@@ -1,9 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
+import { GEMINI_FALLBACK_MODELS, geminiSentinelFamily, resolveLatestGeminiModel } from "./gemini-models";
 
 export class GeminiProvider implements AIProvider {
   readonly name = "gemini";
-  readonly defaultModel = "gemini-2.5-flash";
+  readonly defaultModel = GEMINI_FALLBACK_MODELS.flash;
 
   private readonly client: GoogleGenerativeAI;
   private readonly config: AIProviderConfig;
@@ -19,6 +20,15 @@ export class GeminiProvider implements AIProvider {
 
   get effectiveModel() {
     return this.model;
+  }
+
+  /** The stored model may be a "latest-<tier>" sentinel; turn it into a concrete
+   *  id. Cached inside resolveLatestGeminiModel, so this is a no-op on the hot path. */
+  private async resolveModel(override?: string): Promise<string> {
+    const requested = override ?? this.model;
+    const family = geminiSentinelFamily(requested);
+    if (!family) return requested;
+    return resolveLatestGeminiModel(this.config.apiKey, family);
   }
 
   private buildContents(messages: AIMessage[]) {
@@ -37,7 +47,7 @@ export class GeminiProvider implements AIProvider {
 
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     const model = this.client.getGenerativeModel({
-      model: config?.model ?? this.model,
+      model: await this.resolveModel(config?.model),
       systemInstruction: this.getSystemInstruction(messages)
     });
 
@@ -54,7 +64,7 @@ export class GeminiProvider implements AIProvider {
 
   async generateJSON<T>(messages: AIMessage[], _hint: string, config?: Partial<AIProviderConfig>): Promise<T> {
     const model = this.client.getGenerativeModel({
-      model: config?.model ?? this.model,
+      model: await this.resolveModel(config?.model),
       systemInstruction: this.getSystemInstruction(messages)
     });
 
@@ -96,7 +106,7 @@ export class GeminiProvider implements AIProvider {
 
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {
     const model = this.client.getGenerativeModel({
-      model: config?.model ?? this.model,
+      model: await this.resolveModel(config?.model),
       systemInstruction: this.getSystemInstruction(messages)
     });
 
@@ -118,15 +128,18 @@ export class GeminiProvider implements AIProvider {
 
   async testConnection(): Promise<ConnectionTestResult> {
     const start = Date.now();
+    // Resolved before the try so a failure reports the model that actually ran,
+    // not the "latest-…" sentinel, which says nothing about what went wrong.
+    const resolved = await this.resolveModel();
     try {
-      const model = this.client.getGenerativeModel({ model: this.model });
+      const model = this.client.getGenerativeModel({ model: resolved });
       await model.generateContent({ contents: [{ role: "user", parts: [{ text: "hi" }] }] });
-      return { ok: true, latencyMs: Date.now() - start, model: this.model };
+      return { ok: true, latencyMs: Date.now() - start, model: resolved };
     } catch (error) {
       return {
         ok: false,
         latencyMs: Date.now() - start,
-        model: this.model,
+        model: resolved,
         error: error instanceof Error ? error.message : String(error)
       };
     }
@@ -135,7 +148,7 @@ export class GeminiProvider implements AIProvider {
   async webSearch(query: string): Promise<string | null> {
     try {
       const model = this.client.getGenerativeModel({
-        model: this.model,
+        model: await this.resolveModel(),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         tools: [{ googleSearch: {} } as any]
       });

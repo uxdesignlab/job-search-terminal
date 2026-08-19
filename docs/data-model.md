@@ -72,6 +72,7 @@ and initializes an empty local profile if the database is empty.
 | `0062_external_integrations` | Adds `external_integrations` for third-party connections, seeded with a Clay row |
 | `0063_contacts` | Adds `contacts`, `job_contact_links`, `contact_suppressions`; extends `company_profiles` with domain, employee count, Clay id, LinkedIn URL and intelligence provenance |
 | `0064_outreach_messages` | Adds `outreach_messages` — per-contact, per-channel drafts, cascading from `job_contact_links` |
+| `0065_latest_claude_gemini_models` | Moves installs still holding the app's own old default Claude/Gemini models (`claude-sonnet-4-6`, `gemini-2.5-flash`, `gemini-2.0-flash`) onto the auto-resolving `latest-sonnet` / `latest-flash` sentinels, keeping the same tier. Explicitly pinned models are left alone, and the `ai_settings` column defaults change to the sentinels for fresh installs |
 
 ---
 
@@ -478,8 +479,8 @@ Singleton row holding AI provider configuration.
 | `anthropic_api_key` | Anthropic key |
 | `gemini_api_key` | Google key |
 | `openai_api_key` | OpenAI key |
-| `anthropic_model` | Default Anthropic model slug |
-| `gemini_model` | Default Gemini model slug |
+| `anthropic_model` | Claude model slug, or one of the sentinels `latest-sonnet` (default), `latest-opus`, `latest-haiku`, which resolve against Anthropic's `/v1/models` at request time (newest release within that tier, cached one hour) |
+| `gemini_model` | Gemini model slug, or one of the sentinels `latest-flash` (default), `latest-pro`, `latest-flash-lite`, which resolve against Google's model list at request time (newest stable release within that tier, cached one hour) |
 | `openai_model` | OpenAI model slug, or the sentinel `latest` (default) which resolves to the newest generation alias at request time |
 | `ollama_base_url` | Ollama server base URL (default `http://localhost:11434`) |
 | `ollama_model` | Selected Ollama model name (default `llama3.1:8b`) |
