@@ -269,7 +269,8 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
                 <>
                   {/* Keep the phase progress visible so the user sees how far it got. */}
                   <div className="mb-4">{renderChecklist(true)}</div>
-                  <p className="mb-4 text-sm text-danger">{errorMsg}</p>
+                  {/* A chain failure is one line per provider, so newlines matter. */}
+                  <p className="mb-4 whitespace-pre-line text-sm text-danger">{errorMsg}</p>
                   <div className="flex gap-2">
                     <Button onClick={start}>Retry</Button>
                     <Button onClick={() => close(false)} variant="quiet">Close</Button>

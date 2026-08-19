@@ -40,7 +40,13 @@ export class OllamaProvider implements AIProvider {
   constructor(config: AIProviderConfig) {
     this.config = config;
     const baseURL = (config.baseUrl ?? "http://localhost:11434") + "/v1";
-    this.client = new OpenAI({ baseURL, apiKey: "ollama", timeout: 120_000 });
+    // Longer than any feature's own deadline (evaluation and preparation both cut
+    // at 150s). A local model is slow, not broken: at 120s the client gave up
+    // first, which the chain read as "Ollama failed" and answered by spending a
+    // cloud call — the opposite of what someone running a local model first wants.
+    // Letting the caller's deadline decide keeps a slow local run degrading to the
+    // local evaluator instead of failing over.
+    this.client = new OpenAI({ baseURL, apiKey: "ollama", timeout: 300_000 });
   }
 
   private get model() {
@@ -76,7 +82,11 @@ export class OllamaProvider implements AIProvider {
       );
       const response = await this.client.chat.completions.create({
         model: config?.model ?? this.model,
-        max_tokens: config?.maxTokens ?? 4096,
+        // Larger than the text default, matching Gemini: the structured shapes this
+        // app asks for run past 4096 tokens, and a response truncated mid-object
+        // arrives as "invalid JSON" — which reads as the model being incapable
+        // rather than out of room. Local generation has no per-token cost.
+        max_tokens: config?.maxTokens ?? 8192,
         temperature: config?.temperature,
         response_format: { type: "json_object" },
         messages: this.toMessages(messagesWithJsonHint)

@@ -539,7 +539,10 @@ behind everything on screen: `Evaluated Aug 19, 12:53 PM · local-fallback / loc
 · 150.2s` — when it ran, the provider and model that ran it, and how long it took. It is
 read from the stored evaluation (`created_at`, `provider_used`, `model_used`,
 `generation_ms`), so it describes the evaluation you are looking at rather than the last
-run in the session. Nothing is shown for a job that has not been evaluated. It sits beside
+run in the session. When an auto option resolved a sentinel, the concrete id it resolved
+to is what gets recorded and shown — `latest-sonnet` names a policy, not a model, and
+saying it here would answer the wrong question. Nothing is shown for a job that has not
+been evaluated. It sits beside
 the tabs rather than inside the Evaluation tab because run cost is worth seeing from any
 tab — a three-minute local-fallback run is only noticeable if it is always in view. The
 full ISO timestamp is available as the line's tooltip.
@@ -1228,6 +1231,34 @@ Four configuration tabs:
   - **Model picker** — click "Choose…" to fetch the list of locally installed models from the running server and select one.
   - **Quality guide** — ≥64 GB: `qwen2.5:72b` / `llama3.1:70b` (near cloud quality); ≥12 GB: `qwen2.5:14b` / `mistral-nemo`; ≥8 GB: `llama3.1:8b` / `qwen2.5:7b`.
   - **Unreachability warning** — when Ollama is in the priority chain and the server is not reachable, an inline warning banner appears with a Retry button.
+- **Every provider that was tried is named when the chain fails.** The fallback chain
+  used to throw only the last provider's error, so a chain starting at a local Ollama
+  and ending at Gemini reported *"AI quota exceeded — you've hit the free-tier limit"*
+  — a quota error about a provider the user never meant to reach, with the local
+  model's actual problem thrown away. A whole-chain failure now lists each attempt in
+  order, with the model that ran and a one-line reason:
+
+  ```
+  All 3 AI providers failed:
+  ollama (gemma4:12b-mlx) — Ollama returned invalid JSON. Try a larger model (14B+)…
+  openai (gpt-5.6-sol) — OpenAI rate limit reached. Wait a moment then retry…
+  gemini (gemini-3.1-pro-preview) — [429 Too Many Requests] You exceeded your current quota.
+  ```
+
+  Classification follows the same rule: a chain is retried only when *every* attempt
+  failed for a retryable reason, and degrades to the local evaluator only when *every*
+  attempt produced unusable JSON. One bad-JSON answer beside a quota wall is a quota
+  problem, and the user has to see it rather than have it hidden behind a rule-based
+  score. A failure that would repeat on every provider (a malformed request) is still
+  thrown as itself without walking the chain.
+- **Ollama's JSON budget matches the shapes it is asked for** — 8192 tokens rather than
+  4096, as Gemini already used. Fast Evaluation's schema runs past 4096, and a response
+  truncated mid-object arrives as "invalid JSON", which reads as the local model being
+  incapable when it had simply run out of room. Its client timeout is 300s, longer than
+  any feature's own deadline (150s for evaluation and preparation), so a slow local run
+  is cut by the caller's deadline — degrading to the local evaluator — rather than by
+  the HTTP client, which the chain would read as a provider failure and answer by
+  spending a cloud call.
 - Test connection for any provider to verify credentials and measure latency. On
   failure the panel shows **one line** — the HTTP status and the sentence that says
   what to do, e.g. `[429 Too Many Requests] You exceeded your current quota, please

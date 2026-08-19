@@ -3,8 +3,15 @@ import type { PhaseUpdate } from "@/lib/evaluation/llm-evaluator";
 import { EVALUATION_PHASES } from "@/lib/evaluation/evaluation-phases";
 import type { EvaluationFailurePhase } from "@/lib/evaluation/evaluation-phases";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
+import { findChainFailure } from "@/lib/ai/fallback-provider";
 
 function toUserMessage(error: unknown): string {
+  // A chain failure is reported as itself. Collapsing it into "quota exceeded"
+  // named the last provider's problem as if it were the only one, which reads as
+  // nonsense to someone whose first provider is a local model with no quota.
+  const chainFailure = findChainFailure(error);
+  if (chainFailure) return chainFailure.message;
+
   const msg = error instanceof Error ? error.message : String(error);
   if (msg.includes("429") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("rate limit")) {
     return "AI quota exceeded — you've hit the free-tier limit. Check your plan or try again in a few minutes.";

@@ -1,3 +1,5 @@
+import { findChainFailure } from "./fallback-provider";
+
 // Rate limit errors (429, "rate limit", "too many requests") are excluded — they need
 // 20-60s to clear and short retries just waste time. If the provider attaches a
 // retryAfterMs property (from the Retry-After header), withRetry will honor it instead.
@@ -20,19 +22,40 @@ const MALFORMED_JSON_PATTERNS = [
 
 const MAX_AUTO_RETRY_AFTER_MS = 30_000;
 
+function matchesAny(text: string, patterns: readonly string[]): boolean {
+  const msg = text.toLowerCase();
+  return patterns.some((pattern) => msg.includes(pattern));
+}
+
+/**
+ * A whole-chain failure carries one message per provider, so a substring test on
+ * the combined text answers "did ANY provider say this?" when the question is
+ * "would EVERY provider say this?". One provider's malformed JSON must not make a
+ * chain that also hit a quota wall look retryable, or degradable.
+ */
+function everyAttempt(error: unknown, patterns: readonly string[]): boolean | null {
+  const chain = findChainFailure(error);
+  if (!chain) return null;
+  return chain.attempts.length > 0 && chain.attempts.every((attempt) => matchesAny(attempt.error, patterns));
+}
+
 /**
  * True when the error is a malformed/truncated JSON response from an LLM (as opposed
  * to an auth/quota/network failure). Callers can use this to degrade a non-critical
  * block gracefully after retries, while still surfacing actionable provider errors.
  */
 export function isMalformedJsonResponse(error: unknown): boolean {
-  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return MALFORMED_JSON_PATTERNS.some((pattern) => msg.includes(pattern));
+  return (
+    everyAttempt(error, MALFORMED_JSON_PATTERNS) ??
+    matchesAny(error instanceof Error ? error.message : String(error), MALFORMED_JSON_PATTERNS)
+  );
 }
 
 function isRetryable(error: unknown): boolean {
-  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return RETRYABLE.some((pattern) => msg.includes(pattern)) || isMalformedJsonResponse(error);
+  const chained = everyAttempt(error, [...RETRYABLE, ...MALFORMED_JSON_PATTERNS]);
+  if (chained !== null) return chained;
+  const msg = error instanceof Error ? error.message : String(error);
+  return matchesAny(msg, RETRYABLE) || isMalformedJsonResponse(error);
 }
 
 function getRetryAfterMs(error: unknown): number | null {

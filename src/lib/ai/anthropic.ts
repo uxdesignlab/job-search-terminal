@@ -23,8 +23,12 @@ export class AnthropicProvider implements AIProvider {
     return this.config.model ?? this.defaultModel;
   }
 
+  /** Once a sentinel has been resolved, the concrete id is what ran — and what
+   *  provenance, error reports and the saved evaluation must name. */
+  private resolved = "";
+
   get effectiveModel() {
-    return this.model;
+    return this.resolved || this.model;
   }
 
   /** The stored model may be a "latest-<tier>" sentinel; turn it into a concrete
@@ -34,7 +38,8 @@ export class AnthropicProvider implements AIProvider {
     const requested = override ?? this.model;
     const family = anthropicSentinelFamily(requested);
     if (!family) return requested;
-    return resolveLatestAnthropicModel(this.client, this.config.apiKey ?? "", family);
+    this.resolved = await resolveLatestAnthropicModel(this.client, this.config.apiKey ?? "", family);
+    return this.resolved;
   }
 
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
