@@ -34,8 +34,7 @@ const FAILURE_PHASE_MESSAGE: Record<EvaluationFailurePhase, string> = {
   input: "The job could not be loaded.",
   provider: "The AI provider could not be reached.",
   parse: "The AI response could not be read.",
-  validate: "The AI response could not be validated. A local fallback was attempted.",
-  fallback: "The AI response could not be validated and the local fallback also failed.",
+  validate: "The AI response was incomplete.",
   save: "The evaluation ran but could not be saved.",
 };
 

@@ -367,6 +367,35 @@ An older evaluation whose notes are all there is falls back to those, labelled a
 notes. With no description saved and nothing recorded, the panel says so and points at
 Fetch description. No AI call is involved at any step.
 
+**A failed run is reported, never scored by rules.** When the AI does not produce a
+usable evaluation, the run fails with the reason and the job keeps whatever state it
+had. It used to fall back to the keyword scorer and save that as the evaluation:
+a Senior Director, User Experience posting came back 64% "Technical Specialist",
+saved, badged and counted exactly like a real assessment. A wrong answer presented as
+an answer costs more than no answer, and every one of these failures is something the
+user can act on:
+
+| What happened | What the message says |
+|---|---|
+| The model ran out of time | `ollama / qwen3.8:27b-mlx did not finish within 300s.` plus what to change |
+| Unreadable output after 3 tries | `…returned a response that could not be read as JSON, after 3 attempts.` A larger model (14B+ locally) is more reliable at structured output |
+| An answer missing its core fields | `…answered, but the answer was missing what an evaluation is made of (fitComponents, roleArchetype).` |
+| Auth, quota, network | the provider's own message, per provider (see the chain report in Settings) |
+
+Evaluations saved by the old behaviour still exist and still render; they say
+`scored by local rules, no AI model` in the run line and carry a banner saying the
+score and role archetype are a rough sort rather than an assessment. Re-evaluating
+replaces one.
+
+**Deadlines are per provider, and a chain spends them in turn.** A cloud call is
+capped at 150s — the cap exists so a stalled paid call cannot run up a bill. A local
+model gets 300s, because a local run costs nothing but time and cutting it at the
+cloud limit throws away work that was nearly finished rather than saving anything.
+Each provider in the chain is bounded on its own, so a local model that runs out of
+time hands over to the cloud provider configured behind it — which is the entire
+point of putting one there. The run's outer bound covers the sum, since a bound sized
+to the first provider would end the run before the fallback could take its turn.
+
 **`Blocked` is not `Skip`.** `Blocked` means a saved non-negotiable rules the role out
 however well you score — a 92% fit that requires relocation you have ruled out. `Skip`
 means nothing blocks it but the fit is too low to justify the effort. A hard blocker
@@ -384,13 +413,13 @@ preferred qualification, or an inferred culture mismatch are never blockers.
 - **Core fields decide whether an evaluation exists at all:** role, direction alignment,
   and the four components. Everything else degrades to empty and records a completeness
   warning, so one malformed field no longer costs the whole evaluation.
-- Malformed JSON is retried automatically, then falls back to the local rule-based
-  evaluator, which is labelled in the UI as scored locally. Auth, quota, and network
-  errors surface immediately with an actionable message instead of being retried.
-- **The generation has a 150-second ceiling.** Not every provider bounds itself — a local
-  Ollama model on a long posting can run for many minutes — and one unbounded call would
-  otherwise leave the retry-then-fall-back chain unreachable and the spinner running
-  forever. On timeout the job is scored locally instead, and labelled as such.
+- Malformed JSON is retried automatically (3 attempts). If it still cannot be read, the
+  run fails and says so — it is not scored by rules instead. Auth, quota, and network
+  errors surface immediately with an actionable message rather than being retried.
+- **Every generation is bounded**, because not every provider bounds itself: 150s for a
+  cloud call, 300s for a local one, per provider and in turn (see *Deadlines are per
+  provider* below). An unbounded call would leave the fallback chain unreachable and the
+  spinner running forever.
 - Errors name the phase that failed rather than a block letter.
 
 **What evaluation no longer does.** Evaluation performs no ATS keyword extraction, no
@@ -535,8 +564,11 @@ working. Outreach currently opens the existing generic-draft page and becomes a 
 workspace in a later phase.
 
 **Evaluation run line.** To the right of the tabs, a single muted line records the run
-behind everything on screen: `Evaluated Aug 19, 12:53 PM · local-fallback / local-fallback
-· 150.2s` — when it ran, the provider and model that ran it, and how long it took. It is
+behind everything on screen: `Evaluated Aug 19, 2:18 PM · gemini / gemini-3.5-flash · 41.2s`
+— when it ran, the provider and model that ran it, and how long it took. A row saved by the
+old rule-based fallback reads `Evaluated Aug 19, 2:18 PM · scored by local rules, no AI
+model · 152.9s`, because `local-fallback / local-fallback` is a stored value, not a
+sentence, and the one thing such a row has to say is that no model produced it. It is
 read from the stored evaluation (`created_at`, `provider_used`, `model_used`,
 `generation_ms`), so it describes the evaluation you are looking at rather than the last
 run in the session. When an auto option resolved a sentinel, the concrete id it resolved
@@ -544,8 +576,8 @@ to is what gets recorded and shown — `latest-sonnet` names a policy, not a mod
 saying it here would answer the wrong question. Nothing is shown for a job that has not
 been evaluated. It sits beside
 the tabs rather than inside the Evaluation tab because run cost is worth seeing from any
-tab — a three-minute local-fallback run is only noticeable if it is always in view. The
-full ISO timestamp is available as the line's tooltip.
+tab — a three-minute run is only noticeable if it is always in view. The full ISO
+timestamp is available as the line's tooltip.
 
 **Next best action.** Each job shows one primary action derived from its records — no new
 status column, so it cannot disagree with what actually exists:
@@ -613,6 +645,26 @@ structured AI call producing:
   change which model runs without anyone editing the setting
   (`webSearchToolType` in `src/lib/ai/anthropic-models.ts`). Gemini uses its own
   `googleSearch` tool, which has no such split.
+
+**Output budget.** Every provider defaults to 4096 output tokens, which is smaller than
+these shapes need — a preparation answer alone carries 12–18 keyword signals with
+rationale, a requirements list and an evidence map. Over the limit the answer stops
+mid-object and arrives as `Unexpected end of JSON input`, which is indistinguishable
+from the outside from a model that cannot follow a schema. Both Fast Evaluation and
+Application Preparation now ask for `STRUCTURED_OUTPUT_MAX_TOKENS` (8192) explicitly at
+the call site, so the budget holds whichever provider serves the request. Before this,
+preparation failed on every attempt, which meant **no job ever had ATS keywords**: the
+resume builder's keyword panel was empty and its header read `0% job keyword alignment`
+on every draft.
+
+**Preparation failure is visible in the draft.** Resume generation degrades rather than
+aborting when preparation fails — a resume without keyword targeting beats no resume —
+and the reason is recorded on the document. It used to be shown only when *tailoring*
+also degraded to source-only, so a draft that tailored fine but had no keywords said
+nothing at all. The draft editor now names the state in both places: the header reads
+`job keywords not generated` rather than `0% job keyword alignment` (0% reports a
+measurement that never ran, and reads as "this resume matches nothing"), and a banner
+carries the recorded reason with what to do about it.
 
 **Reuse and staleness.** A preparation is reused while both its job-description hash and
 its evidence hash still match, so editing a draft does not pay for it again. The evidence
@@ -1245,20 +1297,21 @@ Four configuration tabs:
   gemini (gemini-3.1-pro-preview) — [429 Too Many Requests] You exceeded your current quota.
   ```
 
-  Classification follows the same rule: a chain is retried only when *every* attempt
-  failed for a retryable reason, and degrades to the local evaluator only when *every*
-  attempt produced unusable JSON. One bad-JSON answer beside a quota wall is a quota
-  problem, and the user has to see it rather than have it hidden behind a rule-based
-  score. A failure that would repeat on every provider (a malformed request) is still
-  thrown as itself without walking the chain.
-- **Ollama's JSON budget matches the shapes it is asked for** — 8192 tokens rather than
-  4096, as Gemini already used. Fast Evaluation's schema runs past 4096, and a response
-  truncated mid-object arrives as "invalid JSON", which reads as the local model being
-  incapable when it had simply run out of room. Its client timeout is 300s, longer than
-  any feature's own deadline (150s for evaluation and preparation), so a slow local run
-  is cut by the caller's deadline — degrading to the local evaluator — rather than by
-  the HTTP client, which the chain would read as a provider failure and answer by
-  spending a cloud call.
+  Each provider is bounded by its own deadline (150s cloud, 300s local), so a slow
+  local model hands over to the cloud provider behind it instead of spending the whole
+  run's budget; a provider that runs out of time is reported as `did not finish within
+  300s — a smaller or faster local model would fit the budget` rather than as the
+  mechanism that stopped it. Retry classification follows the same whole-chain rule: a
+  chain is retried only when *every* attempt failed for a retryable reason. A failure
+  that would repeat on every provider (a malformed request) is still thrown as itself
+  without walking the chain.
+- **Output budgets are set where the shape is known**, not left to each provider's
+  default of 4096 — see *Output budget* under Application Preparation. Ollama's own
+  `generateJSON` default also moved to 8192 to match Gemini's, so a direct call cannot
+  truncate either. Its client timeout is 300s, matching the local generation deadline,
+  so a slow local run is cut by the caller's deadline — which hands over to the next
+  provider — rather than by the HTTP client at 120s, which the chain used to read as a
+  provider failure while the run still had budget left.
 - Test connection for any provider to verify credentials and measure latency. On
   failure the panel shows **one line** — the HTTP status and the sentence that says
   what to do, e.g. `[429 Too Many Requests] You exceeded your current quota, please

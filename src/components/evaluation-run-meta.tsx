@@ -1,3 +1,5 @@
+import { LOCAL_FALLBACK_LABEL } from "@/lib/evaluation/evaluation-phases";
+
 type EvaluationRunMetaProps = {
   provider: string;
   model: string;
@@ -14,7 +16,11 @@ type EvaluationRunMetaProps = {
  */
 export function EvaluationRunMeta({ provider, model, generationMs, createdAt }: EvaluationRunMetaProps) {
   const when = formatRunTime(createdAt);
-  const engine = [provider, model].filter(Boolean).join(" / ");
+  // "local-fallback / local-fallback" is the stored value, not a sentence. Rows
+  // written before an AI failure stopped being scored by rules still exist, and
+  // the one thing they must say is that no model produced them.
+  const engine =
+    provider === LOCAL_FALLBACK_LABEL ? "scored by local rules, no AI model" : [provider, model].filter(Boolean).join(" / ");
   const duration = generationMs > 0 ? `${(generationMs / 1000).toFixed(1)}s` : "";
   const parts = [when, engine, duration].filter(Boolean);
   if (parts.length === 0) return null;

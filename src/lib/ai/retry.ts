@@ -1,4 +1,4 @@
-import { findChainFailure } from "./fallback-provider";
+import { findChainFailure } from "./chain-failure";
 
 // Rate limit errors (429, "rate limit", "too many requests") are excluded — they need
 // 20-60s to clear and short retries just waste time. If the provider attaches a

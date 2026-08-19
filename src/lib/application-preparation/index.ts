@@ -1,4 +1,5 @@
 import { getActiveProvider } from "../ai/factory";
+import { STRUCTURED_OUTPUT_MAX_TOKENS } from "../ai/deadlines";
 import { withRetry, withDeadline, GenerationTimeoutError } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import {
@@ -214,7 +215,8 @@ export async function prepareApplication(jobId: string, options: { force?: boole
     const raw = await withDeadline(
       () => withRetry(() => provider.generateJSON<Record<string, unknown>>(
         [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }] as AIMessage[],
-        PREPARATION_SHAPE
+        PREPARATION_SHAPE,
+        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS }
       )),
       PREPARATION_GENERATION_TIMEOUT_MS
     );

@@ -1,5 +1,11 @@
 import { getActiveProvider } from "../ai/factory";
 import { withRetry, withDeadline, isMalformedJsonResponse, GenerationTimeoutError } from "../ai/retry";
+import {
+  CLOUD_GENERATION_TIMEOUT_MS,
+  STRUCTURED_OUTPUT_MAX_TOKENS,
+  generationDeadlineMs,
+  totalGenerationDeadlineMs,
+} from "../ai/deadlines";
 import type { AIMessage, AIProvider } from "../ai/provider";
 import { getJobById, getRoleDirections, getResumes, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
 import type {
@@ -10,7 +16,6 @@ import type {
   ResumeRecord,
   UserProfileRecord,
 } from "../db/types";
-import { buildEvaluation } from "./job-evaluator";
 import {
   EVALUATION_PHASES,
   EVALUATION_PHASE_LABELS,
@@ -61,7 +66,14 @@ export type PhaseCallback = (update: PhaseUpdate) => void;
  * client's own 120s so a legitimately slow cloud call is not preempted, but
  * finite, so an unbounded local model degrades to rules instead of hanging.
  */
-export const EVALUATION_GENERATION_TIMEOUT_MS = 150_000;
+/** Kept as the module's own name for the cloud budget; the policy lives in `ai/deadlines`. */
+export const EVALUATION_GENERATION_TIMEOUT_MS = CLOUD_GENERATION_TIMEOUT_MS;
+
+/** The whole run's budget: each provider in the chain gets its own, in turn. */
+function runDeadlineMs(provider: AIProvider): number {
+  const names = (provider as { providerNames?: string[] }).providerNames ?? [provider.name];
+  return totalGenerationDeadlineMs(names);
+}
 
 // ─── Prompt ────────────────────────────────────────────────────────────────
 
@@ -134,7 +146,9 @@ async function runFastEvaluation(
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ];
-  return provider.generateJSON<unknown>(messages, FAST_EVALUATION_SHAPE);
+  return provider.generateJSON<unknown>(messages, FAST_EVALUATION_SHAPE, {
+    maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS,
+  });
 }
 
 // ─── Resume excerpts ───────────────────────────────────────────────────────
@@ -208,26 +222,43 @@ export async function evaluateJobWithAI(jobId: string, onPhase?: PhaseCallback):
     modelUsed: provider.effectiveModel,
   });
 
+  const deadlineMs = runDeadlineMs(provider);
+  const ranOn = `${provider.name} / ${provider.effectiveModel}`;
+
   let normalized: ReturnType<typeof normalizeModelOutput> | null = null;
   try {
     const raw = await withDeadline(
       () => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt)),
-      EVALUATION_GENERATION_TIMEOUT_MS
+      deadlineMs
     );
     normalized = normalizeModelOutput(raw);
   } catch (error) {
-    // A timeout degrades like an unusable response: the local evaluator is
-    // instant, so the user gets a scored job labelled as locally scored instead
-    // of an endless spinner.
+    // Every failure here surfaces as itself. Scoring the job by keyword rules
+    // instead produced a plausible-looking evaluation that was simply wrong — a
+    // Senior Director role scored 64% "Technical Specialist" — and it was saved,
+    // badged and counted like a real one. A wrong answer presented as an answer
+    // costs more than no answer, and the user can act on this one: retry, or
+    // pick a different model.
     if (error instanceof GenerationTimeoutError) {
-      console.warn(`[evaluate] ${error.message} Falling back to the local evaluator.`);
-    } else if (!isMalformedJsonResponse(error)) {
-      // Auth, quota and network problems are the user's to act on and must
-      // surface as themselves rather than hiding behind a rule-based score.
-      throw new EvaluationPhaseError("provider", error instanceof Error ? error.message : String(error), error);
-    } else {
-      console.warn("[evaluate] provider returned unparseable JSON after retries:", error);
+      throw new EvaluationPhaseError(
+        "provider",
+        `${ranOn} did not finish within ${Math.round(generationDeadlineMs(provider.name) / 1000)}s. ` +
+          (provider.name === "ollama"
+            ? "A smaller or faster local model, or a shorter job description, will fit the budget — or move a cloud provider first in Settings → AI Provider."
+            : "Retry, or pick a different model in Settings → AI Provider."),
+        error
+      );
     }
+    if (isMalformedJsonResponse(error)) {
+      throw new EvaluationPhaseError(
+        "parse",
+        `${ranOn} returned a response that could not be read as JSON, after 3 attempts. ` +
+          "A larger model (14B+ locally) is more reliable at structured output.",
+        error
+      );
+    }
+    // Auth, quota and network problems are the user's to act on.
+    throw new EvaluationPhaseError("provider", error instanceof Error ? error.message : String(error), error);
   }
 
   onPhase?.({ phase: "validating", message: EVALUATION_PHASE_LABELS.validating });
@@ -241,20 +272,11 @@ export async function evaluateJobWithAI(jobId: string, onPhase?: PhaseCallback):
    */
   if (!normalized || !normalized.coreValid) {
     const missing = normalized && !normalized.coreValid ? normalized.missing.join(", ") : "unparseable response";
-    console.warn(`[evaluate] falling back to the local evaluator (${missing})`);
-    try {
-      const fallback = buildEvaluation(job, profile, skills, roleDirections, resumes);
-      // The rule-based pass itself is instant, but the user waited for whatever
-      // the provider did first — often the full generation deadline. Report the
-      // real wall-clock, or the observability data claims the run was free.
-      return { ...fallback, generationMs: Date.now() - start };
-    } catch (error) {
-      throw new EvaluationPhaseError(
-        "fallback",
-        "The AI response could not be validated and the local fallback also failed.",
-        error
-      );
-    }
+    throw new EvaluationPhaseError(
+      "validate",
+      `${ranOn} answered, but the answer was missing what an evaluation is made of (${missing}). ` +
+        "Retry, or pick a different model in Settings → AI Provider."
+    );
   }
 
   return buildFastEvaluationResult({

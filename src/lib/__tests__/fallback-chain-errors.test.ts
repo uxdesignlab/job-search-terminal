@@ -116,3 +116,43 @@ async function isRetryableForTest(error: unknown): Promise<boolean> {
   ).catch(() => undefined);
   return calls > 1;
 }
+
+describe("per-provider deadlines inside the chain", () => {
+  it("moves to the next provider when one runs out of its own time", async () => {
+    // The case that sent this whole run to a rule-based score: a local model too
+    // slow for the job, with a cloud provider configured behind it that never got
+    // its turn because the deadline covered the whole chain.
+    const slow: AIProvider = {
+      name: "ollama",
+      defaultModel: "qwen3.8:27b-mlx",
+      effectiveModel: "qwen3.8:27b-mlx",
+      generateJSON: () => new Promise(() => {}),
+    } as unknown as AIProvider;
+
+    const chain = new FallbackProvider([slow, stubProvider("openai", "gpt-5.6-sol")], () => 20);
+    const result = await chain.generateJSON([], "{}");
+
+    expect(result).toEqual({ from: "openai" });
+    expect(chain.name).toBe("openai");
+  });
+
+  it("reports the provider that ran out of time as its own attempt", async () => {
+    const slow: AIProvider = {
+      name: "ollama",
+      defaultModel: "qwen3.8:27b-mlx",
+      effectiveModel: "qwen3.8:27b-mlx",
+      generateJSON: () => new Promise(() => {}),
+    } as unknown as AIProvider;
+
+    const chain = new FallbackProvider(
+      [slow, stubProvider("gemini", "gemini-3.7-flash", new Error("[429] quota exceeded"))],
+      () => 20
+    );
+
+    const error = (await chain.generateJSON([], "{}").catch((e: unknown) => e)) as Error;
+    // The mechanism ("Generation exceeded 0s and was abandoned") is not what the
+    // reader needs; for a local model the answer is a smaller one.
+    expect(error.message).toContain("ollama (qwen3.8:27b-mlx) — did not finish within 0s — a smaller or faster local model");
+    expect(error.message).toContain("gemini (gemini-3.7-flash) — [429] quota exceeded");
+  });
+});

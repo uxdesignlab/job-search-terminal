@@ -1,5 +1,10 @@
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
 import { summarizeProviderError } from "./provider-error-summary";
+import { AllProvidersFailedError, type ProviderAttempt } from "./chain-failure";
+import { generationDeadlineMs } from "./deadlines";
+import { GenerationTimeoutError, withDeadline } from "./retry";
+
+export { AllProvidersFailedError, findChainFailure, type ProviderAttempt } from "./chain-failure";
 
 /**
  * Errors that are specific to one provider's availability or configuration, so
@@ -25,41 +30,12 @@ function shouldFailover(error: unknown): boolean {
     // Ollama-specific: invalid JSON output, timeout, or connection failure — try next provider
     msg.includes("invalid json") ||
     msg.includes("timed out") ||
+    // A provider that ran out of its own time budget is the clearest case for
+    // trying the next one: the local model the user put first is slow, and the
+    // cloud fallback they configured behind it exists for exactly this.
+    msg.includes("was abandoned") ||
     msg.includes("connect to ollama")
   );
-}
-
-export type ProviderAttempt = { provider: string; model: string; error: string };
-
-/**
- * Every provider in the chain failed.
- *
- * Reporting only the last failure made the chain lie about itself: a user whose
- * first provider is a local Ollama saw "AI quota exceeded — you've hit the
- * free-tier limit", because that was Gemini's answer at the end of a chain that
- * started three providers earlier. Each attempt is kept, in order, so the message
- * says which provider failed and why.
- */
-export class AllProvidersFailedError extends Error {
-  constructor(readonly attempts: ProviderAttempt[], readonly lastError: unknown) {
-    super(
-      [
-        `All ${attempts.length} AI providers failed:`,
-        ...attempts.map((a) => `${a.provider} (${a.model}) — ${a.error}`),
-      ].join("\n")
-    );
-    this.name = "AllProvidersFailedError";
-  }
-}
-
-/** True when this error, or anything it wraps, is a whole-chain failure. */
-export function findChainFailure(error: unknown): AllProvidersFailedError | null {
-  let current = error;
-  for (let depth = 0; current && depth < 5; depth += 1) {
-    if (current instanceof AllProvidersFailedError) return current;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return null;
 }
 
 export class FallbackProvider implements AIProvider {
@@ -67,9 +43,17 @@ export class FallbackProvider implements AIProvider {
    *  reported name/model so persisted provenance reflects what actually ran. */
   private active: AIProvider;
 
-  constructor(private readonly providers: AIProvider[]) {
+  /** `deadlineFor` is injectable so a test can bound an attempt without waiting
+   *  out a real generation budget; production always uses the per-provider policy. */
+  constructor(
+    private readonly providers: AIProvider[],
+    private readonly deadlineFor: (providerName: string) => number = generationDeadlineMs
+  ) {
     this.active = providers[0];
   }
+
+  /** Every provider in the chain, in order — the caller sizes the run from these. */
+  get providerNames(): string[] { return this.providers.map((p) => p.name); }
 
   get name(): string { return this.active.name; }
   get defaultModel(): string { return this.active.defaultModel; }
@@ -78,13 +62,31 @@ export class FallbackProvider implements AIProvider {
   /** One line per provider tried, in the order they were tried. */
   private attempts: ProviderAttempt[] = [];
 
+  /** Each provider is bounded on its own, so one slow model cannot spend the
+   *  budget the providers behind it were configured to cover. */
+  private attempt<T>(provider: AIProvider, run: () => Promise<T>): Promise<T> {
+    return withDeadline(run, this.deadlineFor(provider.name));
+  }
+
   private record(provider: AIProvider, error: unknown) {
     this.attempts.push({
       provider: provider.name,
       model: provider.effectiveModel,
       // Providers return whole HTTP bodies; the chain message has to stay readable.
-      error: summarizeProviderError(error instanceof Error ? error.message : String(error)).summary,
+      error: this.describe(provider, error),
     });
+  }
+
+  /** "Generation exceeded 300s and was abandoned" describes the mechanism. The
+   *  reader needs what to do about it, and for a local model that is a smaller one. */
+  private describe(provider: AIProvider, error: unknown): string {
+    if (error instanceof GenerationTimeoutError) {
+      const seconds = Math.round(error.timeoutMs / 1000);
+      return provider.name === "ollama"
+        ? `did not finish within ${seconds}s — a smaller or faster local model would fit the budget`
+        : `did not finish within ${seconds}s`;
+    }
+    return summarizeProviderError(error instanceof Error ? error.message : String(error)).summary;
   }
 
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
@@ -92,7 +94,7 @@ export class FallbackProvider implements AIProvider {
     let lastError: unknown;
     for (const provider of this.providers) {
       try {
-        const result = await provider.generateText(messages, config);
+        const result = await this.attempt(provider, () => provider.generateText(messages, config));
         this.active = provider;
         return result;
       } catch (error) {
@@ -109,7 +111,7 @@ export class FallbackProvider implements AIProvider {
     let lastError: unknown;
     for (const provider of this.providers) {
       try {
-        const result = await provider.generateJSON<T>(messages, hint, config);
+        const result = await this.attempt(provider, () => provider.generateJSON<T>(messages, hint, config));
         this.active = provider;
         return result;
       } catch (error) {

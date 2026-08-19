@@ -66,7 +66,9 @@ export function FastEvaluationCard({ evaluation }: { evaluation: EvaluationRecor
 
         {usedFallback && (
           <p className="rounded-control border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-warning">
-            Scored locally by rules — the AI provider could not be used for this evaluation.
+            Not an AI evaluation. Keyword rules scored this job because the AI run failed, so
+            treat the score and the role archetype as a rough sort, not an assessment.
+            Re-evaluate to replace it.
           </p>
         )}
 

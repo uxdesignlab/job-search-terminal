@@ -23,7 +23,11 @@ export const EVALUATION_PHASE_LABELS: Record<EvaluationPhase, string> = {
  * Where a failure happened (§18.5). Block-level attribution went away with the
  * blocks, but "which step broke" is still the most useful thing to report.
  */
-export type EvaluationFailurePhase = "input" | "provider" | "parse" | "validate" | "fallback" | "save";
+export type EvaluationFailurePhase = "input" | "provider" | "parse" | "validate" | "save";
 
-/** Written to provider/model when rules scored the job instead of a model (§19). */
+/**
+ * Written to provider/model on rows saved before an AI failure stopped being
+ * scored by rules. Nothing writes it any more; the UI still reads it, because
+ * those rows exist and have to say what they are.
+ */
 export const LOCAL_FALLBACK_LABEL = "local-fallback";
