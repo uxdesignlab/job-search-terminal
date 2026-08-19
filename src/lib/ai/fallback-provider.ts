@@ -52,6 +52,38 @@ export class FallbackProvider implements AIProvider {
     this.active = providers[0];
   }
 
+  /**
+   * Told when a provider is about to be tried, and why the previous one stopped.
+   *
+   * Without this a caller can only report the chain's first provider, because that
+   * is what `name` answers until something succeeds — so a run that fell through to
+   * the cloud after 20s spent two minutes telling the user a local model was
+   * working on it, then reported a different one at the end.
+   */
+  private listener: ((attempt: { provider: string; model: string; after: ProviderAttempt | null }) => void) | null = null;
+
+  observe(listener: (attempt: { provider: string; model: string; after: ProviderAttempt | null }) => void) {
+    this.listener = listener;
+  }
+
+  /** Resolve before announcing, so the name reported is the model that will run. */
+  private async announceReady(provider: AIProvider) {
+    try {
+      await provider.prepare?.();
+    } catch {
+      // Resolution failing is the call's problem to report, not the announcement's.
+    }
+    this.announce(provider);
+  }
+
+  private announce(provider: AIProvider) {
+    this.listener?.({
+      provider: provider.name,
+      model: provider.effectiveModel,
+      after: this.attempts[this.attempts.length - 1] ?? null,
+    });
+  }
+
   /** Every provider in the chain, in order — the caller sizes the run from these. */
   get providerNames(): string[] { return this.providers.map((p) => p.name); }
 
@@ -94,6 +126,7 @@ export class FallbackProvider implements AIProvider {
     let lastError: unknown;
     for (const provider of this.providers) {
       try {
+        await this.announceReady(provider);
         const result = await this.attempt(provider, () => provider.generateText(messages, config));
         this.active = provider;
         return result;
@@ -111,6 +144,7 @@ export class FallbackProvider implements AIProvider {
     let lastError: unknown;
     for (const provider of this.providers) {
       try {
+        await this.announceReady(provider);
         const result = await this.attempt(provider, () => provider.generateJSON<T>(messages, hint, config));
         this.active = provider;
         return result;
@@ -128,6 +162,7 @@ export class FallbackProvider implements AIProvider {
     let lastError: unknown;
     for (const provider of this.providers) {
       try {
+        await this.announceReady(provider);
         yield* provider.stream(messages, config);
         this.active = provider;
         return;

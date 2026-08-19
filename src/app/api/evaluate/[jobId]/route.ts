@@ -82,6 +82,7 @@ export async function GET(
             message: update.message,
             providerUsed: update.providerUsed,
             modelUsed: update.modelUsed,
+            note: update.note,
             // Elapsed time is the honest signal while one long call is pending —
             // there is no partial progress to report, and a percentage would be invented.
             elapsedMs: Date.now() - startedAt,

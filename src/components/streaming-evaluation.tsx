@@ -23,6 +23,16 @@ type Props = {
   hasExistingEvaluation: boolean;
 };
 
+/**
+ * A chain announces the next provider before the call, which is the only moment
+ * that is useful — but an auto setting ("latest", "latest-sonnet") only becomes a
+ * concrete model id inside that call. Showing the sentinel would name a policy
+ * where the reader expects a model, so it reads as pending until it resolves.
+ */
+function describeModel(model: string): string {
+  return model.startsWith("latest") ? "resolving model…" : model;
+}
+
 export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -35,6 +45,8 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
   const [localModels, setLocalModels] = useState<string[]>([]);
   const [switchTo, setSwitchTo] = useState("");
   const [switching, setSwitching] = useState(false);
+  /** Providers that failed before the one now running, in order. */
+  const [handovers, setHandovers] = useState<string[]>([]);
   const [elapsedMs, setElapsedMs] = useState(0);
   const esRef = useRef<EventSource | null>(null);
 
@@ -58,6 +70,7 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
     setSummary(null);
     setErrorMsg("");
     setActiveModel(null);
+    setHandovers([]);
 
     const es = new EventSource(`/api/evaluate/${jobId}`);
     esRef.current = es;
@@ -69,6 +82,7 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
         done: boolean;
         error?: string;
         failedPhase?: string;
+        note?: string;
       } & Partial<CompleteEvent>;
 
       // Bound to a const so the early returns below narrow it inside the
@@ -78,6 +92,15 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
       if (phase === "start") {
         setActiveModel({ providerUsed: data.providerUsed ?? "", modelUsed: data.modelUsed ?? "" });
         return;
+      }
+
+      // A chain hands over mid-run. Following it is the difference between the
+      // modal naming what is working now and naming what it started with.
+      if (data.providerUsed) {
+        setActiveModel({ providerUsed: data.providerUsed, modelUsed: data.modelUsed ?? "" });
+      }
+      if (data.note) {
+        setHandovers((prev) => (prev.includes(data.note!) ? prev : [...prev, data.note!]));
       }
 
       if (phase === "error") {
@@ -271,8 +294,16 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
 
                   {renderChecklist(false)}
 
+                  {handovers.length > 0 && (
+                    <ul className="mt-4 grid gap-1">
+                      {handovers.map((note) => (
+                        <li className="text-xs text-muted line-through decoration-muted/40" key={note}>{note}</li>
+                      ))}
+                    </ul>
+                  )}
+
                   <p className="mt-4 text-xs font-mono text-muted/60">
-                    {activeModel ? `${activeModel.modelUsed} · ${activeModel.providerUsed} · ` : ""}
+                    {activeModel ? `${describeModel(activeModel.modelUsed)} · ${activeModel.providerUsed} · ` : ""}
                     {(elapsedMs / 1000).toFixed(1)}s elapsed
                   </p>
 
@@ -333,7 +364,9 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
                   </p>
                   <p className="mb-4 text-xs text-muted">
                     {activeModel
-                      ? `${activeModel.modelUsed} may still be finishing on your machine — its answer is discarded.`
+                      ? `${describeModel(activeModel.modelUsed)} may still be finishing ${
+                          activeModel.providerUsed === "ollama" ? "on your machine" : `at ${activeModel.providerUsed}`
+                        } — its answer is discarded.`
                       : "The run was stopped before a model answered."}
                   </p>
 

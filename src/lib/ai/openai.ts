@@ -77,6 +77,10 @@ export class OpenAIProvider implements AIProvider {
     }));
   }
 
+  async prepare(): Promise<void> {
+    await this.resolveModel();
+  }
+
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     try {
       const response = await this.client.chat.completions.create({

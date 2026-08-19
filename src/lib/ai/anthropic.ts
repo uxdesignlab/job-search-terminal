@@ -42,6 +42,10 @@ export class AnthropicProvider implements AIProvider {
     return this.resolved;
   }
 
+  async prepare(): Promise<void> {
+    await this.resolveModel();
+  }
+
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     const model = await this.resolveModel(config?.model);
     const systemMessages = messages.filter((m) => m.role === "system");

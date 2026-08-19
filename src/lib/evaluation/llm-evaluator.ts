@@ -63,6 +63,8 @@ export type PhaseUpdate = {
   /** Set once a provider is chosen, so the client can name what it is waiting on. */
   providerUsed?: string;
   modelUsed?: string;
+  /** Why the run moved on from the previous provider, when it did. */
+  note?: string;
 };
 
 export type PhaseCallback = (update: PhaseUpdate) => void;
@@ -225,6 +227,11 @@ export async function evaluateJobWithAI(
 
   const provider = getActiveProvider();
 
+  // Resolve an auto setting before naming it: a single provider has no chain to
+  // announce the concrete id later, so this is the only chance to report a model
+  // rather than a policy.
+  await provider.prepare?.().catch(() => undefined);
+
   onPhase?.({
     phase: "evaluating",
     message: EVALUATION_PHASE_LABELS.evaluating,
@@ -233,7 +240,23 @@ export async function evaluateJobWithAI(
   });
 
   const deadlineMs = runDeadlineMs(provider);
-  const ranOn = `${provider.name} / ${provider.effectiveModel}`;
+  // Read after the call, never before: in a chain, the provider that answers is
+  // usually not the one the run started on, and naming the wrong one is how the
+  // modal ended up crediting a local model for a cloud model's work.
+  const ranOn = () => `${provider.name} / ${provider.effectiveModel}`;
+
+  // A chain announces each hand-over, so the modal can stop claiming a provider
+  // that has already failed and say why it moved on.
+  const chain = provider as { observe?: (listener: (attempt: { provider: string; model: string; after: { provider: string; model: string; error: string } | null }) => void) => void };
+  chain.observe?.((attempt) => {
+    onPhase?.({
+      phase: "evaluating",
+      message: EVALUATION_PHASE_LABELS.evaluating,
+      providerUsed: attempt.provider,
+      modelUsed: attempt.model,
+      note: attempt.after ? `${attempt.after.provider} (${attempt.after.model}) — ${attempt.after.error}` : undefined,
+    });
+  });
 
   let normalized: ReturnType<typeof normalizeModelOutput> | null = null;
   try {
@@ -256,7 +279,7 @@ export async function evaluateJobWithAI(
     if (error instanceof GenerationTimeoutError) {
       throw new EvaluationPhaseError(
         "provider",
-        `${ranOn} did not finish within ${Math.round(generationDeadlineMs(provider.name) / 1000)}s. ` +
+        `${ranOn()} did not finish within ${Math.round(generationDeadlineMs(provider.name) / 1000)}s. ` +
           (provider.name === "ollama"
             ? "A smaller or faster local model, or a shorter job description, will fit the budget — or move a cloud provider first in Settings → AI Provider."
             : "Retry, or pick a different model in Settings → AI Provider."),
@@ -266,7 +289,7 @@ export async function evaluateJobWithAI(
     if (isMalformedJsonResponse(error)) {
       throw new EvaluationPhaseError(
         "parse",
-        `${ranOn} returned a response that could not be read as JSON, after 3 attempts. ` +
+        `${ranOn()} returned a response that could not be read as JSON, after 3 attempts. ` +
           "A larger model (14B+ locally) is more reliable at structured output.",
         error
       );
@@ -288,7 +311,7 @@ export async function evaluateJobWithAI(
     const missing = normalized && !normalized.coreValid ? normalized.missing.join(", ") : "unparseable response";
     throw new EvaluationPhaseError(
       "validate",
-      `${ranOn} answered, but the answer was missing what an evaluation is made of (${missing}). ` +
+      `${ranOn()} answered, but the answer was missing what an evaluation is made of (${missing}). ` +
         "Retry, or pick a different model in Settings → AI Provider."
     );
   }

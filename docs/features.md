@@ -402,6 +402,23 @@ time hands over to the cloud provider configured behind it — which is the enti
 point of putting one there. The run's outer bound covers the sum, since a bound sized
 to the first provider would end the run before the fallback could take its turn.
 
+**The modal follows the chain.** Progress used to name the chain's first provider for
+the whole run, because that is what a `FallbackProvider` answers until something
+succeeds — so a run that fell through to the cloud after 20 seconds spent two minutes
+telling the user a local model was working on it, then reported a different one at the
+end. Each hand-over is now announced: the running line switches to the provider and
+model actually working, and the one that stopped is listed above it, struck through,
+with its reason (`ollama (gemma4:12b-mlx) — Ollama returned invalid JSON. Try a larger
+model (14B+)…`). The same correction applies to failure messages, which read the
+provider *after* the call rather than before, so a validation failure is attributed to
+the model that produced it.
+
+An auto setting is resolved before it is announced (`AIProvider.prepare()`):
+`latest-sonnet` names a policy, not a model, and it only became a concrete id inside
+the request — so the modal would have shown the sentinel while the user waited.
+Resolving first costs nothing, since the lookup is cached per key and the request makes
+it anyway.
+
 **Cancel, and the model switch it offers.** The evaluation modal's Cancel now stops the
 run rather than only hiding the dialog. Closing the EventSource is the only cancel
 signal a browser can send on a stream it did not open with `fetch`; it arrives at the

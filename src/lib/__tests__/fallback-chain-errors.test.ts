@@ -156,3 +156,54 @@ describe("per-provider deadlines inside the chain", () => {
     expect(error.message).toContain("gemini (gemini-3.7-flash) — [429] quota exceeded");
   });
 });
+
+describe("hand-over reporting", () => {
+  it("announces each provider as it is tried, with why the last one stopped", async () => {
+    // The modal named the chain's first provider for the whole run, so a run that
+    // fell through to the cloud after 20s spent two minutes crediting a local
+    // model and then reported a different one at the end.
+    const chain = new FallbackProvider(
+      [
+        stubProvider("ollama", "gemma4:12b-mlx", new Error("Ollama returned invalid JSON.")),
+        stubProvider("openai", "gpt-5.6-sol"),
+      ],
+      () => 5_000
+    );
+
+    const seen: string[] = [];
+    chain.observe((attempt) => {
+      seen.push(attempt.after ? `${attempt.provider} after ${attempt.after.provider}: ${attempt.after.error}` : attempt.provider);
+    });
+
+    await chain.generateJSON([], "{}");
+
+    expect(seen).toEqual([
+      "ollama",
+      "openai after ollama: Ollama returned invalid JSON.",
+    ]);
+  });
+
+  it("resolves an auto setting before announcing it", async () => {
+    // Announcing first would name "latest" — a policy, not a model — for the whole
+    // run, which is what the progress modal was showing.
+    let resolved = false;
+    const auto: AIProvider = {
+      name: "openai",
+      defaultModel: "latest",
+      get effectiveModel() {
+        return resolved ? "gpt-5.6-sol" : "latest";
+      },
+      prepare: async () => {
+        resolved = true;
+      },
+      generateJSON: async () => ({ from: "openai" }) as never,
+    } as unknown as AIProvider;
+
+    const chain = new FallbackProvider([auto, stubProvider("gemini", "gemini-3.5-flash")], () => 5_000);
+    const announced: string[] = [];
+    chain.observe((attempt) => announced.push(attempt.model));
+
+    await chain.generateJSON([], "{}");
+    expect(announced).toEqual(["gpt-5.6-sol"]);
+  });
+});

@@ -50,6 +50,10 @@ export class GeminiProvider implements AIProvider {
     return systemMessages.length > 0 ? systemMessages.map((m) => m.content).join("\n\n") : undefined;
   }
 
+  async prepare(): Promise<void> {
+    await this.resolveModel();
+  }
+
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     const model = this.client.getGenerativeModel({
       model: await this.resolveModel(config?.model),
