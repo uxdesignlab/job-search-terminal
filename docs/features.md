@@ -302,6 +302,13 @@ Tabbed view for a single job. Four tabs:
 - Requirement match table showing which JD requirements the profile covers.
 - Gap list: requirements not yet addressed.
 - Red flags list.
+- **Recommended resume** — a sidebar box under *Next step* naming the resume to tailor
+  from, whether that is your saved choice for the role or the evaluation's suggestion,
+  with a link into the Resume tab. This used to be a full-width *Resume evidence*
+  column in the match grid, which gave a one-line answer the same weight as two long
+  lists; the grid is now two columns (requirement match, gaps and red flags). Any
+  resume-evidence line the evaluation recorded still shows in the box, unless it just
+  repeats the lane name.
 - **Job description** — collapsed panel showing the saved description text.
 - **Edit job details** — collapsed form to overwrite position, company, job posting
   URL, and job description without creating a duplicate record. Useful when LinkedIn
@@ -333,6 +340,32 @@ discovering a job triggers no AI.
   posted compensation, and recommended resume lane.
 - **View details** discloses the component breakdown, direction rationale, requirement
   matches, evidence used, red flags, and the provider/model/duration for the run.
+
+**Requirements in the posting.** A second column beside the evaluation box lists what
+the posting actually asks for, as bullets. A score's first follow-up question is
+"against what?", and the answer was previously a tab away in the collapsed job
+description. Sources, in order (`src/lib/jobs/posting-requirements.ts`):
+
+1. **The evaluation's own requirement list** (`modelOutput.requirementMatches`) — the
+   requirements the fit score was computed from, each tagged `supported`, `partial` or
+   `unknown`. Preferred because showing a different list beside the score would ask the
+   user to reconcile two lists that were never the same list.
+2. **Merged requirement strings** from a run stored before `modelOutput` existed
+   (`Lead end-to-end briefs. — supported (…)`), split back into requirement and status.
+   Used only when a majority of the lines actually carry a status word: the oldest
+   evaluations wrote free-form "X aligns with Y" notes into that same field, and
+   presenting those as the posting's requirements would put words in the posting's
+   mouth.
+3. **The saved description**, parsed for bullets — bullets inside a requirements-style
+   heading when the posting has one (continuing through *Preferred qualifications*,
+   stopping at *Benefits* / *Compensation* / *About us*), otherwise every bullet, since
+   a flat list is common. Fragments under 12 characters, paragraphs over 300, and
+   duplicates are dropped, capped at 24 items. Labelled as taken straight from the
+   description and not yet checked against your resume.
+
+An older evaluation whose notes are all there is falls back to those, labelled as
+notes. With no description saved and nothing recorded, the panel says so and points at
+Fetch description. No AI call is involved at any step.
 
 **`Blocked` is not `Skip`.** `Blocked` means a saved non-negotiable rules the role out
 however well you score — a 92% fit that requires relocation you have ruled out. `Skip`

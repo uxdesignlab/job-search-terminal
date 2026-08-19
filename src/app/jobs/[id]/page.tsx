@@ -12,6 +12,7 @@ import { AIProviderBadge } from "@/components/ai-provider-badge";
 import { EvaluationRunMeta } from "@/components/evaluation-run-meta";
 import { InterviewPlanSection } from "@/components/interview-plan-section";
 import { PostingResolutionPanel } from "@/components/posting-resolution-panel";
+import { PostingRequirementsCard } from "@/components/posting-requirements-card";
 import {
   Badge,
   Button,
@@ -559,13 +560,45 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <LinkButton href={tabHref("outreach")} variant="quiet">Draft outreach</LinkButton>
                   </div>
                 </Card>
+
+                {/* Which resume to tailor from. This used to be a full column in the
+                    match grid, where a one-line answer sat beside two long lists. */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recommended resume</CardTitle>
+                  </CardHeader>
+                  {resolvedRecommendedResume ? (
+                    <div className="grid gap-2">
+                      <p className="text-sm font-semibold text-ink">{resolvedRecommendedResume}</p>
+                      <p className="text-xs text-muted">
+                        {resumeLaneNames.includes(job.recommendedResume)
+                          ? "Your saved choice for this role."
+                          : "Suggested by the evaluation. Change it on the Resume tab."}
+                      </p>
+                      {/* Kept when it says something the lane name does not — the
+                          evaluation sometimes cites the resume it drew evidence from. */}
+                      {(evaluation?.resumeEvidence ?? job.resumeEvidence)
+                        .filter((item) => !item.toLowerCase().includes(resolvedRecommendedResume.toLowerCase()))
+                        .map((item) => (
+                          <p className="text-xs text-muted" key={item}>{item}</p>
+                        ))}
+                      <Link href={tabHref("resume")} className="text-sm font-medium text-accent hover:underline">
+                        → Tailor this resume
+                      </Link>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      No resume recommended yet — run an evaluation, or pick one on the Resume tab.
+                    </p>
+                  )}
+                </Card>
               </div>
             </div>
 
-            {/* Match grid */}
-            <section className="grid gap-4 md:grid-cols-3">
+            {/* Match grid. Resume evidence moved to the sidebar (§65): it answered
+                "which resume", which is a one-line answer, not a column. */}
+            <section className="grid gap-4 md:grid-cols-2">
               <DetailList title="Requirement match" items={evaluation?.requirementMatch ?? job.requirementMatch} />
-              <DetailList title="Resume evidence" items={evaluation?.resumeEvidence ?? job.resumeEvidence} />
               <GapAddressingPanel jobId={id} items={allGapItems} initialResponses={gapResponseMap} />
             </section>
 
@@ -851,7 +884,15 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             {evaluation ? (
               <>
                 {isFastEvaluation ? (
-                  <FastEvaluationCard evaluation={evaluation} />
+                  // The score's first follow-up question is "against what?", so the
+                  // posting's requirements sit beside it rather than a tab away.
+                  <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
+                    <FastEvaluationCard evaluation={evaluation} />
+                    <PostingRequirementsCard
+                      description={job.parsedDescription || job.rawDescription}
+                      evaluation={evaluation}
+                    />
+                  </div>
                 ) : (
                 <>
                 <AIProviderBadge
@@ -859,6 +900,11 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                   model={evaluation.modelUsed}
                   provider={evaluation.providerUsed}
                   tokensUsed={evaluation.tokensUsed}
+                />
+
+                <PostingRequirementsCard
+                  description={job.parsedDescription || job.rawDescription}
+                  evaluation={evaluation}
                 />
 
                 <section className="grid gap-4 lg:grid-cols-2">
