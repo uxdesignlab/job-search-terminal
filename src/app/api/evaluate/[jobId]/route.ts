@@ -3,6 +3,7 @@ import type { PhaseUpdate } from "@/lib/evaluation/llm-evaluator";
 import { EVALUATION_PHASES } from "@/lib/evaluation/evaluation-phases";
 import type { EvaluationFailurePhase } from "@/lib/evaluation/evaluation-phases";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
+import { GenerationCancelledError } from "@/lib/ai/retry";
 import { findChainFailure } from "@/lib/ai/fallback-provider";
 
 function toUserMessage(error: unknown): string {
@@ -47,9 +48,16 @@ export async function GET(
   const { jobId } = await params;
   const encoder = new TextEncoder();
 
+  // Closing the EventSource is the only cancel signal a browser can send on a
+  // stream it did not open with fetch. It arrives here as the stream's cancel
+  // callback, and from there stops the save rather than the generation, which is
+  // already in flight wherever it is running.
+  const cancellation = new AbortController();
+
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: unknown) => {
+        if (cancellation.signal.aborted) return;
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
@@ -81,7 +89,7 @@ export async function GET(
           });
         };
 
-        const result = await runAndSaveJobWithAI(jobId, onPhase);
+        const result = await runAndSaveJobWithAI(jobId, onPhase, cancellation.signal);
 
         send({
           phase: "complete",
@@ -98,6 +106,10 @@ export async function GET(
           done: true
         });
       } catch (error) {
+        if (error instanceof GenerationCancelledError) {
+          console.info(`[evaluate] ${jobId} cancelled by the user; nothing was saved.`);
+          return;
+        }
         const failedPhase = error instanceof EvaluationPhaseError ? error.failedPhase : currentPhase;
         console.error(`[evaluate] error during ${failedPhase}:`, error);
         send({
@@ -107,8 +119,17 @@ export async function GET(
           done: true
         });
       } finally {
-        controller.close();
+        // An already-cancelled stream rejects close(); the client is gone either way.
+        try {
+          controller.close();
+        } catch {
+          // no-op
+        }
       }
+    },
+
+    cancel() {
+      cancellation.abort();
     }
   });
 

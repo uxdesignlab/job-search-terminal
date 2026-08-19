@@ -102,6 +102,14 @@ export class GenerationTimeoutError extends Error {
   }
 }
 
+/** The user stopped waiting. Distinct from a timeout: nothing went wrong. */
+export class GenerationCancelledError extends Error {
+  constructor() {
+    super("Evaluation cancelled.");
+    this.name = "GenerationCancelledError";
+  }
+}
+
 /**
  * Put an upper bound on a generation.
  *
@@ -115,18 +123,32 @@ export class GenerationTimeoutError extends Error {
  * every adapter. It is abandoned: it finishes in the background and its result
  * is discarded.
  */
-export function withDeadline<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
+export function withDeadline<T>(fn: () => Promise<T>, timeoutMs: number, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new GenerationCancelledError());
+      return;
+    }
+
     const timer = setTimeout(() => reject(new GenerationTimeoutError(timeoutMs)), timeoutMs);
+    // Cancelling stops the waiting, not the model: an HTTP request already in
+    // flight runs to completion wherever it is running. What matters is that
+    // nothing downstream of this point happens, above all the save.
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new GenerationCancelledError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    const settle = (run: () => void) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      run();
+    };
+
     fn().then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      }
+      (value) => settle(() => resolve(value)),
+      (error: unknown) => settle(() => reject(error))
     );
   });
 }

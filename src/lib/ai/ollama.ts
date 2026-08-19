@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
+import { LOCAL_GENERATION_TIMEOUT_MS } from "./deadlines";
 
 function humanizeOllamaError(error: unknown): Error {
   if (error instanceof OpenAI.APIConnectionError || (error instanceof Error && error.message.includes("ECONNREFUSED"))) {
@@ -40,13 +41,12 @@ export class OllamaProvider implements AIProvider {
   constructor(config: AIProviderConfig) {
     this.config = config;
     const baseURL = (config.baseUrl ?? "http://localhost:11434") + "/v1";
-    // Longer than any feature's own deadline (evaluation and preparation both cut
-    // at 150s). A local model is slow, not broken: at 120s the client gave up
-    // first, which the chain read as "Ollama failed" and answered by spending a
-    // cloud call — the opposite of what someone running a local model first wants.
-    // Letting the caller's deadline decide keeps a slow local run degrading to the
-    // local evaluator instead of failing over.
-    this.client = new OpenAI({ baseURL, apiKey: "ollama", timeout: 300_000 });
+    // Deliberately longer than the local generation deadline (10 minutes), so the
+    // caller's deadline is always the one that decides. A local model is slow, not
+    // broken: when the HTTP client gave up first, the chain read that as "Ollama
+    // failed" and answered by spending a cloud call — the opposite of what someone
+    // who put a local model first is asking for.
+    this.client = new OpenAI({ baseURL, apiKey: "ollama", timeout: LOCAL_GENERATION_TIMEOUT_MS + 60_000 });
   }
 
   private get model() {

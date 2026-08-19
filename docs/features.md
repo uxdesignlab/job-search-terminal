@@ -377,7 +377,7 @@ user can act on:
 
 | What happened | What the message says |
 |---|---|
-| The model ran out of time | `ollama / qwen3.8:27b-mlx did not finish within 300s.` plus what to change |
+| The model ran out of time | `ollama / qwen3.8:27b-mlx did not finish within 600s.` plus what to change |
 | Unreadable output after 3 tries | `…returned a response that could not be read as JSON, after 3 attempts.` A larger model (14B+ locally) is more reliable at structured output |
 | An answer missing its core fields | `…answered, but the answer was missing what an evaluation is made of (fitComponents, roleArchetype).` |
 | Auth, quota, network | the provider's own message, per provider (see the chain report in Settings) |
@@ -389,12 +389,38 @@ replaces one.
 
 **Deadlines are per provider, and a chain spends them in turn.** A cloud call is
 capped at 150s — the cap exists so a stalled paid call cannot run up a bill. A local
-model gets 300s, because a local run costs nothing but time and cutting it at the
-cloud limit throws away work that was nearly finished rather than saving anything.
+model gets **10 minutes**, because a local model's speed is a property of the machine
+it runs on, not of the request: the same 12B model that answers in 70s on one Mac
+needs several times that on older hardware, and a 27B model needs more again. Any
+bound tight enough to feel responsive on fast hardware makes the app unusable on slow
+hardware, where waiting is the trade the user already accepted by running locally. The
+local bound exists only so a wedged request cannot hang forever; impatience is served
+by **Cancel**, not by a short deadline.
+
 Each provider in the chain is bounded on its own, so a local model that runs out of
 time hands over to the cloud provider configured behind it — which is the entire
 point of putting one there. The run's outer bound covers the sum, since a bound sized
 to the first provider would end the run before the fallback could take its turn.
+
+**Cancel, and the model switch it offers.** The evaluation modal's Cancel now stops the
+run rather than only hiding the dialog. Closing the EventSource is the only cancel
+signal a browser can send on a stream it did not open with `fetch`; it arrives at the
+route as the stream's `cancel` callback and aborts the run. What that stops is the
+*waiting*, not the generation — a request already sent finishes wherever it is running
+— so the guarantee is about the save: an answer that arrives after the user walked away
+is discarded rather than landing on a job they have moved on from. The dialog says so
+(`gemma4:12b-mlx may still be finishing on your machine — its answer is discarded`)
+rather than claiming the model was stopped.
+
+Cancelling a local run is usually a verdict on the model's speed, so the answer offered
+is the other models that machine already has: a picker of installed Ollama models,
+smallest first (on one machine, size is the closest proxy for speed there is), and
+**Switch and evaluate again** — which saves the choice as the Ollama model and restarts
+the run. `POST /api/ai/ollama-model` changes that one field, because the settings form
+submits every field at once and someone cancelling a slow run should not have their keys
+and provider order make the round trip. Embedding and reranking models are filtered out
+of the list everywhere it is used: they answer `/v1/models` alongside chat models and
+cannot serve a generation at all, so offering one is a choice that can only fail.
 
 **`Blocked` is not `Skip`.** `Blocked` means a saved non-negotiable rules the role out
 however well you score — a 92% fit that requires relocation you have ruled out. `Skip`
@@ -417,8 +443,8 @@ preferred qualification, or an inferred culture mismatch are never blockers.
   run fails and says so — it is not scored by rules instead. Auth, quota, and network
   errors surface immediately with an actionable message rather than being retried.
 - **Every generation is bounded**, because not every provider bounds itself: 150s for a
-  cloud call, 300s for a local one, per provider and in turn (see *Deadlines are per
-  provider* below). An unbounded call would leave the fallback chain unreachable and the
+  cloud call, 10 minutes for a local one, per provider and in turn (see *Deadlines are
+  per provider* below). Cancel stops waiting at any point. An unbounded call would leave the fallback chain unreachable and the
   spinner running forever.
 - Errors name the phase that failed rather than a block letter.
 
@@ -1297,18 +1323,18 @@ Four configuration tabs:
   gemini (gemini-3.1-pro-preview) — [429 Too Many Requests] You exceeded your current quota.
   ```
 
-  Each provider is bounded by its own deadline (150s cloud, 300s local), so a slow
-  local model hands over to the cloud provider behind it instead of spending the whole
-  run's budget; a provider that runs out of time is reported as `did not finish within
-  300s — a smaller or faster local model would fit the budget` rather than as the
-  mechanism that stopped it. Retry classification follows the same whole-chain rule: a
+  Each provider is bounded by its own deadline (150s cloud, 10 minutes local), so a
+  slow local model hands over to the cloud provider behind it instead of spending the
+  whole run's budget; a provider that runs out of time is reported as `did not finish
+  within 600s — a smaller or faster local model would fit the budget` rather than as
+  the mechanism that stopped it. Retry classification follows the same whole-chain rule: a
   chain is retried only when *every* attempt failed for a retryable reason. A failure
   that would repeat on every provider (a malformed request) is still thrown as itself
   without walking the chain.
 - **Output budgets are set where the shape is known**, not left to each provider's
   default of 4096 — see *Output budget* under Application Preparation. Ollama's own
   `generateJSON` default also moved to 8192 to match Gemini's, so a direct call cannot
-  truncate either. Its client timeout is 300s, matching the local generation deadline,
+  truncate either. Its client timeout is a minute past the local generation deadline,
   so a slow local run is cut by the caller's deadline — which hands over to the next
   provider — rather than by the HTTP client at 120s, which the chain used to read as a
   provider failure while the run still had budget left.

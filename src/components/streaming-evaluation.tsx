@@ -26,11 +26,15 @@ type Props = {
 export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<"running" | "done" | "error">("running");
+  const [status, setStatus] = useState<"running" | "done" | "error" | "cancelled">("running");
   const [reached, setReached] = useState<EvaluationPhase[]>([]);
   const [summary, setSummary] = useState<CompleteEvent | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [activeModel, setActiveModel] = useState<{ providerUsed: string; modelUsed: string } | null>(null);
+  // Offered after cancelling a local run: the models this machine already has.
+  const [localModels, setLocalModels] = useState<string[]>([]);
+  const [switchTo, setSwitchTo] = useState("");
+  const [switching, setSwitching] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const esRef = useRef<EventSource | null>(null);
 
@@ -113,6 +117,46 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
     };
   }
 
+  /**
+   * Stop waiting. Closing the EventSource is what the server sees, and it stops
+   * the save rather than the generation — a local model already mid-answer keeps
+   * going on the machine, but its result is discarded rather than landing on a
+   * job the user has moved on from.
+   *
+   * Cancelling usually means "this is taking too long", which is a question about
+   * the model, so the answer offered here is the other models this machine has.
+   */
+  function cancel() {
+    esRef.current?.close();
+    setStatus("cancelled");
+    if (activeModel?.providerUsed === "ollama") {
+      fetch("/api/ai/ollama-models")
+        .then((res) => res.json() as Promise<{ models?: string[] }>)
+        .then((data) => {
+          const others = (data.models ?? []).filter((m) => m !== activeModel.modelUsed);
+          setLocalModels(others);
+          setSwitchTo(others[0] ?? "");
+        })
+        .catch(() => setLocalModels([]));
+    }
+  }
+
+  async function switchModelAndRetry() {
+    if (!switchTo) return;
+    setSwitching(true);
+    try {
+      await fetch("/api/ai/ollama-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: switchTo }),
+      });
+      router.refresh();
+      start();
+    } finally {
+      setSwitching(false);
+    }
+  }
+
   function close(refresh = false) {
     esRef.current?.close();
     setOpen(false);
@@ -185,10 +229,14 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
                 {status === "error" && (
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-danger/15 text-xs text-danger">✕</span>
                 )}
+                {status === "cancelled" && (
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-border text-xs text-muted">⏹</span>
+                )}
                 <h2 className="text-sm font-semibold text-ink">
                   {status === "running" && "Evaluating…"}
                   {status === "done" && "Evaluation complete"}
                   {status === "error" && "Evaluation failed"}
+                  {status === "cancelled" && "Evaluation cancelled"}
                 </h2>
               </div>
               {status !== "running" && (
@@ -230,7 +278,7 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
 
                   <button
                     className="mt-3 text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
-                    onClick={() => close(false)}
+                    onClick={cancel}
                     type="button"
                   >
                     Cancel
@@ -273,6 +321,53 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
                   <p className="mb-4 whitespace-pre-line text-sm text-danger">{errorMsg}</p>
                   <div className="flex gap-2">
                     <Button onClick={start}>Retry</Button>
+                    <Button onClick={() => close(false)} variant="quiet">Close</Button>
+                  </div>
+                </>
+              )}
+
+              {status === "cancelled" && (
+                <>
+                  <p className="mb-1 text-sm text-ink">
+                    Stopped after {(elapsedMs / 1000).toFixed(1)}s. Nothing was saved.
+                  </p>
+                  <p className="mb-4 text-xs text-muted">
+                    {activeModel
+                      ? `${activeModel.modelUsed} may still be finishing on your machine — its answer is discarded.`
+                      : "The run was stopped before a model answered."}
+                  </p>
+
+                  {/* Cancelling a local run is usually a verdict on the model's
+                      speed, so the models this machine already has are the answer
+                      worth offering — not a trip to Settings. */}
+                  {localModels.length > 0 && (
+                    <div className="mb-4 grid gap-2 rounded-control border border-border bg-surface px-3 py-3">
+                      <label className="text-xs font-medium text-ink" htmlFor="switch-local-model">
+                        Try a different local model
+                      </label>
+                      <select
+                        className="rounded-control border border-border bg-panel px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                        id="switch-local-model"
+                        onChange={(e) => setSwitchTo(e.target.value)}
+                        value={switchTo}
+                      >
+                        {localModels.map((model) => (
+                          <option key={model} value={model}>{model}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted">
+                        Smaller models answer faster. This becomes your Ollama model in Settings.
+                      </p>
+                      <Button disabled={switching || !switchTo} onClick={switchModelAndRetry}>
+                        {switching ? "Switching…" : "Switch and evaluate again"}
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button onClick={start} variant={localModels.length > 0 ? "quiet" : "primary"}>
+                      Try again
+                    </Button>
                     <Button onClick={() => close(false)} variant="quiet">Close</Button>
                   </div>
                 </>

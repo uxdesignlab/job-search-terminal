@@ -5,6 +5,7 @@ import {
   generationDeadlineMs,
   totalGenerationDeadlineMs,
 } from "@/lib/ai/deadlines";
+import { GenerationCancelledError, GenerationTimeoutError, withDeadline } from "@/lib/ai/retry";
 
 describe("generation deadlines", () => {
   it("gives a local model longer than a paid one", () => {
@@ -29,5 +30,46 @@ describe("generation deadlines", () => {
     expect(chain).toBeGreaterThan(LOCAL_GENERATION_TIMEOUT_MS + CLOUD_GENERATION_TIMEOUT_MS * 2 - 1);
     expect(totalGenerationDeadlineMs(["openai"])).toBeLessThan(chain);
     expect(totalGenerationDeadlineMs([])).toBe(CLOUD_GENERATION_TIMEOUT_MS);
+  });
+});
+
+describe("cancellation", () => {
+  it("rejects immediately when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let ran = false;
+
+    await expect(
+      withDeadline(
+        async () => {
+          ran = true;
+          return "answer";
+        },
+        1000,
+        controller.signal
+      )
+    ).rejects.toBeInstanceOf(GenerationCancelledError);
+    // Nothing is started for a run the user has already walked away from.
+    expect(ran).toBe(false);
+  });
+
+  it("stops waiting when the signal aborts mid-run", async () => {
+    const controller = new AbortController();
+    const pending = withDeadline(() => new Promise<string>(() => {}), 60_000, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toBeInstanceOf(GenerationCancelledError);
+  });
+
+  it("is not a timeout — the two mean different things to the user", async () => {
+    const timedOut = await withDeadline(() => new Promise<string>(() => {}), 10).catch((e: unknown) => e);
+    expect(timedOut).toBeInstanceOf(GenerationTimeoutError);
+    expect(timedOut).not.toBeInstanceOf(GenerationCancelledError);
+  });
+
+  it("lets a run that finishes first settle normally", async () => {
+    const controller = new AbortController();
+    await expect(withDeadline(async () => "answer", 1000, controller.signal)).resolves.toBe("answer");
+    // A late abort on a settled run must not resurface as an unhandled rejection.
+    controller.abort();
   });
 });

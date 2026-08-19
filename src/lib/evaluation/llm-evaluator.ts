@@ -1,5 +1,11 @@
 import { getActiveProvider } from "../ai/factory";
-import { withRetry, withDeadline, isMalformedJsonResponse, GenerationTimeoutError } from "../ai/retry";
+import {
+  withRetry,
+  withDeadline,
+  isMalformedJsonResponse,
+  GenerationCancelledError,
+  GenerationTimeoutError,
+} from "../ai/retry";
 import {
   CLOUD_GENERATION_TIMEOUT_MS,
   STRUCTURED_OUTPUT_MAX_TOKENS,
@@ -181,7 +187,11 @@ function emptySections(): EvaluationSections {
 
 // ─── Orchestrator ──────────────────────────────────────────────────────────
 
-export async function evaluateJobWithAI(jobId: string, onPhase?: PhaseCallback): Promise<JobEvaluationResultInput> {
+export async function evaluateJobWithAI(
+  jobId: string,
+  onPhase?: PhaseCallback,
+  signal?: AbortSignal
+): Promise<JobEvaluationResultInput> {
   const start = Date.now();
 
   onPhase?.({ phase: "preparing", message: EVALUATION_PHASE_LABELS.preparing });
@@ -229,10 +239,14 @@ export async function evaluateJobWithAI(jobId: string, onPhase?: PhaseCallback):
   try {
     const raw = await withDeadline(
       () => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt)),
-      deadlineMs
+      deadlineMs,
+      signal
     );
     normalized = normalizeModelOutput(raw);
   } catch (error) {
+    // Cancelling is not a failure: the user stopped waiting, and the only thing
+    // that must not happen is a result arriving later and being saved anyway.
+    if (error instanceof GenerationCancelledError) throw error;
     // Every failure here surfaces as itself. Scoring the job by keyword rules
     // instead produced a plausible-looking evaluation that was simply wrong — a
     // Senior Director role scored 64% "Technical Specialist" — and it was saved,
@@ -388,8 +402,16 @@ function buildFastEvaluationResult(input: {
   };
 }
 
-export async function runAndSaveJobWithAI(jobId: string, onPhase?: PhaseCallback): Promise<JobEvaluationResultInput> {
-  const result = await evaluateJobWithAI(jobId, onPhase);
+export async function runAndSaveJobWithAI(
+  jobId: string,
+  onPhase?: PhaseCallback,
+  signal?: AbortSignal
+): Promise<JobEvaluationResultInput> {
+  const result = await evaluateJobWithAI(jobId, onPhase, signal);
+
+  // A run that finished after the user walked away must not overwrite what they
+  // are looking at. The generation is unstoppable once sent; the save is not.
+  if (signal?.aborted) throw new GenerationCancelledError();
 
   onPhase?.({ phase: "saving", message: EVALUATION_PHASE_LABELS.saving });
   try {

@@ -9,7 +9,18 @@
  */
 
 export const CLOUD_GENERATION_TIMEOUT_MS = 150_000;
-export const LOCAL_GENERATION_TIMEOUT_MS = 300_000;
+
+/**
+ * Ten minutes. A local model's speed is a property of the machine it runs on, not
+ * of the request: the same 12B model that answers in 70s on one Mac needs several
+ * times that on older hardware, and a 27B model needs more again. Any bound tight
+ * enough to feel responsive on fast hardware just makes the app unusable on slow
+ * hardware, where waiting is the trade the user already accepted by running
+ * locally. The bound exists only so a wedged request cannot hang forever —
+ * impatience is served by cancelling, which the evaluation modal offers while the
+ * run is in flight.
+ */
+export const LOCAL_GENERATION_TIMEOUT_MS = 600_000;
 
 export function generationDeadlineMs(providerName: string): number {
   return providerName === "ollama" ? LOCAL_GENERATION_TIMEOUT_MS : CLOUD_GENERATION_TIMEOUT_MS;
