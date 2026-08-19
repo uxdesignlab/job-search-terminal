@@ -9,6 +9,7 @@ import { EditJobModal } from "@/components/EditJobModal";
 import { ResumeGeneratorModal } from "@/components/resume-generator-modal";
 import { StreamingEvaluation } from "@/components/streaming-evaluation";
 import { AIProviderBadge } from "@/components/ai-provider-badge";
+import { EvaluationRunMeta } from "@/components/evaluation-run-meta";
 import { InterviewPlanSection } from "@/components/interview-plan-section";
 import { PostingResolutionPanel } from "@/components/posting-resolution-panel";
 import {
@@ -49,7 +50,6 @@ import {
   updateApplicationStatus,
   updateJobRecommendedResume,
   getEffectiveKeywords,
-  getApplicationPreparation,
   getIntegration,
   getJobContacts,
   getOutreachDrafts,
@@ -121,13 +121,12 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const evaluation = getEvaluationByJobId(id);
   const generatedDocument = getGeneratedDocumentById(`document-${id}`);
   const application = getApplicationByJobId(id);
-  const preparation = getApplicationPreparation(id);
   const contacts = getJobContacts(id);
   const clayConnected = getIntegration("clay")?.connectionStatus === "connected";
   const outreachDrafts = getOutreachDrafts(id);
   const outreachMessages = getOutreachMessagesForJob(id);
   const stage = {
-    job, evaluation, preparation, generatedDocument, application, contactCount: contacts.length,
+    job, evaluation, generatedDocument, application, contactCount: contacts.length,
   };
   const action = nextBestAction(stage);
   const progress = opportunityProgress(stage);
@@ -440,48 +439,68 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
           </div>
         )}
 
-        {/* ── Next action and progress (§65, §66) ──────────────────── */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              className="inline-flex min-h-8 items-center rounded-control bg-accent px-3 text-sm font-medium text-white hover:opacity-90"
-              href={action.primary.href}
-            >
-              {action.primary.label}
-            </Link>
-            <span className="text-xs text-muted">{action.primary.reason}</span>
-            {action.secondary ? (
-              <Link className="text-xs text-accent underline-offset-2 hover:underline" href={action.secondary.href}>
-                or {action.secondary.label.toLowerCase()}
-              </Link>
-            ) : null}
-          </div>
-          <ol className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {progress.map((step) => (
-              <li className={`flex items-center gap-1 text-xs ${step.done ? "text-ink" : "text-muted/60"}`} key={step.label}>
-                <span aria-hidden className={step.done ? "text-success" : ""}>{step.done ? "✓" : "○"}</span>
-                {step.label}
-                <span className="sr-only">{step.done ? " complete" : " not started"}</span>
-              </li>
-            ))}
+        {/* ── Opportunity progress (§65, §66) ──────────────────────── */}
+        {/* A plain breadcrumb of the five moves a job goes through, and nothing
+            else: every action it could name is already the header button or a
+            tab, so a CTA here was the same click twice. Completion is not shown
+            by colour alone — done steps carry a ✓ and the next step is bold —
+            because colour is the one cue some users will not receive. */}
+        <nav aria-label="Opportunity progress" className="mb-5">
+          <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+            {progress.map((step, index) => {
+              const isNext = !step.done && step.id === action.primary.step;
+              return (
+                <li className="flex items-center gap-1.5" key={step.id}>
+                  {index > 0 ? <span aria-hidden className="text-muted/40">›</span> : null}
+                  <Link
+                    aria-current={isNext ? "step" : undefined}
+                    className={`flex items-center gap-1 underline-offset-2 hover:underline ${
+                      step.done
+                        ? "text-success"
+                        : isNext
+                          ? "font-semibold text-accent"
+                          : "text-muted/60 hover:text-muted"
+                    }`}
+                    href={step.href}
+                  >
+                    {step.done ? <span aria-hidden>✓</span> : null}
+                    {step.label}
+                    <span className="sr-only">
+                      {step.done ? " complete" : isNext ? " — next step" : " not started"}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
           </ol>
-        </div>
+        </nav>
 
         {/* ── Tab navigation ───────────────────────────────────────── */}
-        <div className="mb-6 flex border-b border-border overflow-x-auto">
-          <Link href={tabHref("overview")} className={tabCls("overview")}>Overview</Link>
-          <Link href={tabHref("evaluation")} className={tabCls("evaluation")}>
-            Evaluation {!evaluation ? <span className="ml-1 text-[10px] text-muted">(run evaluate)</span> : null}
-          </Link>
-          <Link href={tabHref("resume")} className={tabCls("resume")}>
-            Resume {generatedDocument ? <span className="ml-1 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">Ready</span> : null}
-          </Link>
-          <Link href={tabHref("apply")} className={tabCls("apply")}>
-            Apply {application ? <span className="ml-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">{application.status}</span> : null}
-          </Link>
-          <Link href={tabHref("outreach")} className={tabCls("outreach")}>
-            Outreach {contacts.length > 0 ? <span className="ml-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">{contacts.length}</span> : null}
-          </Link>
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 border-b border-border">
+          <div className="flex overflow-x-auto">
+            <Link href={tabHref("overview")} className={tabCls("overview")}>Overview</Link>
+            <Link href={tabHref("evaluation")} className={tabCls("evaluation")}>
+              Evaluation {!evaluation ? <span className="ml-1 text-[10px] text-muted">(run evaluate)</span> : null}
+            </Link>
+            <Link href={tabHref("resume")} className={tabCls("resume")}>
+              Resume {generatedDocument ? <span className="ml-1 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">Ready</span> : null}
+            </Link>
+            <Link href={tabHref("apply")} className={tabCls("apply")}>
+              Apply {application ? <span className="ml-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">{application.status}</span> : null}
+            </Link>
+            <Link href={tabHref("outreach")} className={tabCls("outreach")}>
+              Outreach {contacts.length > 0 ? <span className="ml-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">{contacts.length}</span> : null}
+            </Link>
+          </div>
+          {/* Provenance for the run behind everything on screen (§20). */}
+          {evaluation ? (
+            <EvaluationRunMeta
+              createdAt={evaluation.createdAt}
+              generationMs={evaluation.generationMs}
+              model={evaluation.modelUsed}
+              provider={evaluation.providerUsed}
+            />
+          ) : null}
         </div>
 
         {/* ── Tab: Overview ────────────────────────────────────────── */}

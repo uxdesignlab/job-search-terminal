@@ -501,6 +501,16 @@ The keyword panel in the draft editor classifies each keyword into one of three 
 working. Outreach currently opens the existing generic-draft page and becomes a contact
 workspace in a later phase.
 
+**Evaluation run line.** To the right of the tabs, a single muted line records the run
+behind everything on screen: `Evaluated Aug 19, 12:53 PM · local-fallback / local-fallback
+· 150.2s` — when it ran, the provider and model that ran it, and how long it took. It is
+read from the stored evaluation (`created_at`, `provider_used`, `model_used`,
+`generation_ms`), so it describes the evaluation you are looking at rather than the last
+run in the session. Nothing is shown for a job that has not been evaluated. It sits beside
+the tabs rather than inside the Evaluation tab because run cost is worth seeing from any
+tab — a three-minute local-fallback run is only noticeable if it is always in view. The
+full ISO timestamp is available as the line's tooltip.
+
 **Next best action.** Each job shows one primary action derived from its records — no new
 status column, so it cannot disagree with what actually exists:
 
@@ -513,14 +523,34 @@ status column, so it cannot disagree with what actually exists:
 | Applied, nobody contacted | Find people |
 | Interviewing or Offer | Prepare interview |
 
-Outreach appears as a **secondary** suggestion ("or find people") while a primary action is
-outstanding, and is promoted to primary only after you have applied. Outreach may happen
-before or after applying, but it never displaces the step you are actually on. A `Blocked`
-or `Skip` role gets no encouragement to proceed — the tabs remain available, but the app
-stops suggesting.
+Outreach is promoted to the primary action only after you have applied with nobody
+contacted. Outreach may happen before or after applying, but it never displaces the step
+you are actually on. A `Blocked` or `Skip` role gets no encouragement to proceed — the tabs
+remain available, but the app stops suggesting.
 
-**Opportunity progress.** A compact strip — Evaluated, Application prepared, Resume ready,
-Applied, Outreach, Interview prep — derived from the same records.
+The primary action is **not rendered as a button or a sentence** on the job page. Every
+action it can name is already one click away in the header (**Evaluate with AI**, **Check
+live**, **Job posting**) or is a tab, so a CTA there was the same click twice. It is used
+only to decide which breadcrumb step is marked as next.
+
+**Opportunity progress.** A single breadcrumb line above the tabs, showing the five moves a
+job goes through in the order they happen:
+
+`✓ Evaluate › Resume › Apply › Outreach › Interview prep`
+
+Every step is a link to where that step happens — Evaluate → Evaluation tab, Resume →
+Resume tab, Apply → Apply tab, Outreach → Outreach tab, Interview prep →
+`/interview-prep` — so the breadcrumb is the navigation, not a decorative status strip.
+State is shown three ways, never by colour alone: a completed step is green and carries a
+`✓`, the next step is bold in the accent colour and marked `aria-current="step"`, and later
+steps stay muted. Which step counts as "next" comes from the next-best-action rules above,
+matched on a shared step id rather than on label text, so rewording either one cannot
+desynchronise them. A `Skip` or `Blocked` role therefore highlights nothing, matching the
+rule that the app stops suggesting.
+
+Application preparation is deliberately *not* a step. It happens inside resume generation,
+so listing it named an internal stage the user never separately performs — it is folded
+into **Resume**.
 
 **Application Preparation.** Generating a resume first prepares the application — one
 structured AI call producing:
@@ -599,8 +629,8 @@ dismissed while the request is in flight.
 
 ### Outreach `/jobs/[id]/outreach`
 
-Part of the job workspace, not a separate screen — the job header, status control, next
-best action and progress strip stay visible while you work. The old
+Part of the job workspace, not a separate screen — the job header, status control and
+progress breadcrumb stay visible while you work. The old
 `/jobs/[id]/outreach` URL redirects to `?tab=outreach`, so existing links keep working.
 
 Real people rather than abstract personas. Contacts are **global**, so the same person can
@@ -865,8 +895,8 @@ Read-only HTML preview of the tailored resume.
 ### Interview transition
 
 When a job's application status reaches **Interviewing** or **Offer**, the job workspace
-surfaces *Interview preparation available* with a direct link, and the progress strip ticks
-**Interview prep**. Next best action promotes it above everything else — an advancing
+surfaces *Interview preparation available* with a direct link, and the progress breadcrumb
+ticks **Interview prep**. Next best action promotes it above everything else — an advancing
 opportunity is time-bound in a way earlier stages are not.
 
 Story matching for a job uses the same effective-keyword resolver as resume tailoring, so

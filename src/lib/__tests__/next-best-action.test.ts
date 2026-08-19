@@ -5,7 +5,6 @@ function stage(overrides: Partial<JobStageInput> = {}): JobStageInput {
   return {
     job: { id: "job-1", status: "Found", recommendation: "Strong apply" },
     evaluation: null,
-    preparation: null,
     generatedDocument: null,
     application: null,
     contactCount: 0,
@@ -18,6 +17,13 @@ const evaluated = { recommendation: "Strong apply" };
 describe("next best action (§65)", () => {
   it("asks for an evaluation first", () => {
     expect(nextBestAction(stage()).primary.label).toBe("Evaluate");
+  });
+
+  it("names the progress step it belongs to, so the breadcrumb can mark it", () => {
+    expect(nextBestAction(stage()).primary.step).toBe("evaluated");
+    expect(nextBestAction(stage({ evaluation: evaluated })).primary.step).toBe("resume");
+    const step = nextBestAction(stage({ evaluation: evaluated, generatedDocument: { id: "doc" } })).primary.step;
+    expect(step).toBe("applied");
   });
 
   it("moves to resume once evaluated", () => {
@@ -79,12 +85,32 @@ describe("opportunity progress (§66)", () => {
   it("is derived entirely from records", () => {
     const steps = opportunityProgress(stage({
       evaluation: evaluated,
-      preparation: { id: "prep" },
       generatedDocument: { id: "doc" },
       application: { status: "Applied" },
       contactCount: 1,
     }));
-    expect(steps.map((step) => step.done)).toEqual([true, true, true, true, true, false]);
+    expect(steps.map((step) => step.done)).toEqual([true, true, true, true, false]);
+  });
+
+  it("lists the five moves the user actually makes, in order", () => {
+    // Application preparation happens inside resume generation; naming it as its
+    // own step described the implementation rather than the user's path.
+    expect(opportunityProgress(stage()).map((step) => step.label)).toEqual([
+      "Evaluate", "Resume", "Apply", "Outreach", "Interview prep",
+    ]);
+  });
+
+  it("points every step at the place that step happens", () => {
+    // The breadcrumb is the only navigation left in that row (§65), so a step
+    // with a dead link is a step the user cannot reach.
+    const steps = opportunityProgress(stage());
+    expect(steps.map((step) => [step.id, step.href])).toEqual([
+      ["evaluated", "/jobs/job-1?tab=evaluation"],
+      ["resume", "/jobs/job-1?tab=resume"],
+      ["applied", "/jobs/job-1?tab=apply"],
+      ["outreach", "/jobs/job-1?tab=outreach"],
+      ["interview", "/interview-prep"],
+    ]);
   });
 
   it("shows nothing done for a freshly discovered job", () => {
