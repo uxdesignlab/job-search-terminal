@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation";
 import { Shell } from "@/components/ui/shell";
-import { getGeneratedDocumentById, getEvaluationByJobId, getJobById, getJobGapResponses, getProfileSupplements, getResumes } from "@/lib/db/queries";
+import { getGeneratedDocumentById, getEffectiveKeywordSignals, getJobGapResponses, getProfileSupplements, getResumes } from "@/lib/db/queries";
 import { ResumeDraftEditor } from "@/components/resume-draft-editor";
 import type { ResumeTemplateInput } from "@/lib/documents/resume-template";
 import { keywordCoverageFor, isKeywordInText } from "@/lib/documents/keyword-coverage";
-import { legacyKeywordSignals } from "@/lib/evaluation/keyword-signals";
 
 export const dynamic = "force-dynamic";
 
@@ -27,16 +26,13 @@ export default async function EditResumePage({ params }: EditPageProps) {
     notFound();
   }
 
-  const evaluation = getEvaluationByJobId(doc.jobId);
-  const job = getJobById(doc.jobId);
-  const keywordSignals = evaluation?.keywordSignals?.length
-    ? evaluation.keywordSignals
-    : legacyKeywordSignals(evaluation?.keywords ?? [], {
-        title: job?.title ?? "",
-        description: job?.rawDescription || job?.parsedDescription || "",
-      });
-  const keywordCoverage = evaluation?.keywords?.length
-    ? keywordCoverageFor(draft, keywordSignals.length > 0 ? keywordSignals : evaluation.keywords)
+  // One resolver for every consumer (§25.2): Application Preparation first, then
+  // the legacy evaluation tiers. Reading evaluation.keywords here would leave a
+  // fast-v2 job showing zero coverage even after preparation had extracted them.
+  const keywordSignals = getEffectiveKeywordSignals(doc.jobId);
+  const keywords = keywordSignals.map((signal) => signal.keyword);
+  const keywordCoverage = keywordSignals.length > 0
+    ? keywordCoverageFor(draft, keywordSignals)
     : doc.keywordCoverage;
   const resumes = getResumes();
   const lane = resumes.find((resume) => resume.id === doc.baseResumeId)
@@ -47,7 +43,7 @@ export default async function EditResumePage({ params }: EditPageProps) {
   const evidenceText = [lane?.extractedText ?? "", ...getProfileSupplements().filter((supplement) => supplement.qualityStatus === "addressed").map((supplement) => supplement.content), ...gapEvidence]
     .join(" ")
     .toLowerCase();
-  const supportedKeywords = (evaluation?.keywords ?? []).filter((keyword) => isKeywordInText(evidenceText, keyword));
+  const supportedKeywords = keywords.filter((keyword) => isKeywordInText(evidenceText, keyword));
 
   return (
     <Shell activeItem="Resumes">
@@ -58,7 +54,7 @@ export default async function EditResumePage({ params }: EditPageProps) {
         documentTitle={doc.title}
         baseResume={doc.baseResume}
         keywordCoverage={keywordCoverage}
-        keywords={evaluation?.keywords ?? []}
+        keywords={keywords}
         keywordSignals={keywordSignals}
         supportedKeywords={supportedKeywords}
         tailoringStatus={doc.tailoringStatus}

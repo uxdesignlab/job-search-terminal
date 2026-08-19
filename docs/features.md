@@ -309,28 +309,75 @@ Tabbed view for a single job. Four tabs:
   pre-filled with the current values. A reminder to re-run evaluation is shown
   after saving, since any description change makes the existing AI analysis stale.
 
-### Analysis tab
-- Run evaluation: triggers AI streaming evaluation with real-time output.
-- Evaluation sections: strengths, gaps, red flags, resume recommendation,
-  keyword list, legitimacy signal.
-- User correction: override the AI recommendation and score with a note.
-- Provider and model metadata for the last evaluation run.
+### Evaluation tab
 
-**Evaluation resilience (blocks A–G):**
-- The evaluation runs seven blocks sequentially (A role summary, B CV match, C level
-  strategy, D comp & demand, E personalization/keywords, F interview stories, G posting
-  legitimacy). If any block throws, the streaming modal marks that block with a red ✗
-  and stops — the earlier blocks stay visible so you can see how far it got.
-- **Malformed/truncated JSON is retried automatically.** LLM output is non-deterministic,
-  so a block whose response is cut off mid-JSON (or otherwise unparseable) is retried up
-  to 3× before it counts as a failure. Auth, quota, and network errors are *not* retried —
-  they surface immediately with an actionable message so you can fix the provider setting.
-- **Non-critical blocks degrade instead of aborting.** Block F (interview stories) and
-  Block G (posting legitimacy) fall back to an empty/"Unknown" result if they still return
-  bad JSON after retries, so one flaky generation no longer kills an otherwise-complete
-  evaluation. Core blocks A and B fail hard by design — a fabricated match or score is worse
-  than an honest failure. Block F also gets a larger token budget (8,192) than other blocks
-  because it produces the most output and was the most prone to truncation.
+Evaluation answers one question — **should I spend more time on this position?** —
+and does no work belonging to a later stage. It runs only when you click Evaluate;
+discovering a job triggers no AI.
+
+**Fast Evaluation (`fast-v2`), one AI generation:**
+- **Fit score** out of 100, summed from four components the model scores separately:
+  core requirements (0–40), role and seniority (0–25), relevant evidence (0–20),
+  preferences and direction (0–15). The model never returns a total — JST calculates
+  it, so the headline number and the breakdown beneath it cannot disagree.
+- **Recommendation**, derived from ordered rules rather than by the model:
+  `Blocked` → `Priority apply` (fit ≥ 85 and strong direction alignment) →
+  `Strong apply` (fit ≥ 70, strong or partial) → `Review manually` (fit ≥ 55) → `Skip`.
+- **Confidence** — High / Medium / Low, describing *source quality, not candidate
+  quality*: how much usable job description and resume evidence the assessment had.
+  Calculated locally with no AI call.
+- **Direction alignment** — strong / partial / none. Whether the role matches the
+  direction you are searching in, which is separate from whether you could do the job.
+  A capable match in the wrong direction lands at `Review manually`, not `Strong apply`.
+- Strengths, concerns, requirement tally (`8 supported · 2 partial · 1 unknown`),
+  posted compensation, and recommended resume lane.
+- **View details** discloses the component breakdown, direction rationale, requirement
+  matches, evidence used, red flags, and the provider/model/duration for the run.
+
+**`Blocked` is not `Skip`.** `Blocked` means a saved non-negotiable rules the role out
+however well you score — a 92% fit that requires relocation you have ruled out. `Skip`
+means nothing blocks it but the fit is too low to justify the effort. A hard blocker
+requires explicit evidence on *both* sides: something the posting actually states and a
+constraint you actually saved. Missing salary, an unknown reporting line, an absent
+preferred qualification, or an inferred culture mismatch are never blockers.
+
+**Unknown is not a mismatch.** Requirements the resume is silent on are counted as
+`unknown`, never as gaps.
+
+**Failure behavior:**
+- Progress streams as ordered phases — preparing → evaluating → validating → saving —
+  with the provider, model, and elapsed time. There is no percentage bar: the work is a
+  single call, so a filling bar would be invented.
+- **Core fields decide whether an evaluation exists at all:** role, direction alignment,
+  and the four components. Everything else degrades to empty and records a completeness
+  warning, so one malformed field no longer costs the whole evaluation.
+- Malformed JSON is retried automatically, then falls back to the local rule-based
+  evaluator, which is labelled in the UI as scored locally. Auth, quota, and network
+  errors surface immediately with an actionable message instead of being retried.
+- **The generation has a 150-second ceiling.** Not every provider bounds itself — a local
+  Ollama model on a long posting can run for many minutes — and one unbounded call would
+  otherwise leave the retry-then-fall-back chain unreachable and the spinner running
+  forever. On timeout the job is scored locally instead, and labelled as such.
+- Errors name the phase that failed rather than a block letter.
+
+**What evaluation no longer does.** Evaluation performs no ATS keyword extraction, no
+compensation research, no live web research, no company research, no contact lookup, and
+generates no interview stories.
+
+ATS keyword extraction, requirement extraction, evidence mapping and compensation now run
+in **Application Preparation**, which is triggered by Generate Resume — see the Resume tab.
+
+Interview-story work now lives in **Interview Prep**. Evaluation no longer proposes
+stories; stories saved before that change keep their kind and stay filterable.
+
+**Legacy evaluations remain readable.** Jobs evaluated before this change still render
+their original A–G sections and can be re-evaluated. Re-evaluating preserves the old
+detail, your gap answers, saved stories, generated documents, company research, and
+outreach drafts — and no longer resets an `Applied` or `Interviewing` job back to
+`Reviewed`.
+
+**User correction** still overrides score and recommendation with a note, and now
+includes `Blocked` in the vocabulary.
 
 **AI evaluation data sources (all fed into the analysis):**
 - Full job description (up to 6,000 characters — captures required qualifications
@@ -339,25 +386,8 @@ Tabbed view for a single job. Four tabs:
   target roles, deal breakers, constraints.
 - Skill inventory (up to 30 skills with strength level and evidence source).
 - Role strategy (role-fit scores and rationale from the profile).
-- Active resume excerpts (up to 2 resumes × 1,800 chars each) — ensures Block B
-  CV-match assessment and proof-point citations are grounded in actual resume text,
-  not inferred from skill abstractions alone.
-
-**ATS keyword extraction (Block E):**
-- Extracts **12–18 high-signal phrases** per job posting. Precision is preferred
-  over filling a quota; employer marketing copy and generic traits are excluded.
-- The exact target title is captured once. Title variants are kept only when they
-  also appear in the posting; the evaluator cannot invent synonyms.
-- Named tools, platforms, certifications, and frameworks are extracted exactly as written.
-- Exact title and explicit Basic/Required/Must-have qualifications → `priority: "critical"`.
-- Core responsibilities and repeated job-specific competencies → `priority: "required"`.
-- Preferred/Nice-to-have qualifications and useful one-off context → `priority: "preferred"`.
-- Domain context phrases are captured only when they distinguish the role.
-- Categories: `"title"` | `"technical"` | `"soft"` | `"domain"` | `"tool"` |
-  `"methodology"` | `"credential"`.
-- Each signal stores its category, source section, priority, and short rationale.
-- A deterministic validator rejects phrases that are absent from the posting, longer
-  than six words, duplicated, or known low-signal wording.
+- Active resume excerpts (up to 2 resumes × 1,800 chars each) — so strengths and proof
+  points are grounded in actual resume text, not inferred from skill abstractions.
 
 ### Resume tab
 - Generate tailored resume for this job: picks best base resume, produces
@@ -466,6 +496,56 @@ The keyword panel in the draft editor classifies each keyword into one of three 
 - Color-coded bands remain green ≥ 70%, orange 40–69%, and red < 40% for quick
   comparison, without presenting 70% as a universal ATS cutoff.
 
+**Tabs.** `Overview | Evaluation | Resume | Apply | Outreach`. `Analysis` was renamed to
+`Evaluation`; old `?tab=analysis` links still resolve there, so bookmarks and notes keep
+working. Outreach currently opens the existing generic-draft page and becomes a contact
+workspace in a later phase.
+
+**Next best action.** Each job shows one primary action derived from its records — no new
+status column, so it cannot disagree with what actually exists:
+
+| State | Primary action |
+|---|---|
+| Not evaluated | Evaluate |
+| Evaluated, `Skip` or `Blocked` | Review evaluation (no nudge to proceed) |
+| Evaluated, no resume | Generate resume |
+| Resume ready, not applied | Apply |
+| Applied, nobody contacted | Find people |
+| Interviewing or Offer | Prepare interview |
+
+Outreach appears as a **secondary** suggestion ("or find people") while a primary action is
+outstanding, and is promoted to primary only after you have applied. Outreach may happen
+before or after applying, but it never displaces the step you are actually on. A `Blocked`
+or `Skip` role gets no encouragement to proceed — the tabs remain available, but the app
+stops suggesting.
+
+**Opportunity progress.** A compact strip — Evaluated, Application prepared, Resume ready,
+Applied, Outreach, Interview prep — derived from the same records.
+
+**Application Preparation.** Generating a resume first prepares the application — one
+structured AI call producing:
+
+- **Detailed requirements** from the posting, each marked supported, partial, or unknown
+  against your evidence. Silence in your resume is `unknown`, never a mismatch.
+- **ATS keyword signals** — 12–18 high-signal phrases, validated against the posting so an
+  invented title variant or a phrase that never appears cannot survive.
+- **An evidence map** — which of your evidence supports each requirement and where it
+  belongs on the resume. A mapping citing evidence that does not exist is discarded rather
+  than passed through, because it would otherwise become a false claim on a document you
+  send to an employer.
+- **Compensation context** — the posted range when the posting states one; otherwise at
+  most one live search (Brave, or your provider's web search). When neither is available it
+  says so and falls back to your saved target rather than inventing a range.
+
+**Reuse and staleness.** A preparation is reused while both its job-description hash and
+its evidence hash still match, so editing a draft does not pay for it again. The evidence
+hash spans your whole evidence bank — answering a gap on `/evidence` for one role marks
+every affected preparation stale, including jobs you answered it from somewhere else.
+
+**Evaluation is required, and never silent.** Resume and Apply used to run an evaluation
+themselves when one was missing — an expensive AI call with no user action behind it. They
+now stop and ask you to evaluate first.
+
 ### Apply tab
 - Prepare application answers: paste common or custom application questions,
   generate AI answers for copy-paste. App never auto-submits anything.
@@ -506,7 +586,7 @@ down to read all six sections." The modal cannot be dismissed while the request
 is in flight; the page-level **Cancel** button stops the stream and closes the
 modal, and an X button and Close button appear only in the done state.
 
-### Outreach `/jobs/[id]/outreach`
+### Outreach tab
 Generate a recruiter or hiring manager outreach message tailored to the job and
 user profile. Shows character count. User copies the message manually.
 
@@ -516,6 +596,118 @@ messages ready — scroll down to copy and send them." The modal cannot be
 dismissed while the request is in flight.
 
 ---
+
+### Outreach `/jobs/[id]/outreach`
+
+Part of the job workspace, not a separate screen — the job header, status control, next
+best action and progress strip stay visible while you work. The old
+`/jobs/[id]/outreach` URL redirects to `?tab=outreach`, so existing links keep working.
+
+Real people rather than abstract personas. Contacts are **global**, so the same person can
+be linked to several opportunities, while their role, relevance and outreach status stay
+**per job** — someone marked *Contacted* for one role remains *Found* for another.
+
+**Finding people with Clay.** When Clay is connected, **Find relevant people** searches for
+up to five people at the hiring company. It runs only when you click it — never on
+discovery, evaluation or page load — because each result spends your Clay allowance.
+
+Only the company identifier, role keywords and seniority are sent. Your resume, private
+notes, Story Bank and gap answers never leave Job Search Terminal.
+
+Results are normalised, ranked by JST's own rules, and saved as ordinary contacts you can
+edit, delete or forget. Anyone you previously chose to forget is filtered out before being
+saved, so a later search cannot resurrect them.
+
+**The company must be identified first.** A saved company domain is used if there is one;
+otherwise it is derived from the job URL — but only when that URL is the employer's own
+site. Links to Greenhouse, Lever, Ashby, Workday, LinkedIn, Indeed and similar are refused,
+because deriving a domain from them would search a real company that is not the employer.
+When nothing reliable is available, you are asked to add the domain rather than being given
+confident results from the wrong organisation.
+
+**When Clay has a problem**, each case says something different and useful: key rejected,
+allowance used up, rate limited, company ambiguous, or unreachable. A Clay failure never
+affects evaluation, resumes or applications.
+
+**Finding a work email.** Search never returns emails, and enrichment is a separate,
+per-contact action — **Find email** appears on a contact once you have decided they matter.
+It is never applied across a search result set, so five results cannot quietly become five
+enrichment charges.
+
+> **Why not Clay's MCP integration?** It would avoid the routine, but Clay charges the same
+> credits over MCP as over the API — there is no saving — and it requires OAuth with hourly
+> token refresh. The routine is less machinery for the same cost.
+
+> **Step-by-step setup:** see [docs/clay-enrichment-routine.md](clay-enrichment-routine.md),
+> including `npm run clay:routine` to validate a routine id before saving it.
+
+> **This needs setup, and the reason is Clay's.** Clay has no direct "find this person's
+> email" endpoint. The only path is executing a *routine* you build in your own Clay
+> workspace. Job Search Terminal does not create Clay routines or tables, so you build one
+> that takes a LinkedIn URL and returns a work email, then paste its routine id in
+> Settings → Integrations. Leave it blank to skip enrichment entirely — everything else
+> works without it, and the button explains what is missing rather than failing.
+
+**Automatic lookup.** Once a routine is configured, you can turn on *Look up emails
+automatically for search results* in Settings → Integrations. Every person a search returns
+is then enriched in a **single routine run**, rather than you clicking each one.
+
+It is off by default because it costs real credits: batching saves round trips and latency,
+but Clay charges per person enriched either way. Clay's managed enrichment function is
+**12.8 credits per person**, so a five-result search costs 64 credits to enrich
+automatically versus 12.8 for the one person you actually contact.
+
+Whether that matters depends entirely on your plan — check **Usage → Workspace balances**
+in Clay. A trial allowance comfortably absorbs it; a smaller one will not.
+
+If automatic lookup fails, the search still succeeds: the people are already saved and
+usable without an email.
+
+Enriched addresses are labelled **unverified**, because that is what they are — the routine
+found an address, nothing confirmed it deliverable.
+
+**Adding a contact.** Name, title, company (blank uses the hiring company), relationship,
+LinkedIn URL, work email and notes. Every contact is scored by the same deterministic rules
+a provider result will be, so a manually added person is not a second-class record.
+
+**Relevance is explained, not just scored.** The score comes from function overlap with the
+role, hiring authority, seniority, whether they work at the hiring company, and whether you
+can actually reach them — each contributing a stated reason. It is shown as a band —
+**Recommended**, **Optional**, **Low value** — rather than another number to interpret. No
+AI call is involved.
+
+**Statuses:** Found, Shortlisted, Drafted, Contacted, Responded, Not Relevant.
+
+**Drafting a message.** Each contact has its own draft area. Pick a channel — LinkedIn
+connection note, LinkedIn message, or email — and the message is written *to that person*
+about *this role*, using the job, its evaluation, your Application Preparation when it
+exists, the contact's relationship to the role, and your saved writing style.
+
+**Length follows the channel**, not one universal cap. A connection note aims for ~280
+characters and warns past 300; an email aims for ~1,200 and has a subject line. The count
+is always shown, and nothing is ever silently truncated — a message cut mid-sentence is
+worse than a long one.
+
+**What the drafts will not do.** No generic praise, no fake familiarity, no claims about
+the company that are not in the context, no assertion that this person owns the role unless
+that is known, and no invented experience, metrics or mutual connections. Drafts are
+editable in place before you use them.
+
+**There is no Send button.** Job Search Terminal drafts, tracks, and stops there. Copy the
+message into LinkedIn or your email client and send it yourself.
+
+**Three ways to remove someone**, meaning three different things:
+
+- **Remove from this job** — drops them from this opportunity; they stay in your contacts.
+- **Delete contact** — deletes them and their outreach history everywhere. A later search
+  may legitimately find them again.
+- **Forget this person** — deletes them *and* remembers a one-way fingerprint so a later
+  search recognises and discards them. JST keeps no readable trace: not the name, not the
+  email, not the profile URL. Adding them again is refused with an explanation until you
+  clear the forgotten list in Settings → Integrations, which restores nothing.
+
+Contact details are stored locally and included in account backups — the unencrypted-backup
+warning names them explicitly.
 
 ## Applications `/applications`
 
@@ -669,6 +861,23 @@ approved-resume builder experience with identical section controls on every sect
 Read-only HTML preview of the tailored resume.
 
 ---
+
+### Interview transition
+
+When a job's application status reaches **Interviewing** or **Offer**, the job workspace
+surfaces *Interview preparation available* with a direct link, and the progress strip ticks
+**Interview prep**. Next best action promotes it above everything else — an advancing
+opportunity is time-bound in a way earlier stages are not.
+
+Story matching for a job uses the same effective-keyword resolver as resume tailoring, so
+newly evaluated jobs match on Application Preparation keywords and older ones fall back to
+their stored evaluation keywords.
+
+**Where stories come from.** Evaluation used to propose STAR stories as part of its
+seven-block output; it no longer does. Stories are written in Interview Prep and labelled
+**Interview prep**. Older stories keep their original labels — *AI evaluation* for ones
+proposed by the retired evaluator, *Voice practice* for ones captured from practice — and
+remain filterable under **Job suggestions**.
 
 ## Interview Prep `/interview-prep`
 
@@ -955,6 +1164,36 @@ Four configuration tabs:
   handed the mask straight to the provider SDK and failed with a ByteString
   conversion error on the `•` character.)
 - **Model attribution** — every AI-generated result (evaluation, research, outreach drafts, application answers) shows the model and provider that produced it.
+
+### Integrations
+
+**Clay** (optional). Connect your own Clay account to find real people around an
+opportunity. Job Search Terminal works normally without it — evaluation, resumes and
+applications never depend on Clay, and a Clay outage cannot affect them.
+
+- Paste your API key and save; saving immediately tests the connection.
+- The test uses Clay's identity endpoint, **not** a people search, so checking whether your
+  key works never consumes your search allowance.
+- The key is stored locally and sent only to Clay. The settings page never receives it
+  back — it shows the last four characters and nothing else.
+- Status reads **Not connected**, **Connected**, **Key rejected** (actionable — re-paste
+  it), or **Clay unreachable** (usually not actionable — Clay is down or the API changed).
+- **Disconnect** clears the key, the status and any cached metadata.
+
+**Which key — use the scoped one.** Clay's profile page offers two, and only one works:
+
+| Clay tab | Key | Result |
+|---|---|---|
+| API keys (beta) | `clay_scoped_…` with the **Public API** scope | ✅ Connects |
+| API key | `clay_user_…` (personal) | ❌ 401 "Authentication required" |
+
+Clay's own API reference says the personal key is the one to use. It is not — that key is
+rejected, verified against a live account on 2026-08-18. Create a scoped key under
+**Profile → API keys (beta) → Add API key** with the Public API scope. Use Clay's copy
+control rather than selecting the displayed value, which is truncated with an ellipsis.
+
+> Contact search itself is not built yet. This phase establishes the credential and
+> connection plumbing only.
 
 ### Job Sources
 - All configured sources appear in a unified table — companies from

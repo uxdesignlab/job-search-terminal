@@ -1,5 +1,7 @@
-import { runAndSaveJobWithAI } from "@/lib/evaluation/llm-evaluator";
-import type { BlockName, BlockUpdate } from "@/lib/evaluation/llm-evaluator";
+import { runAndSaveJobWithAI, EvaluationPhaseError } from "@/lib/evaluation/llm-evaluator";
+import type { PhaseUpdate } from "@/lib/evaluation/llm-evaluator";
+import { EVALUATION_PHASES } from "@/lib/evaluation/evaluation-phases";
+import type { EvaluationFailurePhase } from "@/lib/evaluation/evaluation-phases";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
 
 function toUserMessage(error: unknown): string {
@@ -20,6 +22,16 @@ function toUserMessage(error: unknown): string {
   return "Evaluation failed. Check your AI provider settings and try again.";
 }
 
+/** What each failure phase means to someone who just clicked Evaluate (§18.5). */
+const FAILURE_PHASE_MESSAGE: Record<EvaluationFailurePhase, string> = {
+  input: "The job could not be loaded.",
+  provider: "The AI provider could not be reached.",
+  parse: "The AI response could not be read.",
+  validate: "The AI response could not be validated. A local fallback was attempted.",
+  fallback: "The AI response could not be validated and the local fallback also failed.",
+  save: "The evaluation ran but could not be saved.",
+};
+
 export const dynamic = "force-dynamic";
 
 export async function GET(
@@ -35,44 +47,57 @@ export async function GET(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
-      let currentBlock: BlockName | "save" = "a";
+      const startedAt = Date.now();
+      // Where to attribute a failure if one arrives without its own phase.
+      let currentPhase: EvaluationFailurePhase = "input";
 
       try {
         const activeProvider = tryGetActiveProvider();
-        if (activeProvider) {
-          send({ block: "start", providerUsed: activeProvider.name, modelUsed: activeProvider.effectiveModel, done: false });
-        }
+        send({
+          phase: "start",
+          phases: EVALUATION_PHASES,
+          providerUsed: activeProvider?.name ?? "",
+          modelUsed: activeProvider?.effectiveModel ?? "",
+          done: false
+        });
 
-        const onBlock = (update: BlockUpdate) => {
-          send({ block: update.block, label: update.label, content: update.content, done: false });
+        const onPhase = (update: PhaseUpdate) => {
+          currentPhase = update.phase === "evaluating" ? "provider" : update.phase === "saving" ? "save" : "validate";
+          send({
+            phase: update.phase,
+            message: update.message,
+            providerUsed: update.providerUsed,
+            modelUsed: update.modelUsed,
+            // Elapsed time is the honest signal while one long call is pending —
+            // there is no partial progress to report, and a percentage would be invented.
+            elapsedMs: Date.now() - startedAt,
+            done: false
+          });
         };
 
-        const onBlockStart = (block: BlockName) => {
-          currentBlock = block;
-        };
-
-        const result = await runAndSaveJobWithAI(jobId, onBlock, onBlockStart);
-        currentBlock = "save";
+        const result = await runAndSaveJobWithAI(jobId, onPhase);
 
         send({
-          block: "complete",
+          phase: "complete",
           fitScore: result.fitScore,
           scoreLabel: result.scoreLabel,
           recommendation: result.recommendation,
+          confidence: result.confidenceLabel,
           roleArchetype: result.roleArchetype,
-          legitimacyLabel: result.legitimacyLabel,
+          evaluationVersion: result.evaluationVersion,
+          completenessWarnings: result.completenessWarnings,
           providerUsed: result.providerUsed,
           modelUsed: result.modelUsed,
           generationMs: result.generationMs,
           done: true
         });
       } catch (error) {
-        const blockLabel = currentBlock === "save" ? "saving results" : `block ${currentBlock.toUpperCase()}`;
-        console.error(`[evaluate] error during ${blockLabel}:`, error);
+        const failedPhase = error instanceof EvaluationPhaseError ? error.failedPhase : currentPhase;
+        console.error(`[evaluate] error during ${failedPhase}:`, error);
         send({
-          block: "error",
-          error: toUserMessage(error),
-          failedBlock: currentBlock,
+          phase: "error",
+          error: `${FAILURE_PHASE_MESSAGE[failedPhase]} ${toUserMessage(error)}`.trim(),
+          failedPhase,
           done: true
         });
       } finally {

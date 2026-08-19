@@ -21,7 +21,7 @@ type Story = {
   conceptTags: TaxonomyConceptRecord[];
   rawKeywords: string[];
   sourceJobId: string | null;
-  sourceBlockF: string;
+  storySource: string;
   storyKind: "answered_question" | "standalone_story" | "evaluation_suggestion";
   questionId: string | null;
   promptText: string;
@@ -53,6 +53,8 @@ const STAR_LABELS = {
 const KIND_LABELS: Record<Story["storyKind"], string> = {
   answered_question: "Answered question",
   standalone_story: "Standalone story",
+  // Historical: evaluation no longer proposes stories, but existing ones keep
+  // their kind and stay filterable.
   evaluation_suggestion: "Job evaluation suggestion",
 };
 
@@ -75,8 +77,10 @@ function descendantIds(concept: TaxonomyConceptRecord): string[] {
 
 function sourceLabel(story: Story) {
   if (story.storyKind === "standalone_story") return "Manual story";
-  if (story.sourceBlockF === "voice-practice") return "Voice practice";
-  if (story.sourceBlockF === "evaluation") return "AI evaluation";
+  if (story.storySource === "voice-practice") return "Voice practice";
+  if (story.storySource === "interview-prep") return "Interview prep";
+  // Retained for stories written before evaluation stopped proposing them (D2).
+  if (story.storySource === "evaluation") return "AI evaluation";
   return "Custom answer";
 }
 
@@ -190,7 +194,7 @@ export function StoryBankList({ assignmentJobs, stories, taxonomy, deleteStoryAc
       if (query && !searchable.includes(query)) return false;
       if (kind !== "all" && story.storyKind !== kind) return false;
       if (quality !== "all" && story.qualityStatus !== quality) return false;
-      if (source !== "all" && story.sourceBlockF !== source) return false;
+      if (source !== "all" && story.storySource !== source) return false;
       if (selectedConceptWithDescendants.size > 0 && !story.conceptTags.some((item) => selectedConceptWithDescendants.has(item.id))) return false;
       if (
         selectedPositions.size > 0 &&

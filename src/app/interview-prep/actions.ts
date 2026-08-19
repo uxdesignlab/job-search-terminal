@@ -62,7 +62,10 @@ export async function saveStoryAction(formData: FormData) {
     skills: splitList(formData.get("skills")),
     themes: splitList(formData.get("themes")),
     sourceJobId: null,
-    sourceBlockF: "",
+    // D2: evaluation no longer proposes stories. The interview workspace is now
+    // the producer, and its output is labelled as such rather than inheriting a
+    // provenance that implies a model suggested it.
+    storySource: "interview-prep",
     storyKind: coerceStoryKind(formData.get("storyKind")),
     questionId: String(formData.get("questionId") ?? "") || null,
     promptText: String(formData.get("promptText") ?? ""),

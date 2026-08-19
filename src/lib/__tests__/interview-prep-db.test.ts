@@ -109,7 +109,7 @@ describe("interview prep database helpers", () => {
       skills: [],
       themes: [],
       sourceJobId: null,
-      sourceBlockF: "evaluation",
+      storySource: "evaluation",
       qualityStatus: "missing_result",
       qualityNotes: "Add a result.",
     });
@@ -542,7 +542,7 @@ describe("interview prep database helpers", () => {
         skills: [],
         themes: [],
         sourceJobId: job,
-        sourceBlockF: "evaluation",
+        storySource: "evaluation",
         tags: ["design systems"],
       });
       db.prepare("insert or ignore into story_job_links (story_id, job_id, source) values (?, ?, 'auto')").run(id, job);

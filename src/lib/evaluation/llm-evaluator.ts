@@ -1,300 +1,143 @@
 import { getActiveProvider } from "../ai/factory";
-import { withRetry, isMalformedJsonResponse } from "../ai/retry";
+import { withRetry, withDeadline, isMalformedJsonResponse, GenerationTimeoutError } from "../ai/retry";
 import type { AIMessage, AIProvider } from "../ai/provider";
-import { getJobById, getRoleDirections, getResumes, getSkills, getStories, getUserProfile, saveJobEvaluation } from "../db/queries";
-import type { EvaluationSections, JobEvaluationResultInput, JobKeywordSignal, JobRecord, StructuredStory } from "../db/types";
-import { normalizeKeywordSignals } from "./keyword-signals";
-import { coerceResumeBaseToLane, pickResumeBase } from "./resume-lane-picker";
+import { getJobById, getRoleDirections, getResumes, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
+import type {
+  EvaluationSections,
+  FastEvaluationModelOutput,
+  JobEvaluationResultInput,
+  JobRecord,
+  ResumeRecord,
+  UserProfileRecord,
+} from "../db/types";
+import { buildEvaluation } from "./job-evaluator";
+import {
+  EVALUATION_PHASES,
+  EVALUATION_PHASE_LABELS,
+  LOCAL_FALLBACK_LABEL,
+  type EvaluationFailurePhase,
+  type EvaluationPhase,
+} from "./evaluation-phases";
+import { coerceResumeBaseToLane } from "./resume-lane-picker";
 import { buildJobContext, buildSystemPrompt, type ResumeExcerpt } from "./prompts";
-
-export type BlockName = "a" | "b" | "c" | "d" | "e" | "f" | "g";
-
-export type BlockUpdate = {
-  block: BlockName;
-  label: string;
-  content: string[];
-};
-
-export type EvaluationCallback = (update: BlockUpdate) => void;
-export type BlockStartCallback = (block: BlockName) => void;
-
-// ─── Block A: Role Summary ─────────────────────────────────────────────────
-
-type BlockAResult = {
-  archetype: string;
-  domain: string;
-  seniority: string;
-  teamContext: string;
-  remoteReality: string;
-  summary: string[];
-};
-
-async function runBlockA(provider: AIProvider, systemPrompt: string, jobCtx: string): Promise<BlockAResult> {
-  const messages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `${jobCtx}
-
-Analyze this job posting and return a JSON object with:
-- "archetype": the best-fit role archetype from: "IC / Individual Contributor", "Leadership / Management", "Operations / Program Management", "Technical Specialist", "Education / Training", "Other"
-- "domain": what the company/product does (1 sentence)
-- "seniority": IC / Senior IC / Lead / Principal / Director / VP / Unknown
-- "teamContext": likely team structure and reporting (1 sentence)
-- "remoteReality": Remote / Hybrid / Onsite / Unknown
-- "summary": 4 bullet strings summarizing the role (archetype, seniority, remote, one-line TL;DR fit verdict)`
-    }
-  ];
-  return provider.generateJSON<BlockAResult>(messages, '{"archetype":"string","domain":"string","seniority":"string","teamContext":"string","remoteReality":"string","summary":["string"]}');
-}
-
-// ─── Block B: CV Match ─────────────────────────────────────────────────────
-
-type BlockBResult = {
-  fitScore: number;
-  recommendation: string;
-  strengths: string[];
-  gaps: string[];
-  redFlags: string[];
-  requirementMatch: string[];
-  resumeEvidence: string[];
-  summary: string[];
-};
-
-async function runBlockB(provider: AIProvider, systemPrompt: string, jobCtx: string, blockA: BlockAResult): Promise<BlockBResult> {
-  const messages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `${jobCtx}
-
-Role archetype detected: ${blockA.archetype} | Seniority: ${blockA.seniority}
-
-Assess the candidate's CV match against this job. Return a JSON object with:
-- "fitScore": integer 0-100 (overall fit considering skills, seniority, domain, constraints)
-- "recommendation": one of "Priority apply" / "Strong apply" / "Review manually" / "Skip"
-- "strengths": up to 6 strings — specific skills/experiences from the profile that match
-- "gaps": up to 5 strings — genuine capability or experience gaps
-- "redFlags": up to 4 strings — deal breakers, location conflicts, seniority mismatches
-- "requirementMatch": up to 6 strings — job requirements matched by the profile
-- "resumeEvidence": up to 5 strings — specific resume proof points that are relevant
-- "summary": 3-4 bullet strings summarizing the match assessment`
-    }
-  ];
-  return provider.generateJSON<BlockBResult>(messages, '{"fitScore":0,"recommendation":"string","strengths":[],"gaps":[],"redFlags":[],"requirementMatch":[],"resumeEvidence":[],"summary":[]}');
-}
-
-// ─── Block C: Level Strategy ───────────────────────────────────────────────
-
-async function runBlockC(provider: AIProvider, systemPrompt: string, jobCtx: string, blockA: BlockAResult, blockB: BlockBResult): Promise<string[]> {
-  const messages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `${jobCtx}
-
-Detected: ${blockA.archetype} | ${blockA.seniority} | Fit score: ${blockB.fitScore}%
-
-Advise on seniority positioning and negotiation. Return JSON: { "strategy": ["bullet 1", ...] }
-Include: how to position seniority, market demand signals, 2-3 negotiation angles, and whether to apply above/at/below title level. Up to 5 bullets.`
-    }
-  ];
-  const result = await provider.generateJSON<{ strategy: string[] }>(messages, '{"strategy":[]}');
-  return result.strategy;
-}
-
-// ─── Block D: Compensation ─────────────────────────────────────────────────
-
-async function runBlockD(
-  provider: AIProvider,
-  systemPrompt: string,
-  jobCtx: string,
-  blockA: BlockAResult,
-  job: { title: string; company: string; location: string }
-): Promise<string[]> {
-  // Attempt real-time market data via web search if the provider supports it
-  let searchContext = "";
-  if (provider.webSearch) {
-    const query = `${blockA.archetype} ${blockA.seniority} salary range ${job.location || "United States"} 2024 2025 site:levels.fyi OR site:glassdoor.com OR site:linkedin.com/salary`;
-    const searchResult = await provider.webSearch(query).catch(() => null);
-    if (searchResult) {
-      searchContext = `\n\nReal-time compensation data from web search:\n${searchResult.slice(0, 1500)}`;
-    }
-  }
-
-  const messages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `${jobCtx}
-
-Role: ${blockA.archetype} | ${blockA.seniority} | Domain: ${blockA.domain}
-Company: ${job.company} | Location: ${job.location}${searchContext}
-
-Research compensation context. Return JSON: { "compensation": ["bullet 1", ...] }
-Include: estimated base salary band for this role/seniority/location, total comp context (equity/bonus), market demand context, whether comp is likely above/at/below candidate's stated needs. Up to 5 bullets.${searchContext ? " Prefer the real-time search data over training knowledge for current ranges." : " No live market data available — estimate from training knowledge."}`
-    }
-  ];
-  const result = await provider.generateJSON<{ compensation: string[] }>(messages, '{"compensation":[]}');
-  return result.compensation;
-}
-
-// ─── Block E: Personalization Plan ────────────────────────────────────────
-
-type BlockEResult = {
-  plan: string[];
-  keywords: JobKeywordSignal[];
-};
-
-async function runBlockE(provider: AIProvider, systemPrompt: string, jobCtx: string, blockA: BlockAResult, blockB: BlockBResult): Promise<BlockEResult> {
-  const messages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `${jobCtx}
-
-Archetype: ${blockA.archetype} | Gaps: ${blockB.gaps.slice(0, 3).join("; ")}
-
-Create a CV/LinkedIn personalization roadmap. Return JSON:
-- "plan": up to 6 bullet strings — specific summary rewrites, bullet reorders, skills to emphasize, LinkedIn headline changes
-- "keywords": 12-18 high-signal job keyword objects. These support recruiter search, resume parsing, and skills/context matching; they are not a universal ATS score.
-
-EXTRACTION RULES (follow strictly):
-1. Use a verbatim phrase that appears in the title or posting. Never invent title variants or synonyms.
-2. Include the exact target job title once. Do not add another title unless that title also appears in the posting.
-3. Extract every named tool, platform, certification, license, and framework exactly as written.
-4. Mark the title and explicit Basic/Required/Must-have qualifications "critical".
-5. Mark core responsibilities and repeated job-specific competencies "required".
-6. Mark Preferred/Nice-to-have qualifications and useful one-off context "preferred".
-7. For "X+ years of [skill]", extract the skill phrase, not the years number.
-8. Include only domain phrases that distinguish this role from generic roles.
-9. Exclude employer marketing language, benefits, generic traits, and low-signal wording such as "best-in-class," "team player," "attention to detail," or "fast-paced environment."
-10. Do not turn full responsibility sentences into keywords. Prefer concise 1-6 word skills, methods, tools, credentials, and domains.
-11. Do not duplicate semantically identical phrases. Prefer the more specific phrase.
-12. Precision is more important than reaching the maximum count.
-
-Each keyword object:
-- "keyword": verbatim phrase (1-6 words; single-word tools/certs are fine)
-- "priority": "critical" | "required" | "preferred"
-- "category": "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential"
-- "source": "job_title" | "basic_qualification" | "required_qualification" | "preferred_qualification" | "responsibility" | "description"
-- "rationale": one short sentence explaining why this phrase matters`
-    }
-  ];
-  const raw = await provider.generateJSON<{ plan: string[]; keywords: unknown[] }>(messages, '{"plan":[],"keywords":[]}');
-  const description = `${jobCtx}`;
-  const titleMatch = jobCtx.match(/Title:\s*([^\n]+)/);
-  const keywords = normalizeKeywordSignals(raw.keywords ?? [], {
-    title: titleMatch?.[1]?.trim() ?? "",
-    description,
-  });
-  return { plan: raw.plan ?? [], keywords };
-}
-
-// ─── Block F: Interview Plan ───────────────────────────────────────────────
-
-type BlockFResult = {
-  lines: string[];
-  structured: StructuredStory[];
-};
+import {
+  calculateFitScore,
+  deriveConfidence,
+  deriveRecommendation,
+  deriveScoreLabel,
+  normalizeModelOutput,
+  validateHardBlockers,
+} from "./fast-evaluation";
 
 /**
- * Generates 3-5 STAR+Reflection interview stories tailored to the role.
+ * Fast Evaluation (PRD v0.2.1 §11–§20).
  *
- * @param existingStoryTitles - Question strings from the current story bank,
- *   injected into the prompt so the LLM avoids exact duplicates and builds
- *   on material already captured across prior evaluations.
+ * One structured generation answers "should I spend more time on this?".
+ * Everything the user has not reached yet — ATS keywords, compensation
+ * research, interview stories — belongs to a later stage and is not run here.
  */
-async function runBlockF(
-  provider: AIProvider,
-  systemPrompt: string,
-  jobCtx: string,
-  blockA: BlockAResult,
-  blockE: BlockEResult,
-  existingStoryTitles: string[]
-): Promise<BlockFResult> {
-  const bankContext =
-    existingStoryTitles.length > 0
-      ? `\n\nExisting stories already in the story bank (do not duplicate; build on or contrast these instead):\n${existingStoryTitles.map((t) => `- "${t}"`).join("\n")}`
-      : "";
 
-  const messages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `${jobCtx}
+// ─── Progress phases (§18.2) ───────────────────────────────────────────────
 
-Role: ${blockA.archetype} | Key keywords: ${blockE.keywords.slice(0, 8).map((k) => k.keyword).join(", ")}${bankContext}
-
-Generate 3-5 STAR+Reflection interview stories for this specific role. Return JSON: { "stories": [{ "question": "string", "points": ["S: ...", "T: ...", "A: ...", "R: ...", "Reflection: ..."] }] }
-
-Each story should:
-- Map to a likely interview question for this specific role/company
-- Use only experiences from the candidate profile
-- Include measurable outcomes in the Result
-- Include a Reflection on what was learned or what you'd do differently`
-    }
-  ];
-
-  // Block F is the largest structured generation (3-5 stories × question + 5 STAR+Reflection
-  // bullets), and the "build on / contrast existing stories" instruction pushes the model
-  // toward longer output. Give it a bigger budget than the 4096 default so it doesn't
-  // truncate mid-JSON and fail to parse.
-  const result = await provider.generateJSON<{ stories: Array<{ question: string; points: string[] }> }>(
-    messages,
-    '{"stories":[]}',
-    { maxTokens: 8192 }
-  );
-
-  // `stories` may be absent if the model returned a different shape — guard before mapping.
-  const stories = result.stories ?? [];
-
-  // Parse the structured points into labelled fields before flattening
-  const structured: StructuredStory[] = stories.map((s) => {
-    const extract = (prefix: string) =>
-      s.points.find((p) => p.startsWith(prefix))?.replace(prefix, "").trim() ?? "";
-    return {
-      question: s.question,
-      situation: extract("S:"),
-      task: extract("T:"),
-      action: extract("A:"),
-      result: extract("R:"),
-      reflection: extract("Reflection:")
-    };
-  });
-
-  const lines = stories.flatMap((s) => [`Q: ${s.question}`, ...s.points, ""]).filter(Boolean);
-
-  return { lines, structured };
+export class EvaluationPhaseError extends Error {
+  constructor(readonly failedPhase: EvaluationFailurePhase, message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = "EvaluationPhaseError";
+  }
 }
 
-// ─── Block G: Posting Legitimacy ──────────────────────────────────────────
-
-type BlockGResult = {
-  assessment: string;
-  legitimacy: string[];
+export type PhaseUpdate = {
+  phase: EvaluationPhase;
+  message: string;
+  /** Set once a provider is chosen, so the client can name what it is waiting on. */
+  providerUsed?: string;
+  modelUsed?: string;
 };
 
-async function runBlockG(provider: AIProvider, systemPrompt: string, jobCtx: string, job: JobRecord): Promise<BlockGResult> {
-  const messages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: `${jobCtx}
+export type PhaseCallback = (update: PhaseUpdate) => void;
 
-Posted: ${job.datePosted || job.firstSeenDate} | First seen: ${job.firstSeenDate}
+/**
+ * Upper bound on the one generation an evaluation gets. Above the OpenAI
+ * client's own 120s so a legitimately slow cloud call is not preempted, but
+ * finite, so an unbounded local model degrades to rules instead of hanging.
+ */
+export const EVALUATION_GENERATION_TIMEOUT_MS = 150_000;
 
-Assess this posting's legitimacy. Return JSON:
-- "assessment": one of "High Confidence" / "Proceed with Caution" / "Suspicious"
-- "legitimacy": 3-5 bullet strings — freshness signals, quality indicators, repost/ghost job patterns, any concerns
+// ─── Prompt ────────────────────────────────────────────────────────────────
 
-Signals to evaluate: posting age, description quality, salary transparency, specificity of requirements, recruiter vs direct, known company vs unknown.`
-    }
-  ];
-  return provider.generateJSON<BlockGResult>(messages, '{"assessment":"string","legitimacy":[]}');
+const FAST_EVALUATION_SHAPE = `{
+  "roleArchetype": "string",
+  "seniority": "string",
+  "domain": "string",
+  "directionAlignment": "strong | partial | none",
+  "directionAlignmentRationale": "string",
+  "fitComponents": {
+    "coreRequirements": 0,
+    "roleAndSeniority": 0,
+    "relevantEvidence": 0,
+    "userPreferences": 0
+  },
+  "strengths": [{ "claim": "string", "evidence": "string", "strength": "strong | moderate | weak" }],
+  "gaps": [{ "requirement": "string", "detail": "string" }],
+  "redFlags": ["string"],
+  "hardBlockerCandidates": [{ "kind": "relocation | credential | work_authorization | onsite_location | other", "postingEvidence": "string", "candidateConstraint": "string" }],
+  "requirementMatches": [{ "requirement": "string", "status": "supported | partial | unknown", "evidence": "string" }],
+  "resumeEvidence": ["string"],
+  "resumeBaseRecommendation": "string",
+  "postedCompensation": "string",
+  "summary": "string"
+}`;
+
+function buildFastEvaluationPrompt(jobCtx: string, resumeLanes: string[]): string {
+  return `${jobCtx}
+
+Decide whether this candidate should spend more time on this position. Return one JSON object matching this shape exactly:
+
+${FAST_EVALUATION_SHAPE}
+
+Scoring — return component scores only. Do NOT return a total; it is calculated from your components.
+- "coreRequirements" (0-40): how well demonstrated evidence covers the role's stated must-haves.
+- "roleAndSeniority" (0-25): match of function and level.
+- "relevantEvidence" (0-20): depth of directly relevant, evidenced experience.
+- "userPreferences" (0-15): fit against the candidate's stated preferences and direction.
+
+"directionAlignment" answers whether the role matches the direction this candidate is
+searching in — not whether they could do the job. Use the target roles, role strategy and
+career direction in the profile. A capable match in the wrong direction is "none".
+
+"hardBlockerCandidates" require explicit evidence on BOTH sides: something the posting
+actually states, and a constraint or deal breaker the candidate actually saved. Missing
+salary, unknown reporting line, an absent preferred qualification, or an inferred culture
+mismatch are NOT blockers — leave the array empty rather than guessing. Anything you are
+inferring belongs in "redFlags".
+
+"requirementMatches": the role's real requirements, each marked supported, partial or
+unknown against the evidence base. Use "unknown" when the resume is silent — never treat
+silence as a mismatch.
+
+"strengths": at most 5, each grounded in the resume evidence provided. "gaps": at most 3.
+"redFlags": at most 3 non-blocking concerns.
+
+"resumeBaseRecommendation": choose one of these lanes — ${resumeLanes.join(", ") || "not configured"}.
+"postedCompensation": copy any compensation the posting states, verbatim. Empty string if
+it states none. Do not estimate, and do not research.
+
+Ground every claim in the candidate profile and resume evidence. Never invent experience.`;
 }
 
-// ─── Resume Excerpt Builder ───────────────────────────────────────────────
+async function runFastEvaluation(
+  provider: AIProvider,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<unknown> {
+  const messages: AIMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+  return provider.generateJSON<unknown>(messages, FAST_EVALUATION_SHAPE);
+}
+
+// ─── Resume excerpts ───────────────────────────────────────────────────────
 
 const MAX_EXCERPT_CHARS_PER_RESUME = 1800;
 const MAX_RESUME_EXCERPTS = 2;
@@ -305,38 +148,35 @@ function buildResumeExcerpts(resumes: { name: string; extractedText: string; act
     .slice(0, MAX_RESUME_EXCERPTS)
     .map((r) => ({
       name: r.name,
-      excerpt: r.extractedText.slice(0, MAX_EXCERPT_CHARS_PER_RESUME)
+      excerpt: r.extractedText.slice(0, MAX_EXCERPT_CHARS_PER_RESUME),
     }));
+}
+
+/** Fast-v2 generates no A–G prose. Written as a complete shape because readers expect the keys. */
+function emptySections(): EvaluationSections {
+  return {
+    roleSummary: [],
+    matchWithResume: [],
+    levelStrategy: [],
+    compensationDemand: [],
+    tailoringPlan: [],
+    interviewPlan: [],
+    postingLegitimacy: [],
+  };
 }
 
 // ─── Orchestrator ──────────────────────────────────────────────────────────
 
-/**
- * Runs a non-critical block with retry, then degrades to `fallback` if it still
- * returns malformed/truncated JSON after all retries — so one flaky generation
- * can't abort an otherwise-complete evaluation. Auth/quota/network errors (which
- * the user must act on) still propagate untouched. Used for later, non-scoring
- * blocks (F interview stories, G legitimacy); core blocks A/B fail hard by design
- * because a fabricated match/score is worse than an honest failure.
- */
-async function runBlockOrFallback<T>(label: string, fallback: T, fn: () => Promise<T>): Promise<T> {
-  try {
-    return await withRetry(fn);
-  } catch (error) {
-    if (!isMalformedJsonResponse(error)) throw error;
-    console.warn(`[evaluate] ${label} degraded to fallback after retries:`, error);
-    return fallback;
-  }
-}
-
-export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallback, onBlockStart?: BlockStartCallback): Promise<JobEvaluationResultInput> {
+export async function evaluateJobWithAI(jobId: string, onPhase?: PhaseCallback): Promise<JobEvaluationResultInput> {
   const start = Date.now();
-  const provider = getActiveProvider();
+
+  onPhase?.({ phase: "preparing", message: EVALUATION_PHASE_LABELS.preparing });
 
   let job = getJobById(jobId);
-  if (!job) throw new Error(`Job not found: ${jobId}`);
+  if (!job) throw new EvaluationPhaseError("input", `Job not found: ${jobId}`);
 
-  // Auto-fetch JD for scanned jobs that don't have a description yet
+  // Auto-fetch the JD for scanned jobs that arrived as metadata only. Confidence
+  // is calculated from what we end up with, so this runs before, not after.
   if (!job.rawDescription && job.url) {
     const { fetchJobDescription } = await import("../scanner/jd-fetcher");
     const { saveJobDescription } = await import("../db/queries");
@@ -354,108 +194,188 @@ export async function evaluateJobWithAI(jobId: string, onBlock?: EvaluationCallb
 
   const resumeExcerpts = buildResumeExcerpts(resumes);
   const systemPrompt = buildSystemPrompt(profile, skills, roleDirections, resumeExcerpts);
-  const jobCtx = buildJobContext(job);
-  // Keyword extraction (Block E) needs a fuller view of the posting to find
-  // verbatim phrases and to validate them against the description; other blocks
-  // stay on the leaner shared context.
-  const keywordJobCtx = buildJobContext(job, 12000);
-
-  // All blocks run sequentially — avoids rate-limit/503 from parallel API calls,
-  // and gives better streaming UX (one block appears at a time).
-  onBlockStart?.("a");
-  const blockA = await withRetry(() => runBlockA(provider, systemPrompt, jobCtx));
-  onBlock?.({ block: "a", label: "A. Role summary", content: blockA.summary });
-
-  onBlockStart?.("b");
-  const blockB = await withRetry(() => runBlockB(provider, systemPrompt, jobCtx, blockA));
-  onBlock?.({ block: "b", label: "B. CV match", content: blockB.summary });
-
-  onBlockStart?.("c");
-  const blockCContent = await withRetry(() => runBlockC(provider, systemPrompt, jobCtx, blockA, blockB));
-  onBlock?.({ block: "c", label: "C. Level strategy", content: blockCContent });
-
-  onBlockStart?.("d");
-  const blockDContent = await withRetry(() => runBlockD(provider, systemPrompt, jobCtx, blockA, { title: job.title, company: job.company, location: job.location }));
-  onBlock?.({ block: "d", label: "D. Comp and demand", content: blockDContent });
-
-  onBlockStart?.("e");
-  const blockE = await withRetry(() => runBlockE(provider, systemPrompt, keywordJobCtx, blockA, blockB));
-  onBlock?.({ block: "e", label: "E. Personalization plan", content: blockE.plan });
-
-  // Fetch existing story bank titles to feed as context into Block F
-  const existingStoryTitles = getStories()
-    .filter((s) => s.sourceBlockF !== "evaluation" || s.sourceJobId !== jobId)
-    .map((s) => s.title)
-    .slice(0, 8);
-
-  onBlockStart?.("f");
-  const blockFResult = await runBlockOrFallback<BlockFResult>(
-    "Block F (interview stories)",
-    { lines: [], structured: [] },
-    () => runBlockF(provider, systemPrompt, jobCtx, blockA, blockE, existingStoryTitles)
+  const userPrompt = buildFastEvaluationPrompt(
+    buildJobContext(job),
+    resumes.filter((resume) => resume.activeStatus).map((resume) => resume.name)
   );
-  onBlock?.({ block: "f", label: "F. Interview plan", content: blockFResult.lines });
 
-  onBlockStart?.("g");
-  const blockGResult = await runBlockOrFallback<BlockGResult>(
-    "Block G (posting legitimacy)",
-    { assessment: "Unknown", legitimacy: ["Legitimacy check unavailable — the AI response could not be parsed. Re-run the evaluation to retry."] },
-    () => runBlockG(provider, systemPrompt, jobCtx, job)
+  const provider = getActiveProvider();
+
+  onPhase?.({
+    phase: "evaluating",
+    message: EVALUATION_PHASE_LABELS.evaluating,
+    providerUsed: provider.name,
+    modelUsed: provider.effectiveModel,
+  });
+
+  let normalized: ReturnType<typeof normalizeModelOutput> | null = null;
+  try {
+    const raw = await withDeadline(
+      () => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt)),
+      EVALUATION_GENERATION_TIMEOUT_MS
+    );
+    normalized = normalizeModelOutput(raw);
+  } catch (error) {
+    // A timeout degrades like an unusable response: the local evaluator is
+    // instant, so the user gets a scored job labelled as locally scored instead
+    // of an endless spinner.
+    if (error instanceof GenerationTimeoutError) {
+      console.warn(`[evaluate] ${error.message} Falling back to the local evaluator.`);
+    } else if (!isMalformedJsonResponse(error)) {
+      // Auth, quota and network problems are the user's to act on and must
+      // surface as themselves rather than hiding behind a rule-based score.
+      throw new EvaluationPhaseError("provider", error instanceof Error ? error.message : String(error), error);
+    } else {
+      console.warn("[evaluate] provider returned unparseable JSON after retries:", error);
+    }
+  }
+
+  onPhase?.({ phase: "validating", message: EVALUATION_PHASE_LABELS.validating });
+
+  /**
+   * §18.4. Core fields decide whether an AI evaluation exists at all: without a
+   * role and component scores there is nothing to score, and inventing one is
+   * worse than admitting the model failed. Optional fields degrade instead, so a
+   * single malformed array no longer costs the whole evaluation the way a failed
+   * block used to.
+   */
+  if (!normalized || !normalized.coreValid) {
+    const missing = normalized && !normalized.coreValid ? normalized.missing.join(", ") : "unparseable response";
+    console.warn(`[evaluate] falling back to the local evaluator (${missing})`);
+    try {
+      const fallback = buildEvaluation(job, profile, skills, roleDirections, resumes);
+      // The rule-based pass itself is instant, but the user waited for whatever
+      // the provider did first — often the full generation deadline. Report the
+      // real wall-clock, or the observability data claims the run was free.
+      return { ...fallback, generationMs: Date.now() - start };
+    } catch (error) {
+      throw new EvaluationPhaseError(
+        "fallback",
+        "The AI response could not be validated and the local fallback also failed.",
+        error
+      );
+    }
+  }
+
+  return buildFastEvaluationResult({
+    job,
+    output: normalized.output,
+    warnings: normalized.warnings,
+    profile,
+    resumes,
+    providerUsed: provider.name,
+    modelUsed: provider.effectiveModel,
+    generationMs: Date.now() - start,
+  });
+}
+
+/**
+ * Turn a validated model output into the stored record: derive everything the
+ * model was not allowed to decide, then fill the compatibility columns the
+ * existing `evaluations` and `jobs` rows still require (§20.1, §20.4).
+ */
+function buildFastEvaluationResult(input: {
+  job: JobRecord;
+  output: FastEvaluationModelOutput;
+  warnings: string[];
+  profile: UserProfileRecord;
+  resumes: ResumeRecord[];
+  providerUsed: string;
+  modelUsed: string;
+  generationMs: number;
+}): JobEvaluationResultInput {
+  const { job, output } = input;
+
+  const fitScore = calculateFitScore(output.fitComponents);
+  const hardBlockers = validateHardBlockers(output.hardBlockerCandidates);
+  const recommendation = deriveRecommendation({
+    fitScore,
+    directionAlignment: output.directionAlignment,
+    hardBlockers,
+  });
+
+  const jdText = (job.rawDescription || job.parsedDescription || "").trim();
+  const evidenceText = input.resumes
+    .filter((resume) => resume.activeStatus)
+    .map((resume) => resume.extractedText ?? "")
+    .join(" ")
+    .trim();
+
+  const confidence = deriveConfidence({
+    postingResolved: jdText.length > 0,
+    jdChars: jdText.length,
+    evidenceChars: evidenceText.length,
+  });
+
+  // Compatibility projections. The structured forms stay on model_output_json;
+  // these are the flattened strings the existing screens already render.
+  const strengthStrings = output.strengths.map((item) =>
+    item.evidence ? `${item.claim} — ${item.evidence}` : item.claim
   );
-  onBlock?.({ block: "g", label: "G. Posting legitimacy", content: blockGResult.legitimacy });
+  const gapStrings = output.gaps.map((item) => (item.detail ? `${item.requirement}: ${item.detail}` : item.requirement));
+  const blockerStrings = hardBlockers.map((blocker) => blocker.message);
+  const requirementMatchStrings = output.requirementMatches.map(
+    (match) => `${match.requirement} — ${match.status}${match.evidence ? ` (${match.evidence})` : ""}`
+  );
 
-  const sections: EvaluationSections = {
-    roleSummary: blockA.summary,
-    matchWithResume: blockB.summary,
-    levelStrategy: blockCContent,
-    compensationDemand: blockDContent,
-    tailoringPlan: blockE.plan,
-    interviewPlan: blockFResult.lines,
-    postingLegitimacy: blockGResult.legitimacy,
-    storiesStructured: blockFResult.structured
-  };
-
-  const score = Math.max(10, Math.min(98, blockB.fitScore));
-  const resumeBase = pickResumeBase(blockA.archetype, resumes.map((r) => r.name));
-
-  const orderedKeywords = blockE.keywords.map((keyword) => keyword.keyword);
+  const summary = output.summary
+    || `${output.roleArchetype} · ${output.seniority} · ${fitScore}% fit · ${recommendation}`;
 
   return {
     id: `evaluation-${job.id}`,
     jobId: job.id,
-    fitScore: score,
-    scoreLabel: scoreLabelFor(score),
-    roleArchetype: blockA.archetype,
-    summary: `${blockA.archetype} · ${blockA.seniority} · ${score}% fit · ${blockB.recommendation}`,
-    strengths: blockB.strengths,
-    gaps: blockB.gaps,
-    redFlags: blockB.redFlags,
-    recommendation: blockB.recommendation,
-    resumeBaseRecommendation: resumeBase,
-    requirementMatch: blockB.requirementMatch,
-    resumeEvidence: blockB.resumeEvidence,
-    sections,
-    legitimacyLabel: blockGResult.assessment,
-    keywords: orderedKeywords,
-    keywordSignals: blockE.keywords,
+    fitScore,
+    scoreLabel: deriveScoreLabel(fitScore),
+    roleArchetype: output.roleArchetype,
+    summary,
+    strengths: strengthStrings,
+    gaps: gapStrings,
+    // Validated blockers lead: they are the reason a recommendation reads Blocked,
+    // so a screen showing only red flags would omit the cause.
+    redFlags: Array.from(new Set([...blockerStrings, ...output.redFlags])),
+    recommendation,
+    resumeBaseRecommendation: output.resumeBaseRecommendation,
+    requirementMatch: requirementMatchStrings,
+    resumeEvidence: output.resumeEvidence,
+    sections: emptySections(),
+    legitimacyLabel: "Not assessed",
+    // Detailed keyword work belongs to Application Preparation (§24). Empty here
+    // is deliberate — saveJobEvaluation() reads it to decide whether to leave the
+    // job's existing taxonomy links and legacy keyword fallback intact.
+    keywords: [],
+    keywordSignals: [],
     userCorrection: {},
-    providerUsed: provider.name,
-    modelUsed: provider.effectiveModel,
+    providerUsed: input.providerUsed,
+    modelUsed: input.modelUsed,
     tokensUsed: 0,
-    generationMs: Date.now() - start,
-    whyItMatches: blockB.strengths.slice(0, 3).join("; ") || "Pending review.",
-    mainConcern: blockB.redFlags[0] ?? blockB.gaps[0] ?? "No major concern identified.",
-    salaryNotes: blockDContent[0] ?? "Compensation data not available."
+    generationMs: input.generationMs,
+    evaluationVersion: "fast-v2",
+    seniority: output.seniority,
+    domain: output.domain,
+    directionAlignment: output.directionAlignment,
+    confidenceLabel: confidence,
+    fitComponents: output.fitComponents,
+    hardBlockers,
+    requirementsSummary: output.requirementSummary,
+    jdHash: "",
+    modelOutput: output,
+    completenessWarnings: input.warnings,
+    whyItMatches: strengthStrings.slice(0, 3).join("; ") || "Pending review.",
+    mainConcern: blockerStrings[0] ?? output.redFlags[0] ?? gapStrings[0] ?? "No major concern identified.",
+    salaryNotes: output.postedCompensation || "Not provided",
   };
 }
 
-export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCallback, onBlockStart?: BlockStartCallback): Promise<JobEvaluationResultInput> {
-  const result = await evaluateJobWithAI(jobId, onBlock, onBlockStart);
-  saveJobEvaluation(result);
-  // Block F stories are NOT auto-inserted into the story bank anymore. They render in
-  // the job's "F. Interview plan" section, where the user decides per question whether
-  // to draft it as a new core story, link an existing story, or ignore it. This stops
-  // the runaway ~5-stories-per-job growth that made the bank unreviewable.
+export async function runAndSaveJobWithAI(jobId: string, onPhase?: PhaseCallback): Promise<JobEvaluationResultInput> {
+  const result = await evaluateJobWithAI(jobId, onPhase);
+
+  onPhase?.({ phase: "saving", message: EVALUATION_PHASE_LABELS.saving });
+  try {
+    saveJobEvaluation(result);
+  } catch (error) {
+    throw new EvaluationPhaseError("save", error instanceof Error ? error.message : String(error), error);
+  }
+
   const resumeNames = getResumes().map((r) => r.name);
   return {
     ...result,
@@ -463,15 +383,9 @@ export async function runAndSaveJobWithAI(jobId: string, onBlock?: EvaluationCal
       result.resumeBaseRecommendation,
       result.roleArchetype,
       resumeNames
-    )
+    ),
   };
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
-function scoreLabelFor(score: number) {
-  if (score >= 85) return "Strong fit";
-  if (score >= 70) return "Review";
-  if (score >= 55) return "Selective";
-  return "Weak fit";
-}
+export { EVALUATION_PHASES, EVALUATION_PHASE_LABELS, LOCAL_FALLBACK_LABEL };
+export type { EvaluationFailurePhase, EvaluationPhase };

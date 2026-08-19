@@ -70,3 +70,40 @@ export async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, baseDe
   }
   throw lastError;
 }
+
+/** Thrown when a generation exceeds its deadline. Distinct so callers can degrade rather than fail. */
+export class GenerationTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`Generation exceeded ${Math.round(timeoutMs / 1000)}s and was abandoned.`);
+    this.name = "GenerationTimeoutError";
+  }
+}
+
+/**
+ * Put an upper bound on a generation.
+ *
+ * Providers do not all bound themselves — the OpenAI client carries its own
+ * timeout, but a local Ollama model chewing on a long prompt can run for many
+ * minutes. That was survivable when evaluation was seven small calls; with one
+ * large call it means the retry-then-fall-back chain never gets to run and the
+ * user watches a spinner indefinitely.
+ *
+ * The losing request is not cancelled — that needs AbortSignal plumbing through
+ * every adapter. It is abandoned: it finishes in the background and its result
+ * is discarded.
+ */
+export function withDeadline<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new GenerationTimeoutError(timeoutMs)), timeoutMs);
+    fn().then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}

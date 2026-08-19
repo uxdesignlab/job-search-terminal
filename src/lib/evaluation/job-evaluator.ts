@@ -1,7 +1,16 @@
 import { getJobById, getResumes, getRoleDirections, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
-import type { EvaluationSections, JobEvaluationResultInput, JobKeywordSignal, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
+import type { DirectionAlignment, EvaluationSections, HardBlockerCandidate, JobEvaluationResultInput, JobKeywordSignal, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { formatPostedDate } from "../dates";
 import { pickResumeBase } from "./resume-lane-picker";
+import { LOCAL_FALLBACK_LABEL } from "./evaluation-phases";
+import {
+  calculateFitScore,
+  clampFitComponents,
+  deriveConfidence,
+  deriveRecommendation,
+  deriveScoreLabel,
+  validateHardBlockers,
+} from "./fast-evaluation";
 
 type RoleSignal = {
   archetype: string;
@@ -96,16 +105,39 @@ export function buildEvaluation(
   const remoteSignal = remoteScore(job, profile);
   const evidence = resumeEvidenceFor(roleMatch, matchingSkills, resumes);
   const keywords = extractKeywords(jobText, [...roleMatch.keywords, ...matchingSkills.map((skill) => skill.skillName), ...profile.targetRoles]);
-  const score = clampScore(
-    42 +
-      Math.min(22, matchingSkills.length * 4) +
-      Math.min(14, matchingTargets.length * 5) +
-      (roleDirection ? Math.round(roleDirection.score * 0.18) : 0) +
-      remoteSignal.score -
-      constraintRisks.length * 12 -
-      (roleMatch.archetype === "Avoid" ? 30 : 0)
+  // The same signals the flat formula used, split along the four fast-v2
+  // components so the fallback and the AI path produce the same shape and the
+  // UI can show a breakdown either way. clampFitComponents() holds each to its
+  // own ceiling, so the total lands in 0–100 without a separate clamp.
+  const fitComponents = clampFitComponents({
+    coreRequirements: 18 + Math.min(22, matchingSkills.length * 4),
+    roleAndSeniority:
+      Math.min(14, matchingTargets.length * 5)
+      + (roleDirection ? Math.round(roleDirection.score * 0.11) : 0)
+      - (roleMatch.archetype === "Avoid" ? 25 : 0),
+    relevantEvidence: Math.min(20, evidence.length * 5),
+    userPreferences: 10 + remoteSignal.score - constraintRisks.length * 6,
+  });
+  const score = calculateFitScore(fitComponents);
+
+  // A saved deal breaker the posting text matches is evidence on both sides,
+  // which is exactly what §15 requires — so the fallback can raise a real
+  // blocker rather than quietly folding it into the score as the old
+  // `- constraintRisks.length * 12` term did.
+  const hardBlockers = validateHardBlockers(
+    constraintRisks.map((dealBreaker): HardBlockerCandidate => ({
+      kind: "other",
+      postingEvidence: `The posting matches a saved deal breaker: ${dealBreaker}`,
+      candidateConstraint: dealBreaker,
+    }))
   );
-  const recommendation = recommendationFor(score, constraintRisks, roleMatch.archetype);
+  const directionAlignment = localDirectionAlignment(roleDirection, matchingTargets, roleMatch.archetype);
+  const recommendation = deriveRecommendation({ fitScore: score, directionAlignment, hardBlockers });
+  const confidence = deriveConfidence({
+    postingResolved: jobText.trim().length > 0,
+    jdChars: (job.rawDescription || job.parsedDescription || "").trim().length,
+    evidenceChars: evidence.join(" ").trim().length,
+  });
   const strengths = [
     ...matchingSkills.slice(0, 5).map((skill) => `${skill.skillName}: ${skill.evidenceSource}`),
     ...matchingTargets.slice(0, 3).map((target) => `Target role alignment: ${target}`)
@@ -113,7 +145,7 @@ export function buildEvaluation(
   const gaps = buildGaps(jobText, profile, roleMatch, matchingSkills, remoteSignal.label);
   const redFlags = buildRedFlags(job, constraintRisks);
   const legitimacyLabel = legitimacyFor(job, redFlags);
-  const summary = `${roleMatch.archetype} evaluation for ${job.company}: ${scoreLabelFor(score).toLowerCase()} with ${matchingSkills.length} profile skill signals and ${evidence.length} resume evidence points.`;
+  const summary = `${roleMatch.archetype} evaluation for ${job.company}: ${deriveScoreLabel(score).toLowerCase()} with ${matchingSkills.length} profile skill signals and ${evidence.length} resume evidence points.`;
   const whyItMatches = strengths.length > 0 ? strengths.slice(0, 3).join("; ") : "Limited direct evidence found. Review the job description manually before investing time.";
   const mainConcern = [...redFlags, ...gaps][0] ?? "No major concern found in the available job text.";
   const salaryNotes = job.salaryNotes && job.salaryNotes !== "Not captured by scanner." ? job.salaryNotes : "Compensation was not captured by the scanner; validate range before prioritizing.";
@@ -137,7 +169,7 @@ export function buildEvaluation(
     id: `evaluation-${job.id}`,
     jobId: job.id,
     fitScore: score,
-    scoreLabel: scoreLabelFor(score),
+    scoreLabel: deriveScoreLabel(score),
     roleArchetype: roleMatch.archetype,
     summary,
     strengths,
@@ -158,10 +190,23 @@ export function buildEvaluation(
       rationale: "Rule-based fallback keyword found in the posting and candidate profile.",
     })),
     userCorrection: {},
-    providerUsed: "",
-    modelUsed: "",
+    providerUsed: LOCAL_FALLBACK_LABEL,
+    modelUsed: LOCAL_FALLBACK_LABEL,
     tokensUsed: 0,
     generationMs: 0,
+    evaluationVersion: "fast-v2",
+    seniority: seniorityFor(job.title),
+    domain: "",
+    directionAlignment,
+    confidenceLabel: confidence,
+    fitComponents,
+    hardBlockers,
+    requirementsSummary: { supported: strengths.length, partial: 0, unknown: gaps.length },
+    jdHash: "",
+    // No model ran, so there is no model output to inspect. The detail view
+    // reads the component breakdown and the fallback label instead.
+    modelOutput: null,
+    completenessWarnings: [],
     whyItMatches,
     mainConcern,
     salaryNotes
@@ -303,13 +348,6 @@ function remoteScore(job: JobRecord, profile: UserProfileRecord) {
   return { score: -12, label: "Onsite requirement conflicts with remote-first preference." };
 }
 
-function recommendationFor(score: number, redFlags: string[], archetype: string) {
-  if (archetype === "Avoid" || redFlags.length >= 2 || score < 55) return "Skip";
-  if (score >= 85) return "Priority apply";
-  if (score >= 72) return "Strong apply";
-  return "Review manually";
-}
-
 function legitimacyFor(job: JobRecord, redFlags: string[]) {
   if (redFlags.some((flag) => flag.includes("Only scanner metadata"))) {
     return "Proceed with Caution";
@@ -347,15 +385,20 @@ function containsAny(value: string, keywords: string[]) {
   return keywords.some((keyword) => keyword.length > 0 && value.includes(keyword));
 }
 
-function scoreLabelFor(score: number) {
-  if (score >= 85) return "Strong fit";
-  if (score >= 70) return "Review";
-  if (score >= 55) return "Selective";
-  return "Weak fit";
-}
-
-function clampScore(score: number) {
-  return Math.max(20, Math.min(96, score));
+/**
+ * How well the role matches the direction the user is searching in — the second
+ * input to the recommendation rules. The fallback has no model to ask, so it
+ * reads the saved role directions and target roles directly.
+ */
+function localDirectionAlignment(
+  roleDirection: RoleDirectionRecord | undefined,
+  matchingTargets: string[],
+  archetype: string
+): DirectionAlignment {
+  if (archetype === "Avoid") return "none";
+  if (roleDirection && roleDirection.score >= 70 && matchingTargets.length > 0) return "strong";
+  if (roleDirection || matchingTargets.length > 0) return "partial";
+  return "none";
 }
 
 function normalize(value: string) {

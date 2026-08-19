@@ -7,9 +7,9 @@ import {
   getJobGapResponses,
   getUserProfile,
   saveApplicationAnswerDrafts
-} from "../db/queries";
+, getApplicationPreparation} from "../db/queries";
 import type { ApplicationAnswerDraftInput, EvaluationRecord, JobRecord, UserProfileRecord } from "../db/types";
-import { evaluateJob } from "../evaluation/job-evaluator";
+import { EvaluationRequiredError } from "../application-preparation";
 
 type AddressedGap = { gapText: string; response: string };
 
@@ -35,15 +35,9 @@ export function prepareApplicationAnswers(jobId: string, customQuestions: string
     throw new Error(`Job not found: ${jobId}`);
   }
 
-  let evaluation = getEvaluationByJobId(jobId);
-  if (!evaluation) {
-    evaluateJob(jobId);
-    evaluation = getEvaluationByJobId(jobId);
-  }
-
-  if (!evaluation) {
-    throw new Error(`Evaluation not found: ${jobId}`);
-  }
+  // §5.2, §33: Apply consumes an evaluation, it does not silently produce one.
+  const evaluation = getEvaluationByJobId(jobId);
+  if (!evaluation) throw new EvaluationRequiredError(jobId);
 
   const profile = getUserProfile();
   const generatedDocument = getGeneratedDocumentById(`document-${jobId}`);
@@ -125,6 +119,11 @@ function aboutCandidate({ profile, evaluation }: AnswerContext) {
 }
 
 function compensation({ job, profile }: AnswerContext) {
+  // §33: the prepared answer already resolved posted range, live research and the
+  // saved target in that order, with provenance. Prefer it over re-deriving here.
+  const prepared = getApplicationPreparation(job.id)?.suggestedCompensationResponse;
+  if (prepared) return prepared;
+
   const salary = job.salaryNotes && !job.salaryNotes.toLowerCase().includes("not captured") ? job.salaryNotes : "the posted range was not captured in the current job record";
 
   return `My compensation expectations depend on the full scope, level, benefits, and location model. Based on my current search, I am targeting ${profile.compensationNeeds.toLowerCase()}. For this role, ${salary}; I would be happy to align on a range once the level and responsibilities are confirmed.`;

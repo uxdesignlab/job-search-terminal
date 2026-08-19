@@ -33,7 +33,14 @@ Primary vendor references:
 
 ## Extraction model
 
-The evaluator keeps 12-18 high-signal phrases and assigns each a priority, category,
+> **Current state:** keyword extraction ran inside evaluation (Block E) until the Fast
+> Evaluation change. It does not run today — Fast Evaluation deliberately extracts no
+> keywords, and Application Preparation, which takes ownership of this work, ships in the
+> next phase. Jobs evaluated before the change keep their stored keywords, and resume
+> tailoring falls back to them. Newly evaluated jobs have none until Application
+> Preparation exists. The model below is the contract that work must satisfy.
+
+Extraction keeps 12-18 high-signal phrases and assigns each a priority, category,
 source section, and rationale.
 
 1. **Critical (weight 5):** exact target title and explicit basic, required, or

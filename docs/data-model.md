@@ -67,6 +67,11 @@ and initializes an empty local profile if the database is empty.
 | `0057_openai_latest_model` | Moves the old default OpenAI model onto the auto-resolving `latest` alias; explicitly pinned models are left alone |
 | `0058_remote_location_preferences` | Adds `user_profile.remote_locations_json` (`text not null default '[]'`) and seeds it from `preferred_locations_json`. Splits location preferences in two: `preferred_locations_json` now governs hybrid/on-site matching only, `remote_locations_json` governs which regions' remote roles are in scope. Seeding makes the migration behaviour-preserving — one list previously drove both |
 | `0059_scan_run_repost_count` | Adds `scan_runs.repost_count` (`integer not null default 0`): the subset of `new_jobs_count` that re-posts a role already in the app at a different URL, admitted because the earlier row had been closed out. Existing rows default to `0` |
+| `0060_fast_evaluation` | Adds 11 defaulted columns to `evaluations` for Fast Evaluation: `evaluation_version`, `seniority`, `domain`, `direction_alignment`, `confidence_label`, `fit_components_json`, `hard_blockers_json`, `requirements_summary_json`, `jd_hash`, `model_output_json`, `completeness_warnings_json` |
+| `0061_application_preparation` | Adds `application_preparation` — detailed requirements, ATS keyword signals, evidence map, compensation context, and the JD/evidence hashes that decide reuse |
+| `0062_external_integrations` | Adds `external_integrations` for third-party connections, seeded with a Clay row |
+| `0063_contacts` | Adds `contacts`, `job_contact_links`, `contact_suppressions`; extends `company_profiles` with domain, employee count, Clay id, LinkedIn URL and intelligence provenance |
+| `0064_outreach_messages` | Adds `outreach_messages` — per-contact, per-channel drafts, cascading from `job_contact_links` |
 
 ---
 
@@ -303,6 +308,54 @@ AI-generated evaluation output for a job, stored separately from `jobs`.
 | `tokens_used` | Token count for the evaluation run |
 | `generation_ms` | Wall-clock generation time in ms |
 | `created_at` | ISO timestamp |
+
+**Fast Evaluation columns (migration `0060`).** All defaulted, so pre-existing rows
+migrate untouched and report `evaluation_version = 'legacy-v1'` — which is what the job
+detail page keys off to render the original A–G sections instead of the new card. Rows
+written by Fast Evaluation report `fast-v2`.
+
+| Column | Holds |
+|---|---|
+| `evaluation_version` | `legacy-v1` or `fast-v2` |
+| `seniority`, `domain` | Normalized role facets |
+| `direction_alignment` | `strong` / `partial` / `none` — an input to the recommendation rules |
+| `confidence_label` | `High` / `Medium` / `Low`, describing source quality |
+| `fit_components_json` | The four component scores that sum to `fit_score` |
+| `hard_blockers_json` | Validated blockers, each with posting evidence and the saved constraint it conflicts with |
+| `requirements_summary_json` | Aggregate counts only — `{supported, partial, unknown}` |
+| `jd_hash` | Reserved for staleness detection in Application Preparation |
+| `model_output_json` | Normalized model output, powering the inspectable detail view |
+| `completeness_warnings_json` | Optional fields that degraded during normalization |
+
+`requirement_match_json` and `requirements_summary_json` are deliberately different:
+the first is item-level display strings, the second is aggregate counts. Never write the
+same structure to both.
+
+**Metadata columns are now actually written.** `provider_used`, `model_used`,
+`tokens_used` and `generation_ms` existed since `0013` but were absent from
+`saveJobEvaluation()`'s insert, so — because the statement is `insert or replace` — every
+row reset them to their defaults. All 138 pre-existing rows have an empty provider and
+`0` ms for this reason. They are populated from Fast Evaluation onward.
+
+**Legacy detail is carried forward, not blanked.** Fast Evaluation generates no A–G prose
+and no keywords, and the insert is `insert or replace`. Writing a `fast-v2` result over a
+`legacy-v1` row would therefore erase `sections_json`, `keywords_json`,
+`keyword_signals_json` and `legitimacy_label`. The first is a straight loss of the old
+analysis; the last three are worse, because they are the fallback tiers resume tailoring
+reads when a job has no Application Preparation keywords — blanking them would leave a
+re-evaluated legacy job with no keyword source at all. `saveJobEvaluation()` detects this
+transition and copies all four forward. The UI hides them once the row reports `fast-v2`,
+but nothing is destroyed.
+
+**Taxonomy links survive re-evaluation.** `linkJobKeywordConcepts()` deletes a job's
+existing `job_keyword_concepts` rows before re-inserting, so calling it with an empty
+keyword list is a delete. Fast Evaluation extracts no keywords, so `saveJobEvaluation()`
+skips the call entirely rather than wiping links the story/job matcher depends on.
+
+**Evaluation no longer overwrites application status.** The `jobs` mirror update used to
+set `status = 'Reviewed'` unconditionally, so re-evaluating a job you had already applied
+to silently reset it and lost where you were. It now only advances jobs still in `Found`
+or `Reviewed`.
 
 ### generated_documents
 
@@ -823,6 +876,8 @@ npm run profile:extract   # extract resume PDFs into resumes table and refresh s
 npm run profile:check     # verify extracted profile intelligence
 npm run scanner:check     # verify scanner adapter with mock ATS payloads
 npm run evaluation:check  # verify evaluation storage and user correction flow
+npm run evaluation:benchmark      # capture A–G timing baseline (makes real AI calls)
+npm run clay:routine -- <id>      # validate a Clay enrichment routine (spends 1 credit)
 npm run document:check    # verify HTML/PDF resume generation
 npm run application:check # verify answer generation, status transitions, funnel metrics
 npm run quality:check     # run accessibility, contrast, and screenshot checks
@@ -846,6 +901,30 @@ deterministic scale question via `followUpQuestionsFromJson(..., gapText)`, so n
 renders a "Needs detail" badge with nothing beside it.
 
 Run `npm run data:backup` first. Supports `--dry-run` to report counts without writing.
+
+---
+
+### `evaluation:benchmark`
+
+Captures how the current seven-block (A–G) evaluator performs, so the Fast Evaluation
+work in PRD v0.2.1 can be measured against a real baseline instead of an impression.
+Writes `docs/benchmarks/evaluation-v1-baseline.md` with wall-clock p50/p90, median
+generated-output size, and the per-job samples behind them.
+
+**This makes real provider calls and costs money.** It is never part of `npm test`.
+Use `--dry-run` to print the job selection without calling anything, and `--limit=N`
+to change the sample size (default 20).
+
+Selection is deterministic — eligible jobs are those with a description of at least
+`EVAL_JD_MIN_USABLE_CHARS`, sorted by id and sampled at an even stride. The stride
+matters: the alphabetical head of the corpus is dominated by one aggregator's
+500-character stubs, and timing those would describe truncated postings rather than a
+representative mix.
+
+Not measured: provider token counts and retry counts. The current evaluator writes
+`tokens_used` as `0`, and `getActiveProvider()` is called inside `evaluateJobWithAI`,
+so the script cannot wrap the provider to count requests without adding an
+instrumentation hook to production code. Generated-character size is the stable proxy.
 
 ---
 
@@ -913,6 +992,291 @@ the Evidence bank would leave the job page displaying the stale draft it replace
 worth answering centrally. Evaluators phrase gaps per requisition, so exact-text matching
 collapses very little and the raw unanswered pile runs to hundreds of one-off sentences;
 those belong on their own job page, not in a global backlog.
+
+---
+
+### application_preparation
+
+The work Fast Evaluation defers (PRD v0.2.1 §29), generated when the user asks for a
+resume. One row per job (`unique(job_id)`).
+
+| Column | Holds |
+|---|---|
+| `jd_hash`, `evidence_hash` | Reuse keys — see below |
+| `requirements_json` | Extracted requirements, each with an evidence status and cited evidence ids |
+| `keyword_signals_json` | ATS keyword signals — the work Block E used to do at evaluation time |
+| `evidence_map_json` | Requirement → evidence → suggested resume placement |
+| `posted_compensation_json` | Parsed from the posting only |
+| `market_compensation_json`, `compensation_sources_json` | Live research and its citations |
+| `compensation_research_status` | `not_run` / `completed` / `unavailable` / `failed` |
+| `suggested_compensation_response` | The answer Apply offers, with its provenance stated |
+
+**Hash broadly, use claims narrowly.** `evidence_hash` covers the *global* evidence bank —
+active resume text, skill inventory, and every `profile_gap_supplements` row including
+unfinished ones — because gap answers are keyed on the gap text, not the job that raised
+them. Answering a gap on `/evidence` therefore invalidates every preparation it could
+improve. Quality status is part of the hash: an answer moving from `needs_followup` to
+`addressed` changes no text but changes whether a resume may use it. Generation then
+filters to `addressed` only. A hash scoped to one job would leave the rest stale but
+marked fresh.
+
+**Compensation provenance is never inferred.** A model's recollection of salary bands is
+not market research. Posted compensation is parsed from the posting; live research runs at
+most once via Brave, falling back to the provider's `webSearch`; when neither is available
+the status is `unavailable` and no range is stored. The suggested answer then falls back to
+the user's saved target and says so.
+
+**Taxonomy ingestion moved here** (§25.3). Saving a preparation links
+`job_keyword_concepts` with `source = 'application_preparation'`. Evaluation no longer
+contributes keywords at all.
+
+---
+
+### external_integrations
+
+Third-party connections (PRD v0.2.1 §61), one row per provider, seeded with Clay. Kept
+separate from `ai_settings` because these are not AI providers: they carry their own
+connection state, per-provider metadata, and an `enabled` flag, and JST must keep working
+normally when any of them is broken or absent (§63).
+
+| Column | Holds |
+|---|---|
+| `provider`, `auth_type` | `clay` / `api_key` today |
+| `credential` | The raw key. Never returned to a client — see below |
+| `account_label` | Workspace or account name, from a successful test |
+| `connection_status` | `not_connected` / `connected` / `invalid_credential` / `unavailable` |
+| `enabled` | Set only by a successful test; cleared whenever the key changes or a test fails |
+| `metadata_json` | Provider details — in Phase 6 this is where the Clay field-catalog cache lives |
+| `last_tested_at` | When the connection was last checked |
+
+**Credentials are masked on read.** `getIntegration()` returns `maskedCredential`
+(`••••last4`) and a `hasCredential` boolean — there is deliberately no query that hands a
+raw credential to a caller that might serialize it. Server code needing the real value
+calls `getIntegrationCredential()` explicitly, which is easy to audit. The form echoes the
+mask back on submit; `resolveMaskedKey()` reads that as "unchanged" rather than setting the
+key to a row of bullets. Same practical model as the existing AI provider keys: stored
+locally in the clear, never logged, only sent to the intended provider — **not** encryption
+at rest, and not described as such (§62).
+
+**Clay endpoint, verified 2026-08-18.** `GET https://api.clay.com/public/v0/me` with a
+`clay-api-key` header, returning `{ user: { id, name }, workspace: { id } }`
+([reference](https://developers.clay.com/api-reference/me/get-the-authenticated-user)).
+Note `public/v0`, not `v1` — the wrong base returns 404, which the client reports as
+*Clay unreachable*. The credential must be a **scoped** key (`clay_scoped_…`, Public API
+scope) despite the docs specifying a personal key; the personal key returns 401. Only 401/403 is treated as a rejected key, so an API move can never be
+mistaken for a bad credential, or vice versa.
+
+**Saving is not connecting.** Storing a key clears `connection_status`, so a stale
+"connected" badge cannot outlive the credential that earned it. Saving immediately runs a
+test, and only a successful one sets `enabled`.
+
+---
+
+### contacts, job_contact_links, contact_suppressions
+
+Real people around an opportunity (PRD v0.2.1 §36–§38). **Contacts are global; relevance is
+per-job.** The same person can matter for several roles, so identity lives on `contacts`
+and judgement — role, relevance score and reasons, outreach status — lives on
+`job_contact_links`, unique per `(job_id, contact_id)`. A contact marked `Contacted` for one
+role stays `Found` for another.
+
+This is the first third-party PII in JST: names, titles, work emails and LinkedIn URLs of
+people who never interacted with the app. Deletion and suppression are part of the schema
+from the first release rather than a later addition.
+
+**Deduplication** follows §37's priority — provider + record id, then normalized LinkedIn
+URL, then normalized work email. Enforced by *partial* unique indexes so the many contacts
+legitimately lacking an email or a LinkedIn URL do not all collide on the empty string.
+LinkedIn normalization strips scheme, `www`, locale prefixes, trailing slashes, query
+strings and case down to `linkedin.com/in/<slug>`, so four spellings of one profile do not
+become four people. On update, a blank identifier never overwrites a known one — a thinner
+source cannot erase what a richer one established.
+
+**Delete vs Forget** are different promises:
+
+| Action | Effect |
+|---|---|
+| Remove from this job | Drops the `job_contact_links` row; the person stays in your contacts |
+| Delete contact | Deletes the person and cascades their links and outreach messages. A later search may legitimately find them again |
+| Forget this person | Deletes as above **and** records one-way fingerprints so a later search recognises and discards them |
+
+**`contact_suppressions` stores hashes only.** The point of forgetting is that JST stops
+holding someone's details, so keeping the identifier in order to recognise it later would
+defeat the request. Each is a SHA-256 of a type-prefixed identifier (`clay:…`,
+`linkedin:…`, `email:…`) — recomputable from a future search result and comparable, but not
+reversible into an email address or a name. One row per identifier, so *any* of them
+suppresses. Verified: after forgetting a contact, the table contains no substring of their
+name, company or profile URL.
+
+**Clay search, verified 2026-08-18 against a live account.** Structured-filters mode:
+`GET /search/filters-mode/fields?source_type=people` for the catalog,
+`POST /search/filters-mode` to create a search, `POST /search/filters-mode/{id}/run` to
+read results. People results carry `latest_experience_title`,
+`latest_experience_company` and `url` — *not* `title`, `company` or `linkedin_url`, and
+there is no stable record id, so dedupe falls to the normalized LinkedIn URL. The field
+catalog is cached in `external_integrations.metadata_json` with a 24-hour TTL, a 7-day
+stale fallback when Clay is unreachable, and a single invalidate-refetch-retry when a
+filter name is rejected. `has_more` is deliberately ignored: the run endpoint is a stateful
+iterator and continuing would spend more allowance than the user asked for.
+
+**Why not Clay MCP?** Clay exposes an MCP server with its own find-and-enrich tools, which
+would remove the need to author a routine. It was evaluated on 2026-08-18 and not adopted:
+Clay states tools over MCP "consume the connected workspace's credits at the same rate as
+the equivalent work done inside Clay — there is no surcharge for arriving over MCP", so it
+saves nothing on a metered plan, while requiring OAuth 2.0 + PKCE with Dynamic Client
+Registration and hourly token refresh — the session complexity §83 deferred. The API key
+plus a user-authored routine costs the same credits with far less machinery. Revisit only
+if the routine setup proves to be a real barrier, not as a cost measure.
+
+**Enrichment is routine-based, not an endpoint.** Clay exposes no per-person enrichment
+call; `POST /routines/{routine_id}/run` executes a routine the user authored in their own
+workspace, asynchronously (202 + poll). The routine id lives in
+`external_integrations.metadata_json.enrichmentRoutineId`. Because the routine's output
+shape is defined by the user rather than by Clay, the response is walked for the first
+value that looks like an email rather than bound to a field name. Results are stored with
+`email_confidence = 'unverified'` — Clay reports no confidence for routine output, and
+inventing a "verified" label would be worse than none.
+
+`metadata_json` also carries `autoEnrichSearchResults`. The routine endpoint accepts 1-100
+items, so automatic enrichment issues one run for the whole result set; results are keyed by
+item id so an email lands on the right person even if the routine returns them out of order
+or omits some. Enabling it is blocked without a routine id, which would otherwise silently
+do nothing.
+
+### story_bank provenance
+
+`story_bank.source_block_f` records where a story came from. The column keeps its original
+name — renaming it would be a data migration for cosmetics — but the TypeScript field is
+`storySource`, and its values were never Block-F-specific:
+
+| Value | Meaning |
+|---|---|
+| `interview-prep` | Written in the interview workspace (the current producer) |
+| `voice-practice` | Captured from a practice attempt |
+| `evaluation` | Proposed by the retired seven-block evaluator; historical only |
+
+Fast Evaluation produces no stories, so nothing writes `evaluation` any more. Existing rows
+keep their value and their `story_kind = 'evaluation_suggestion'`, so the Story Bank's
+**Job suggestions** filter still resolves — it simply stops gaining new entries.
+
+### outreach_messages
+
+Drafts written to one person about one opportunity (§51). Keyed on
+`job_contact_link_id` rather than `job_id`, because the same contact receives a different
+message for a different role. Cascades from `job_contact_links`, so deleting or forgetting
+a contact takes their drafts with them.
+
+`channel` is one of `linkedin_connection`, `linkedin_message`, `email`. Length targets and
+soft limits live in `src/lib/outreach/channels.ts` — §55 warns against encoding a third
+party's changing limits as permanent product assumptions, so LinkedIn's ~300-character
+connection-note cap is a *warning threshold* that drives a character count, never silent
+truncation. Only email carries a subject.
+
+One draft per contact per channel: regenerating replaces it rather than accumulating
+variants. The legacy `outreach_drafts` table remains readable as "Previous generic drafts"
+(§52); no fake "Hiring Manager" contacts were manufactured to migrate those rows.
+
+Contacts render in the job workspace's Outreach tab; the standalone `/jobs/[id]/outreach`
+route is kept as a redirect for existing links.
+
+Clearing the list from Settings → Integrations lets those people be added again. It
+restores nothing — their details were deleted, not archived.
+
+---
+
+## Derived Types — Effective Keywords
+
+`resolveEffectiveKeywordSignals()` in `src/lib/evaluation/effective-keywords.ts` is the
+single answer to "which keywords describe this job?" (§25.1), with
+`getEffectiveKeywordSignals(jobId)` / `getEffectiveKeywords(jobId)` in `queries.ts` loading
+each tier:
+
+1. Application Preparation signals — the current source for `fast-v2` jobs
+2. Legacy evaluation keyword signals — jobs evaluated under A–G
+3. Legacy evaluation keywords, normalized through `legacyKeywordSignals()`
+
+It began as a private helper inside `resume-generator.ts` while four other places read
+`evaluation.keywords` directly, each with slightly different fallback behavior. Resume
+tailoring, the resume editor, story matching, story creation from a job, taxonomy
+ingestion and the AI tailorer all resolve through it now.
+
+**Tier 3 is skipped when there are no legacy keywords.** Normalization always appends the
+exact job title as a critical keyword, which is right when there are keywords to normalize
+and wrong when there are none — a `fast-v2` job would otherwise resolve to a title-only
+signal, which reads downstream as "this job has keywords" and causes its taxonomy links to
+be replaced by a thin title-and-archetype set.
+
+**Linking never replaces rich links with thin ones.** `linkJobKeywordConcepts()` clears a
+job's rows before inserting, so the three story-matching call sites now link richly when
+keywords exist, seed title and archetype only when the job has no links at all, and
+otherwise leave what is there untouched.
+
+---
+
+## Derived Types — Fast Evaluation
+
+Defined in `src/lib/db/types.ts` for PRD v0.2.1 Phase 1. The deterministic half is
+implemented in `src/lib/evaluation/fast-evaluation.ts`, which is pure — no database, no
+provider, no clock.
+
+The contract is deliberately **split in two** so the model never owns a value JST intends
+to calculate itself:
+
+**`FastEvaluationModelOutput`** — what the provider returns. Component scores
+(`fitComponents`), `directionAlignment` plus its rationale, observations (`strengths`,
+`gaps`, `redFlags`, `requirementMatches`), and `hardBlockerCandidates`. It contains no
+final `fitScore`, no `recommendation`, no `confidence` and no `scoreLabel`.
+
+**`FastEvaluation`** — what is persisted. Extends the model output with the four values
+JST derives, plus validated `hardBlockers`, `completenessWarnings`, and
+`evaluationVersion: "fast-v2"`.
+
+Supporting types: `DirectionAlignment` (`strong | partial | none`), `FitComponents`,
+`EvidenceMatch`, `Gap`, `RequirementMatch`, `RequirementSummary`, `HardBlockerKind`,
+`HardBlockerCandidate`, `HardBlocker`, `FastEvaluationRecommendation`,
+`EvaluationConfidence`, `EvaluationScoreLabel`.
+
+### Deterministic functions
+
+| Function | Purpose |
+|---|---|
+| `clampFitComponents(raw)` | Clamp each component into its own range (40/25/20/15); non-numeric → 0 |
+| `calculateFitScore(components)` | Sum the four components — the only place a total is produced |
+| `deriveScoreLabel(fitScore)` | Compatibility label for the existing `score_label` column |
+| `validateHardBlockers(candidates)` | Keep only candidates with explicit evidence on both sides |
+| `deriveRecommendation({fitScore, directionAlignment, hardBlockers})` | Ordered rules, blockers first |
+| `deriveConfidence({postingResolved, jdChars, evidenceChars, sourceIntegrityWarning})` | Ordered rules ending in an unconditional `Medium` |
+| `normalizeModelOutput(raw)` | Split a provider response into core-valid or missing-core |
+
+**Why the split.** A model-supplied total can disagree with the components shown beneath
+it, and re-running can change a verdict the user already acted on. Deriving both from the
+components makes the stored row and the UI agree by construction.
+
+**`Blocked` vs `Skip`.** These are different answers and both exist.
+`Blocked` means a saved non-negotiable rules the role out however well the candidate
+scores; `Skip` means nothing blocks it but fit is below the pursue threshold. Collapsing
+them would tell a 92%-fit candidate they were unqualified. Code that treats "not `Skip`"
+as positive must be updated to handle `Blocked` separately.
+
+**Blocker validation.** A blocker needs explicit evidence from the posting *and* an
+explicit saved constraint. A candidate missing either half is an inference and is dropped
+outright — not downgraded to a red flag, which would smuggle the guess back in.
+
+**Confidence describes source quality, never candidate quality.** The rules are ordered
+and terminate in an unconditional `Medium`, so every input lands in exactly one state.
+Thresholds live as named constants (`EVAL_JD_HIGH_CHARS` = 800,
+`EVAL_JD_MIN_USABLE_CHARS` = 300, `EVAL_EVIDENCE_HIGH_CHARS` = 500,
+`EVAL_EVIDENCE_MIN_USABLE_CHARS` = 200) and are implementation values, not product
+promises.
+
+**Core vs optional fields.** `roleArchetype`, `directionAlignment` and all four components
+decide whether an evaluation exists at all. Everything else degrades to an empty value and
+records a `completenessWarnings` entry, so one malformed array no longer costs the user the
+whole evaluation the way a failed block used to.
+
+**`requirementSummary` is recounted**, never taken from the model. The tally drives the
+"8 supported · 2 partial · 1 unknown" line, and a count that disagrees with the list
+beneath it is worse than no count.
 
 ---
 

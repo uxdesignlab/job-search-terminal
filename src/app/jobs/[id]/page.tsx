@@ -48,10 +48,21 @@ import {
   unarchiveJob,
   updateApplicationStatus,
   updateJobRecommendedResume,
+  getEffectiveKeywords,
+  getApplicationPreparation,
+  getIntegration,
+  getJobContacts,
+  getOutreachDrafts,
+  getOutreachMessagesForJob,
 } from "@/lib/db/queries";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import type { ResumeBuilderSection, ResumeBuilderVersionStatus } from "@/lib/db/types";
 import { coerceResumeBaseToLane } from "@/lib/evaluation/resume-lane-picker";
+import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
+import { FastEvaluationCard } from "@/components/fast-evaluation-card";
+import { nextBestAction, opportunityProgress } from "@/lib/jobs/next-best-action";
+import { ContactsPanel } from "./outreach/contacts-panel";
+import { OutreachClient } from "./outreach/outreach-client";
 import { splitListValue } from "@/lib/profile/intelligence";
 import { buildPostingSearchQuery, hasResolvedPosting } from "@/lib/jobs/posting-resolution";
 
@@ -59,19 +70,49 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; error?: string }>;
 };
 
-const TABS = ["overview", "resume", "apply", "analysis"] as const;
+const TABS = ["overview", "evaluation", "resume", "apply", "outreach"] as const;
 type Tab = (typeof TABS)[number];
 
+/**
+ * Tab ids that used to exist, mapped to their replacement (§9). Links live in
+ * bookmarks, notes and the browser history — silently dropping them to Overview
+ * would look like the tab had been removed.
+ */
+const RENAMED_TABS: Record<string, Tab> = { analysis: "evaluation" };
+
+const OUTREACH_ERRORS: Record<string, string> = {
+  "name-required": "A name is required to add a contact.",
+  "missing-job": "That job could not be found.",
+  suppressed: "You previously chose to forget this person. Clear the forgotten list in Settings before adding them again.",
+  "needs-company": "This company has no saved domain, and the job link points at a job board rather than the employer. Add the company's domain before searching so results come from the right organisation.",
+  // §63: each provider failure needs a different response from the user, so each
+  // gets its own message rather than a single "Clay error".
+  "clay-not_connected": "Connect Clay in Settings → Integrations before searching for people.",
+  "clay-invalid_credential": "Clay rejected the API key. Re-check it in Settings → Integrations.",
+  "clay-allowance_reached": "Your Clay search allowance is used up for this period. Add contacts manually, or try again after it resets.",
+  "clay-rate_limited": "Clay rate-limited the request. Wait a moment and try again.",
+  "clay-ambiguous_company": "Not enough is known about this company to search. Add its domain first.",
+  "clay-unavailable": "Clay could not be reached. Everything else in Job Search Terminal is unaffected.",
+  "clay-no-results": "Clay returned nobody new for this company. You can still add people manually.",
+  "missing-contact": "That contact could not be found.",
+  "clay-no-enrichment": "Enrichment is not available for this provider.",
+  "enrich-no-email": "The Clay routine ran but returned no email for this person.",
+  "enrich-needs-linkedin": "This contact has no LinkedIn URL, which the email lookup needs. Add one and try again.",
+  "draft-failed": "The message could not be drafted. Check your AI provider in Settings and try again.",
+};
+
 function validTab(t: string | undefined): Tab {
-  return (TABS as readonly string[]).includes(t ?? "") ? (t as Tab) : "overview";
+  const requested = t ?? "";
+  if ((TABS as readonly string[]).includes(requested)) return requested as Tab;
+  return RENAMED_TABS[requested] ?? "overview";
 }
 
 export default async function JobDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { tab: rawTab } = await searchParams;
+  const { tab: rawTab, error: outreachError } = await searchParams;
   const tab = validTab(rawTab);
 
   const job = getJobById(id);
@@ -80,6 +121,16 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const evaluation = getEvaluationByJobId(id);
   const generatedDocument = getGeneratedDocumentById(`document-${id}`);
   const application = getApplicationByJobId(id);
+  const preparation = getApplicationPreparation(id);
+  const contacts = getJobContacts(id);
+  const clayConnected = getIntegration("clay")?.connectionStatus === "connected";
+  const outreachDrafts = getOutreachDrafts(id);
+  const outreachMessages = getOutreachMessagesForJob(id);
+  const stage = {
+    job, evaluation, preparation, generatedDocument, application, contactCount: contacts.length,
+  };
+  const action = nextBestAction(stage);
+  const progress = opportunityProgress(stage);
   const answerDrafts = getApplicationAnswerDrafts(id);
   const emailEvidence = getEmailImportEvidence(id);
   const resumes = getResumes();
@@ -153,7 +204,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
     const sourceJobId = String(formData.get("jobId") ?? "");
     // Reuse the job's own extracted ATS keywords as tags — same vocabulary as
     // autoSaveEvaluationStories, so this story can auto-match other positions too.
-    const jobKeywords = sourceJobId ? getEvaluationByJobId(sourceJobId)?.keywords ?? [] : [];
+    const jobKeywords = sourceJobId ? getEffectiveKeywords(sourceJobId) : [];
     saveStory({
       id: randomUUID(),
       title: String(formData.get("title") ?? ""),
@@ -166,7 +217,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
       themes: [],
       tags: jobKeywords,
       sourceJobId,
-      sourceBlockF: String(formData.get("sourceBlockF") ?? ""),
+      storySource: String(formData.get("storySource") ?? ""),
     });
     revalidatePath("/interview-prep");
   }
@@ -258,6 +309,9 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
 
   // ── Tab link helper ───────────────────────────────────────────────────────
 
+  // §21: rows written before Phase 1 still render their A–G sections. The card
+  // and the legacy view are mutually exclusive, keyed on the stored version.
+  const isFastEvaluation = evaluation?.evaluationVersion === "fast-v2";
   const tabHref = (t: Tab) => `/jobs/${id}?tab=${t}`;
   const tabCls = (t: Tab) =>
     `px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -345,9 +399,20 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
           </div>
           {/* Right: score strip */}
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Badge tone={scoreTone}>{fitScore}% · {scoreLabel}</Badge>
-            <Badge tone={recommendation === "Skip" ? "danger" : "success"}>{recommendation}</Badge>
-            {evaluation?.legitimacyLabel ? <Badge>{evaluation.legitimacyLabel}</Badge> : null}
+            {/* fast-v2 leads with fit, recommendation and confidence. scoreLabel is a
+                compatibility column (§13), so it stays out of the headline here and
+                only shows for legacy rows that have nothing else to say. */}
+            <Badge tone={scoreTone}>{fitScore}%{isFastEvaluation ? "" : ` · ${scoreLabel}`}</Badge>
+            <Badge tone={toneForRecommendation(recommendation)}>{recommendation}</Badge>
+            {isFastEvaluation && evaluation?.confidenceLabel
+              ? <Badge>{evaluation.confidenceLabel} confidence</Badge>
+              : null}
+            {/* Posting legitimacy is a different question from evaluation confidence,
+                and its values ("High Confidence") read as the same thing. Name the
+                subject so the two cannot be mistaken for a contradiction. */}
+            {!isFastEvaluation && evaluation?.legitimacyLabel
+              ? <Badge>Posting: {evaluation.legitimacyLabel}</Badge>
+              : null}
             {job.postingResolutionStatus === "needs_resolution" && <Badge tone="warning">Needs posting</Badge>}
             {job.livenessStatus === "active" && <Badge tone="success">Live ✓</Badge>}
             {job.livenessStatus === "expired" && <Badge tone="danger">Expired</Badge>}
@@ -357,17 +422,65 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
           </div>
         </div>
 
+        {/* ── Interview transition (§59) ───────────────────────────── */}
+        {(application?.status === "Interviewing" || application?.status === "Offer") && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-control border border-success/35 bg-success/10 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-ink">Interview preparation available</p>
+              <p className="text-xs text-muted">
+                Company briefing, themes, stories and practice questions for this role.
+              </p>
+            </div>
+            <Link
+              className="inline-flex min-h-8 items-center rounded-control bg-accent px-3 text-sm font-medium text-white hover:opacity-90"
+              href="/interview-prep"
+            >
+              Prepare interview
+            </Link>
+          </div>
+        )}
+
+        {/* ── Next action and progress (§65, §66) ──────────────────── */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              className="inline-flex min-h-8 items-center rounded-control bg-accent px-3 text-sm font-medium text-white hover:opacity-90"
+              href={action.primary.href}
+            >
+              {action.primary.label}
+            </Link>
+            <span className="text-xs text-muted">{action.primary.reason}</span>
+            {action.secondary ? (
+              <Link className="text-xs text-accent underline-offset-2 hover:underline" href={action.secondary.href}>
+                or {action.secondary.label.toLowerCase()}
+              </Link>
+            ) : null}
+          </div>
+          <ol className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {progress.map((step) => (
+              <li className={`flex items-center gap-1 text-xs ${step.done ? "text-ink" : "text-muted/60"}`} key={step.label}>
+                <span aria-hidden className={step.done ? "text-success" : ""}>{step.done ? "✓" : "○"}</span>
+                {step.label}
+                <span className="sr-only">{step.done ? " complete" : " not started"}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
         {/* ── Tab navigation ───────────────────────────────────────── */}
         <div className="mb-6 flex border-b border-border overflow-x-auto">
           <Link href={tabHref("overview")} className={tabCls("overview")}>Overview</Link>
+          <Link href={tabHref("evaluation")} className={tabCls("evaluation")}>
+            Evaluation {!evaluation ? <span className="ml-1 text-[10px] text-muted">(run evaluate)</span> : null}
+          </Link>
           <Link href={tabHref("resume")} className={tabCls("resume")}>
             Resume {generatedDocument ? <span className="ml-1 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">Ready</span> : null}
           </Link>
           <Link href={tabHref("apply")} className={tabCls("apply")}>
             Apply {application ? <span className="ml-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">{application.status}</span> : null}
           </Link>
-          <Link href={tabHref("analysis")} className={tabCls("analysis")}>
-            Analysis {!evaluation ? <span className="ml-1 text-[10px] text-muted">(run evaluate)</span> : null}
+          <Link href={tabHref("outreach")} className={tabCls("outreach")}>
+            Outreach {contacts.length > 0 ? <span className="ml-1 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">{contacts.length}</span> : null}
           </Link>
         </div>
 
@@ -416,7 +529,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <CardTitle>Next step</CardTitle>
                   </CardHeader>
                   <div className="grid gap-2">
-                    <Badge tone={recommendation === "Skip" ? "danger" : "success"} >{recommendation}</Badge>
+                    <Badge tone={toneForRecommendation(recommendation)} >{recommendation}</Badge>
                     <Link href={tabHref("resume")} className="mt-1 text-sm font-medium text-accent hover:underline">
                       → Go to Resume tab
                     </Link>
@@ -424,7 +537,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                       → Go to Apply tab
                     </Link>
                     <LinkButton href={`/jobs/${id}/research`} variant="quiet">Company research</LinkButton>
-                    <LinkButton href={`/jobs/${id}/outreach`} variant="quiet">Draft outreach</LinkButton>
+                    <LinkButton href={tabHref("outreach")} variant="quiet">Draft outreach</LinkButton>
                   </div>
                 </Card>
               </div>
@@ -651,7 +764,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                   <div className="grid gap-2">
                     {resolvedPosting ? <ExternalLinkButton href={job.url}>Open job posting ↗</ExternalLinkButton> : null}
                     <LinkButton href={`/jobs/${id}/research`} variant="secondary">Company research</LinkButton>
-                    <LinkButton href={`/jobs/${id}/outreach`} variant="secondary">Draft LinkedIn outreach</LinkButton>
+                    <LinkButton href={tabHref("outreach")} variant="secondary">Find people</LinkButton>
                   </div>
                 </Card>
               </div>
@@ -689,10 +802,39 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
         )}
 
         {/* ── Tab: Analysis ────────────────────────────────────────── */}
-        {tab === "analysis" && (
+
+        {/* ── Tab: Outreach ────────────────────────────────────────── */}
+        {tab === "outreach" && (
+          <div className="grid gap-8">
+            {outreachError ? (
+              <p className="rounded-control border border-danger/35 bg-danger/10 px-4 py-2 text-sm text-danger" role="alert">
+                {OUTREACH_ERRORS[outreachError] ?? "Something went wrong."}
+              </p>
+            ) : null}
+
+            <ContactsPanel clayConnected={clayConnected} contacts={contacts} jobId={id} messagesByLink={outreachMessages} />
+
+            {outreachDrafts.length > 0 && (
+              <section>
+                <h2 className="mb-1 text-sm font-semibold text-ink">Previous generic drafts</h2>
+                <p className="mb-4 text-xs text-muted">
+                  Written before outreach targeted real people. Kept readable; new drafts are
+                  written per contact.
+                </p>
+                <OutreachClient jobId={id} saved={outreachDrafts} />
+              </section>
+            )}
+          </div>
+        )}
+
+        {tab === "evaluation" && (
           <div className="grid gap-6">
             {evaluation ? (
               <>
+                {isFastEvaluation ? (
+                  <FastEvaluationCard evaluation={evaluation} />
+                ) : (
+                <>
                 <AIProviderBadge
                   generationMs={evaluation.generationMs}
                   model={evaluation.modelUsed}
@@ -723,12 +865,12 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                 {/* Save a story */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Save a story from Block F</CardTitle>
-                    <CardDescription>Pre-fill a STAR story from this job&apos;s interview plan. Complete it in Interview Prep.</CardDescription>
+                    <CardTitle>Save a story from this evaluation</CardTitle>
+                    <CardDescription>Pre-fill a STAR story from this job&apos;s interview plan. Complete it in Interview Prep. Only older evaluations carry an interview plan — new ones route story work to Interview Prep instead.</CardDescription>
                   </CardHeader>
                   <form action={saveStoryAction} className="grid gap-3">
                     <input name="jobId" type="hidden" value={id} />
-                    <input name="sourceBlockF" type="hidden" value={evaluation.sections.interviewPlan.join(" ")} />
+                    <input name="storySource" type="hidden" value={evaluation.sections.interviewPlan.join(" ")} />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Input label="Story title" name="title" placeholder="e.g. Led design system rollout" />
                       <Input label="Situation" name="situation" placeholder="What was the context?" />
@@ -741,6 +883,8 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                     <div><SubmitButton label="Save to story bank" savedLabel="Saved" variant="secondary" /></div>
                   </form>
                 </Card>
+                </>
+                )}
 
                 {/* Correct evaluation */}
                 <Card>
@@ -758,6 +902,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
                         <option>Review manually</option>
                         <option>Save for later</option>
                         <option>Skip</option>
+                        <option>Blocked</option>
                       </Select>
                     </div>
                     <Textarea defaultValue={evaluation.summary} label="Summary" name="summary" />

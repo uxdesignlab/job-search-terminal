@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getAISettings, getEvaluationByJobId, getGeneratedDocumentById, getJobById, getJobGapResponses, getProfileSupplements, getResumeBuilderVersion, getResumes, getSkills, getUserProfile, saveGeneratedDocument, updateDocumentDraft, updateDocumentPdf } from "../db/queries";
-import type { EvaluationRecord, GeneratedDocumentInput, JobRecord, ResumeBuilderSection, ResumeBuilderVersionRecord, ResumeRecord, ResumeSectionMode, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
-import { evaluateJob } from "../evaluation/job-evaluator";
+import { getAISettings, getEvaluationByJobId, getGeneratedDocumentById, getJobById, getJobGapResponses, getProfileSupplements, getResumeBuilderVersion, getResumes, getSkills, getUserProfile, saveGeneratedDocument, updateDocumentDraft, updateDocumentPdf,
+  getEffectiveKeywordSignals
+} from "../db/queries";
+import type { EvaluationRecord, GeneratedDocumentInput, JobKeywordSignal, JobRecord, ResumeBuilderSection, ResumeBuilderVersionRecord, ResumeRecord, ResumeSectionMode, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
+import { EvaluationRequiredError, prepareApplication } from "../application-preparation";
 import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
 import { keywordCoverageFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
 import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceAuditIssue } from "./evidence-audit";
-import { legacyKeywordSignals } from "../evaluation/keyword-signals";
 
 export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
 
@@ -27,20 +28,44 @@ export class UnsupportedResumeClaimsError extends Error {
   }
 }
 
+/**
+ * Run Application Preparation, treating failure as a degraded state rather than
+ * a blocked one. Returns the reason when it could not run, so callers can
+ * surface it the way AI-tailoring fallbacks already are.
+ */
+async function prepareApplicationOrDegrade(jobId: string): Promise<string> {
+  try {
+    await prepareApplication(jobId);
+    return "";
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[resume] application preparation unavailable for ${jobId}; continuing with stored keywords:`, reason);
+    return reason;
+  }
+}
+
 export async function generateTailoredResume(jobId: string, sectionModes: ResumeSectionModeInput[] = []): Promise<GeneratedResumeResult> {
   const job = getJobById(jobId);
   if (!job) {
     throw new Error(`Job not found: ${jobId}`);
   }
 
-  let evaluation = getEvaluationByJobId(jobId);
-  if (!evaluation) {
-    evaluateJob(jobId);
-    evaluation = getEvaluationByJobId(jobId);
-  }
-  if (!evaluation) {
-    throw new Error(`Evaluation could not be saved for job: ${jobId}`);
-  }
+  // §5.2, §22: no hidden evaluation. Resume generation used to quietly run one
+  // when it was missing, which made an expensive AI call with no user action
+  // behind it and hid the dependency. The caller is told to evaluate first.
+  const evaluation = getEvaluationByJobId(jobId);
+  if (!evaluation) throw new EvaluationRequiredError(jobId);
+
+  // §32: preparation is generated on demand and reused while its hashes hold, so
+  // editing a draft does not pay for it again — but answering a gap anywhere in
+  // the global evidence bank invalidates it.
+  //
+  // Failure degrades rather than aborting, matching how AI tailoring below is
+  // handled: the same provider outage must not produce a resume on one path and
+  // a hard error on the other. Without preparation the effective-keyword resolver
+  // falls back to whatever the evaluation stored, which is exactly the behaviour
+  // that existed before this stage.
+  const preparationFallback = await prepareApplicationOrDegrade(jobId);
   const profile = getUserProfile();
   const resumes = getResumes();
   const skills = getSkills();
@@ -49,12 +74,17 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   const approvedVersion = getApprovedResumeVersion(baseResume);
   const resolvedSectionModes = resolveSectionModes(approvedVersion.sections, sectionModes);
   const sourceDraft = buildTailoredContent(job, evaluation, profile, skills, approvedVersion, resolvedSectionModes);
-  const keywordSignals = effectiveKeywordSignals(evaluation, job);
+  const keywordSignals = getEffectiveKeywordSignals(job.id);
 
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
   let aiTailoring: TailoredResumeSections | null = null;
-  let fallbackReason = "";
+  // Seeded from preparation so a degraded run is reported even when AI tailoring
+  // itself succeeds — otherwise the resume looks fully tailored while quietly
+  // missing this job's extracted keywords.
+  let fallbackReason = preparationFallback
+    ? `Application preparation unavailable (${preparationFallback}); tailored from stored keywords.`
+    : "";
   const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
   const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
@@ -63,16 +93,17 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
 
   if (hasAIKey) {
     try {
-      const keywordInputs = keywordSignals.length > 0 ? keywordSignals : evaluation.keywords;
+      const keywordInputs = keywordSignals;
       const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
         evidenceTextForDraft(sourceDraft), keywordInputs
       );
       // Keywords whose words are already in the full evidence corpus → safe to use verbatim.
       const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
       const notExactInDraft = [...partialInDraft, ...missingFromDraft];
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws);
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals);
     } catch (error) {
-      fallbackReason = error instanceof Error ? error.message : String(error);
+      const aiReason = error instanceof Error ? error.message : String(error);
+      fallbackReason = fallbackReason ? `${fallbackReason} ${aiReason}` : aiReason;
     }
   }
 
@@ -95,8 +126,8 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     pdfPath,
     format: paperFormatFor(job)
   });
-  const keywordCoverage = keywordCoverageFor(content, keywordSignals.length > 0 ? keywordSignals : evaluation.keywords);
-  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
+  const keywordCoverage = keywordCoverageFor(content, keywordSignals);
+  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals);
   const document: GeneratedDocumentInput = {
     id,
     jobId: job.id,
@@ -137,12 +168,19 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const job = getJobById(jobId);
   if (!job) throw new Error(`Job not found: ${jobId}`);
 
-  let evaluation = getEvaluationByJobId(jobId);
-  if (!evaluation) {
-    evaluateJob(jobId);
-    evaluation = getEvaluationByJobId(jobId);
-  }
-  if (!evaluation) throw new Error(`Evaluation could not be saved for job: ${jobId}`);
+  const evaluation = getEvaluationByJobId(jobId);
+  if (!evaluation) throw new EvaluationRequiredError(jobId);
+
+  // §32: preparation is generated on demand and reused while its hashes hold, so
+  // editing a draft does not pay for it again — but answering a gap anywhere in
+  // the global evidence bank invalidates it.
+  //
+  // Failure degrades rather than aborting, matching how AI tailoring below is
+  // handled: the same provider outage must not produce a resume on one path and
+  // a hard error on the other. Without preparation the effective-keyword resolver
+  // falls back to whatever the evaluation stored, which is exactly the behaviour
+  // that existed before this stage.
+  const preparationFallback = await prepareApplicationOrDegrade(jobId);
 
   const profile = getUserProfile();
   const resumes = getResumes();
@@ -156,12 +194,17 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const approvedVersion = getApprovedResumeVersion(baseResume);
   const resolvedSectionModes = resolveSectionModes(approvedVersion.sections, sectionModes);
   const sourceDraft = buildTailoredContent(job, evaluation, profile, skills, approvedVersion, resolvedSectionModes);
-  const keywordSignals = effectiveKeywordSignals(evaluation, job);
+  const keywordSignals = getEffectiveKeywordSignals(job.id);
 
   const aiSettings = getAISettings();
   const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
   let aiTailoring: TailoredResumeSections | null = null;
-  let fallbackReason = "";
+  // Seeded from preparation so a degraded run is reported even when AI tailoring
+  // itself succeeds — otherwise the resume looks fully tailored while quietly
+  // missing this job's extracted keywords.
+  let fallbackReason = preparationFallback
+    ? `Application preparation unavailable (${preparationFallback}); tailored from stored keywords.`
+    : "";
   const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
   const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
@@ -169,15 +212,16 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
 
   if (hasAIKey) {
     try {
-      const keywordInputs = keywordSignals.length > 0 ? keywordSignals : evaluation.keywords;
+      const keywordInputs = keywordSignals;
       const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
         evidenceTextForDraft(sourceDraft), keywordInputs
       );
       const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
       const notExactInDraft = [...partialInDraft, ...missingFromDraft];
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws);
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals);
     } catch (error) {
-      fallbackReason = error instanceof Error ? error.message : String(error);
+      const aiReason = error instanceof Error ? error.message : String(error);
+      fallbackReason = fallbackReason ? `${fallbackReason} ${aiReason}` : aiReason;
     }
   }
 
@@ -188,8 +232,8 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
   const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
   const draft = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
-  const keywordCoverage = keywordCoverageFor(draft, keywordSignals.length > 0 ? keywordSignals : evaluation.keywords);
-  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage);
+  const keywordCoverage = keywordCoverageFor(draft, keywordSignals);
+  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals);
   const date = new Date().toISOString().slice(0, 10);
   const documentId = `document-${job.id}`;
 
@@ -265,15 +309,6 @@ export async function createPdfForDocument(
 function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume" | "baseResumeId">, resumes: ResumeRecord[]) {
   return resumes.find((resume) => resume.id === doc.baseResumeId)
     ?? resumes.find((resume) => resume.name === doc.baseResume);
-}
-
-function effectiveKeywordSignals(evaluation: EvaluationRecord, job: JobRecord) {
-  return evaluation.keywordSignals.length > 0
-    ? evaluation.keywordSignals
-    : legacyKeywordSignals(evaluation.keywords, {
-        title: job.title,
-        description: job.rawDescription || job.parsedDescription || "",
-      });
 }
 
 // After AI tailoring, inject any confirmed keywords that are still not present as exact phrases
@@ -377,10 +412,11 @@ function buildTailoredContent(
   approvedVersion: ResumeBuilderVersionRecord,
   sectionModes: ResumeSectionModeInput[]
 ) {
-  const keywordSignals = effectiveKeywordSignals(evaluation, job);
-  const keywords = (keywordSignals.length > 0
-    ? keywordSignals.filter((signal) => signal.priority !== "preferred").map((signal) => signal.keyword)
-    : evaluation.keywords).slice(0, 12);
+  const keywordSignals = getEffectiveKeywordSignals(job.id);
+  const keywords = keywordSignals
+    .filter((signal) => signal.priority !== "preferred")
+    .map((signal) => signal.keyword)
+    .slice(0, 12);
   const preferredSkillNames = skills
     .filter((skill) => skill.usePreference !== "use_less")
     .map((skill) => skill.skillName);
@@ -1055,11 +1091,16 @@ function rankItems(items: string[], keywords: string[]) {
   );
 }
 
-function buildTailoringPlan(evaluation: EvaluationRecord, resume: ResumeRecord, keywordCoverage: number) {
+function buildTailoringPlan(
+  evaluation: EvaluationRecord,
+  resume: ResumeRecord,
+  keywordCoverage: number,
+  keywordSignals: JobKeywordSignal[]
+) {
   return [
     `Base resume selected: ${resume.name}.`,
     `Role archetype: ${evaluation.roleArchetype}.`,
-    `Top keywords inserted only where supported: ${evaluation.keywords.slice(0, 8).join(", ") || "none captured"}.`,
+    `Top keywords inserted only where supported: ${keywordSignals.slice(0, 8).map((signal) => signal.keyword).join(", ") || "none captured"}.`,
     `Proof points reordered by overlap with the job/evaluation keywords.`,
     `Keyword coverage: ${keywordCoverage}%.`
   ];

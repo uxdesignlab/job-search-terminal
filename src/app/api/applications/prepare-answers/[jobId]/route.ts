@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { prepareApplicationAnswers } from "@/lib/applications/application-assistant";
+import { EvaluationRequiredError } from "@/lib/application-preparation";
 import { prepareApplicationAnswersWithAI } from "@/lib/applications/llm-answer-generator";
 import { getAISettings } from "@/lib/db/queries";
 
@@ -29,6 +30,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ jobId: 
 
     return Response.json({ drafts, usedAI: hasAIKey });
   } catch (err) {
+    // §2.4: Apply no longer evaluates behind the user's back, so a missing
+    // evaluation is a precondition with a clear next step, not a server error.
+    if (err instanceof EvaluationRequiredError) {
+      return Response.json(
+        { error: err.message, code: "evaluation_required", jobId: err.jobId },
+        { status: 409 }
+      );
+    }
     return Response.json(
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 }

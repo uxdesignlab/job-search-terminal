@@ -14,13 +14,9 @@ import { LinkedInImportNotification } from "@/components/linkedin-import-notific
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
 import { getJobSourceLabel } from "@/lib/job-table-helpers";
 
-export const dynamic = "force-dynamic";
+import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
 
-function toneForRecommendation(recommendation: string) {
-  if (recommendation === "Priority apply" || recommendation === "Strong apply") return "success" as const;
-  if (recommendation === "Skip") return "danger" as const;
-  return "warning" as const;
-}
+export const dynamic = "force-dynamic";
 
 export default async function JobsPage() {
   const profile = getUserProfile();

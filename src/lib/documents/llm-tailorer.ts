@@ -5,7 +5,6 @@ import type { AIMessage } from "../ai/provider";
 import type { EvaluationRecord, JobKeywordSignal, JobRecord, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
 import { getWritingStyle } from "../db/queries";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
-import { legacyKeywordSignals } from "../evaluation/keyword-signals";
 import type { ResumeTemplateInput } from "./resume-template";
 
 export type TailoredResumeSections = {
@@ -175,15 +174,13 @@ export async function tailorResumeWithAI(
   supplements?: SupplementContext[],
   skills?: SkillRecord[],
   missingKeywords?: string[],
-  confirmedKeywords?: string[]
+  confirmedKeywords?: string[],
+  keywordSignals: JobKeywordSignal[] = []
 ): Promise<TailoredResumeSections> {
   const provider = getActiveProvider();
-  const sortedKeywords = evaluation.keywordSignals.length > 0
-    ? evaluation.keywordSignals
-    : legacyKeywordSignals(evaluation.keywords, {
-        title: job.title,
-        description: job.rawDescription || job.parsedDescription || "",
-      });
+  // Resolved by the caller through the shared resolver (§25). Re-deriving the
+  // chain here is how the tailorer and the generator drifted apart.
+  const sortedKeywords = keywordSignals;
   const confirmed = confirmedKeywords ?? [];
   const keywordStrategyBlock = buildKeywordStrategyBlock(sortedKeywords, confirmed, missingKeywords ?? []);
   // Legacy blocks kept for fallback path when no confirmed keywords are supplied
