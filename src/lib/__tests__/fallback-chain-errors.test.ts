@@ -157,6 +157,62 @@ describe("per-provider deadlines inside the chain", () => {
   });
 });
 
+describe("local retry before handing over", () => {
+  function flakyProvider(name: string, model: string, failures: number): AIProvider {
+    let calls = 0;
+    return {
+      name,
+      defaultModel: model,
+      effectiveModel: model,
+      generateJSON: async () => {
+        calls += 1;
+        if (calls <= failures) throw new Error(`${name} returned invalid JSON (Unexpected token).`);
+        return { from: name, calls } as never;
+      },
+    } as unknown as AIProvider;
+  }
+
+  it("gives a local model a second try on unusable JSON rather than spending a paid call", async () => {
+    // Output quality is non-deterministic: the same model that mangled one answer
+    // usually produces a clean one next time, and a local retry costs time the user
+    // already committed while moving on costs money.
+    const chain = new FallbackProvider(
+      [flakyProvider("ollama", "gemma4:12b-mlx", 1), stubProvider("openai", "gpt-5.6-sol")],
+      () => 5_000
+    );
+
+    await expect(chain.generateJSON([], "{}")).resolves.toEqual({ from: "ollama", calls: 2 });
+    expect(chain.name).toBe("ollama");
+  });
+
+  it("moves on when the second try fails too", async () => {
+    const chain = new FallbackProvider(
+      [flakyProvider("ollama", "gemma4:12b-mlx", 2), stubProvider("openai", "gpt-5.6-sol")],
+      () => 5_000
+    );
+
+    await expect(chain.generateJSON([], "{}")).resolves.toEqual({ from: "openai" });
+  });
+
+  it("does not re-run a cloud provider — a rate limit twice in a row is two rate limits", async () => {
+    const chain = new FallbackProvider(
+      [flakyProvider("openai", "gpt-5.6-sol", 1), stubProvider("gemini", "gemini-3.5-flash")],
+      () => 5_000
+    );
+
+    await expect(chain.generateJSON([], "{}")).resolves.toEqual({ from: "gemini" });
+  });
+
+  it("does not retry a local failure that is not about JSON", async () => {
+    const chain = new FallbackProvider(
+      [stubProvider("ollama", "gemma4:12b-mlx", new Error("Could not connect to Ollama.")), stubProvider("openai", "gpt-5.6-sol")],
+      () => 5_000
+    );
+
+    await expect(chain.generateJSON([], "{}")).resolves.toEqual({ from: "openai" });
+  });
+});
+
 describe("hand-over reporting", () => {
   it("announces each provider as it is tried, with why the last one stopped", async () => {
     // The modal named the chain's first provider for the whole run, so a run that

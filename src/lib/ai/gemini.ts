@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
 import { GEMINI_FALLBACK_MODELS, geminiSentinelFamily, resolveLatestGeminiModel } from "./gemini-models";
+import { parseJsonResponse } from "./json-response";
 
 export class GeminiProvider implements AIProvider {
   readonly name = "gemini";
@@ -102,15 +103,7 @@ export class GeminiProvider implements AIProvider {
         "Gemini returned empty output. Check for safety blocks or try a different model."
       );
     }
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonText = (fenced?.[1] ?? raw).trim();
-    try {
-      return JSON.parse(jsonText) as T;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      const preview = jsonText.length > 300 ? `${jsonText.slice(0, 300)}…` : jsonText;
-      throw new Error(`Gemini returned invalid JSON (${msg}). Preview: ${preview}`);
-    }
+    return parseJsonResponse<T>(raw, "Gemini");
   }
 
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {

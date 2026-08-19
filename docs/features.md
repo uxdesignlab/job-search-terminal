@@ -402,6 +402,31 @@ time hands over to the cloud provider configured behind it — which is the enti
 point of putting one there. The run's outer bound covers the sum, since a bound sized
 to the first provider would end the run before the fallback could take its turn.
 
+**One reader for model JSON.** Every provider is asked for raw JSON and told not to
+use markdown fences; models wrap it in ```` ```json ```` anyway, because an instruction
+is a request rather than a guarantee. Anthropic and Gemini each grew their own
+unwrapping regex and Ollama grew none, so a local model whose answer was perfectly good
+inside a fence was reported as *"Ollama returned invalid JSON"* — over one backtick,
+after 80 seconds of work, followed by a paid call to fix a problem that did not exist.
+`parseJsonResponse` in `src/lib/ai/json-response.ts` is now the single reader for all
+three: it unwraps a fenced block (tagged or bare — Anthropic's own pattern required the
+`json` tag and missed bare fences), falls back to the first embedded object or array,
+and on failure raises an error naming the parse reason with a 300-character preview.
+The words "invalid JSON" are load-bearing in that message: they are what marks the
+failure retryable and worth failing over, rather than an auth or quota problem the user
+has to act on. Ollama's path also separates the three things that used to share one
+message — an answer cut off at the token limit, an empty answer, and output that is
+genuinely not JSON — because they call for different responses.
+
+**A local model gets a second try before the chain spends money.** Output quality is
+non-deterministic: the same model that mangles one answer usually produces a clean one
+next time. The economics are lopsided — a local retry costs time the user has already
+committed, while moving on spends a paid call — so a local provider is retried once on
+unusable JSON before the chain hands over. Cloud providers are not retried at this
+level: `withRetry` already covers the whole chain, and retrying a paid call twice in a
+row is how one rate limit becomes two. A local failure that is not about JSON (the
+server is down, the request timed out) hands over immediately.
+
 **The modal follows the chain.** Progress used to name the chain's first provider for
 the whole run, because that is what a `FallbackProvider` answers until something
 succeeds — so a run that fell through to the cloud after 20 seconds spent two minutes

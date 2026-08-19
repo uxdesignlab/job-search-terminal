@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
 import { LOCAL_GENERATION_TIMEOUT_MS } from "./deadlines";
+import { parseJsonResponse } from "./json-response";
 
 function humanizeOllamaError(error: unknown): Error {
   if (error instanceof OpenAI.APIConnectionError || (error instanceof Error && error.message.includes("ECONNREFUSED"))) {
@@ -91,12 +92,32 @@ export class OllamaProvider implements AIProvider {
         response_format: { type: "json_object" },
         messages: this.toMessages(messagesWithJsonHint)
       });
-      const text = response.choices[0]?.message?.content ?? "{}";
-      return JSON.parse(text) as T;
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error("Ollama returned invalid JSON. Try a larger model (14B+) for more reliable structured output.");
+      const choice = response.choices[0];
+      const text = choice?.message?.content ?? "";
+      const maxTokens = config?.maxTokens ?? 8192;
+
+      // "Invalid JSON" was the same answer for three different problems: an answer
+      // cut off at the token limit, an empty answer, and a model that genuinely
+      // cannot hold a schema. They need different responses from the user, so each
+      // says what it is — and every message keeps the words "invalid JSON", which
+      // is what marks it retryable and worth failing over.
+      if (choice?.finish_reason === "length") {
+        throw new Error(
+          `Ollama returned invalid JSON: the answer was cut off at the ${maxTokens}-token limit, ` +
+            `after ${response.usage?.completion_tokens ?? "?"} tokens. The model is writing more than the ` +
+            "shape needs — a model tuned for structured output will fit it."
+        );
       }
+      if (!text.trim()) {
+        throw new Error(
+          "Ollama returned invalid JSON: the answer was empty. The model may not support JSON mode — " +
+            "try another local model."
+        );
+      }
+
+      return parseJsonResponse<T>(text, "Ollama");
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Ollama returned invalid JSON")) throw error;
       throw humanizeOllamaError(error);
     }
   }

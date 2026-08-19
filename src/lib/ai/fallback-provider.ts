@@ -2,7 +2,7 @@ import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, Str
 import { summarizeProviderError } from "./provider-error-summary";
 import { AllProvidersFailedError, type ProviderAttempt } from "./chain-failure";
 import { generationDeadlineMs } from "./deadlines";
-import { GenerationTimeoutError, withDeadline } from "./retry";
+import { GenerationTimeoutError, isMalformedJsonResponse, withDeadline } from "./retry";
 
 export { AllProvidersFailedError, findChainFailure, type ProviderAttempt } from "./chain-failure";
 
@@ -94,10 +94,31 @@ export class FallbackProvider implements AIProvider {
   /** One line per provider tried, in the order they were tried. */
   private attempts: ProviderAttempt[] = [];
 
-  /** Each provider is bounded on its own, so one slow model cannot spend the
-   *  budget the providers behind it were configured to cover. */
-  private attempt<T>(provider: AIProvider, run: () => Promise<T>): Promise<T> {
-    return withDeadline(run, this.deadlineFor(provider.name));
+  /**
+   * Each provider is bounded on its own, so one slow model cannot spend the budget
+   * the providers behind it were configured to cover.
+   *
+   * A local provider gets a second try when the failure was unusable JSON. Output
+   * quality is non-deterministic — the same model that fenced or mangled one answer
+   * usually produces a clean one next time — and the economics are lopsided: a local
+   * retry costs time the user has already committed, while moving on spends a paid
+   * call. Cloud providers are not retried here; `withRetry` already covers the whole
+   * chain, and retrying a paid call twice in a row is how a rate limit becomes two.
+   */
+  private async attempt<T>(provider: AIProvider, run: () => Promise<T>): Promise<T> {
+    const budget = this.deadlineFor(provider.name);
+    const tries = provider.name === "ollama" ? 2 : 1;
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= tries; attempt += 1) {
+      try {
+        return await withDeadline(run, budget);
+      } catch (error) {
+        lastError = error;
+        if (attempt === tries || !isMalformedJsonResponse(error)) throw error;
+      }
+    }
+    throw lastError;
   }
 
   private record(provider: AIProvider, error: unknown) {
