@@ -351,7 +351,11 @@ The decision is made **per column and by value**, never by which version wrote t
 stored value is kept only when the incoming one is empty, so real new detail always wins
 and nothing empty ever overwrites something populated. Emptiness is judged structurally,
 because the fast path writes `{"roleSummary":[],"matchWithResume":[],…}` for its sections,
-which is as empty as `{}`. An earlier version keyed the decision off
+which is as empty as `{}`. It also covers sentinels — labels a stage writes for a
+judgement it does not make. `legitimacy_label` is the one that exists today: Fast
+Evaluation stores `Not assessed` (`UNASSESSED_LEGITIMACY` in
+`src/lib/evaluation/legitimacy.ts`), which is non-empty and would otherwise read as new
+detail and overwrite a legacy row's real assessment on the very first re-evaluation. An earlier version keyed the decision off
 `existing.evaluation_version !== "fast-v2"`, which protected a legacy row exactly once —
 the carry rewrote the row as `fast-v2`, so the *second* fast evaluation saw a `fast-v2`
 row, skipped the carry, and wrote the empty arrays it had been holding back. A routine

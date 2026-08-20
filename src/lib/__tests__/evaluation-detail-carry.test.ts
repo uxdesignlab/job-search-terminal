@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JobEvaluationResultInput } from "@/lib/db/types";
+import { UNASSESSED_LEGITIMACY } from "@/lib/evaluation/legitimacy";
 
 let tempDir: string | null = null;
 let queries: Awaited<ReturnType<typeof loadFreshDb>>["queries"];
@@ -41,7 +42,7 @@ function evaluation(overrides: Partial<JobEvaluationResultInput>): JobEvaluation
     sections: emptySections,
     keywords: [],
     keywordSignals: [],
-    legitimacyLabel: "",
+    legitimacyLabel: UNASSESSED_LEGITIMACY,
     providerUsed: "anthropic",
     modelUsed: "claude-opus-5",
     tokensUsed: 0,
@@ -110,6 +111,26 @@ describe("legacy evaluation detail on re-evaluation", () => {
     expect(stored.keywordSignals.map((signal) => signal.keyword)).toEqual(["service design"]);
     expect(stored.sections.roleSummary).toEqual(["Legacy A–G prose."]);
     expect(stored.legitimacyLabel).toBe("verified");
+  });
+
+  it("keeps an assessed legitimacy label when the fast path did not assess one", () => {
+    // "Not assessed" is a label for a judgement the fast path does not make, not
+    // a value. A plain emptiness test reads it as new detail and overwrites the
+    // legacy row's real assessment on the very first re-evaluation.
+    queries.saveJobEvaluation(evaluation({
+      evaluationVersion: "legacy-v1",
+      legitimacyLabel: "Proceed with Caution",
+      keywords: ["service design"],
+    }));
+    queries.saveJobEvaluation(evaluation({}));
+
+    expect(queries.getEvaluationByJobId("job-a")!.legitimacyLabel).toBe("Proceed with Caution");
+  });
+
+  it("stores the unassessed label when there is no assessment to keep", () => {
+    queries.saveJobEvaluation(evaluation({}));
+
+    expect(queries.getEvaluationByJobId("job-a")!.legitimacyLabel).toBe(UNASSESSED_LEGITIMACY);
   });
 
   it("still lets a re-evaluation that produces real detail replace the old detail", () => {

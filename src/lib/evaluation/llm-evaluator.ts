@@ -30,6 +30,7 @@ import {
   type EvaluationPhase,
 } from "./evaluation-phases";
 import { coerceResumeBaseToLane } from "./resume-lane-picker";
+import { UNASSESSED_LEGITIMACY } from "./legitimacy";
 import { buildJobContext, buildSystemPrompt, type ResumeExcerpt } from "./prompts";
 import {
   calculateFitScore,
@@ -397,7 +398,7 @@ function buildFastEvaluationResult(input: {
     requirementMatch: requirementMatchStrings,
     resumeEvidence: output.resumeEvidence,
     sections: emptySections(),
-    legitimacyLabel: "Not assessed",
+    legitimacyLabel: UNASSESSED_LEGITIMACY,
     // Detailed keyword work belongs to Application Preparation (§24). Empty here
     // is deliberate — saveJobEvaluation() reads it to decide whether to leave the
     // job's existing taxonomy links and legacy keyword fallback intact.

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses, suppressesRepost } from "../applications/status";
 import { resolveEffectiveKeywordSignals, toKeywordPhrases } from "../evaluation/effective-keywords";
 import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
+import { UNASSESSED_LEGITIMACY } from "../evaluation/legitimacy";
 import { cleanLocationList, normalizePreferredLocations } from "../profile/locations";
 import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
@@ -1364,9 +1365,14 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
     if (typeof value === "object") return Object.values(value).some(hasContent);
     return false;
   };
+  // Sentinels a stage writes for a judgement it did not make. They are labels,
+  // not values: the fast path's "Not assessed" is non-empty and would otherwise
+  // read as new detail and overwrite a legacy row's real assessment — losing one
+  // of the four fields this carry exists to protect.
+  const NO_VALUE_SENTINELS = new Set<string>([UNASSESSED_LEGITIMACY]);
   const isBlankDetail = (value: string | null | undefined) => {
     const trimmed = (value ?? "").trim();
-    if (trimmed === "") return true;
+    if (trimmed === "" || NO_VALUE_SENTINELS.has(trimmed)) return true;
     try {
       return !hasContent(JSON.parse(trimmed));
     } catch {
