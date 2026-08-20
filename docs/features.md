@@ -293,7 +293,8 @@ status, posting maintenance, and bulk tools.
 
 ## Job Detail `/jobs/[id]`
 
-Tabbed view for a single job. Four tabs:
+Tabbed view for a single job. Five tabs — Overview, Evaluation, Resume, Apply and
+Outreach:
 
 ### Overview tab
 - Company, title, location, remote type, ATS source, freshness.
@@ -302,6 +303,13 @@ Tabbed view for a single job. Four tabs:
 - Requirement match table showing which JD requirements the profile covers.
 - Gap list: requirements not yet addressed.
 - Red flags list.
+- **Recommended resume** — a sidebar box under *Next step* naming the resume to tailor
+  from, whether that is your saved choice for the role or the evaluation's suggestion,
+  with a link into the Resume tab. This used to be a full-width *Resume evidence*
+  column in the match grid, which gave a one-line answer the same weight as two long
+  lists; the grid is now two columns (requirement match, gaps and red flags). Any
+  resume-evidence line the evaluation recorded still shows in the box, unless it just
+  repeats the lane name.
 - **Job description** — collapsed panel showing the saved description text.
 - **Edit job details** — collapsed form to overwrite position, company, job posting
   URL, and job description without creating a duplicate record. Useful when LinkedIn
@@ -309,28 +317,224 @@ Tabbed view for a single job. Four tabs:
   pre-filled with the current values. A reminder to re-run evaluation is shown
   after saving, since any description change makes the existing AI analysis stale.
 
-### Analysis tab
-- Run evaluation: triggers AI streaming evaluation with real-time output.
-- Evaluation sections: strengths, gaps, red flags, resume recommendation,
-  keyword list, legitimacy signal.
-- User correction: override the AI recommendation and score with a note.
-- Provider and model metadata for the last evaluation run.
+### Evaluation tab
 
-**Evaluation resilience (blocks A–G):**
-- The evaluation runs seven blocks sequentially (A role summary, B CV match, C level
-  strategy, D comp & demand, E personalization/keywords, F interview stories, G posting
-  legitimacy). If any block throws, the streaming modal marks that block with a red ✗
-  and stops — the earlier blocks stay visible so you can see how far it got.
-- **Malformed/truncated JSON is retried automatically.** LLM output is non-deterministic,
-  so a block whose response is cut off mid-JSON (or otherwise unparseable) is retried up
-  to 3× before it counts as a failure. Auth, quota, and network errors are *not* retried —
-  they surface immediately with an actionable message so you can fix the provider setting.
-- **Non-critical blocks degrade instead of aborting.** Block F (interview stories) and
-  Block G (posting legitimacy) fall back to an empty/"Unknown" result if they still return
-  bad JSON after retries, so one flaky generation no longer kills an otherwise-complete
-  evaluation. Core blocks A and B fail hard by design — a fabricated match or score is worse
-  than an honest failure. Block F also gets a larger token budget (8,192) than other blocks
-  because it produces the most output and was the most prone to truncation.
+Evaluation answers one question — **should I spend more time on this position?** —
+and does no work belonging to a later stage. It runs only when you click Evaluate;
+discovering a job triggers no AI.
+
+**Fast Evaluation (`fast-v2`), one AI generation:**
+- **Fit score** out of 100, summed from four components the model scores separately:
+  core requirements (0–40), role and seniority (0–25), relevant evidence (0–20),
+  preferences and direction (0–15). The model never returns a total — JST calculates
+  it, so the headline number and the breakdown beneath it cannot disagree.
+- **Recommendation**, derived from ordered rules rather than by the model:
+  `Blocked` → `Priority apply` (fit ≥ 85 and strong direction alignment) →
+  `Strong apply` (fit ≥ 70, strong or partial) → `Review manually` (fit ≥ 55) → `Skip`.
+- **Confidence** — High / Medium / Low, describing *source quality, not candidate
+  quality*: how much usable job description and resume evidence the assessment had.
+  Calculated locally with no AI call.
+- **Direction alignment** — strong / partial / none. Whether the role matches the
+  direction you are searching in, which is separate from whether you could do the job.
+  A capable match in the wrong direction lands at `Review manually`, not `Strong apply`.
+- Strengths, concerns, requirement tally (`8 supported · 2 partial · 1 unknown`),
+  posted compensation, and recommended resume lane.
+- **View details** discloses the component breakdown, direction rationale, requirement
+  matches, evidence used, red flags, and the provider/model/duration for the run.
+
+**Requirements in the posting.** A second column beside the evaluation box lists what
+the posting actually asks for, as bullets. A score's first follow-up question is
+"against what?", and the answer was previously a tab away in the collapsed job
+description. Sources, in order (`src/lib/jobs/posting-requirements.ts`):
+
+1. **The evaluation's own requirement list** (`modelOutput.requirementMatches`) — the
+   requirements the fit score was computed from, each tagged `supported`, `partial` or
+   `unknown`. Preferred because showing a different list beside the score would ask the
+   user to reconcile two lists that were never the same list.
+2. **Merged requirement strings** from a run stored before `modelOutput` existed
+   (`Lead end-to-end briefs. — supported (…)`), split back into requirement and status.
+   Used only when a majority of the lines actually carry a status word: the oldest
+   evaluations wrote free-form "X aligns with Y" notes into that same field, and
+   presenting those as the posting's requirements would put words in the posting's
+   mouth.
+3. **The saved description**, parsed for bullets — bullets inside a requirements-style
+   heading when the posting has one (continuing through *Preferred qualifications*,
+   stopping at *Benefits* / *Compensation* / *About us*), otherwise every bullet, since
+   a flat list is common. Fragments under 12 characters, paragraphs over 300, and
+   duplicates are dropped, capped at 24 items. Labelled as taken straight from the
+   description and not yet checked against your resume.
+
+An older evaluation whose notes are all there is falls back to those, labelled as
+notes. With no description saved and nothing recorded, the panel says so and points at
+Fetch description. No AI call is involved at any step.
+
+**A failed run is reported, never scored by rules.** When the AI does not produce a
+usable evaluation, the run fails with the reason and the job keeps whatever state it
+had. It used to fall back to the keyword scorer and save that as the evaluation:
+a Senior Director, User Experience posting came back 64% "Technical Specialist",
+saved, badged and counted exactly like a real assessment. A wrong answer presented as
+an answer costs more than no answer, and every one of these failures is something the
+user can act on:
+
+| What happened | What the message says |
+|---|---|
+| The model ran out of time | `ollama / qwen3.8:27b-mlx did not finish within 600s.` plus what to change |
+| Unreadable output after 3 tries | `…returned a response that could not be read as JSON, after 3 attempts.` A larger model (14B+ locally) is more reliable at structured output |
+| An answer missing its core fields | `…answered, but the answer was missing what an evaluation is made of (fitComponents, roleArchetype).` |
+| Auth, quota, network | the provider's own message, per provider (see the chain report in Settings) |
+
+Evaluations saved by the old behaviour still exist and still render; they say
+`scored by local rules, no AI model` in the run line and carry a banner saying the
+score and role archetype are a rough sort rather than an assessment. Re-evaluating
+replaces one.
+
+**Deadlines are per provider, and a chain spends them in turn.** A cloud call is
+capped at 150s — the cap exists so a stalled paid call cannot run up a bill. A local
+model gets **10 minutes**, because a local model's speed is a property of the machine
+it runs on, not of the request: the same 12B model that answers in 70s on one Mac
+needs several times that on older hardware, and a 27B model needs more again. Any
+bound tight enough to feel responsive on fast hardware makes the app unusable on slow
+hardware, where waiting is the trade the user already accepted by running locally. The
+local bound exists only so a wedged request cannot hang forever; impatience is served
+by **Cancel**, not by a short deadline.
+
+Each provider in the chain is bounded on its own, so a local model that runs out of
+time hands over to the cloud provider configured behind it — which is the entire
+point of putting one there. The run's outer bound covers the sum, since a bound sized
+to the first provider would end the run before the fallback could take its turn.
+
+**One reader for model JSON.** Every provider is asked for raw JSON and told not to
+use markdown fences; models wrap it in ```` ```json ```` anyway, because an instruction
+is a request rather than a guarantee. Anthropic and Gemini each grew their own
+unwrapping regex and Ollama grew none, so a local model whose answer was perfectly good
+inside a fence was reported as *"Ollama returned invalid JSON"* — over one backtick,
+after 80 seconds of work, followed by a paid call to fix a problem that did not exist.
+`parseJsonResponse` in `src/lib/ai/json-response.ts` is now the single reader for all
+three: it unwraps a fenced block (tagged or bare — Anthropic's own pattern required the
+`json` tag and missed bare fences), falls back to the first embedded object or array,
+and on failure raises an error naming the parse reason with a 300-character preview.
+The words "invalid JSON" are load-bearing in that message: they are what marks the
+failure retryable and worth failing over, rather than an auth or quota problem the user
+has to act on. Ollama's path also separates the three things that used to share one
+message — an answer cut off at the token limit, an empty answer, and output that is
+genuinely not JSON — because they call for different responses.
+
+**A local model gets a second try before the chain spends money.** Output quality is
+non-deterministic: the same model that mangles one answer usually produces a clean one
+next time. The economics are lopsided — a local retry costs time the user has already
+committed, while moving on spends a paid call — so a local provider is retried once on
+unusable JSON before the chain hands over. Cloud providers are not retried at this
+level: `withRetry` already covers the whole chain, and retrying a paid call twice in a
+row is how one rate limit becomes two. A local failure that is not about JSON (the
+server is down, the request timed out) hands over immediately.
+
+**The modal follows the chain.** Progress used to name the chain's first provider for
+the whole run, because that is what a `FallbackProvider` answers until something
+succeeds — so a run that fell through to the cloud after 20 seconds spent two minutes
+telling the user a local model was working on it, then reported a different one at the
+end. Each hand-over is now announced: the running line switches to the provider and
+model actually working, and the one that stopped is listed above it, struck through,
+with its reason (`ollama (gemma4:12b-mlx) — Ollama returned invalid JSON. Try a larger
+model (14B+)…`). The same correction applies to failure messages, which read the
+provider *after* the call rather than before, so a validation failure is attributed to
+the model that produced it.
+
+An auto setting is resolved before it is announced (`AIProvider.prepare()`):
+`latest-sonnet` names a policy, not a model, and it only became a concrete id inside
+the request — so the modal would have shown the sentinel while the user waited.
+Resolving first costs nothing, since the lookup is cached per key and the request makes
+it anyway.
+
+**Cancel, and the model switch it offers.** The evaluation modal's Cancel now stops the
+run rather than only hiding the dialog. Closing the EventSource is the only cancel
+signal a browser can send on a stream it did not open with `fetch`; it arrives at the
+route as the stream's `cancel` callback and aborts the run. What that stops is the
+*waiting*, not the generation — a request already sent finishes wherever it is running
+— so the guarantee is about the save: an answer that arrives after the user walked away
+is discarded rather than landing on a job they have moved on from. The dialog says so
+(`gemma4:12b-mlx may still be finishing on your machine — its answer is discarded`)
+rather than claiming the model was stopped.
+
+**It also stops the work that has not started.** The abort signal now reaches the retry
+loop and the provider chain, not only the deadline wrapped around them. Without that the
+cancelled run kept going underneath: the retry loop would wake and spend another attempt,
+and the chain would walk on to the paid provider behind the slow one — on behalf of a user
+who had already stopped waiting. The chain checks both before a provider and again after
+resolving its model, since resolution is a network call the user can cancel during, and a
+cancelled run never fails over — moving on is the spending being prevented. An in-flight
+request still cannot be recalled; the next one can be, and now is.
+
+Cancelling a local run is usually a verdict on the model's speed, so the answer offered
+is the other models that machine already has: a picker of installed Ollama models,
+smallest first (on one machine, size is the closest proxy for speed there is), and
+**Switch and evaluate again** — which saves the choice as the Ollama model and restarts
+the run. `POST /api/ai/ollama-model` changes that one field, because the settings form
+submits every field at once and someone cancelling a slow run should not have their keys
+and provider order make the round trip. Embedding and reranking models are filtered out
+of the list everywhere it is used: they answer `/v1/models` alongside chat models and
+cannot serve a generation at all, so offering one is a choice that can only fail.
+
+**`Blocked` is not `Skip`.** `Blocked` means a saved non-negotiable rules the role out
+however well you score — a 92% fit that requires relocation you have ruled out. `Skip`
+means nothing blocks it but the fit is too low to justify the effort. A hard blocker
+requires explicit evidence on *both* sides: something the posting actually states and a
+constraint you actually saved. Missing salary, an unknown reporting line, an absent
+preferred qualification, or an inferred culture mismatch are never blockers.
+
+**Both halves are checked against their sources, not just for being present.** The
+candidate constraint has to match one of your saved constraints or deal breakers, and the
+quoted evidence has to appear in the posting — in any field the model was shown, since an
+imported job often states "On-site" in its location and remote-type fields and never
+repeats it in the body. Checking only that the model returned two non-empty strings let it
+invent both halves, and nothing downstream questions a blocker once it exists: a
+hallucinated pair ruled a high-fit role out on nothing. A job with no stored posting text
+blocks nothing, which is the safe direction.
+
+**Only the AI path raises blockers.** The check confirms a quote is real; whether it
+*conflicts* with the constraint is the model's judgement, and a keyword matcher cannot
+make it. The rule-based fallback tried: it flagged a deal breaker whenever any word over
+three characters appeared anywhere in the posting, so "Remote only" was flagged by every
+posting containing "remote" — including the remote job you want — and the compatible role
+came back `Blocked`. That signal is back to what it always was, a few points off
+`userPreferences`, and §15 stands: an inference never blocks.
+
+**Unknown is not a mismatch.** Requirements the resume is silent on are counted as
+`unknown`, never as gaps.
+
+**Failure behavior:**
+- Progress streams as ordered phases — preparing → evaluating → validating → saving —
+  with the provider, model, and elapsed time. There is no percentage bar: the work is a
+  single call, so a filling bar would be invented.
+- **Core fields decide whether an evaluation exists at all:** role, direction alignment,
+  and the four components. Everything else degrades to empty and records a completeness
+  warning, so one malformed field no longer costs the whole evaluation.
+- Malformed JSON is retried automatically (3 attempts). If it still cannot be read, the
+  run fails and says so — it is not scored by rules instead. Auth, quota, and network
+  errors surface immediately with an actionable message rather than being retried.
+- **Every generation is bounded**, because not every provider bounds itself: 150s for a
+  cloud call, 10 minutes for a local one, per provider and in turn (see *Deadlines are
+  per provider* below). Cancel stops waiting at any point. An unbounded call would leave the fallback chain unreachable and the
+  spinner running forever.
+- Errors name the phase that failed rather than a block letter.
+
+**What evaluation no longer does.** Evaluation performs no ATS keyword extraction, no
+compensation research, no live web research, no company research, no contact lookup, and
+generates no interview stories.
+
+ATS keyword extraction, requirement extraction, evidence mapping and compensation now run
+in **Application Preparation**, which is triggered by Generate Resume — see the Resume tab.
+
+Interview-story work now lives in **Interview Prep**. Evaluation no longer proposes
+stories; stories saved before that change keep their kind and stay filterable.
+
+**Legacy evaluations remain readable.** Jobs evaluated before this change still render
+their original A–G sections and can be re-evaluated. Re-evaluating preserves the old
+detail, your gap answers, saved stories, generated documents, company research, and
+outreach drafts — and no longer resets an `Applied` or `Interviewing` job back to
+`Reviewed`.
+
+**User correction** still overrides score and recommendation with a note, and now
+includes `Blocked` in the vocabulary.
 
 **AI evaluation data sources (all fed into the analysis):**
 - Full job description (up to 6,000 characters — captures required qualifications
@@ -339,29 +543,26 @@ Tabbed view for a single job. Four tabs:
   target roles, deal breakers, constraints.
 - Skill inventory (up to 30 skills with strength level and evidence source).
 - Role strategy (role-fit scores and rationale from the profile).
-- Active resume excerpts (up to 2 resumes × 1,800 chars each) — ensures Block B
-  CV-match assessment and proof-point citations are grounded in actual resume text,
-  not inferred from skill abstractions alone.
-
-**ATS keyword extraction (Block E):**
-- Extracts **12–18 high-signal phrases** per job posting. Precision is preferred
-  over filling a quota; employer marketing copy and generic traits are excluded.
-- The exact target title is captured once. Title variants are kept only when they
-  also appear in the posting; the evaluator cannot invent synonyms.
-- Named tools, platforms, certifications, and frameworks are extracted exactly as written.
-- Exact title and explicit Basic/Required/Must-have qualifications → `priority: "critical"`.
-- Core responsibilities and repeated job-specific competencies → `priority: "required"`.
-- Preferred/Nice-to-have qualifications and useful one-off context → `priority: "preferred"`.
-- Domain context phrases are captured only when they distinguish the role.
-- Categories: `"title"` | `"technical"` | `"soft"` | `"domain"` | `"tool"` |
-  `"methodology"` | `"credential"`.
-- Each signal stores its category, source section, priority, and short rationale.
-- A deterministic validator rejects phrases that are absent from the posting, longer
-  than six words, duplicated, or known low-signal wording.
+- Active resume excerpts — **every** active lane, sharing a 5,400-character budget
+  (1,800 each up to three lanes, and divided evenly beyond that, so the combined excerpts
+  never exceed the budget however many lanes exist) — so strengths and
+  proof points are grounded in actual resume text, not inferred from skill abstractions.
+  Lanes used to be taken two at a time by array position, which broke the multi-lane model
+  from both ends: every active lane name is offered for the resume recommendation, so the
+  model could pick a lane whose text it never saw, and confidence is derived from the
+  character count of every active lane, so a run that read two of three still reported
+  itself well-evidenced.
 
 ### Resume tab
 - Generate tailored resume for this job: picks best base resume, produces
   HTML and PDF output with tailoring summary and keyword coverage %.
+- **Per-section Keep / Update / Hide modes.** Summary, key achievements, and
+  experience default to Update; every other section defaults to Keep. Only
+  sections set to Update are sent to the AI and written back. Modes are addressed
+  by section id, and each section type also resolves by its type name, so a lane
+  built from the blank starter (ids like `s-summary`) tailors the same as one
+  extracted from a PDF (ids like `summary`) — previously those lanes silently
+  fell through to Keep and were never tailored at all.
 - Resume draft editor: edit the tailored resume before export.
 - Keyword coverage progress bar.
 - Download PDF button.
@@ -373,6 +574,10 @@ Tabbed view for a single job. Four tabs:
 - **Missing keywords** — keywords absent from the pre-AI source draft are identified
   before the AI call and passed as a separate priority list so the AI knows exactly
   which terms to weave in where the source resume provides supporting evidence.
+- **Protected keywords** — the job phrases the source draft already matches
+  exactly, listed as terms the rewrite must not paraphrase away. The mirror image
+  of the missing-keyword list, and enforced after the call by the keyword
+  preservation pass.
 - **Job-specific gaps and red flags** — the evaluation's `gaps` (up to 5) and
   `redFlags` (up to 3) are included so the AI tailors content to address the
   specific shortfalls identified for this position, not just generic keyword coverage.
@@ -466,6 +671,130 @@ The keyword panel in the draft editor classifies each keyword into one of three 
 - Color-coded bands remain green ≥ 70%, orange 40–69%, and red < 40% for quick
   comparison, without presenting 70% as a universal ATS cutoff.
 
+**Tabs.** `Overview | Evaluation | Resume | Apply | Outreach`. `Analysis` was renamed to
+`Evaluation`; old `?tab=analysis` links still resolve there, so bookmarks and notes keep
+working. Outreach currently opens the existing generic-draft page and becomes a contact
+workspace in a later phase.
+
+**Evaluation run line.** To the right of the tabs, a single muted line records the run
+behind everything on screen: `Evaluated gemini / gemini-3.5-flash · 41.2s · first assessed
+Aug 19, 2:18 PM` — the provider and model that ran it, how long it took, and when the job
+was first assessed. A row saved by the old rule-based fallback reads `Evaluated scored by
+local rules, no AI model · 152.9s · first assessed Aug 19, 2:18 PM`, because `local-fallback / local-fallback` is a stored value, not a
+sentence, and the one thing such a row has to say is that no model produced it. It is
+read from the stored evaluation (`created_at`, `provider_used`, `model_used`,
+`generation_ms`), so it describes the evaluation you are looking at rather than the last
+run in the session.
+
+**The two halves describe different runs, which is why each is labelled.** `created_at` is
+deliberately preserved across re-evaluations so a job keeps the date it was first
+assessed, while provider, model and duration are replaced every time. The line originally
+read `Evaluated <date> · <model> · <duration>`, which put a stale date beside fresh
+provenance and claimed today's model ran on the day of the first assessment. Either half
+is dropped, separator and all, when it is unknown. When an auto option resolved a sentinel, the concrete id it resolved
+to is what gets recorded and shown — `latest-sonnet` names a policy, not a model, and
+saying it here would answer the wrong question. Nothing is shown for a job that has not
+been evaluated. It sits beside
+the tabs rather than inside the Evaluation tab because run cost is worth seeing from any
+tab — a three-minute run is only noticeable if it is always in view. The full ISO
+timestamp is available as the line's tooltip.
+
+**Next best action.** Each job shows one primary action derived from its records — no new
+status column, so it cannot disagree with what actually exists:
+
+| State | Primary action |
+|---|---|
+| Not evaluated | Evaluate |
+| Evaluated, `Skip` or `Blocked` | Review evaluation (no nudge to proceed) |
+| Evaluated, no resume | Generate resume |
+| Resume ready, not applied | Apply |
+| Applied, nobody contacted | Find people |
+| Interviewing or Offer | Prepare interview |
+
+Outreach is promoted to the primary action only after you have applied with nobody
+contacted. Outreach may happen before or after applying, but it never displaces the step
+you are actually on. A `Blocked` or `Skip` role gets no encouragement to proceed — the tabs
+remain available, but the app stops suggesting.
+
+The primary action is **not rendered as a button or a sentence** on the job page. Every
+action it can name is already one click away in the header (**Evaluate with AI**, **Check
+live**, **Job posting**) or is a tab, so a CTA there was the same click twice. It is used
+only to decide which breadcrumb step is marked as next.
+
+**Opportunity progress.** A single breadcrumb line above the tabs, showing the five moves a
+job goes through in the order they happen:
+
+`✓ Evaluate › Resume › Apply › Outreach › Interview prep`
+
+Every step is a link to where that step happens — Evaluate → Evaluation tab, Resume →
+Resume tab, Apply → Apply tab, Outreach → Outreach tab, Interview prep →
+`/interview-prep` — so the breadcrumb is the navigation, not a decorative status strip.
+State is shown three ways, never by colour alone: a completed step is green and carries a
+`✓`, the next step is bold in the accent colour and marked `aria-current="step"`, and later
+steps stay muted. Which step counts as "next" comes from the next-best-action rules above,
+matched on a shared step id rather than on label text, so rewording either one cannot
+desynchronise them. A `Skip` or `Blocked` role therefore highlights nothing, matching the
+rule that the app stops suggesting.
+
+Application preparation is deliberately *not* a step. It happens inside resume generation,
+so listing it named an internal stage the user never separately performs — it is folded
+into **Resume**.
+
+**Application Preparation.** Generating a resume first prepares the application — one
+structured AI call producing:
+
+- **Detailed requirements** from the posting, each marked supported, partial, or unknown
+  against your evidence. Silence in your resume is `unknown`, never a mismatch.
+- **ATS keyword signals** — 12–18 high-signal phrases, validated against the posting so an
+  invented title variant or a phrase that never appears cannot survive.
+- **An evidence map** — which of your evidence supports each requirement and where it
+  belongs on the resume. A mapping citing evidence that does not exist is discarded rather
+  than passed through, because it would otherwise become a false claim on a document you
+  send to an employer.
+- **Compensation context** — the posted range when the posting states one; otherwise at
+  most one live search (Brave, or your provider's web search). When neither is available it
+  says so and falls back to your saved target rather than inventing a range.
+
+  Claude's server-side search tool comes in two variants, and the wrong one is rejected,
+  so `AnthropicProvider.webSearch` picks it from the model that actually resolved:
+  `web_search_20260209` (dynamic filtering) for Opus and Sonnet 4.6 and later, and the
+  basic `web_search_20250305` for everything else — including Haiku 4.5, which outranks
+  Sonnet 4.5 numerically but is not in the supported set, so the rule is per family
+  rather than one global cutoff. An id the app cannot parse gets the basic tool, which
+  every model accepts. Selecting it per model matters now that a Latest option can
+  change which model runs without anyone editing the setting
+  (`webSearchToolType` in `src/lib/ai/anthropic-models.ts`). Gemini uses its own
+  `googleSearch` tool, which has no such split.
+
+**Output budget.** Every provider defaults to 4096 output tokens, which is smaller than
+these shapes need — a preparation answer alone carries 12–18 keyword signals with
+rationale, a requirements list and an evidence map. Over the limit the answer stops
+mid-object and arrives as `Unexpected end of JSON input`, which is indistinguishable
+from the outside from a model that cannot follow a schema. Both Fast Evaluation and
+Application Preparation now ask for `STRUCTURED_OUTPUT_MAX_TOKENS` (8192) explicitly at
+the call site, so the budget holds whichever provider serves the request. Before this,
+preparation failed on every attempt, which meant **no job ever had ATS keywords**: the
+resume builder's keyword panel was empty and its header read `0% job keyword alignment`
+on every draft.
+
+**Preparation failure is visible in the draft.** Resume generation degrades rather than
+aborting when preparation fails — a resume without keyword targeting beats no resume —
+and the reason is recorded on the document. It used to be shown only when *tailoring*
+also degraded to source-only, so a draft that tailored fine but had no keywords said
+nothing at all. The draft editor now names the state in both places: the header reads
+`job keywords not generated` rather than `0% job keyword alignment` (0% reports a
+measurement that never ran, and reads as "this resume matches nothing"), and a banner
+carries the recorded reason with what to do about it.
+
+**Reuse and staleness.** A preparation is reused while both its job-description hash and
+its evidence hash still match, so editing a draft does not pay for it again. The evidence
+hash spans your whole evidence bank — answering a gap on `/evidence` for one role marks
+every affected preparation stale, including jobs you answered it from somewhere else.
+
+**Evaluation is required, and never silent.** Resume and Apply used to run an evaluation
+themselves when one was missing — an expensive AI call with no user action behind it. They
+now stop and ask you to evaluate first.
+
 ### Apply tab
 - Prepare application answers: paste common or custom application questions,
   generate AI answers for copy-paste. App never auto-submits anything.
@@ -506,7 +835,7 @@ down to read all six sections." The modal cannot be dismissed while the request
 is in flight; the page-level **Cancel** button stops the stream and closes the
 modal, and an X button and Close button appear only in the done state.
 
-### Outreach `/jobs/[id]/outreach`
+### Outreach tab
 Generate a recruiter or hiring manager outreach message tailored to the job and
 user profile. Shows character count. User copies the message manually.
 
@@ -516,6 +845,126 @@ messages ready — scroll down to copy and send them." The modal cannot be
 dismissed while the request is in flight.
 
 ---
+
+### Outreach `/jobs/[id]/outreach`
+
+Part of the job workspace, not a separate screen — the job header, status control and
+progress breadcrumb stay visible while you work. The old
+`/jobs/[id]/outreach` URL redirects to `?tab=outreach`, so existing links keep working.
+
+Real people rather than abstract personas. Contacts are **global**, so the same person can
+be linked to several opportunities, while their role, relevance and outreach status stay
+**per job** — someone marked *Contacted* for one role remains *Found* for another.
+
+**Finding people with Clay.** When Clay is connected, **Find relevant people** searches for
+up to five people at the hiring company. It runs only when you click it — never on
+discovery, evaluation or page load — because each result spends your Clay allowance.
+
+Only the company identifier, role keywords and seniority are sent. Your resume, private
+notes, Story Bank and gap answers never leave Job Search Terminal.
+
+Results are normalised, ranked by JST's own rules, and saved as ordinary contacts you can
+edit, delete or forget. Anyone you previously chose to forget is filtered out before being
+saved, so a later search cannot resurrect them.
+
+**The company must be identified first.** A saved company domain is used if there is one;
+otherwise it is derived from the job URL — but only when that URL is the employer's own
+site. Links to Greenhouse, Lever, Ashby, Workday, LinkedIn, Indeed and similar are refused,
+because deriving a domain from them would search a real company that is not the employer.
+When nothing reliable is available, you are asked to add the domain rather than being given
+confident results from the wrong organisation.
+
+**When Clay has a problem**, each case says something different and useful: key rejected,
+allowance used up, rate limited, company ambiguous, or unreachable. A Clay failure never
+affects evaluation, resumes or applications.
+
+**Finding a work email.** Search never returns emails, and enrichment is a separate,
+per-contact action — **Find email** appears on a contact once you have decided they matter.
+It is never applied across a search result set, so five results cannot quietly become five
+enrichment charges.
+
+Automatic enrichment, when it is switched on, submits only people the search actually
+created and whose email is still missing. Before that it batched everyone the search
+returned who had a LinkedIn URL, so re-running the same search bought the same addresses
+again. "Has no email" is not the same question as "has not been tried": someone whose
+earlier lookup came back empty would be paid for on every later search that found them, so
+the test is whether the contact is new. Retrying them stays available as the explicit
+per-contact **Find email**, where you are choosing to spend the credit.
+
+> **Why not Clay's MCP integration?** It would avoid the routine, but Clay charges the same
+> credits over MCP as over the API — there is no saving — and it requires OAuth with hourly
+> token refresh. The routine is less machinery for the same cost.
+
+> **Step-by-step setup:** see [docs/clay-enrichment-routine.md](clay-enrichment-routine.md),
+> including `npm run clay:routine` to validate a routine id before saving it.
+
+> **This needs setup, and the reason is Clay's.** Clay has no direct "find this person's
+> email" endpoint. The only path is executing a *routine* you build in your own Clay
+> workspace. Job Search Terminal does not create Clay routines or tables, so you build one
+> that takes a LinkedIn URL and returns a work email, then paste its routine id in
+> Settings → Integrations. Leave it blank to skip enrichment entirely — everything else
+> works without it, and the button explains what is missing rather than failing.
+
+**Automatic lookup.** Once a routine is configured, you can turn on *Look up emails
+automatically for search results* in Settings → Integrations. Every person a search returns
+is then enriched in a **single routine run**, rather than you clicking each one.
+
+It is off by default because it costs real credits: batching saves round trips and latency,
+but Clay charges per person enriched either way. Clay's managed enrichment function is
+**12.8 credits per person**, so a five-result search costs 64 credits to enrich
+automatically versus 12.8 for the one person you actually contact.
+
+Whether that matters depends entirely on your plan — check **Usage → Workspace balances**
+in Clay. A trial allowance comfortably absorbs it; a smaller one will not.
+
+If automatic lookup fails, the search still succeeds: the people are already saved and
+usable without an email.
+
+Enriched addresses are labelled **unverified**, because that is what they are — the routine
+found an address, nothing confirmed it deliverable.
+
+**Adding a contact.** Name, title, company (blank uses the hiring company), relationship,
+LinkedIn URL, work email and notes. Every contact is scored by the same deterministic rules
+a provider result will be, so a manually added person is not a second-class record.
+
+**Relevance is explained, not just scored.** The score comes from function overlap with the
+role, hiring authority, seniority, whether they work at the hiring company, and whether you
+can actually reach them — each contributing a stated reason. It is shown as a band —
+**Recommended**, **Optional**, **Low value** — rather than another number to interpret. No
+AI call is involved.
+
+**Statuses:** Found, Shortlisted, Drafted, Contacted, Responded, Not Relevant.
+
+**Drafting a message.** Each contact has its own draft area. Pick a channel — LinkedIn
+connection note, LinkedIn message, or email — and the message is written *to that person*
+about *this role*, using the job, its evaluation, your Application Preparation when it
+exists, the contact's relationship to the role, and your saved writing style.
+
+**Length follows the channel**, not one universal cap. A connection note aims for ~280
+characters and warns past 300; an email aims for ~1,200 and has a subject line. The count
+is always shown, and nothing is ever silently truncated — a message cut mid-sentence is
+worse than a long one.
+
+**What the drafts will not do.** No generic praise, no fake familiarity, no claims about
+the company that are not in the context, no assertion that this person owns the role unless
+that is known, and no invented experience, metrics or mutual connections. Drafts are
+editable in place before you use them.
+
+**There is no Send button.** Job Search Terminal drafts, tracks, and stops there. Copy the
+message into LinkedIn or your email client and send it yourself.
+
+**Three ways to remove someone**, meaning three different things:
+
+- **Remove from this job** — drops them from this opportunity; they stay in your contacts.
+- **Delete contact** — deletes them and their outreach history everywhere. A later search
+  may legitimately find them again.
+- **Forget this person** — deletes them *and* remembers a one-way fingerprint so a later
+  search recognises and discards them. JST keeps no readable trace: not the name, not the
+  email, not the profile URL. Adding them again is refused with an explanation until you
+  clear the forgotten list in Settings → Integrations, which restores nothing.
+
+Contact details are stored locally and included in account backups — the unencrypted-backup
+warning names them explicitly.
 
 ## Applications `/applications`
 
@@ -653,14 +1102,85 @@ approved-resume builder experience with identical section controls on every sect
   include the job keywords in the API call. The AI naturally incorporates missing
   keywords into suggestions without forcing them.
 - **Evidence guard** — AI-proposed headline, summary, impact, skill,
-  recognition, experience, and extra-section claims are checked against the
-  approved resume lane plus confirmed gap answers and supplements. Unsupported
+  recognition, experience, and extra-section claims are checked against **every
+  active resume lane** plus confirmed gap answers and supplements. Unsupported
   AI changes revert to source wording. If manual edits introduce unsupported
   quantified claims, PDF export opens a review dialog listing every claim, its
   location, and the affected line. The user can return to the editor to fix the
   claims or explicitly choose **Export anyway** to preserve the draft as written.
-  The saved document audit records both the flagged claims and the explicit
-  export override.
+  The saved document audit records the flagged claims, the explicit export
+  override, and every section that was reverted.
+
+  What counts as an unsupported claim:
+
+  - **Quantified claims.** In the summary and headline the figure must appear
+    somewhere in the evidence corpus — those sections condense the whole resume,
+    so a number there belongs to no single line. An open-ended `N+` figure is
+    also accepted when the evidence states an equal or larger `M+`, because
+    claiming less than the evidence supports is not a fabrication. Everywhere
+    else the figure must appear in a *related* evidence line, which is what stops
+    a metric being moved between roles.
+  - **Named entities.** Tools, standards, employers, and products — detected by
+    capitalization rather than by a list, so "React", "Svelte", "Kubernetes", and
+    "HIPAA" are caught without anyone enumerating every tool that exists. A word
+    counts when it carries an internal capital, is an acronym, or is capitalized
+    anywhere other than the opening of a sentence or bullet.
+  - **Seniority, credential, and recognition words** ("director", "staff",
+    "certified", "award", "professor"). Inventing one misstates the candidate's
+    level or qualifications rather than their phrasing.
+
+  Everything else is treated as rhetoric and never triggers a revert on its own.
+  The guard originally worked the other way — every word absent from the evidence
+  was a claim unless a list said otherwise — and that list leaked three times in
+  practice ("strong"/"brings"/"vision", then "consulting"/"expertise", then
+  "stakes"/"cycle"), each leak throwing away a good summary over a word that
+  asserts nothing. English holds more rhetoric than any list can. Guarding what a
+  claim *is* rather than what it is *not* took the false reverts on the stored
+  corpus from 88 of 93 summaries to 14, with every remaining catch a checkable
+  fact: an invented tech stack, a compliance standard the resume never mentions,
+  a seniority word the evidence does not support. Terms are matched by stem, so
+  "wireframes" is supported by "wireframe".
+
+  Unconfirmed *posting requirements* are deliberately not part of this. Absent
+  from the resume is not the same as fabricated — guarding them reverted
+  summaries over "user needs" and "business outcomes" — and the keyword alignment
+  panel already lists them under **Needs confirmed evidence before use** for the
+  user to judge.
+- **Keyword preservation** — tailoring may add job language but never trade away
+  language the resume already matched. Before the AI call, the phrases the source
+  draft already matches *exactly* are sent as protected terms the rewrite must
+  keep verbatim. After the call, every keyword is re-measured on the three-tier
+  scale (exact / related / missing). Only phrases that were **exact** in the source
+  are defended — a related-wording match is fuzzy overlap across the whole
+  document, so no single line owns it and reverting one would cost real tailoring
+  for no gain an ATS can see. A defended phrase that is no longer exact is
+  repaired by restoring the one source line that carried it, leaving the rest of
+  the rewrite intact. Restoring a line often repairs several phrases at once, so
+  the loss is recomputed after each restore; a phrase no single line can repair is
+  skipped rather than abandoning the repairs that are still possible. The tailoring plan on the preview page names the
+  lines that were kept and the phrases they saved. Without this a rewrite could
+  turn "service design" into "service maps" and come back with fewer matches than
+  the untouched resume while still reporting healthy coverage.
+- **No-op tailoring detection** — a provider outage is already reported, but a
+  model that runs and declines to rewrite was not: the draft stored a supported
+  audit over source content and read as tailored. Every selected section is now
+  compared against the source draft **on the AI's own output**, before the
+  evidence guard and the preservation pass run — both of those restore source
+  wording deliberately and would otherwise be counted as the model doing nothing.
+  A section where at least half the lines came back verbatim is reported; a run
+  where every selected section came back untouched is recorded as `source-only`,
+  the same status a provider failure produces, with the count as its reason. The
+  counts are stored in `evidence_audit_json.unchanged`.
+- **Untailored-section notice** — a revert leaves the section reading as approved
+  source wording while the document still reports a supported audit. When that
+  happens the draft editor says so above the sections: which sections lost their
+  tailoring, and the exact terms that were not supported, so the user can add the
+  evidence and regenerate or edit the section by hand. This matters most for the
+  summary, which carries the target title and domain language an ATS reads
+  first — a silently reverted summary drops keyword coverage with no visible
+  cause. The same block also carries the no-op notice above, so the two ways a
+  draft can read as tailored without being tailored — the guard threw the rewrite
+  away, or the model never wrote one — are stated side by side.
 - Live preview pane updates automatically with a 400 ms debounce; Refresh button
   forces an immediate update.
 - Keyword coverage percentage shown in the page header (color-coded green/yellow/red).
@@ -669,6 +1189,23 @@ approved-resume builder experience with identical section controls on every sect
 Read-only HTML preview of the tailored resume.
 
 ---
+
+### Interview transition
+
+When a job's application status reaches **Interviewing** or **Offer**, the job workspace
+surfaces *Interview preparation available* with a direct link, and the progress breadcrumb
+ticks **Interview prep**. Next best action promotes it above everything else — an advancing
+opportunity is time-bound in a way earlier stages are not.
+
+Story matching for a job uses the same effective-keyword resolver as resume tailoring, so
+newly evaluated jobs match on Application Preparation keywords and older ones fall back to
+their stored evaluation keywords.
+
+**Where stories come from.** Evaluation used to propose STAR stories as part of its
+seven-block output; it no longer does. Stories are written in Interview Prep and labelled
+**Interview prep**. Older stories keep their original labels — *AI evaluation* for ones
+proposed by the retired evaluator, *Voice practice* for ones captured from practice — and
+remain filterable under **Job suggestions**.
 
 ## Interview Prep `/interview-prep`
 
@@ -945,7 +1482,49 @@ Four configuration tabs:
   - **Model picker** — click "Choose…" to fetch the list of locally installed models from the running server and select one.
   - **Quality guide** — ≥64 GB: `qwen2.5:72b` / `llama3.1:70b` (near cloud quality); ≥12 GB: `qwen2.5:14b` / `mistral-nemo`; ≥8 GB: `llama3.1:8b` / `qwen2.5:7b`.
   - **Unreachability warning** — when Ollama is in the priority chain and the server is not reachable, an inline warning banner appears with a Retry button.
-- Test connection for any provider to verify credentials and measure latency.
+- **Every provider that was tried is named when the chain fails.** The fallback chain
+  used to throw only the last provider's error, so a chain starting at a local Ollama
+  and ending at Gemini reported *"AI quota exceeded — you've hit the free-tier limit"*
+  — a quota error about a provider the user never meant to reach, with the local
+  model's actual problem thrown away. A whole-chain failure now lists each attempt in
+  order, with the model that ran and a one-line reason:
+
+  ```
+  All 3 AI providers failed:
+  ollama (gemma4:12b-mlx) — Ollama returned invalid JSON. Try a larger model (14B+)…
+  openai (gpt-5.6-sol) — OpenAI rate limit reached. Wait a moment then retry…
+  gemini (gemini-3.1-pro-preview) — [429 Too Many Requests] You exceeded your current quota.
+  ```
+
+  Each provider is bounded by its own deadline (150s cloud, 10 minutes local), so a
+  slow local model hands over to the cloud provider behind it instead of spending the
+  whole run's budget; a provider that runs out of time is reported as `did not finish
+  within 600s — a smaller or faster local model would fit the budget` rather than as
+  the mechanism that stopped it. Retry classification follows the same whole-chain rule: a
+  chain is retried only when *every* attempt failed for a retryable reason. A failure
+  that would repeat on every provider (a malformed request) is still thrown as itself
+  without walking the chain.
+- **Output budgets are set where the shape is known**, not left to each provider's
+  default of 4096 — see *Output budget* under Application Preparation. Ollama's own
+  `generateJSON` default also moved to 8192 to match Gemini's, so a direct call cannot
+  truncate either. Its client timeout is a minute past the local generation deadline,
+  so a slow local run is cut by the caller's deadline — which hands over to the next
+  provider — rather than by the HTTP client at 120s, which the chain used to read as a
+  provider failure while the run still had budget left.
+- Test connection for any provider to verify credentials and measure latency. On
+  failure the panel shows **one line** — the HTTP status and the sentence that says
+  what to do, e.g. `[429 Too Many Requests] You exceeded your current quota, please
+  check your plan and billing details.` — with the provider's full response behind a
+  **Full error** toggle (scrollable, nothing discarded). Provider SDKs return the
+  entire failure body: Google's 429 arrives as ~2,200 characters of quota metrics and
+  JSON violation objects, which pasted verbatim buried the actionable sentence. The
+  summarizer (`summarizeProviderError` in `src/lib/ai/provider-error-summary.ts`)
+  starts at the bracketed HTTP status when there is one — dropping the SDK's "Error
+  fetching from <url>" preamble — stops before any appended JSON payload, and keeps
+  the first sentence, hard-truncating at 180 characters only when the message has no
+  sentence break. A short message is shown as-is with no toggle. A failed test also
+  reports the model that actually ran, so an auto option shows the resolved id rather
+  than the `latest-…` sentinel.
 - **Key masking** — every stored secret (provider API keys, Brave, Adzuna) is
   replaced with `••••` plus its last four characters before it reaches the
   browser, so the full value never enters the RSC payload. Saving an untouched
@@ -955,6 +1534,36 @@ Four configuration tabs:
   handed the mask straight to the provider SDK and failed with a ByteString
   conversion error on the `•` character.)
 - **Model attribution** — every AI-generated result (evaluation, research, outreach drafts, application answers) shows the model and provider that produced it.
+
+### Integrations
+
+**Clay** (optional). Connect your own Clay account to find real people around an
+opportunity. Job Search Terminal works normally without it — evaluation, resumes and
+applications never depend on Clay, and a Clay outage cannot affect them.
+
+- Paste your API key and save; saving immediately tests the connection.
+- The test uses Clay's identity endpoint, **not** a people search, so checking whether your
+  key works never consumes your search allowance.
+- The key is stored locally and sent only to Clay. The settings page never receives it
+  back — it shows the last four characters and nothing else.
+- Status reads **Not connected**, **Connected**, **Key rejected** (actionable — re-paste
+  it), or **Clay unreachable** (usually not actionable — Clay is down or the API changed).
+- **Disconnect** clears the key, the status and any cached metadata.
+
+**Which key — use the scoped one.** Clay's profile page offers two, and only one works:
+
+| Clay tab | Key | Result |
+|---|---|---|
+| API keys (beta) | `clay_scoped_…` with the **Public API** scope | ✅ Connects |
+| API key | `clay_user_…` (personal) | ❌ 401 "Authentication required" |
+
+Clay's own API reference says the personal key is the one to use. It is not — that key is
+rejected, verified against a live account on 2026-08-18. Create a scoped key under
+**Profile → API keys (beta) → Add API key** with the Public API scope. Use Clay's copy
+control rather than selecting the displayed value, which is truncated with an ellipsis.
+
+> Contact search itself is not built yet. This phase establishes the credential and
+> connection plumbing only.
 
 ### Job Sources
 - All configured sources appear in a unified table — companies from
@@ -1166,9 +1775,65 @@ gap is explicitly forbidden. It returns `basedOn` (the fragments it drew on, sur
 the UI for verification) and `questions` (what the user still has to supply). Nothing it
 produces is persisted until the user reviews and saves it.
 
-### OpenAI model selection
+### Model selection — keeping up with new releases
 
-The OpenAI model dropdown in Settings → AI Provider offers:
+All three cloud providers work the same way in Settings → AI Provider: the dropdown
+merges a curated list with **whatever the saved key can actually reach right now**,
+fetched from that provider's own model-list endpoint, and offers **auto options**
+that follow new releases without anyone editing the setting. Under each dropdown a
+line reports what the current auto option resolves to (`Resolves to gemini-3.7-flash
+— rechecked hourly`), with a **Refresh** link that re-queries the provider.
+
+An auto option changes which *release* runs, never which *tier*. Tier is the axis
+that decides price and capability, and that stays the user's choice:
+
+| Provider | Auto options | How the tier is held |
+|---|---|---|
+| Claude | Latest Sonnet (default), Latest Opus, Latest Haiku | Tier is in the model id, so there is one option per tier |
+| Gemini | Latest Flash (default), Latest Pro, Latest Flash-Lite | Same — one option per tier |
+| OpenAI | Latest (default) | Tier is a suffix, so one option is enough: cheaper and off-product variants are skipped |
+
+Resolution is cached for one hour per key, and every failure path falls back to a
+known-good pinned model rather than erroring — model discovery must never be able to
+fail a generation. Selecting a concrete model id instead pins it, and the line under
+the dropdown says so.
+
+#### Claude and Gemini
+
+- **Claude** — `latest-sonnet`, `latest-opus`, `latest-haiku` resolve against
+  Anthropic's `GET /v1/models`. Within a tier the highest version wins numerically
+  (`claude-opus-4-10` beats `claude-opus-4-8`, `claude-opus-5` beats both), and the
+  undated alias beats a dated snapshot of the same release because the alias keeps
+  following Anthropic's own pointer. Ids from the 3.x era (`claude-3-5-sonnet-…`,
+  which put the version before the tier) are still ranked correctly. Fallbacks:
+  `claude-sonnet-5` / `claude-opus-5` / `claude-haiku-4-5`. Curated pins:
+  `claude-opus-5`, `claude-sonnet-5`, `claude-opus-4-8`, `claude-sonnet-4-6`,
+  `claude-haiku-4-5`. Logic in `src/lib/ai/anthropic-models.ts`, live list from
+  `GET /api/ai/anthropic-models`.
+- **Gemini** — `latest-flash`, `latest-pro`, `latest-flash-lite` resolve against
+  `GET https://generativelanguage.googleapis.com/v1beta/models` (the
+  `@google/generative-ai` SDK exposes no listing call, so REST is used directly),
+  keeping only ids that support `generateContent`. Stable releases win: thinking
+  variants, dated builds (`-001`), image/TTS/custom-tool builds and Google's own
+  `-latest` aliases never match. **One exception** — a tier whose newest stable
+  release is a whole generation behind the newest stable generation the key can see
+  falls through to that tier's newest preview. This is Google's real behaviour
+  mid-transition: `gemini-2.5-pro` stays in the list long after it stops serving new
+  keys ("no longer available to new users"), while the current Pro exists only as
+  `gemini-3.1-pro-preview`. Running a preview is worse than running a current stable
+  model and better than running one that 404s; a tier whose stable release is current
+  is never moved onto a preview, however new that preview is. Fallbacks:
+  `gemini-2.5-flash` / `gemini-2.5-pro` / `gemini-2.5-flash-lite`. Logic in
+  `src/lib/ai/gemini-models.ts`, live list from `GET /api/ai/gemini-models`.
+
+Migration `0065_latest_claude_gemini_models` moves installs still holding the app's
+own old defaults (`claude-sonnet-4-6`, `gemini-2.5-flash`, `gemini-2.0-flash`) onto
+the matching auto option, keeping the same tier. A model the user picked themselves
+is left untouched, and switching back to a pinned id is one dropdown change.
+
+#### OpenAI
+
+The OpenAI model dropdown offers:
 
 - **Latest (auto)** — the default. Stored as the sentinel `latest` and resolved at
   request time against OpenAI's `/v1/models` list. It takes the newest generation
@@ -1186,7 +1851,9 @@ The OpenAI model dropdown in Settings → AI Provider offers:
 - **Older pinned models** — `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
 - **Anything else the saved key can reach**, merged in live from
   `GET /api/ai/openai-models` (which lists `gpt-*` models using the saved key and
-  reports the current `latest` resolution).
+  reports the current `latest` resolution). All three model-list routes answer in
+  the same shape — `{ models: string[], latest: Record<sentinel, modelId> }` — so
+  the settings form treats the providers identically.
 
 Migration `0057_openai_latest_model` moves installs still on the old default
 `gpt-5.4-mini` onto `latest`; explicitly pinned models are left untouched.

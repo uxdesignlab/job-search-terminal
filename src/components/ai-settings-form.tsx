@@ -9,6 +9,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui";
 import type { AISettingsRecord, AIProviderName } from "@/lib/db/types";
 import { OPENAI_LATEST_SENTINEL, OPENAI_MODEL_OPTIONS } from "@/lib/ai/openai-models";
+import { ANTHROPIC_LATEST_SENTINELS, ANTHROPIC_MODEL_OPTIONS } from "@/lib/ai/anthropic-models";
+import { GEMINI_LATEST_SENTINELS, GEMINI_MODEL_OPTIONS } from "@/lib/ai/gemini-models";
+import { summarizeProviderError } from "@/lib/ai/provider-error-summary";
 import { saveAISettingsAction } from "@/app/settings/actions";
 
 type ProviderTestState = {
@@ -34,21 +37,67 @@ const PROVIDER_META: Record<AIProviderName, { label: string; keyPlaceholder?: st
 
 const ALL_PROVIDERS: AIProviderName[] = ["anthropic", "gemini", "openai", "ollama"];
 const CLOUD_MODEL_OPTIONS: Record<AIProviderName, string[]> = {
-  anthropic: ["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"],
-  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"],
+  anthropic: ANTHROPIC_MODEL_OPTIONS,
+  gemini: GEMINI_MODEL_OPTIONS,
   openai: OPENAI_MODEL_OPTIONS,
   ollama: []
 };
 
-/** OpenAI ships one alias per generation (`gpt-5.6` → `gpt-5.6-sol`) plus named
- *  variants; `latest` is ours, resolved against /v1/models at request time. */
-const OPENAI_MODEL_LABELS: Record<string, string> = {
+/** Providers whose model list can be fetched live, so a new release shows up in the
+ *  dropdown — and is picked automatically by an auto option — without a code change.
+ *  Each has a `/api/ai/<provider>-models` route. */
+type LiveModelProvider = "anthropic" | "gemini" | "openai";
+
+/** Every "keep me on the newest" option, per provider. OpenAI has one because it
+ *  names its tier in a suffix; Claude and Gemini name theirs in the model id, so each
+ *  tier gets its own — auto-selecting across tiers would silently change the price
+ *  and capability of every run. */
+const AUTO_SENTINELS: Record<LiveModelProvider, string[]> = {
+  anthropic: Object.keys(ANTHROPIC_LATEST_SENTINELS),
+  gemini: Object.keys(GEMINI_LATEST_SENTINELS),
+  openai: [OPENAI_LATEST_SENTINEL]
+};
+
+const MODEL_LABELS: Record<string, string> = {
+  // OpenAI ships one alias per generation (`gpt-5.6` → `gpt-5.6-sol`) plus named variants.
   [OPENAI_LATEST_SENTINEL]: "Latest (auto — always newest flagship)",
   "gpt-5.6": "gpt-5.6 (current flagship alias → sol)",
   "gpt-5.6-sol": "gpt-5.6-sol (highest capability)",
   "gpt-5.6-terra": "gpt-5.6-terra (balanced, lower price)",
-  "gpt-5.6-luna": "gpt-5.6-luna (fast, high volume)"
+  "gpt-5.6-luna": "gpt-5.6-luna (fast, high volume)",
+  "latest-sonnet": "Latest Sonnet (auto — balanced, recommended)",
+  "latest-opus": "Latest Opus (auto — highest capability)",
+  "latest-haiku": "Latest Haiku (auto — fastest, lowest cost)",
+  "latest-flash": "Latest Flash (auto — balanced, recommended)",
+  "latest-pro": "Latest Pro (auto — highest capability)",
+  "latest-flash-lite": "Latest Flash-Lite (auto — fastest, lowest cost)"
 };
+
+function isAutoModel(provider: AIProviderName, model: string): boolean {
+  return (AUTO_SENTINELS as Record<string, string[]>)[provider]?.includes(model) ?? false;
+}
+
+/** A failed connection test, summarized. Providers return the whole HTTP failure
+ *  body — Google's 429 is a paragraph of quota metrics plus JSON — so the panel
+ *  shows the actionable line and keeps the rest one click away rather than
+ *  discarding it. */
+function ConnectionError({ error }: { error?: string }) {
+  const { summary, detail } = summarizeProviderError(error);
+  if (!summary) return null;
+  return (
+    <span className="min-w-0 text-xs text-[var(--color-danger)]">
+      {summary}
+      {detail && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-muted hover:text-ink">Full error</summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface p-2 text-[11px] text-muted">
+            {detail}
+          </pre>
+        </details>
+      )}
+    </span>
+  );
+}
 
 function SortableProviderRow({
   id,
@@ -102,14 +151,15 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
   const [openaiKey, setOpenaiKey] = useState(settings.openaiApiKey);
 
   // Cloud provider models
-  const [anthropicModel, setAnthropicModel] = useState(settings.anthropicModel || "claude-sonnet-4-6");
-  const [geminiModel, setGeminiModel] = useState(settings.geminiModel || "gemini-2.5-flash");
+  const [anthropicModel, setAnthropicModel] = useState(settings.anthropicModel || "latest-sonnet");
+  const [geminiModel, setGeminiModel] = useState(settings.geminiModel || "latest-flash");
   const [openaiModel, setOpenaiModel] = useState(settings.openaiModel || OPENAI_LATEST_SENTINEL);
 
-  // Live model list from OpenAI's /v1/models, merged into the curated dropdown so new
-  // generations show up without a code change.
-  const [openaiLiveModels, setOpenaiLiveModels] = useState<string[]>([]);
-  const [openaiLatestResolved, setOpenaiLatestResolved] = useState<string>("");
+  // Live model lists from each provider's own models endpoint, merged into the curated
+  // dropdown so a new release shows up without a code change, plus what each auto
+  // option resolves to right now.
+  const [liveModels, setLiveModels] = useState<Partial<Record<LiveModelProvider, string[]>>>({});
+  const [resolvedAuto, setResolvedAuto] = useState<Partial<Record<LiveModelProvider, Record<string, string>>>>({});
 
   // Ollama
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollamaBaseUrl || "http://localhost:11434");
@@ -182,21 +232,25 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
     }
   }, [enabledProviders, checkOllamaReachability]);
 
-  const refreshOpenaiModels = useCallback(async () => {
+  const refreshModels = useCallback(async (provider: LiveModelProvider) => {
     try {
-      const res = await fetch("/api/ai/openai-models");
-      const data = await res.json() as { models: string[]; latest: string | null; error?: string };
-      setOpenaiLiveModels(data.models ?? []);
-      setOpenaiLatestResolved(data.latest ?? "");
+      const res = await fetch(`/api/ai/${provider}-models`);
+      const data = await res.json() as { models?: string[]; latest?: Record<string, string>; error?: string };
+      setLiveModels((prev) => ({ ...prev, [provider]: data.models ?? [] }));
+      setResolvedAuto((prev) => ({ ...prev, [provider]: data.latest ?? {} }));
     } catch {
-      setOpenaiLiveModels([]);
-      setOpenaiLatestResolved("");
+      setLiveModels((prev) => ({ ...prev, [provider]: [] }));
+      setResolvedAuto((prev) => ({ ...prev, [provider]: {} }));
     }
   }, []);
 
+  // Only providers with a saved key are asked — the endpoints read the stored key, so
+  // a key typed in but not yet saved would just produce an error.
   useEffect(() => {
-    if (settings.openaiApiKey) refreshOpenaiModels();
-  }, [settings.openaiApiKey, refreshOpenaiModels]);
+    if (settings.anthropicApiKey) refreshModels("anthropic");
+    if (settings.geminiApiKey) refreshModels("gemini");
+    if (settings.openaiApiKey) refreshModels("openai");
+  }, [settings.anthropicApiKey, settings.geminiApiKey, settings.openaiApiKey, refreshModels]);
 
   function keyFor(p: AIProviderName): string {
     if (p === "anthropic") return anthropicKey;
@@ -215,7 +269,7 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
   /** Curated options first, then anything else the key can reach, then the currently
    *  saved value so a model we do not know about still renders as selected. */
   function modelOptionsFor(provider: AIProviderName, current: string): string[] {
-    const extras = provider === "openai" ? openaiLiveModels : [];
+    const extras = liveModels[provider as LiveModelProvider] ?? [];
     return Array.from(new Set([...CLOUD_MODEL_OPTIONS[provider], ...extras, current].filter(Boolean)));
   }
 
@@ -427,9 +481,7 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
             {testStates.ollama.status === "ok" && (
               <span className="text-xs text-[var(--color-success)]">Connected · {testStates.ollama.model} · {testStates.ollama.latencyMs}ms</span>
             )}
-            {testStates.ollama.status === "error" && (
-              <span className="text-xs text-[var(--color-danger)]">{testStates.ollama.error}</span>
-            )}
+            {testStates.ollama.status === "error" && <ConnectionError error={testStates.ollama.error} />}
           </div>
 
           {/* Quality callout */}
@@ -496,26 +548,32 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
                     value={model}
                   >
                     {modelOptionsFor(id, model).map((m) => (
-                      <option key={m} value={m}>{id === "openai" ? OPENAI_MODEL_LABELS[m] ?? m : m}</option>
+                      <option key={m} value={m}>{MODEL_LABELS[m] ?? m}</option>
                     ))}
                   </select>
-                  {id === "openai" && (
-                    <div className="flex items-center gap-2 text-xs text-muted">
-                      <span>
-                        {model === OPENAI_LATEST_SENTINEL
-                          ? openaiLatestResolved
-                            ? <>Resolves to <span className="font-mono">{openaiLatestResolved}</span> — rechecked hourly, no need to update this setting.</>
-                            : "Resolved from OpenAI's model list at request time — no need to update this setting."
-                          : "Pinned to a fixed model. Choose Latest to follow new releases automatically."}
-                      </span>
-                      <button className="ml-auto shrink-0 underline hover:text-ink" onClick={refreshOpenaiModels} type="button">Refresh</button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 text-xs text-muted">
+                    <span>
+                      {isAutoModel(id, model)
+                        ? resolvedAuto[id as LiveModelProvider]?.[model]
+                          ? <>Resolves to <span className="font-mono">{resolvedAuto[id as LiveModelProvider]?.[model]}</span> — rechecked hourly, no need to update this setting.</>
+                          : "Resolved from the provider's own model list at request time — no need to update this setting."
+                        : "Pinned to a fixed model. Choose a Latest option to follow new releases automatically."}
+                    </span>
+                    <button
+                      className="ml-auto shrink-0 underline hover:text-ink"
+                      onClick={() => refreshModels(id as LiveModelProvider)}
+                      type="button"
+                    >
+                      Refresh
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                {/* items-start, because an expanded error grows downward and should not
+                    drag the Test connection link to the middle of it. */}
+                <div className="flex items-start gap-3">
                   <button
-                    className="text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                    className="shrink-0 text-xs text-[var(--color-accent)] hover:underline disabled:opacity-50"
                     disabled={ts.status === "testing" || !key}
                     onClick={() => testProvider(id)}
                     type="button"
@@ -527,9 +585,7 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
                       Connected · {ts.model} · {ts.latencyMs}ms
                     </span>
                   )}
-                  {ts.status === "error" && (
-                    <span className="text-xs text-[var(--color-danger)]">{ts.error}</span>
-                  )}
+                  {ts.status === "error" && <ConnectionError error={ts.error} />}
                 </div>
               </div>
             );

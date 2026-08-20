@@ -33,7 +33,14 @@ Primary vendor references:
 
 ## Extraction model
 
-The evaluator keeps 12-18 high-signal phrases and assigns each a priority, category,
+> **Current state:** keyword extraction ran inside evaluation (Block E) until the Fast
+> Evaluation change. It does not run today — Fast Evaluation deliberately extracts no
+> keywords, and Application Preparation, which takes ownership of this work, ships in the
+> next phase. Jobs evaluated before the change keep their stored keywords, and resume
+> tailoring falls back to them. Newly evaluated jobs have none until Application
+> Preparation exists. The model below is the contract that work must satisfy.
+
+Extraction keeps 12-18 high-signal phrases and assigns each a priority, category,
 source section, and rationale.
 
 1. **Critical (weight 5):** exact target title and explicit basic, required, or
@@ -82,9 +89,62 @@ For the current Principal resume:
 - Favor concise accomplishment bullets with product context and outcomes over adding
   standalone keyword lines.
 
+## Keyword preservation
+
+Tailoring is only worth running if it leaves the resume matching more of the posting
+than it started with. Two mechanisms enforce that:
+
+- **Before the call**, the phrases the source draft already matches exactly are named in
+  the prompt as protected terms to keep verbatim, alongside the existing list of phrases
+  the draft is missing.
+- **After the call**, each keyword's match tier (exact / related / missing) is compared
+  against the source draft. A phrase that was exact and no longer is gets repaired by
+  restoring the specific line that carried it — not the whole section — so the rest of
+  the rewrite survives. Related-wording matches are not defended: they belong to no
+  single line, and chasing them would revert good tailoring for no ATS gain.
+
+The constraint is a floor on wording, not a licence to leave lines alone. The prompt
+says so explicitly, because the first version of it read as "change nothing" and the
+model answered by handing back 24 of 25 experience bullets untouched. It also states
+that returning the input unchanged is not a rewrite, and that must-have job language the
+evidence supports but the draft lacks should be worked in rather than merely considered.
+
+Self-assessment openers are banned outright in the prompt: "Expert at", "Proven record",
+"Deep expertise", "Mastery of", "Fluent in", "Skilled at", "Adept at", "Passionate
+about", "Seasoned". A recruiter discounts a self-rating and an ATS gains nothing from
+it; the sentence should state what the candidate designed, shipped, or led. The prompt
+also tells the rewrite to keep the industries, product names, and named specifics the
+source states, because genericizing them costs both recruiter interest and searchable
+terms.
+
+A run that changes nothing is reported rather than passed off as tailoring. Selected
+sections are compared against the source draft on the model's own output; a section
+where half or more of the lines came back verbatim is named in the draft editor, and a
+run where nothing changed at all is recorded as `source-only` — the same status a
+provider failure produces.
+
 ## Safety and review boundary
 
 Tailoring may reorder evidence, sharpen wording, and use supported job language. It may
 not invent tools, credentials, metrics, responsibilities, or held titles. Unsupported
 requirements stay visible in the editor and require user-confirmed evidence before any
 rewrite is proposed.
+
+The evidence guard enforces that boundary on checkable facts, not on vocabulary. A
+rewrite is free to use any descriptive language the source resume never happened to use;
+it is not free to introduce a figure, a named tool or standard, or a seniority or
+credential word the evidence does not support. Named entities are detected by
+capitalization rather than by a list of known tools, because the list of tools that
+exist is not enumerable. Evidence spans every active resume lane plus confirmed gap
+answers and supplements, so a fact recorded on one lane supports a rewrite on another.
+
+Unconfirmed posting requirements are not auto-reverted. Being absent from the resume
+does not make a phrase false, and guarding them threw away summaries over "user needs"
+and "business outcomes". The keyword alignment panel lists them under **Needs confirmed
+evidence before use** so the decision stays with the user.
+
+When the guard does revert a section it is a real loss of tailoring, most visibly in the
+summary — the section that carries the target title and domain language. The draft editor
+names the reverted sections and the unsupported terms rather than reporting a clean audit
+over untailored text, so the fix is either adding the evidence or writing the section by
+hand.

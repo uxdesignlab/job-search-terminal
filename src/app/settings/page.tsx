@@ -18,8 +18,10 @@ import {
   saveScanSchedule,
   syncCompanyProfilesFromYaml,
   upsertCompanyProfile,
+  getIntegration,
+  getSuppressionCount,
 } from "@/lib/db/queries";
-import { Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { AISettingsForm } from "@/components/ai-settings-form";
 import { maskApiKey } from "@/lib/ai/masked-key";
@@ -35,6 +37,8 @@ import { runSourceDiscovery, runSearchDiscovery } from "@/lib/scanner/source-dis
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
 import { cn } from "@/lib/utils";
 import { AccountBackupPanel } from "@/components/account-backup-panel";
+import { clearForgottenContactsAction, disconnectClayAction, saveClayCredentialAction, saveClayRoutineAction, testClayConnectionAction } from "@/app/settings/actions";
+import type { IntegrationConnectionStatus } from "@/lib/db/types";
 
 export const dynamic = "force-dynamic";
 
@@ -65,8 +69,24 @@ function atsTypeFromUrl(careersUrl: string, apiUrl: string): "greenhouse" | "ash
   return detected?.type ?? null;
 }
 
+const CLAY_STATUS_LABEL: Record<IntegrationConnectionStatus, string> = {
+  not_connected: "Not connected",
+  connected: "Connected",
+  invalid_credential: "Key rejected",
+  unavailable: "Clay unreachable",
+};
+
+/** "Key rejected" is actionable and "unreachable" usually is not — different tones. */
+const CLAY_STATUS_TONE: Record<IntegrationConnectionStatus, "neutral" | "success" | "warning" | "danger"> = {
+  not_connected: "neutral",
+  connected: "success",
+  invalid_credential: "danger",
+  unavailable: "warning",
+};
+
 const TABS = [
   { id: "ai", label: "AI Provider" },
+  { id: "integrations", label: "Integrations" },
   { id: "sources", label: "Sources" },
   { id: "preferences", label: "Preferences" },
   { id: "data", label: "Data & Backup" },
@@ -81,6 +101,16 @@ export default async function SettingsPage({
 }) {
   const { tab: rawTab = "ai" } = await searchParams;
   const activeTab = (TABS.some((t) => t.id === rawTab) ? rawTab : "ai") as TabId;
+  // Masked on read — the raw credential never enters this payload.
+  const forgottenCount = getSuppressionCount();
+  const clayMetadata = getIntegration("clay")?.metadata as
+    { enrichmentRoutineId?: string; autoEnrichSearchResults?: boolean } | undefined;
+  const clayRoutineId = String(clayMetadata?.enrichmentRoutineId ?? "");
+  const clayAutoEnrich = clayMetadata?.autoEnrichSearchResults === true;
+  const clay = getIntegration("clay") ?? {
+    maskedCredential: "", hasCredential: false, accountLabel: "",
+    connectionStatus: "not_connected" as const, lastTestedAt: null,
+  };
 
   const settings = getAISettings();
   // Mask keys before they reach the client component — the full value is never
@@ -573,6 +603,123 @@ export default async function SettingsPage({
               />
             </Card>
           </>
+        )}
+
+        {/* ── Integrations tab (§60, §61) ──────────────────────────────── */}
+        {activeTab === "integrations" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Clay</CardTitle>
+              <CardDescription>
+                Optional. Connect your own Clay account to find real people around an
+                opportunity. Job Search Terminal works normally without it — evaluation,
+                resumes, and applications never depend on Clay.
+              </CardDescription>
+            </CardHeader>
+
+            <div className="grid gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={CLAY_STATUS_TONE[clay.connectionStatus]}>
+                  {CLAY_STATUS_LABEL[clay.connectionStatus]}
+                </Badge>
+                {clay.accountLabel ? <span className="text-sm text-muted">{clay.accountLabel}</span> : null}
+                {clay.lastTestedAt ? (
+                  <span className="text-xs text-muted">Last tested {clay.lastTestedAt}</span>
+                ) : null}
+              </div>
+
+              <form action={saveClayCredentialAction} className="grid gap-3">
+                <Input
+                  defaultValue={clay.maskedCredential}
+                  label="Clay API key"
+                  name="clayApiKey"
+                  placeholder="Paste your Clay API key"
+                  type="text"
+                />
+                <p className="text-xs text-muted">
+                  Created in Clay under account settings. The key is stored locally and sent
+                  only to Clay; this page never receives it back — it shows the last four
+                  characters and nothing else. Saving tests the connection using Clay&apos;s
+                  identity endpoint, which does not consume any of your search allowance.
+                </p>
+                <div>
+                  <SubmitButton label="Save and test" savedLabel="Saved" />
+                </div>
+              </form>
+
+              {clay.hasCredential ? (
+                <form action={saveClayRoutineAction} className="grid gap-3 border-t border-border pt-4">
+                  <Input
+                    defaultValue={clayRoutineId}
+                    label="Enrichment routine id (optional)"
+                    name="enrichmentRoutineId"
+                    placeholder="Paste a Clay routine id"
+                  />
+                  <p className="text-xs text-muted">
+                    Clay has no direct &quot;find this person&apos;s email&quot; endpoint — enrichment runs a
+                    routine you build in your own Clay workspace. Create one that takes a
+                    LinkedIn URL and returns a work email, then paste its id here. Leave blank
+                    to skip enrichment; everything else works without it.
+                  </p>
+                  <label className="flex items-start gap-2 text-sm text-ink">
+                    <input defaultChecked={clayAutoEnrich} name="autoEnrichSearchResults" type="checkbox" />
+                    <span>
+                      Look up emails automatically for search results
+                      <span className="block text-xs text-muted">
+                        Runs the routine once for everyone a search returns, instead of you
+                        clicking each person. Clay charges per person enriched either way, so
+                        this spends your allowance faster — leave it off to enrich only the
+                        people you have decided matter.
+                      </span>
+                    </span>
+                  </label>
+                  <div><SubmitButton label="Save enrichment settings" savedLabel="Saved" variant="secondary" /></div>
+                </form>
+              ) : null}
+
+              {clay.hasCredential ? (
+                <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+                  <form action={testClayConnectionAction}>
+                    <SubmitButton label="Test connection" savedLabel="Tested" variant="secondary" />
+                  </form>
+                  <form action={disconnectClayAction}>
+                    <SubmitButton label="Disconnect" savedLabel="Disconnected" variant="quiet" />
+                  </form>
+                </div>
+              ) : null}
+            </div>
+          </Card>
+        )}
+
+        {activeTab === "integrations" && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Forgotten contacts</CardTitle>
+              <CardDescription>
+                People you chose to forget. Only a one-way fingerprint is kept — enough to
+                recognise and discard them if a future search returns them again, and not
+                enough to reconstruct who they were.
+              </CardDescription>
+            </CardHeader>
+            <div className="grid gap-3">
+              <p className="text-sm text-ink">
+                {forgottenCount === 0
+                  ? "Nobody is on this list."
+                  : `${forgottenCount} fingerprint${forgottenCount === 1 ? "" : "s"} stored.`}
+              </p>
+              {forgottenCount > 0 && (
+                <>
+                  <p className="text-xs text-muted">
+                    Clearing the list lets those people be added again. It restores nothing —
+                    their details were deleted, not archived.
+                  </p>
+                  <form action={clearForgottenContactsAction}>
+                    <SubmitButton label="Clear forgotten list" savedLabel="Cleared" variant="secondary" />
+                  </form>
+                </>
+              )}
+            </div>
+          </Card>
         )}
 
         {activeTab === "data" && (

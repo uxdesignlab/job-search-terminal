@@ -245,8 +245,8 @@ export const migrations = [
         anthropic_api_key text not null default '',
         gemini_api_key text not null default '',
         openai_api_key text not null default '',
-        anthropic_model text not null default 'claude-sonnet-4-6',
-        gemini_model text not null default 'gemini-2.5-flash',
+        anthropic_model text not null default 'latest-sonnet',
+        gemini_model text not null default 'latest-flash',
         openai_model text not null default 'latest',
         fallback_provider text not null default '',
         onboarding_dismissed integer not null default 0,
@@ -1243,6 +1243,222 @@ export const migrations = [
       -- new jobs, not duplicates, and the summary names them separately so a
       -- re-posted requisition never looks like a dedupe artefact.
       alter table scan_runs add column repost_count integer not null default 0;
+    `
+  },
+  {
+    id: "0060_fast_evaluation",
+    sql: `
+      -- Fast Evaluation (PRD v0.2.1 §20). The seven-block A–G evaluator collapses
+      -- into one structured call, so the row now carries the component scores and
+      -- source-quality inputs behind the verdict instead of seven prose sections.
+      --
+      -- Every column is defaulted: existing rows stay valid and keep reporting
+      -- 'legacy-v1', which is what the UI keys off to decide whether to render the
+      -- old detailed sections or the new card.
+      alter table evaluations add column evaluation_version text not null default 'legacy-v1';
+      alter table evaluations add column seniority text not null default '';
+      alter table evaluations add column domain text not null default '';
+      alter table evaluations add column direction_alignment text not null default '';
+      alter table evaluations add column confidence_label text not null default '';
+      alter table evaluations add column fit_components_json text not null default '{}';
+      alter table evaluations add column hard_blockers_json text not null default '[]';
+      -- Aggregate counts only (8 supported / 2 partial / 1 unknown). The item-level
+      -- matches stay in requirement_match_json, which existing screens already read.
+      alter table evaluations add column requirements_summary_json text not null default '{}';
+      alter table evaluations add column jd_hash text not null default '';
+      -- The normalized model output, kept so the user can inspect the assessment
+      -- behind the score. With seven blocks that reasoning was visible as it
+      -- streamed; with one call this column is the only thing left to show.
+      alter table evaluations add column model_output_json text not null default '{}';
+      alter table evaluations add column completeness_warnings_json text not null default '[]';
+    `
+  },
+  {
+    id: "0061_application_preparation",
+    sql: `
+      -- Application Preparation (PRD v0.2.1 §29). The work Fast Evaluation
+      -- deliberately skips — detailed requirements, ATS keywords, evidence
+      -- mapping and compensation — runs here, when the user asks for a resume.
+      create table if not exists application_preparation (
+        id text primary key,
+        job_id text not null references jobs(id) on delete cascade,
+        evaluation_id text not null,
+        status text not null default 'ready',
+
+        -- Reuse keys. jd_hash covers the posting; evidence_hash covers the whole
+        -- global evidence bank, not just this job, so answering a gap on the
+        -- /evidence page invalidates every preparation it could improve.
+        jd_hash text not null,
+        evidence_hash text not null,
+
+        requirements_json text not null default '[]',
+        keyword_signals_json text not null default '[]',
+        evidence_map_json text not null default '[]',
+
+        posted_compensation_json text not null default '{}',
+        market_compensation_json text not null default '{}',
+        compensation_sources_json text not null default '[]',
+        compensation_research_status text not null default 'not_run',
+        suggested_compensation_response text not null default '',
+
+        provider_used text not null default '',
+        model_used text not null default '',
+        research_provider text not null default '',
+        generation_ms integer not null default 0,
+
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create unique index if not exists idx_application_preparation_job
+        on application_preparation(job_id);
+    `
+  },
+  {
+    id: "0062_external_integrations",
+    sql: `
+      -- Third-party integrations (PRD v0.2.1 §61). Separate from ai_settings
+      -- because these are not AI providers: they carry their own connection
+      -- state, per-provider metadata, and an explicit enabled flag, and JST must
+      -- keep working normally when any of them is broken or absent.
+      create table if not exists external_integrations (
+        id text primary key,
+        provider text not null unique,
+        auth_type text not null,
+        -- Stored in the clear, exactly like the existing provider keys. The value
+        -- never crosses to the client: reads mask it to ••••last4. Do not describe
+        -- this as encryption at rest — it is not (§62).
+        credential text not null default '',
+        account_label text not null default '',
+        connection_status text not null default 'not_connected',
+        enabled integer not null default 0,
+        metadata_json text not null default '{}',
+        last_tested_at text,
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      insert or ignore into external_integrations (id, provider, auth_type)
+        values ('integration-clay', 'clay', 'api_key');
+    `
+  },
+  {
+    id: "0063_contacts",
+    sql: `
+      -- Real people (PRD v0.2.1 §36–§38). Contacts are global rather than
+      -- job-scoped because the same person matters across several opportunities;
+      -- relevance and outreach status stay per-job on job_contact_links.
+      --
+      -- This is the first third-party PII in JST: names, titles, work emails and
+      -- LinkedIn URLs of people who never interacted with the app. Deletion and
+      -- suppression are part of the schema from the first release, not a later
+      -- addition (§62, §71).
+      create table if not exists contacts (
+        id text primary key,
+        name text not null,
+        first_name text not null default '',
+        last_name text not null default '',
+        title text not null default '',
+        company text not null default '',
+        company_domain text not null default '',
+        linkedin_url text not null default '',
+        work_email text not null default '',
+        source_provider text not null default 'manual',
+        source_record_id text not null default '',
+        profile_confidence text not null default '',
+        email_confidence text not null default '',
+        notes text not null default '',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      -- Dedupe keys, in the priority order §37 specifies. Partial indexes so the
+      -- many contacts legitimately lacking an email or LinkedIn URL do not all
+      -- collide on the empty string.
+      create unique index if not exists idx_contacts_provider_record
+        on contacts(source_provider, source_record_id)
+        where source_record_id <> '';
+      create unique index if not exists idx_contacts_linkedin
+        on contacts(linkedin_url) where linkedin_url <> '';
+      create unique index if not exists idx_contacts_email
+        on contacts(work_email) where work_email <> '';
+
+      create table if not exists job_contact_links (
+        id text primary key,
+        job_id text not null references jobs(id) on delete cascade,
+        contact_id text not null references contacts(id) on delete cascade,
+        contact_role text not null default 'other',
+        relevance_score integer not null default 0,
+        relevance_reason_json text not null default '[]',
+        status text not null default 'Found',
+        last_contacted_at text,
+        responded_at text,
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp,
+        unique(job_id, contact_id)
+      );
+
+      create index if not exists idx_job_contact_links_job on job_contact_links(job_id);
+      create index if not exists idx_job_contact_links_contact on job_contact_links(contact_id);
+
+      -- "Forget this person" must survive the next provider search without
+      -- retaining what it was asked to forget. Only a one-way fingerprint is
+      -- stored — never the identifier that produced it (§37).
+      create table if not exists contact_suppressions (
+        id text primary key,
+        identity_fingerprint text not null unique,
+        source text not null default 'user',
+        created_at text not null default current_timestamp
+      );
+
+      -- Company metadata for contact search (§39). Deep research stays in
+      -- company_research; these are lookup keys, not findings.
+      alter table company_profiles add column domain text not null default '';
+      alter table company_profiles add column employee_count integer not null default 0;
+      alter table company_profiles add column clay_company_id text not null default '';
+      alter table company_profiles add column linkedin_url text not null default '';
+      alter table company_profiles add column intelligence_source text not null default '';
+      alter table company_profiles add column intelligence_updated_at text;
+    `
+  },
+  {
+    id: "0064_outreach_messages",
+    sql: `
+      -- Person-specific outreach (PRD v0.2.1 §51). Keyed on the job-contact link
+      -- rather than the job, because a message is written to one person about one
+      -- opportunity — the same contact gets a different message for a different role.
+      --
+      -- Cascades from job_contact_links, so deleting or forgetting a contact takes
+      -- their drafts with them (§56, §62).
+      create table if not exists outreach_messages (
+        id text primary key,
+        job_contact_link_id text not null
+          references job_contact_links(id) on delete cascade,
+        channel text not null,
+        subject text not null default '',
+        message text not null,
+        status text not null default 'draft',
+        provider_used text not null default '',
+        model_used text not null default '',
+        created_at text not null default current_timestamp,
+        updated_at text not null default current_timestamp
+      );
+
+      create index if not exists idx_outreach_messages_link
+        on outreach_messages(job_contact_link_id);
+    `
+  },
+  {
+    id: "0065_latest_claude_gemini_models",
+    sql: `
+      -- Same rule as 0057 for OpenAI: only rows still holding a model the app itself
+      -- chose are moved onto the auto-resolving alias, so a deliberate pin is never
+      -- overridden. Both sentinels keep the tier the old default had (Sonnet, Flash),
+      -- so this changes which release runs, never how much a run costs.
+      update ai_settings set anthropic_model = 'latest-sonnet'
+        where id = 'singleton' and anthropic_model = 'claude-sonnet-4-6';
+      update ai_settings set gemini_model = 'latest-flash'
+        where id = 'singleton' and gemini_model in ('gemini-2.5-flash', 'gemini-2.0-flash');
     `
   }
 ];

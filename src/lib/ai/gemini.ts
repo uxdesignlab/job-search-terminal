@@ -1,9 +1,11 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
+import { GEMINI_FALLBACK_MODELS, geminiSentinelFamily, resolveLatestGeminiModel } from "./gemini-models";
+import { parseJsonResponse } from "./json-response";
 
 export class GeminiProvider implements AIProvider {
   readonly name = "gemini";
-  readonly defaultModel = "gemini-2.5-flash";
+  readonly defaultModel = GEMINI_FALLBACK_MODELS.flash;
 
   private readonly client: GoogleGenerativeAI;
   private readonly config: AIProviderConfig;
@@ -17,8 +19,22 @@ export class GeminiProvider implements AIProvider {
     return this.config.model ?? this.defaultModel;
   }
 
+  /** Once a sentinel has been resolved, the concrete id is what ran — and what
+   *  provenance, error reports and the saved evaluation must name. */
+  private resolved = "";
+
   get effectiveModel() {
-    return this.model;
+    return this.resolved || this.model;
+  }
+
+  /** The stored model may be a "latest-<tier>" sentinel; turn it into a concrete
+   *  id. Cached inside resolveLatestGeminiModel, so this is a no-op on the hot path. */
+  private async resolveModel(override?: string): Promise<string> {
+    const requested = override ?? this.model;
+    const family = geminiSentinelFamily(requested);
+    if (!family) return requested;
+    this.resolved = await resolveLatestGeminiModel(this.config.apiKey, family);
+    return this.resolved;
   }
 
   private buildContents(messages: AIMessage[]) {
@@ -35,9 +51,13 @@ export class GeminiProvider implements AIProvider {
     return systemMessages.length > 0 ? systemMessages.map((m) => m.content).join("\n\n") : undefined;
   }
 
+  async prepare(): Promise<void> {
+    await this.resolveModel();
+  }
+
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     const model = this.client.getGenerativeModel({
-      model: config?.model ?? this.model,
+      model: await this.resolveModel(config?.model),
       systemInstruction: this.getSystemInstruction(messages)
     });
 
@@ -54,7 +74,7 @@ export class GeminiProvider implements AIProvider {
 
   async generateJSON<T>(messages: AIMessage[], _hint: string, config?: Partial<AIProviderConfig>): Promise<T> {
     const model = this.client.getGenerativeModel({
-      model: config?.model ?? this.model,
+      model: await this.resolveModel(config?.model),
       systemInstruction: this.getSystemInstruction(messages)
     });
 
@@ -83,20 +103,12 @@ export class GeminiProvider implements AIProvider {
         "Gemini returned empty output. Check for safety blocks or try a different model."
       );
     }
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonText = (fenced?.[1] ?? raw).trim();
-    try {
-      return JSON.parse(jsonText) as T;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      const preview = jsonText.length > 300 ? `${jsonText.slice(0, 300)}…` : jsonText;
-      throw new Error(`Gemini returned invalid JSON (${msg}). Preview: ${preview}`);
-    }
+    return parseJsonResponse<T>(raw, "Gemini");
   }
 
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {
     const model = this.client.getGenerativeModel({
-      model: config?.model ?? this.model,
+      model: await this.resolveModel(config?.model),
       systemInstruction: this.getSystemInstruction(messages)
     });
 
@@ -118,15 +130,18 @@ export class GeminiProvider implements AIProvider {
 
   async testConnection(): Promise<ConnectionTestResult> {
     const start = Date.now();
+    // Resolved before the try so a failure reports the model that actually ran,
+    // not the "latest-…" sentinel, which says nothing about what went wrong.
+    const resolved = await this.resolveModel();
     try {
-      const model = this.client.getGenerativeModel({ model: this.model });
+      const model = this.client.getGenerativeModel({ model: resolved });
       await model.generateContent({ contents: [{ role: "user", parts: [{ text: "hi" }] }] });
-      return { ok: true, latencyMs: Date.now() - start, model: this.model };
+      return { ok: true, latencyMs: Date.now() - start, model: resolved };
     } catch (error) {
       return {
         ok: false,
         latencyMs: Date.now() - start,
-        model: this.model,
+        model: resolved,
         error: error instanceof Error ? error.message : String(error)
       };
     }
@@ -135,7 +150,7 @@ export class GeminiProvider implements AIProvider {
   async webSearch(query: string): Promise<string | null> {
     try {
       const model = this.client.getGenerativeModel({
-        model: this.model,
+        model: await this.resolveModel(),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         tools: [{ googleSearch: {} } as any]
       });

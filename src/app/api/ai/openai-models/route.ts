@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { getAISettings } from "@/lib/db/queries";
-import { OPENAI_FALLBACK_MODEL, pickLatestFlagship } from "@/lib/ai/openai-models";
+import { OPENAI_FALLBACK_MODEL, OPENAI_LATEST_SENTINEL, pickLatestFlagship } from "@/lib/ai/openai-models";
 
 /** The account's model list also carries image, audio, realtime, transcription and
  *  dated-snapshot entries. None of those can serve a chat completion here, and a
@@ -13,13 +13,15 @@ function isSelectableChatModel(id: string): boolean {
   return id.startsWith("gpt-") && !NON_CHAT.test(id) && !DATED_SNAPSHOT.test(id);
 }
 
-/** Lists the chat models the saved OpenAI key can actually reach, plus which id the
- *  "latest" setting currently resolves to. Uses the stored key — a key typed into the
- *  form but not yet saved will not be used. */
+/** Lists the chat models the saved OpenAI key can actually reach, plus what each
+ *  auto sentinel currently resolves to. `latest` is a sentinel→model map so all three
+ *  cloud providers answer in the same shape (Claude and Gemini have one sentinel per
+ *  tier). Uses the stored key — a key typed into the form but not yet saved will not
+ *  be used. */
 export async function GET() {
   const settings = getAISettings();
   if (!settings.openaiApiKey) {
-    return NextResponse.json({ models: [], latest: null, error: "No OpenAI API key saved yet." });
+    return NextResponse.json({ models: [], latest: {}, error: "No OpenAI API key saved yet." });
   }
 
   try {
@@ -29,10 +31,10 @@ export async function GET() {
     const models = ids.filter(isSelectableChatModel).sort();
     return NextResponse.json({
       models,
-      latest: pickLatestFlagship(ids) ?? OPENAI_FALLBACK_MODEL
+      latest: { [OPENAI_LATEST_SENTINEL]: pickLatestFlagship(ids) ?? OPENAI_FALLBACK_MODEL }
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ models: [], latest: null, error: msg });
+    return NextResponse.json({ models: [], latest: {}, error: msg });
   }
 }

@@ -16,7 +16,7 @@ type ParsedStory = {
   themes: string[];
   tags: string[];
   sourceJobId: string | null;
-  sourceBlockF: string;
+  storySource: string;
   storyKind: "answered_question" | "standalone_story" | "evaluation_suggestion";
   questionId: string | null;
   promptText: string;
@@ -226,7 +226,7 @@ export function InteractiveStoryEditor({
         themes: data.story.themes || [],
         tags: normalizeClientTags(data.story.tags, data.story.skills, data.story.themes),
         sourceJobId: jobId,
-        sourceBlockF: storyKind === "evaluation_suggestion" ? "evaluation" : storyKind === "answered_question" ? "voice-practice" : "",
+        storySource: storyKind === "evaluation_suggestion" ? "evaluation" : storyKind === "answered_question" ? "voice-practice" : "",
         storyKind,
         questionId,
         promptText: promptText ?? question ?? "",

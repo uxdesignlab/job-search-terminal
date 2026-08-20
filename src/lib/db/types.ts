@@ -107,7 +107,10 @@ export type ScannedJobInput = {
   firstSeenDate: string;
 };
 
-/** One STAR+Reflection story as returned by Block F before it is flattened to strings. */
+/**
+ * One STAR+Reflection story, as the retired seven-block evaluator produced them.
+ * Retained because legacy evaluations still hold these; nothing writes them now.
+ */
 export type StructuredStory = {
   question: string;
   situation: string;
@@ -125,7 +128,7 @@ export type EvaluationSections = {
   tailoringPlan: string[];
   interviewPlan: string[];
   postingLegitimacy: string[];
-  /** Structured STAR stories preserved from Block F before flattening. Auto-saved to story_bank. */
+  /** Historical: structured stories from legacy evaluations. Fast Evaluation writes none. */
   storiesStructured?: StructuredStory[];
 };
 
@@ -135,6 +138,117 @@ export type JobKeywordSignal = {
   category: "title" | "technical" | "soft" | "domain" | "tool" | "methodology" | "credential";
   source: "job_title" | "basic_qualification" | "required_qualification" | "preferred_qualification" | "responsibility" | "description";
   rationale: string;
+};
+
+// ─── Fast Evaluation (fast-v2) ──────────────────────────────────────────────
+// PRD v0.2.1 §12. The contract is split in two on purpose: the model returns
+// component scores and observations, and JST calculates every value it intends
+// to own deterministically (fit total, recommendation, confidence, scoreLabel).
+// The model never returns a final judgment it could contradict on a re-run.
+
+/** How well the role matches the direction the user is actually searching in. */
+export type DirectionAlignment = "strong" | "partial" | "none";
+
+export type FastEvaluationRecommendation =
+  | "Priority apply"
+  | "Strong apply"
+  | "Review manually"
+  | "Skip"
+  | "Blocked";
+
+export type EvaluationConfidence = "High" | "Medium" | "Low";
+
+/** Derived from fitScore for the existing `score_label` column. Not a headline signal. */
+export type EvaluationScoreLabel = "Strong fit" | "Review" | "Selective" | "Weak fit";
+
+export type FitComponents = {
+  coreRequirements: number;  // 0–40
+  roleAndSeniority: number;  // 0–25
+  relevantEvidence: number;  // 0–20
+  userPreferences: number;   // 0–15
+};
+
+export type EvidenceMatch = {
+  claim: string;
+  evidence: string;
+  strength: "strong" | "moderate" | "weak";
+};
+
+export type Gap = {
+  requirement: string;
+  detail: string;
+};
+
+export type RequirementMatch = {
+  requirement: string;
+  status: "supported" | "partial" | "unknown";
+  evidence: string;
+};
+
+export type RequirementSummary = {
+  supported: number;
+  partial: number;
+  unknown: number;
+};
+
+export type HardBlockerKind =
+  | "relocation"
+  | "credential"
+  | "work_authorization"
+  | "onsite_location"
+  | "other";
+
+/**
+ * What the model proposes as a blocker. Never acted on directly — §15 requires
+ * explicit evidence on both sides, so JST validates candidates before any of
+ * them can turn a recommendation into `Blocked`.
+ */
+export type HardBlockerCandidate = {
+  kind: HardBlockerKind;
+  postingEvidence: string;
+  candidateConstraint: string;
+};
+
+/** A candidate that survived validation, with the message shown to the user. */
+export type HardBlocker = HardBlockerCandidate & {
+  message: string;
+};
+
+export type FastEvaluationModelOutput = {
+  roleArchetype: string;
+  seniority: string;
+  domain: string;
+
+  directionAlignment: DirectionAlignment;
+  directionAlignmentRationale: string;
+
+  fitComponents: FitComponents;
+
+  strengths: EvidenceMatch[];   // max 5
+  gaps: Gap[];                  // max 3
+  redFlags: string[];           // max 3, non-blocking concerns
+  hardBlockerCandidates: HardBlockerCandidate[];
+
+  requirementMatches: RequirementMatch[];
+  requirementSummary: RequirementSummary;
+
+  resumeEvidence: string[];
+  resumeBaseRecommendation: string;
+  postedCompensation: string;
+  summary: string;
+};
+
+export type FastEvaluation = FastEvaluationModelOutput & {
+  fitScore: number;
+  recommendation: FastEvaluationRecommendation;
+  confidence: EvaluationConfidence;
+  scoreLabel: EvaluationScoreLabel;
+
+  hardBlockers: HardBlocker[];
+  /** Optional fields that degraded during normalization (§18.3). */
+  completenessWarnings: string[];
+
+  evaluationVersion: "fast-v2";
 };
 
 export type EvaluationRecord = {
@@ -160,6 +274,24 @@ export type EvaluationRecord = {
   modelUsed: string;
   tokensUsed: number;
   generationMs: number;
+
+  // ─── fast-v2 (PRD v0.2.1 §20) ───────────────────────────────────────────
+  // Present on every record. Rows written before Phase 1 report
+  // `evaluationVersion: "legacy-v1"` and leave the rest at their empty values,
+  // which is what tells the UI to render the old A–G sections instead.
+  evaluationVersion: string;
+  seniority: string;
+  domain: string;
+  directionAlignment: string;
+  confidenceLabel: string;
+  fitComponents: FitComponents | null;
+  hardBlockers: HardBlocker[];
+  requirementsSummary: RequirementSummary | null;
+  jdHash: string;
+  /** Normalized model output, for the inspectable detail view. */
+  modelOutput: FastEvaluationModelOutput | null;
+  completenessWarnings: string[];
+
   createdAt: string;
 };
 
@@ -168,6 +300,216 @@ export type JobEvaluationResultInput = Omit<EvaluationRecord, "createdAt"> & {
   mainConcern: string;
   salaryNotes: string;
 };
+
+// ─── Application Preparation (PRD v0.2.1 §22–§30) ──────────────────────────
+
+export type ApplicationRequirementType =
+  | "must_have"
+  | "preferred"
+  | "responsibility"
+  | "tool"
+  | "method"
+  | "credential"
+  | "domain";
+
+export type EvidenceStatus = "supported" | "partial" | "unknown";
+
+export type ApplicationRequirement = {
+  text: string;
+  type: ApplicationRequirementType;
+  evidenceStatus: EvidenceStatus;
+  /** Ids into the global evidence bank; empty when nothing supports the requirement. */
+  evidenceIds: string[];
+};
+
+export type EvidenceMapEntry = {
+  requirement: string;
+  evidence: string;
+  evidenceId: string;
+  source: string;
+  suggestedPlacement: string;
+};
+
+export type PostedCompensation = {
+  raw: string;
+  min?: number;
+  max?: number;
+  currency?: string;
+  period?: string;
+};
+
+export type MarketCompensation = {
+  summary: string;
+  min?: number;
+  max?: number;
+  currency?: string;
+};
+
+export type CompensationSource = {
+  title: string;
+  url: string;
+  snippet: string;
+};
+
+/**
+ * Whether live market research ran, and if not, why. Never inferred at read
+ * time: a range with no provenance must not be presentable as current research.
+ */
+export type CompensationResearchStatus =
+  | "not_run"
+  | "completed"
+  | "unavailable"
+  | "failed";
+
+export type ApplicationPreparationRecord = {
+  id: string;
+  jobId: string;
+  evaluationId: string;
+  status: string;
+
+  jdHash: string;
+  evidenceHash: string;
+
+  requirements: ApplicationRequirement[];
+  keywordSignals: JobKeywordSignal[];
+  evidenceMap: EvidenceMapEntry[];
+
+  postedCompensation: PostedCompensation | null;
+  marketCompensation: MarketCompensation | null;
+  compensationSources: CompensationSource[];
+  compensationResearchStatus: CompensationResearchStatus;
+  suggestedCompensationResponse: string;
+
+  providerUsed: string;
+  modelUsed: string;
+  researchProvider: string;
+  generationMs: number;
+
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ApplicationPreparationInput = Omit<ApplicationPreparationRecord, "createdAt" | "updatedAt">;
+
+/** What the model returns for Application Preparation — no hashes, no provenance. */
+export type ApplicationPreparationModelOutput = {
+  requirements: ApplicationRequirement[];
+  keywordSignals: JobKeywordSignal[];
+  evidenceMap: EvidenceMapEntry[];
+  suggestedCompensationResponse: string;
+};
+
+// ─── External integrations (PRD v0.2.1 §61–§63) ────────────────────────────
+
+export type IntegrationProvider = "clay";
+
+export type IntegrationConnectionStatus =
+  | "not_connected"
+  | "connected"
+  | "invalid_credential"
+  | "unavailable";
+
+export type ExternalIntegrationRecord = {
+  id: string;
+  provider: IntegrationProvider;
+  authType: string;
+  /** Always masked (••••last4) on read. The full value stays server-side. */
+  maskedCredential: string;
+  hasCredential: boolean;
+  accountLabel: string;
+  connectionStatus: IntegrationConnectionStatus;
+  enabled: boolean;
+  metadata: Record<string, JsonValue>;
+  lastTestedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// ─── Contacts (PRD v0.2.1 §36–§38) ─────────────────────────────────────────
+
+export type ContactRole =
+  | "hiring_manager"
+  | "functional_leader"
+  | "executive"
+  | "recruiter"
+  | "peer"
+  | "referral"
+  | "other";
+
+export type ContactStatus =
+  | "Found"
+  | "Shortlisted"
+  | "Drafted"
+  | "Contacted"
+  | "Responded"
+  | "Not Relevant";
+
+export type ContactRecord = {
+  id: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  title: string;
+  company: string;
+  companyDomain: string;
+  linkedinUrl: string;
+  workEmail: string;
+  sourceProvider: string;
+  sourceRecordId: string;
+  profileConfidence: string;
+  emailConfidence: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContactInput = Omit<ContactRecord, "createdAt" | "updatedAt">;
+
+/** One person's relevance to one opportunity. Shared contact, per-job judgement. */
+export type JobContactLinkRecord = {
+  id: string;
+  jobId: string;
+  contactId: string;
+  contactRole: ContactRole;
+  relevanceScore: number;
+  relevanceReasons: string[];
+  status: ContactStatus;
+  lastContactedAt: string | null;
+  respondedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A contact joined to its link for one job — what the Outreach tab renders. */
+export type JobContact = ContactRecord & {
+  link: JobContactLinkRecord;
+};
+
+// ─── Outreach messages (PRD v0.2.1 §51, §55) ───────────────────────────────
+
+/**
+ * §55: length is a property of the channel, not a single universal limit. The
+ * old code hard-coded 300 characters for everything because it only ever wrote
+ * LinkedIn connection notes.
+ */
+export type OutreachChannel = "linkedin_connection" | "linkedin_message" | "email";
+
+export type OutreachMessageStatus = "draft" | "sent" | "archived";
+
+export type OutreachMessageRecord = {
+  id: string;
+  jobContactLinkId: string;
+  channel: OutreachChannel;
+  subject: string;
+  message: string;
+  status: OutreachMessageStatus;
+  providerUsed: string;
+  modelUsed: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachMessageInput = Omit<OutreachMessageRecord, "createdAt" | "updatedAt">;
 
 export type EvaluationCorrectionInput = {
   jobId: string;
@@ -604,7 +946,7 @@ export type StoryRecord = {
   conceptTags: TaxonomyConceptRecord[];
   rawKeywords: string[];
   sourceJobId: string | null;
-  sourceBlockF: string;
+  storySource: string;
   storyKind: StoryKind;
   questionId: string | null;
   promptText: string;
@@ -635,7 +977,7 @@ export type StoryInput = {
   tags?: string[];
   conceptTags?: string[];
   sourceJobId?: string | null;
-  sourceBlockF?: string;
+  storySource?: string;
   storyKind?: StoryKind;
   questionId?: string | null;
   promptText?: string;

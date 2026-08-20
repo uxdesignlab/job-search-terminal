@@ -1,19 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
-import type { BlockName } from "@/lib/evaluation/llm-evaluator";
+import { EVALUATION_PHASES, EVALUATION_PHASE_LABELS } from "@/lib/evaluation/evaluation-phases";
+import type { EvaluationPhase } from "@/lib/evaluation/evaluation-phases";
 
 type CompleteEvent = {
   fitScore: number;
   scoreLabel: string;
   recommendation: string;
+  confidence: string;
   roleArchetype: string;
-  legitimacyLabel: string;
   providerUsed: string;
   modelUsed: string;
   generationMs: number;
+  completenessWarnings: string[];
 };
 
 type Props = {
@@ -21,80 +23,114 @@ type Props = {
   hasExistingEvaluation: boolean;
 };
 
-const BLOCK_ORDER: BlockName[] = ["a", "b", "c", "d", "e", "f", "g"];
-
-const BLOCK_LABELS: Record<BlockName, string> = {
-  a: "Role Analysis",
-  b: "Skills Match",
-  c: "Seniority Fit",
-  d: "Compensation",
-  e: "Profile Optimization",
-  f: "Interview Stories",
-  g: "Posting Legitimacy",
-};
+/**
+ * A chain announces the next provider before the call, which is the only moment
+ * that is useful — but an auto setting ("latest", "latest-sonnet") only becomes a
+ * concrete model id inside that call. Showing the sentinel would name a policy
+ * where the reader expects a model, so it reads as pending until it resolves.
+ */
+function describeModel(model: string): string {
+  return model.startsWith("latest") ? "resolving model…" : model;
+}
 
 export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<"running" | "done" | "error">("running");
-  const [done, setDone] = useState<BlockName[]>([]);
+  const [status, setStatus] = useState<"running" | "done" | "error" | "cancelled">("running");
+  const [reached, setReached] = useState<EvaluationPhase[]>([]);
   const [summary, setSummary] = useState<CompleteEvent | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const [failedBlock, setFailedBlock] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState<{ providerUsed: string; modelUsed: string } | null>(null);
+  // Offered after cancelling a local run: the models this machine already has.
+  const [localModels, setLocalModels] = useState<string[]>([]);
+  const [switchTo, setSwitchTo] = useState("");
+  const [switching, setSwitching] = useState(false);
+  /** Providers that failed before the one now running, in order. */
+  const [handovers, setHandovers] = useState<string[]>([]);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const esRef = useRef<EventSource | null>(null);
+
+  /**
+   * One long generation replaced seven short ones, so there is no partial
+   * progress to report while it runs. Elapsed time is the honest substitute —
+   * it tells the user the request is alive without inventing a percentage.
+   */
+  useEffect(() => {
+    if (!open || status !== "running") return;
+    const startedAt = Date.now();
+    setElapsedMs(0);
+    const timer = setInterval(() => setElapsedMs(Date.now() - startedAt), 250);
+    return () => clearInterval(timer);
+  }, [open, status]);
 
   function start() {
     setOpen(true);
     setStatus("running");
-    setDone([]);
+    setReached([]);
     setSummary(null);
     setErrorMsg("");
-    setFailedBlock(null);
     setActiveModel(null);
+    setHandovers([]);
 
     const es = new EventSource(`/api/evaluate/${jobId}`);
     esRef.current = es;
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data as string) as {
-        block: BlockName | "start" | "complete" | "error";
-        label?: string;
+        phase: EvaluationPhase | "start" | "complete" | "error";
+        message?: string;
         done: boolean;
         error?: string;
-        failedBlock?: string;
+        failedPhase?: string;
+        note?: string;
       } & Partial<CompleteEvent>;
 
-      if (data.block === "start") {
+      // Bound to a const so the early returns below narrow it inside the
+      // setReached closure — narrowing a property access does not survive one.
+      const phase = data.phase;
+
+      if (phase === "start") {
         setActiveModel({ providerUsed: data.providerUsed ?? "", modelUsed: data.modelUsed ?? "" });
         return;
       }
 
-      if (data.block === "error") {
+      // A chain hands over mid-run. Following it is the difference between the
+      // modal naming what is working now and naming what it started with.
+      if (data.providerUsed) {
+        setActiveModel({ providerUsed: data.providerUsed, modelUsed: data.modelUsed ?? "" });
+      }
+      if (data.note) {
+        setHandovers((prev) => (prev.includes(data.note!) ? prev : [...prev, data.note!]));
+      }
+
+      if (phase === "error") {
         es.close();
         setStatus("error");
         setErrorMsg(data.error ?? "Evaluation failed");
-        setFailedBlock(data.failedBlock ?? null);
         return;
       }
 
-      if (data.block === "complete") {
+      if (phase === "complete") {
         es.close();
         setStatus("done");
         setSummary({
           fitScore: data.fitScore ?? 0,
           scoreLabel: data.scoreLabel ?? "",
           recommendation: data.recommendation ?? "",
+          confidence: data.confidence ?? "",
           roleArchetype: data.roleArchetype ?? "",
-          legitimacyLabel: data.legitimacyLabel ?? "",
           providerUsed: data.providerUsed ?? "",
           modelUsed: data.modelUsed ?? "",
           generationMs: data.generationMs ?? 0,
+          completenessWarnings: data.completenessWarnings ?? [],
         });
         return;
       }
 
-      setDone((prev) => [...prev, data.block as BlockName]);
+      if (data.providerUsed) {
+        setActiveModel({ providerUsed: data.providerUsed, modelUsed: data.modelUsed ?? "" });
+      }
+      setReached((prev) => (prev.includes(phase) ? prev : [...prev, phase]));
     };
 
     es.onerror = () => {
@@ -104,17 +140,90 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
     };
   }
 
+  /**
+   * Stop waiting. Closing the EventSource is what the server sees, and it stops
+   * the save rather than the generation — a local model already mid-answer keeps
+   * going on the machine, but its result is discarded rather than landing on a
+   * job the user has moved on from.
+   *
+   * Cancelling usually means "this is taking too long", which is a question about
+   * the model, so the answer offered here is the other models this machine has.
+   */
+  function cancel() {
+    esRef.current?.close();
+    setStatus("cancelled");
+    if (activeModel?.providerUsed === "ollama") {
+      fetch("/api/ai/ollama-models")
+        .then((res) => res.json() as Promise<{ models?: string[] }>)
+        .then((data) => {
+          const others = (data.models ?? []).filter((m) => m !== activeModel.modelUsed);
+          setLocalModels(others);
+          setSwitchTo(others[0] ?? "");
+        })
+        .catch(() => setLocalModels([]));
+    }
+  }
+
+  async function switchModelAndRetry() {
+    if (!switchTo) return;
+    setSwitching(true);
+    try {
+      await fetch("/api/ai/ollama-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: switchTo }),
+      });
+      router.refresh();
+      start();
+    } finally {
+      setSwitching(false);
+    }
+  }
+
   function close(refresh = false) {
     esRef.current?.close();
     setOpen(false);
     if (refresh) router.refresh();
   }
 
-  const progress = done.length / BLOCK_ORDER.length;
-  // The active block is the first one not yet done
-  const activeKey = status === "running"
-    ? BLOCK_ORDER.find((k) => !done.includes(k)) ?? null
-    : null;
+  // The phase in flight is the last one announced — a phase is reported as it
+  // begins, so everything before it is finished and it is still running.
+  const activePhase = status === "running" ? reached[reached.length - 1] ?? null : null;
+
+  function phaseState(phase: EvaluationPhase): "done" | "active" | "pending" {
+    const index = reached.indexOf(phase);
+    if (index === -1) return "pending";
+    return phase === activePhase ? "active" : "done";
+  }
+
+  function renderChecklist(dim: boolean) {
+    return (
+      <ul className="grid gap-2.5">
+        {EVALUATION_PHASES.map((phase) => {
+          const state = phaseState(phase);
+          return (
+            <li
+              key={phase}
+              className={`flex items-center gap-3 text-sm transition-colors ${
+                state === "pending" ? (dim ? "text-muted/40" : "text-muted/50") : "text-ink"
+              }`}
+            >
+              <span className="w-4 shrink-0 text-center text-xs">
+                {state === "done" ? (
+                  <span className="text-success">✓</span>
+                ) : state === "active" ? (
+                  <span className="inline-block animate-spin text-accent">◌</span>
+                ) : (
+                  <span>○</span>
+                )}
+              </span>
+              {EVALUATION_PHASE_LABELS[phase]}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
   return (
     <>
@@ -143,10 +252,14 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
                 {status === "error" && (
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-danger/15 text-xs text-danger">✕</span>
                 )}
+                {status === "cancelled" && (
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-border text-xs text-muted">⏹</span>
+                )}
                 <h2 className="text-sm font-semibold text-ink">
                   {status === "running" && "Evaluating…"}
                   {status === "done" && "Evaluation complete"}
                   {status === "error" && "Evaluation failed"}
+                  {status === "cancelled" && "Evaluation cancelled"}
                 </h2>
               </div>
               {status !== "running" && (
@@ -167,50 +280,36 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
             <div className="px-6 py-5">
               {status === "running" && (
                 <>
-                  {/* Progress bar */}
-                  <div className="mb-5 overflow-hidden rounded-full bg-border/60 h-1">
-                    <div
-                      className="h-full rounded-full bg-accent transition-all duration-700 ease-out"
-                      style={{ width: `${Math.max(4, progress * 100)}%` }}
-                    />
+                  {/* Indeterminate: the work is one call, so there is no fraction to fill. */}
+                  <div
+                    aria-hidden
+                    className="mb-5 h-1 overflow-hidden rounded-full bg-border/60"
+                  >
+                    <div className="h-full w-1/3 animate-progress rounded-full bg-accent" />
                   </div>
 
-                  {/* Block checklist */}
-                  <ul className="grid gap-2.5">
-                    {BLOCK_ORDER.map((key) => {
-                      const isDone = done.includes(key);
-                      const isActive = activeKey === key;
-                      return (
-                        <li
-                          key={key}
-                          className={`flex items-center gap-3 text-sm transition-colors ${
-                            isDone ? "text-ink" : isActive ? "text-ink" : "text-muted/50"
-                          }`}
-                        >
-                          <span className="w-4 shrink-0 text-center text-xs">
-                            {isDone ? (
-                              <span className="text-success">✓</span>
-                            ) : isActive ? (
-                              <span className="inline-block animate-spin text-accent">◌</span>
-                            ) : (
-                              <span>○</span>
-                            )}
-                          </span>
-                          {BLOCK_LABELS[key]}
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div aria-live="polite" className="sr-only">
+                    {activePhase ? EVALUATION_PHASE_LABELS[activePhase] : "Starting evaluation"}
+                  </div>
 
-                  {activeModel && (
-                    <p className="mt-4 text-xs font-mono text-muted/60">
-                      {activeModel.modelUsed} · {activeModel.providerUsed}
-                    </p>
+                  {renderChecklist(false)}
+
+                  {handovers.length > 0 && (
+                    <ul className="mt-4 grid gap-1">
+                      {handovers.map((note) => (
+                        <li className="text-xs text-muted line-through decoration-muted/40" key={note}>{note}</li>
+                      ))}
+                    </ul>
                   )}
+
+                  <p className="mt-4 text-xs font-mono text-muted/60">
+                    {activeModel ? `${describeModel(activeModel.modelUsed)} · ${activeModel.providerUsed} · ` : ""}
+                    {(elapsedMs / 1000).toFixed(1)}s elapsed
+                  </p>
 
                   <button
                     className="mt-3 text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
-                    onClick={() => close(false)}
+                    onClick={cancel}
                     type="button"
                   >
                     Cancel
@@ -224,10 +323,20 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
                     <p className="text-sm font-semibold text-ink">
                       {summary.fitScore}% fit · {summary.recommendation}
                     </p>
-                    <p className="text-sm text-muted">{summary.roleArchetype}</p>
+                    <p className="text-sm text-muted">
+                      {summary.roleArchetype}
+                      {summary.confidence ? ` · ${summary.confidence} confidence` : ""}
+                    </p>
                     <p className="mt-1 text-xs text-muted">
                       {summary.providerUsed} / {summary.modelUsed} · {(summary.generationMs / 1000).toFixed(1)}s
                     </p>
+                    {summary.completenessWarnings.length > 0 && (
+                      <p className="mt-2 text-xs text-warning">
+                        {summary.completenessWarnings.length} field
+                        {summary.completenessWarnings.length === 1 ? "" : "s"} came back incomplete — see the
+                        evaluation details.
+                      </p>
+                    )}
                   </div>
                   <Button className="w-full justify-center" onClick={() => close(true)}>
                     View Results
@@ -237,35 +346,61 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
 
               {status === "error" && (
                 <>
-                  {/* Keep block progress visible so user can see how far it got */}
-                  <ul className="mb-4 grid gap-2">
-                    {BLOCK_ORDER.map((key) => {
-                      const isDone = done.includes(key);
-                      const isFailed = failedBlock === key;
-                      return (
-                        <li
-                          key={key}
-                          className={`flex items-center gap-3 text-sm ${
-                            isFailed ? "text-danger" : isDone ? "text-ink" : "text-muted/40"
-                          }`}
-                        >
-                          <span className="w-4 shrink-0 text-center text-xs">
-                            {isFailed ? (
-                              <span className="text-danger">✕</span>
-                            ) : isDone ? (
-                              <span className="text-success">✓</span>
-                            ) : (
-                              <span>○</span>
-                            )}
-                          </span>
-                          {BLOCK_LABELS[key]}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <p className="mb-4 text-sm text-danger">{errorMsg}</p>
+                  {/* Keep the phase progress visible so the user sees how far it got. */}
+                  <div className="mb-4">{renderChecklist(true)}</div>
+                  {/* A chain failure is one line per provider, so newlines matter. */}
+                  <p className="mb-4 whitespace-pre-line text-sm text-danger">{errorMsg}</p>
                   <div className="flex gap-2">
                     <Button onClick={start}>Retry</Button>
+                    <Button onClick={() => close(false)} variant="quiet">Close</Button>
+                  </div>
+                </>
+              )}
+
+              {status === "cancelled" && (
+                <>
+                  <p className="mb-1 text-sm text-ink">
+                    Stopped after {(elapsedMs / 1000).toFixed(1)}s. Nothing was saved.
+                  </p>
+                  <p className="mb-4 text-xs text-muted">
+                    {activeModel
+                      ? `${describeModel(activeModel.modelUsed)} may still be finishing ${
+                          activeModel.providerUsed === "ollama" ? "on your machine" : `at ${activeModel.providerUsed}`
+                        } — its answer is discarded.`
+                      : "The run was stopped before a model answered."}
+                  </p>
+
+                  {/* Cancelling a local run is usually a verdict on the model's
+                      speed, so the models this machine already has are the answer
+                      worth offering — not a trip to Settings. */}
+                  {localModels.length > 0 && (
+                    <div className="mb-4 grid gap-2 rounded-control border border-border bg-surface px-3 py-3">
+                      <label className="text-xs font-medium text-ink" htmlFor="switch-local-model">
+                        Try a different local model
+                      </label>
+                      <select
+                        className="rounded-control border border-border bg-panel px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                        id="switch-local-model"
+                        onChange={(e) => setSwitchTo(e.target.value)}
+                        value={switchTo}
+                      >
+                        {localModels.map((model) => (
+                          <option key={model} value={model}>{model}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted">
+                        Smaller models answer faster. This becomes your Ollama model in Settings.
+                      </p>
+                      <Button disabled={switching || !switchTo} onClick={switchModelAndRetry}>
+                        {switching ? "Switching…" : "Switch and evaluate again"}
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button onClick={start} variant={localModels.length > 0 ? "quiet" : "primary"}>
+                      Try again
+                    </Button>
                     <Button onClick={() => close(false)} variant="quiet">Close</Button>
                   </div>
                 </>

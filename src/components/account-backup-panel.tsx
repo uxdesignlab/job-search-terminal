@@ -99,7 +99,9 @@ export function AccountBackupPanel() {
         {!password && (
           <label className="flex items-start gap-2 text-xs leading-5 text-muted">
             <input checked={acknowledgePlaintext} onChange={(event) => setAcknowledgePlaintext(event.target.checked)} type="checkbox" />
-            I understand this unencrypted archive contains private resume data and locally stored provider credentials.
+            I understand this unencrypted archive contains private resume data, locally stored
+            provider and integration credentials, and any third-party contact details I have
+            saved — names, job titles, work emails, LinkedIn URLs and outreach history.
           </label>
         )}
         <div><Button disabled={backupDialog?.state === "working" || (!password && !acknowledgePlaintext)} onClick={createBackup}>Create and download backup</Button></div>

@@ -1,8 +1,18 @@
-import { runAndSaveJobWithAI } from "@/lib/evaluation/llm-evaluator";
-import type { BlockName, BlockUpdate } from "@/lib/evaluation/llm-evaluator";
+import { runAndSaveJobWithAI, EvaluationPhaseError } from "@/lib/evaluation/llm-evaluator";
+import type { PhaseUpdate } from "@/lib/evaluation/llm-evaluator";
+import { EVALUATION_PHASES } from "@/lib/evaluation/evaluation-phases";
+import type { EvaluationFailurePhase } from "@/lib/evaluation/evaluation-phases";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
+import { GenerationCancelledError } from "@/lib/ai/retry";
+import { findChainFailure } from "@/lib/ai/fallback-provider";
 
 function toUserMessage(error: unknown): string {
+  // A chain failure is reported as itself. Collapsing it into "quota exceeded"
+  // named the last provider's problem as if it were the only one, which reads as
+  // nonsense to someone whose first provider is a local model with no quota.
+  const chainFailure = findChainFailure(error);
+  if (chainFailure) return chainFailure.message;
+
   const msg = error instanceof Error ? error.message : String(error);
   if (msg.includes("429") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("rate limit")) {
     return "AI quota exceeded — you've hit the free-tier limit. Check your plan or try again in a few minutes.";
@@ -20,6 +30,15 @@ function toUserMessage(error: unknown): string {
   return "Evaluation failed. Check your AI provider settings and try again.";
 }
 
+/** What each failure phase means to someone who just clicked Evaluate (§18.5). */
+const FAILURE_PHASE_MESSAGE: Record<EvaluationFailurePhase, string> = {
+  input: "The job could not be loaded.",
+  provider: "The AI provider could not be reached.",
+  parse: "The AI response could not be read.",
+  validate: "The AI response was incomplete.",
+  save: "The evaluation ran but could not be saved.",
+};
+
 export const dynamic = "force-dynamic";
 
 export async function GET(
@@ -29,55 +48,89 @@ export async function GET(
   const { jobId } = await params;
   const encoder = new TextEncoder();
 
+  // Closing the EventSource is the only cancel signal a browser can send on a
+  // stream it did not open with fetch. It arrives here as the stream's cancel
+  // callback, and from there stops the save rather than the generation, which is
+  // already in flight wherever it is running.
+  const cancellation = new AbortController();
+
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: unknown) => {
+        if (cancellation.signal.aborted) return;
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
-      let currentBlock: BlockName | "save" = "a";
+      const startedAt = Date.now();
+      // Where to attribute a failure if one arrives without its own phase.
+      let currentPhase: EvaluationFailurePhase = "input";
 
       try {
         const activeProvider = tryGetActiveProvider();
-        if (activeProvider) {
-          send({ block: "start", providerUsed: activeProvider.name, modelUsed: activeProvider.effectiveModel, done: false });
-        }
+        send({
+          phase: "start",
+          phases: EVALUATION_PHASES,
+          providerUsed: activeProvider?.name ?? "",
+          modelUsed: activeProvider?.effectiveModel ?? "",
+          done: false
+        });
 
-        const onBlock = (update: BlockUpdate) => {
-          send({ block: update.block, label: update.label, content: update.content, done: false });
+        const onPhase = (update: PhaseUpdate) => {
+          currentPhase = update.phase === "evaluating" ? "provider" : update.phase === "saving" ? "save" : "validate";
+          send({
+            phase: update.phase,
+            message: update.message,
+            providerUsed: update.providerUsed,
+            modelUsed: update.modelUsed,
+            note: update.note,
+            // Elapsed time is the honest signal while one long call is pending —
+            // there is no partial progress to report, and a percentage would be invented.
+            elapsedMs: Date.now() - startedAt,
+            done: false
+          });
         };
 
-        const onBlockStart = (block: BlockName) => {
-          currentBlock = block;
-        };
-
-        const result = await runAndSaveJobWithAI(jobId, onBlock, onBlockStart);
-        currentBlock = "save";
+        const result = await runAndSaveJobWithAI(jobId, onPhase, cancellation.signal);
 
         send({
-          block: "complete",
+          phase: "complete",
           fitScore: result.fitScore,
           scoreLabel: result.scoreLabel,
           recommendation: result.recommendation,
+          confidence: result.confidenceLabel,
           roleArchetype: result.roleArchetype,
-          legitimacyLabel: result.legitimacyLabel,
+          evaluationVersion: result.evaluationVersion,
+          completenessWarnings: result.completenessWarnings,
           providerUsed: result.providerUsed,
           modelUsed: result.modelUsed,
           generationMs: result.generationMs,
           done: true
         });
       } catch (error) {
-        const blockLabel = currentBlock === "save" ? "saving results" : `block ${currentBlock.toUpperCase()}`;
-        console.error(`[evaluate] error during ${blockLabel}:`, error);
+        if (error instanceof GenerationCancelledError) {
+          console.info(`[evaluate] ${jobId} cancelled by the user; nothing was saved.`);
+          return;
+        }
+        const failedPhase = error instanceof EvaluationPhaseError ? error.failedPhase : currentPhase;
+        console.error(`[evaluate] error during ${failedPhase}:`, error);
         send({
-          block: "error",
-          error: toUserMessage(error),
-          failedBlock: currentBlock,
+          phase: "error",
+          error: `${FAILURE_PHASE_MESSAGE[failedPhase]} ${toUserMessage(error)}`.trim(),
+          failedPhase,
           done: true
         });
       } finally {
-        controller.close();
+        // An already-cancelled stream rejects close(); the client is gone either way.
+        try {
+          controller.close();
+        } catch {
+          // no-op
+        }
       }
+    },
+
+    cancel() {
+      cancellation.abort();
     }
   });
 

@@ -220,12 +220,19 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
         const reader = res.body?.getReader();
         if (reader) {
           const decoder = new TextDecoder();
-          let done = false;
-          while (!done) {
+          // Buffer across chunks: the terminal event can straddle a boundary,
+          // and both outcomes end the stream with `"done":true` — only the phase
+          // says which one it was. Reading it is what stops a failed evaluation
+          // from being counted as a success.
+          let buffer = "";
+          let streamDone = false;
+          while (!streamDone) {
             const chunk = await reader.read();
-            done = chunk.done;
-            if (decoder.decode(chunk.value ?? new Uint8Array()).includes('"done":true')) break;
+            streamDone = chunk.done;
+            buffer += decoder.decode(chunk.value ?? new Uint8Array(), { stream: true });
+            if (buffer.includes('"done":true')) break;
           }
+          if (buffer.includes('"phase":"error"')) throw new Error("Evaluation failed");
         }
         setJobStatus((s) => ({ ...s, [id]: "done" }));
         doneCount++;

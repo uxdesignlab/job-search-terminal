@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateResumeDraft } from "@/lib/documents/resume-generator";
+import { EvaluationRequiredError } from "@/lib/application-preparation";
 import type { ResumeSectionModeInput } from "@/lib/db/types";
 
 export async function POST(req: Request) {
@@ -14,6 +15,15 @@ export async function POST(req: Request) {
     const result = await generateResumeDraft(jobId, resumeId, sectionModes ?? []);
     return NextResponse.json(result);
   } catch (err) {
+    // §2.4: a missing evaluation is a precondition the user can fix, not a server
+    // fault. It gets its own status and an actionable message rather than being
+    // flattened into a 500 alongside real failures.
+    if (err instanceof EvaluationRequiredError) {
+      return NextResponse.json(
+        { error: err.message, code: "evaluation_required", jobId: err.jobId },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

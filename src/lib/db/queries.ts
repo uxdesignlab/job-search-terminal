@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses, suppressesRepost } from "../applications/status";
+import { resolveEffectiveKeywordSignals, toKeywordPhrases } from "../evaluation/effective-keywords";
 import { coerceResumeBaseToLane } from "../evaluation/resume-lane-picker";
+import { UNASSESSED_LEGITIMACY } from "../evaluation/legitimacy";
 import { cleanLocationList, normalizePreferredLocations } from "../profile/locations";
 import type { ScanRunErrorEntry } from "../scan-error-category";
 import { getDatabase } from "./client";
@@ -14,7 +16,34 @@ import {
 import { filterFreshScanMatches } from "../jobs/fresh-match-dedupe";
 import { GAP_EVIDENCE_TAG, gapEvidenceId } from "../gaps/evidence-id";
 import { followUpQuestionsFromJson } from "../gaps/gap-answer-assessor";
+import { maskApiKey, resolveMaskedKey } from "../ai/masked-key";
+import { fingerprintsFor, normalizeEmail, normalizeLinkedInUrl } from "../contacts/identity";
 import type {
+  ApplicationPreparationInput,
+  ApplicationPreparationRecord,
+  ApplicationRequirement,
+  ContactInput,
+  ContactRecord,
+  ContactRole,
+  ContactStatus,
+  ExternalIntegrationRecord,
+  JobContact,
+  JobContactLinkRecord,
+  OutreachChannel,
+  OutreachMessageInput,
+  OutreachMessageRecord,
+  OutreachMessageStatus,
+  IntegrationConnectionStatus,
+  IntegrationProvider,
+  CompensationResearchStatus,
+  CompensationSource,
+  EvidenceMapEntry,
+  MarketCompensation,
+  PostedCompensation,
+  FastEvaluationModelOutput,
+  FitComponents,
+  HardBlocker,
+  RequirementSummary,
   AIProviderName,
   AIPromptId,
   AIPromptOverrideRecord,
@@ -224,6 +253,17 @@ type EvaluationRow = {
   model_used: string;
   tokens_used: number;
   generation_ms: number;
+  evaluation_version: string;
+  seniority: string;
+  domain: string;
+  direction_alignment: string;
+  confidence_label: string;
+  fit_components_json: string;
+  hard_blockers_json: string;
+  requirements_summary_json: string;
+  jd_hash: string;
+  model_output_json: string;
+  completeness_warnings_json: string;
   created_at: string;
 };
 
@@ -1282,6 +1322,67 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
     job.recommendedResume === "To be selected" ||
     !resumeNames.includes(job.recommendedResume);
 
+  const existing = database
+    .prepare(
+      `select evaluation_version, sections_json, keywords_json, keyword_signals_json, legitimacy_label, created_at
+       from evaluations where id = @id`
+    )
+    .get({ id: input.id }) as
+      | Pick<EvaluationRow, "evaluation_version" | "sections_json" | "keywords_json" | "keyword_signals_json" | "legitimacy_label" | "created_at">
+      | undefined;
+
+  /**
+   * Fast Evaluation produces none of the legacy detail — no A–G prose, no
+   * keywords (those move to Application Preparation). This statement is
+   * `insert or replace`, so writing a fast-v2 result over a legacy row would
+   * blank all four columns.
+   *
+   * Losing the old prose would be bad enough, but keywords_json and
+   * keyword_signals_json are also tiers 2 and 3 of the effective-keyword
+   * fallback that resume tailoring reads. Blanking them would leave a
+   * re-evaluated legacy job with no keyword source at all until Phase 2 ships.
+   * Carry the stored values forward instead; the UI hides them once the row
+   * reports fast-v2, but nothing is destroyed.
+   *
+   * The decision is per column and looks only at the values, never at which
+   * version wrote the row. Keying it off `existing.evaluation_version !==
+   * "fast-v2"` protected a legacy row exactly once: the carry rewrote the row
+   * as fast-v2, so the *second* fast evaluation saw a fast-v2 row, skipped the
+   * carry, and wrote the empty arrays it had been holding back — a routine
+   * re-evaluation silently left resume tailoring with no keywords at all.
+   * Keeping a stored value only when the incoming one is empty survives any
+   * number of re-evaluations and can never mask real new detail.
+   */
+  // Emptiness has to be judged structurally, not by string equality: the fast
+  // path writes `{"roleSummary":[],"matchWithResume":[],...}` for its sections,
+  // which is every bit as empty as "{}" and would otherwise overwrite the
+  // legacy A–G prose it is meant to preserve.
+  const hasContent = (value: unknown): boolean => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim() !== "";
+    if (typeof value === "number" || typeof value === "boolean") return true;
+    if (Array.isArray(value)) return value.some(hasContent);
+    if (typeof value === "object") return Object.values(value).some(hasContent);
+    return false;
+  };
+  // Sentinels a stage writes for a judgement it did not make. They are labels,
+  // not values: the fast path's "Not assessed" is non-empty and would otherwise
+  // read as new detail and overwrite a legacy row's real assessment — losing one
+  // of the four fields this carry exists to protect.
+  const NO_VALUE_SENTINELS = new Set<string>([UNASSESSED_LEGITIMACY]);
+  const isBlankDetail = (value: string | null | undefined) => {
+    const trimmed = (value ?? "").trim();
+    if (trimmed === "" || NO_VALUE_SENTINELS.has(trimmed)) return true;
+    try {
+      return !hasContent(JSON.parse(trimmed));
+    } catch {
+      // Not JSON — a plain column such as legitimacy_label. Non-empty is content.
+      return false;
+    }
+  };
+  const keepStoredDetail = (incoming: string, stored: string | null | undefined) =>
+    isBlankDetail(incoming) && !isBlankDetail(stored) ? (stored as string) : incoming;
+
   const save = database.transaction(() => {
     database
       .prepare(
@@ -1303,7 +1404,23 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
           legitimacy_label,
           keywords_json,
           keyword_signals_json,
-          user_correction_json
+          user_correction_json,
+          provider_used,
+          model_used,
+          tokens_used,
+          generation_ms,
+          evaluation_version,
+          seniority,
+          domain,
+          direction_alignment,
+          confidence_label,
+          fit_components_json,
+          hard_blockers_json,
+          requirements_summary_json,
+          jd_hash,
+          model_output_json,
+          completeness_warnings_json,
+          created_at
         ) values (
           @id,
           @jobId,
@@ -1322,7 +1439,23 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
           @legitimacyLabel,
           @keywordsJson,
           @keywordSignalsJson,
-          @userCorrectionJson
+          @userCorrectionJson,
+          @providerUsed,
+          @modelUsed,
+          @tokensUsed,
+          @generationMs,
+          @evaluationVersion,
+          @seniority,
+          @domain,
+          @directionAlignment,
+          @confidenceLabel,
+          @fitComponentsJson,
+          @hardBlockersJson,
+          @requirementsSummaryJson,
+          @jdHash,
+          @modelOutputJson,
+          @completenessWarningsJson,
+          coalesce(@createdAt, current_timestamp)
         )`
       )
       .run({
@@ -1332,10 +1465,23 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
         redFlagsJson: JSON.stringify(normalized.redFlags),
         requirementMatchJson: JSON.stringify(normalized.requirementMatch),
         resumeEvidenceJson: JSON.stringify(normalized.resumeEvidence),
-        sectionsJson: JSON.stringify(normalized.sections),
-        keywordsJson: JSON.stringify(normalized.keywords),
-        keywordSignalsJson: JSON.stringify(normalized.keywordSignals),
-        userCorrectionJson: JSON.stringify(normalized.userCorrection)
+        sectionsJson: keepStoredDetail(JSON.stringify(normalized.sections), existing?.sections_json),
+        legitimacyLabel: keepStoredDetail(normalized.legitimacyLabel, existing?.legitimacy_label),
+        keywordsJson: keepStoredDetail(JSON.stringify(normalized.keywords), existing?.keywords_json),
+        keywordSignalsJson: keepStoredDetail(
+          JSON.stringify(normalized.keywordSignals),
+          existing?.keyword_signals_json
+        ),
+        userCorrectionJson: JSON.stringify(normalized.userCorrection),
+        fitComponentsJson: JSON.stringify(normalized.fitComponents ?? {}),
+        hardBlockersJson: JSON.stringify(normalized.hardBlockers),
+        requirementsSummaryJson: JSON.stringify(normalized.requirementsSummary ?? {}),
+        modelOutputJson: JSON.stringify(normalized.modelOutput ?? {}),
+        completenessWarningsJson: JSON.stringify(normalized.completenessWarnings),
+        // `insert or replace` deletes the row before re-inserting, so an omitted
+        // created_at silently became "now" — re-evaluating a job moved its
+        // evaluation date to today and lost when it was first assessed.
+        createdAt: existing?.created_at ?? null
       });
 
     database
@@ -1353,7 +1499,12 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
           resume_evidence_json = @resumeEvidenceJson,
           gaps_json = @gapsJson,
           red_flags_json = @redFlagsJson,
-          status = 'Reviewed',
+          -- Only advance a job that has not moved past review. This used to be an
+          -- unconditional 'Reviewed', so re-evaluating a job silently reset an
+          -- Applied or Interviewing requisition back to Reviewed and lost where
+          -- the user actually was. §64: analysis state must not overwrite
+          -- application state.
+          status = case when status in ('Found', 'Reviewed') then 'Reviewed' else status end,
           updated_at = current_timestamp
         where id = @jobId`
       )
@@ -1368,11 +1519,678 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
   });
 
   save();
-  linkJobKeywordConcepts(input.jobId, input.id, [input.roleArchetype, ...normalized.keywords], "job_evaluation");
+
+  /**
+   * linkJobKeywordConcepts() clears the job's existing rows before re-inserting,
+   * so calling it with an empty keyword list is a delete. Fast Evaluation
+   * extracts no keywords by design — that work moves to Application Preparation
+   * (§25.3) — and running it here would drop taxonomy links the story/job
+   * matcher depends on, for every job the user re-evaluates. Leave them alone
+   * and let Phase 2 replace them from a real extraction.
+   */
+  if (normalized.keywords.length > 0) {
+    linkJobKeywordConcepts(input.jobId, input.id, [input.roleArchetype, ...normalized.keywords], "job_evaluation");
+  }
   logActivity("job", input.jobId, `Job evaluated: ${input.fitScore}% ${input.recommendation}`, {
     roleArchetype: input.roleArchetype,
     legitimacy: input.legitimacyLabel
   });
+}
+
+// ─── Application Preparation (PRD v0.2.1 §22–§30) ──────────────────────────
+
+type ApplicationPreparationRow = {
+  id: string;
+  job_id: string;
+  evaluation_id: string;
+  status: string;
+  jd_hash: string;
+  evidence_hash: string;
+  requirements_json: string;
+  keyword_signals_json: string;
+  evidence_map_json: string;
+  posted_compensation_json: string;
+  market_compensation_json: string;
+  compensation_sources_json: string;
+  compensation_research_status: string;
+  suggested_compensation_response: string;
+  provider_used: string;
+  model_used: string;
+  research_provider: string;
+  generation_ms: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapApplicationPreparation(row: ApplicationPreparationRow): ApplicationPreparationRecord {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    evaluationId: row.evaluation_id,
+    status: row.status,
+    jdHash: row.jd_hash,
+    evidenceHash: row.evidence_hash,
+    requirements: parseJson<ApplicationRequirement[]>(row.requirements_json || "[]"),
+    keywordSignals: parseJson<JobKeywordSignal[]>(row.keyword_signals_json || "[]"),
+    evidenceMap: parseJson<EvidenceMapEntry[]>(row.evidence_map_json || "[]"),
+    postedCompensation: parseJsonOrNull<PostedCompensation>(row.posted_compensation_json),
+    marketCompensation: parseJsonOrNull<MarketCompensation>(row.market_compensation_json),
+    compensationSources: parseJson<CompensationSource[]>(row.compensation_sources_json || "[]"),
+    compensationResearchStatus: (row.compensation_research_status || "not_run") as CompensationResearchStatus,
+    suggestedCompensationResponse: row.suggested_compensation_response,
+    providerUsed: row.provider_used,
+    modelUsed: row.model_used,
+    researchProvider: row.research_provider,
+    generationMs: row.generation_ms,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getApplicationPreparation(jobId: string): ApplicationPreparationRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from application_preparation where job_id = @jobId")
+    .get({ jobId }) as ApplicationPreparationRow | undefined;
+  return row ? mapApplicationPreparation(row) : undefined;
+}
+
+export function saveApplicationPreparation(input: ApplicationPreparationInput) {
+  const database = getDatabase();
+  database
+    .prepare(
+      `insert into application_preparation (
+        id, job_id, evaluation_id, status, jd_hash, evidence_hash,
+        requirements_json, keyword_signals_json, evidence_map_json,
+        posted_compensation_json, market_compensation_json, compensation_sources_json,
+        compensation_research_status, suggested_compensation_response,
+        provider_used, model_used, research_provider, generation_ms
+      ) values (
+        @id, @jobId, @evaluationId, @status, @jdHash, @evidenceHash,
+        @requirementsJson, @keywordSignalsJson, @evidenceMapJson,
+        @postedCompensationJson, @marketCompensationJson, @compensationSourcesJson,
+        @compensationResearchStatus, @suggestedCompensationResponse,
+        @providerUsed, @modelUsed, @researchProvider, @generationMs
+      )
+      on conflict(job_id) do update set
+        evaluation_id = excluded.evaluation_id,
+        status = excluded.status,
+        jd_hash = excluded.jd_hash,
+        evidence_hash = excluded.evidence_hash,
+        requirements_json = excluded.requirements_json,
+        keyword_signals_json = excluded.keyword_signals_json,
+        evidence_map_json = excluded.evidence_map_json,
+        posted_compensation_json = excluded.posted_compensation_json,
+        market_compensation_json = excluded.market_compensation_json,
+        compensation_sources_json = excluded.compensation_sources_json,
+        compensation_research_status = excluded.compensation_research_status,
+        suggested_compensation_response = excluded.suggested_compensation_response,
+        provider_used = excluded.provider_used,
+        model_used = excluded.model_used,
+        research_provider = excluded.research_provider,
+        generation_ms = excluded.generation_ms,
+        updated_at = current_timestamp`
+    )
+    .run({
+      ...input,
+      requirementsJson: JSON.stringify(input.requirements),
+      keywordSignalsJson: JSON.stringify(input.keywordSignals),
+      evidenceMapJson: JSON.stringify(input.evidenceMap),
+      postedCompensationJson: JSON.stringify(input.postedCompensation ?? {}),
+      marketCompensationJson: JSON.stringify(input.marketCompensation ?? {}),
+      compensationSourcesJson: JSON.stringify(input.compensationSources),
+    });
+
+  // §25.3: taxonomy ingestion happens here now, not at evaluation time.
+  if (input.keywordSignals.length > 0) {
+    const job = getJobById(input.jobId);
+    linkJobKeywordConcepts(
+      input.jobId,
+      input.evaluationId,
+      [job?.roleArchetype ?? "", ...input.keywordSignals.map((signal) => signal.keyword)],
+      "application_preparation"
+    );
+  }
+
+  logActivity("job", input.jobId, "Application preparation saved", {
+    requirements: input.requirements.length,
+    keywords: input.keywordSignals.length,
+  });
+}
+
+/**
+ * Effective keywords for a job, loading each tier from the database.
+ *
+ * Every consumer — resume tailoring, the resume editor, story matching, taxonomy
+ * ingestion, story creation from a job — must come through here rather than
+ * reading `evaluation.keywords`, so all of them see Application Preparation the
+ * moment it exists.
+ */
+/**
+ * Refresh a job's taxonomy links from its effective keywords, and return the
+ * phrases for text matching.
+ *
+ * The three story-matching call sites each read `evaluation.keywords` and, when
+ * empty, relinked from title and archetype alone. `linkJobKeywordConcepts()`
+ * clears the job's rows before inserting, so that thin path is a *replace* — fine
+ * when it meant "this job has no evaluation yet, seed it", destructive now that
+ * fast-v2 evaluations legitimately carry no keywords and the job may already hold
+ * rich links from a legacy evaluation or from Application Preparation.
+ *
+ * So: link richly whenever there are keywords, seed title and archetype only when
+ * the job has nothing at all, and otherwise leave what is there alone.
+ */
+function syncJobKeywordConcepts(jobId: string, job: JobRecord): string[] {
+  const signals = getEffectiveKeywordSignals(jobId);
+  const keywords = toKeywordPhrases(signals);
+
+  if (keywords.length > 0) {
+    const preparation = getApplicationPreparation(jobId);
+    const evaluation = getEvaluationByJobId(jobId);
+    const fromPreparation = (preparation?.keywordSignals.length ?? 0) > 0;
+    linkJobKeywordConcepts(
+      jobId,
+      fromPreparation ? preparation!.evaluationId : evaluation?.id ?? null,
+      [job.title, job.roleArchetype, ...keywords],
+      fromPreparation ? "application_preparation" : "job_evaluation"
+    );
+    return keywords;
+  }
+
+  if (getJobConceptIds(jobId).size === 0) {
+    linkJobKeywordConcepts(jobId, null, [job.title, job.roleArchetype], "job_status");
+  }
+  return [];
+}
+
+export function getEffectiveKeywordSignals(jobId: string): JobKeywordSignal[] {
+  const job = getJobById(jobId);
+  if (!job) return [];
+  return resolveEffectiveKeywordSignals({
+    preparation: getApplicationPreparation(jobId) ?? null,
+    evaluation: getEvaluationByJobId(jobId) ?? null,
+    job,
+  });
+}
+
+/** Effective keywords as plain phrases. */
+export function getEffectiveKeywords(jobId: string): string[] {
+  return toKeywordPhrases(getEffectiveKeywordSignals(jobId));
+}
+
+// ─── External integrations (PRD v0.2.1 §61–§63) ────────────────────────────
+
+type ExternalIntegrationRow = {
+  id: string;
+  provider: string;
+  auth_type: string;
+  credential: string;
+  account_label: string;
+  connection_status: string;
+  enabled: number;
+  metadata_json: string;
+  last_tested_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
+ * Masked on the way out, always. There is deliberately no query that returns the
+ * raw credential to a caller that might serialize it — server code that needs the
+ * real value calls getIntegrationCredential() explicitly, which is easy to audit.
+ */
+function mapExternalIntegration(row: ExternalIntegrationRow): ExternalIntegrationRecord {
+  return {
+    id: row.id,
+    provider: row.provider as IntegrationProvider,
+    authType: row.auth_type,
+    maskedCredential: maskApiKey(row.credential),
+    hasCredential: row.credential.length > 0,
+    accountLabel: row.account_label,
+    connectionStatus: (row.connection_status || "not_connected") as IntegrationConnectionStatus,
+    enabled: row.enabled === 1,
+    metadata: parseJson<Record<string, JsonValue>>(row.metadata_json || "{}"),
+    lastTestedAt: row.last_tested_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getIntegration(provider: IntegrationProvider): ExternalIntegrationRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from external_integrations where provider = @provider")
+    .get({ provider }) as ExternalIntegrationRow | undefined;
+  return row ? mapExternalIntegration(row) : undefined;
+}
+
+export function getIntegrations(): ExternalIntegrationRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from external_integrations order by provider")
+    .all() as ExternalIntegrationRow[];
+  return rows.map(mapExternalIntegration);
+}
+
+/**
+ * The raw credential, for server-side use against the provider only.
+ * Never return this from a server action or put it in a page payload.
+ */
+export function getIntegrationCredential(provider: IntegrationProvider): string {
+  const row = getDatabase()
+    .prepare("select credential from external_integrations where provider = @provider")
+    .get({ provider }) as { credential: string } | undefined;
+  return row?.credential ?? "";
+}
+
+export function saveIntegrationCredential(input: {
+  provider: IntegrationProvider;
+  credential: string;
+  accountLabel?: string;
+}) {
+  const stored = getIntegrationCredential(input.provider);
+  // The client may echo back the mask rather than a real key — that means
+  // "unchanged", not "set my key to a row of bullets".
+  const credential = resolveMaskedKey(input.credential.trim(), stored);
+
+  getDatabase()
+    .prepare(
+      `update external_integrations set
+        credential = @credential,
+        account_label = @accountLabel,
+        -- A new key has not been tested yet; saying otherwise would let a stale
+        -- "connected" badge outlive the credential that earned it.
+        connection_status = case when @credential = '' then 'not_connected' else connection_status end,
+        enabled = case when @credential = '' then 0 else enabled end,
+        updated_at = current_timestamp
+      where provider = @provider`
+    )
+    .run({
+      provider: input.provider,
+      credential,
+      accountLabel: input.accountLabel ?? "",
+    });
+
+  logActivity("integration", input.provider, credential ? "Integration credential saved" : "Integration disconnected", {});
+}
+
+export function saveIntegrationTestResult(input: {
+  provider: IntegrationProvider;
+  status: IntegrationConnectionStatus;
+  accountLabel?: string;
+  metadata?: Record<string, JsonValue>;
+}) {
+  // A test reports connection facts — workspace and user ids — and knows nothing
+  // about the settings stored beside them. Writing its metadata wholesale erased
+  // the Clay enrichment routine and the auto-enrich flag, so testing a working
+  // connection silently switched enrichment off. Merge, the way
+  // saveIntegrationMetadata does.
+  const merged = input.metadata
+    ? JSON.stringify({ ...(getIntegration(input.provider)?.metadata ?? {}), ...input.metadata })
+    : "";
+
+  getDatabase()
+    .prepare(
+      `update external_integrations set
+        connection_status = @status,
+        account_label = coalesce(nullif(@accountLabel, ''), account_label),
+        metadata_json = coalesce(nullif(@metadataJson, ''), metadata_json),
+        enabled = case when @status = 'connected' then 1 else 0 end,
+        last_tested_at = current_timestamp,
+        updated_at = current_timestamp
+      where provider = @provider`
+    )
+    .run({
+      provider: input.provider,
+      status: input.status,
+      accountLabel: input.accountLabel ?? "",
+      metadataJson: merged,
+    });
+}
+
+/** Merge keys into an integration's metadata, leaving the rest untouched. */
+export function saveIntegrationMetadata(provider: IntegrationProvider, patch: Record<string, JsonValue>) {
+  const current = getIntegration(provider)?.metadata ?? {};
+  getDatabase()
+    .prepare("update external_integrations set metadata_json = @json, updated_at = current_timestamp where provider = @provider")
+    .run({ provider, json: JSON.stringify({ ...current, ...patch }) });
+}
+
+export function disconnectIntegration(provider: IntegrationProvider) {
+  getDatabase()
+    .prepare(
+      `update external_integrations set
+        credential = '', account_label = '', connection_status = 'not_connected',
+        enabled = 0, metadata_json = '{}', last_tested_at = null,
+        updated_at = current_timestamp
+      where provider = @provider`
+    )
+    .run({ provider });
+  logActivity("integration", provider, "Integration disconnected", {});
+}
+
+// ─── Contacts (PRD v0.2.1 §36–§38, §56) ────────────────────────────────────
+
+type ContactRow = {
+  id: string; name: string; first_name: string; last_name: string; title: string;
+  company: string; company_domain: string; linkedin_url: string; work_email: string;
+  source_provider: string; source_record_id: string; profile_confidence: string;
+  email_confidence: string; notes: string; created_at: string; updated_at: string;
+};
+
+type JobContactLinkRow = {
+  id: string; job_id: string; contact_id: string; contact_role: string;
+  relevance_score: number; relevance_reason_json: string; status: string;
+  last_contacted_at: string | null; responded_at: string | null;
+  created_at: string; updated_at: string;
+};
+
+function mapContact(row: ContactRow): ContactRecord {
+  return {
+    id: row.id, name: row.name, firstName: row.first_name, lastName: row.last_name,
+    title: row.title, company: row.company, companyDomain: row.company_domain,
+    linkedinUrl: row.linkedin_url, workEmail: row.work_email,
+    sourceProvider: row.source_provider, sourceRecordId: row.source_record_id,
+    profileConfidence: row.profile_confidence, emailConfidence: row.email_confidence,
+    notes: row.notes, createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+function mapJobContactLink(row: JobContactLinkRow): JobContactLinkRecord {
+  return {
+    id: row.id, jobId: row.job_id, contactId: row.contact_id,
+    contactRole: row.contact_role as ContactRole,
+    relevanceScore: row.relevance_score,
+    relevanceReasons: parseJson<string[]>(row.relevance_reason_json || "[]"),
+    status: row.status as ContactStatus,
+    lastContactedAt: row.last_contacted_at, respondedAt: row.responded_at,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+/** True when this person has been forgotten and must not be recreated (§37). */
+export function isContactSuppressed(contact: Parameters<typeof fingerprintsFor>[0]): boolean {
+  const prints = fingerprintsFor(contact);
+  if (prints.length === 0) return false;
+  const placeholders = prints.map((_, i) => `@f${i}`).join(", ");
+  const params = Object.fromEntries(prints.map((print, i) => [`f${i}`, print]));
+  const row = getDatabase()
+    .prepare(`select 1 as hit from contact_suppressions where identity_fingerprint in (${placeholders}) limit 1`)
+    .get(params) as { hit: number } | undefined;
+  return Boolean(row);
+}
+
+/**
+ * Find an existing contact by the §37 priority order, so the same person
+ * arriving from a different route does not become a second record.
+ */
+function findExistingContact(input: ContactInput): ContactRecord | undefined {
+  const database = getDatabase();
+  if (input.sourceProvider !== "manual" && input.sourceRecordId) {
+    const row = database
+      .prepare("select * from contacts where source_provider = @p and source_record_id = @r")
+      .get({ p: input.sourceProvider, r: input.sourceRecordId }) as ContactRow | undefined;
+    if (row) return mapContact(row);
+  }
+  const linkedin = normalizeLinkedInUrl(input.linkedinUrl);
+  if (linkedin) {
+    const row = database.prepare("select * from contacts where linkedin_url = @u").get({ u: linkedin }) as ContactRow | undefined;
+    if (row) return mapContact(row);
+  }
+  const email = normalizeEmail(input.workEmail);
+  if (email) {
+    const row = database.prepare("select * from contacts where work_email = @e").get({ e: email }) as ContactRow | undefined;
+    if (row) return mapContact(row);
+  }
+  return undefined;
+}
+
+export class ContactSuppressedError extends Error {
+  constructor() {
+    super("This person was forgotten. Restore them from Settings before adding them again.");
+    this.name = "ContactSuppressedError";
+  }
+}
+
+/** Upsert a contact, honouring suppression and the dedupe priority. */
+export function saveContact(input: ContactInput): ContactRecord {
+  if (isContactSuppressed(input)) throw new ContactSuppressedError();
+
+  const normalized = {
+    ...input,
+    linkedinUrl: normalizeLinkedInUrl(input.linkedinUrl),
+    workEmail: normalizeEmail(input.workEmail),
+  };
+  const existing = findExistingContact(normalized);
+  const id = existing?.id ?? normalized.id;
+
+  getDatabase()
+    .prepare(
+      `insert into contacts (
+        id, name, first_name, last_name, title, company, company_domain,
+        linkedin_url, work_email, source_provider, source_record_id,
+        profile_confidence, email_confidence, notes
+      ) values (
+        @id, @name, @firstName, @lastName, @title, @company, @companyDomain,
+        @linkedinUrl, @workEmail, @sourceProvider, @sourceRecordId,
+        @profileConfidence, @emailConfidence, @notes
+      )
+      on conflict(id) do update set
+        name = excluded.name, first_name = excluded.first_name, last_name = excluded.last_name,
+        title = excluded.title, company = excluded.company, company_domain = excluded.company_domain,
+        -- Never blank a known identifier with an empty one from a thinner source.
+        linkedin_url = case when excluded.linkedin_url <> '' then excluded.linkedin_url else contacts.linkedin_url end,
+        work_email = case when excluded.work_email <> '' then excluded.work_email else contacts.work_email end,
+        profile_confidence = excluded.profile_confidence,
+        email_confidence = excluded.email_confidence,
+        -- Notes are the user's own writing and a provider refresh carries none,
+        -- so the rule above applies here with more force: nothing else in the app
+        -- can recover them.
+        notes = case when excluded.notes <> '' then excluded.notes else contacts.notes end,
+        updated_at = current_timestamp`
+    )
+    .run({ ...normalized, id });
+
+  const row = getDatabase().prepare("select * from contacts where id = @id").get({ id }) as ContactRow;
+  return mapContact(row);
+}
+
+export function getContact(contactId: string): ContactRecord | undefined {
+  const row = getDatabase().prepare("select * from contacts where id = @id").get({ id: contactId }) as ContactRow | undefined;
+  return row ? mapContact(row) : undefined;
+}
+
+export function linkContactToJob(input: {
+  jobId: string; contactId: string; contactRole: ContactRole;
+  relevanceScore: number; relevanceReasons: string[];
+}) {
+  getDatabase()
+    .prepare(
+      `insert into job_contact_links (id, job_id, contact_id, contact_role, relevance_score, relevance_reason_json)
+       values (@id, @jobId, @contactId, @contactRole, @relevanceScore, @reasonsJson)
+       on conflict(job_id, contact_id) do update set
+         contact_role = excluded.contact_role,
+         relevance_score = excluded.relevance_score,
+         relevance_reason_json = excluded.relevance_reason_json,
+         updated_at = current_timestamp`
+    )
+    .run({
+      id: `link-${input.jobId}-${input.contactId}`,
+      jobId: input.jobId, contactId: input.contactId, contactRole: input.contactRole,
+      relevanceScore: input.relevanceScore, reasonsJson: JSON.stringify(input.relevanceReasons),
+    });
+}
+
+/** Contacts for one job, most relevant first. */
+export function getJobContacts(jobId: string): JobContact[] {
+  const rows = getDatabase()
+    .prepare(
+      `select c.*, l.id as link_id, l.job_id, l.contact_id, l.contact_role, l.relevance_score,
+              l.relevance_reason_json, l.status, l.last_contacted_at, l.responded_at,
+              l.created_at as link_created_at, l.updated_at as link_updated_at
+       from job_contact_links l join contacts c on c.id = l.contact_id
+       where l.job_id = @jobId
+       order by l.relevance_score desc, c.name`
+    )
+    .all({ jobId }) as Array<ContactRow & JobContactLinkRow & { link_id: string; link_created_at: string; link_updated_at: string }>;
+
+  return rows.map((row) => ({
+    ...mapContact(row),
+    link: mapJobContactLink({ ...row, id: row.link_id, created_at: row.link_created_at, updated_at: row.link_updated_at }),
+  }));
+}
+
+export function updateJobContactStatus(jobId: string, contactId: string, status: ContactStatus) {
+  getDatabase()
+    .prepare(
+      `update job_contact_links set
+        status = @status,
+        last_contacted_at = case when @status = 'Contacted' then current_timestamp else last_contacted_at end,
+        responded_at = case when @status = 'Responded' then current_timestamp else responded_at end,
+        updated_at = current_timestamp
+      where job_id = @jobId and contact_id = @contactId`
+    )
+    .run({ jobId, contactId, status });
+}
+
+/** Remove this person from one opportunity, keeping the contact itself. */
+export function unlinkContactFromJob(jobId: string, contactId: string) {
+  getDatabase().prepare("delete from job_contact_links where job_id = @jobId and contact_id = @contactId").run({ jobId, contactId });
+}
+
+/**
+ * Delete a contact and everything hanging off them. Cascades handle the links
+ * and (from Phase 8) their outreach messages. The person may legitimately be
+ * found again by a later search — that is what distinguishes this from Forget.
+ */
+export function deleteContact(contactId: string) {
+  getDatabase().prepare("delete from contacts where id = @id").run({ id: contactId });
+  logActivity("contact", contactId, "Contact deleted", {});
+}
+
+/**
+ * Delete, and remember only enough to honour the request.
+ *
+ * Fingerprints are one-way, so a later provider result can be recognized and
+ * discarded without JST holding the email address or profile URL it was asked to
+ * forget. Deliberately no readable identifier is written here.
+ */
+export function forgetContact(contactId: string) {
+  const contact = getContact(contactId);
+  if (!contact) return;
+  const prints = fingerprintsFor(contact);
+
+  const database = getDatabase();
+  const run = database.transaction(() => {
+    const stmt = database.prepare(
+      "insert or ignore into contact_suppressions (id, identity_fingerprint, source) values (@id, @print, 'user')"
+    );
+    for (const print of prints) stmt.run({ id: `suppression-${print.slice(0, 24)}`, print });
+    database.prepare("delete from contacts where id = @id").run({ id: contactId });
+  });
+  run();
+
+  logActivity("contact", contactId, "Contact forgotten", { fingerprints: prints.length });
+}
+
+export function getSuppressionCount(): number {
+  const row = getDatabase().prepare("select count(*) as n from contact_suppressions").get() as { n: number };
+  return row.n;
+}
+
+/** Lift every suppression. Restores nothing — the details were not kept. */
+export function clearContactSuppressions() {
+  getDatabase().prepare("delete from contact_suppressions").run();
+  logActivity("contact", "suppressions", "Forgotten-contact list cleared", {});
+}
+
+// ─── Outreach messages (PRD v0.2.1 §51) ────────────────────────────────────
+
+type OutreachMessageRow = {
+  id: string; job_contact_link_id: string; channel: string; subject: string;
+  message: string; status: string; provider_used: string; model_used: string;
+  created_at: string; updated_at: string;
+};
+
+function mapOutreachMessage(row: OutreachMessageRow): OutreachMessageRecord {
+  return {
+    id: row.id,
+    jobContactLinkId: row.job_contact_link_id,
+    channel: row.channel as OutreachChannel,
+    subject: row.subject,
+    message: row.message,
+    status: row.status as OutreachMessageStatus,
+    providerUsed: row.provider_used,
+    modelUsed: row.model_used,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** Every draft written to one person about one opportunity. */
+export function getOutreachMessages(jobContactLinkId: string): OutreachMessageRecord[] {
+  const rows = getDatabase()
+    .prepare("select * from outreach_messages where job_contact_link_id = @id order by created_at desc")
+    .all({ id: jobContactLinkId }) as OutreachMessageRow[];
+  return rows.map(mapOutreachMessage);
+}
+
+/** Drafts for every contact on a job, keyed by link id for rendering. */
+export function getOutreachMessagesForJob(jobId: string): Map<string, OutreachMessageRecord[]> {
+  const rows = getDatabase()
+    .prepare(
+      `select m.* from outreach_messages m
+       join job_contact_links l on l.id = m.job_contact_link_id
+       where l.job_id = @jobId order by m.created_at desc`
+    )
+    .all({ jobId }) as OutreachMessageRow[];
+
+  const byLink = new Map<string, OutreachMessageRecord[]>();
+  for (const row of rows) {
+    const record = mapOutreachMessage(row);
+    const existing = byLink.get(record.jobContactLinkId) ?? [];
+    existing.push(record);
+    byLink.set(record.jobContactLinkId, existing);
+  }
+  return byLink;
+}
+
+export function saveOutreachMessage(input: OutreachMessageInput) {
+  getDatabase()
+    .prepare(
+      `insert into outreach_messages (
+        id, job_contact_link_id, channel, subject, message, status, provider_used, model_used
+      ) values (
+        @id, @jobContactLinkId, @channel, @subject, @message, @status, @providerUsed, @modelUsed
+      )
+      on conflict(id) do update set
+        channel = excluded.channel,
+        subject = excluded.subject,
+        message = excluded.message,
+        status = excluded.status,
+        provider_used = excluded.provider_used,
+        model_used = excluded.model_used,
+        updated_at = current_timestamp`
+    )
+    .run(input);
+}
+
+/** Edit a draft in place, keeping its provenance. */
+export function updateOutreachMessageText(id: string, subject: string, message: string) {
+  getDatabase()
+    .prepare(
+      `update outreach_messages set subject = @subject, message = @message, updated_at = current_timestamp
+       where id = @id`
+    )
+    .run({ id, subject, message });
+}
+
+export function deleteOutreachMessage(id: string) {
+  getDatabase().prepare("delete from outreach_messages where id = @id").run({ id });
+}
+
+export function getJobContactLink(jobId: string, contactId: string): JobContactLinkRecord | undefined {
+  const row = getDatabase()
+    .prepare("select * from job_contact_links where job_id = @jobId and contact_id = @contactId")
+    .get({ jobId, contactId }) as JobContactLinkRow | undefined;
+  return row ? mapJobContactLink(row) : undefined;
 }
 
 export function saveEvaluationCorrection(input: EvaluationCorrectionInput) {
@@ -2299,8 +3117,31 @@ function mapEvaluation(row: EvaluationRow): EvaluationRecord {
     modelUsed: row.model_used ?? "",
     tokensUsed: row.tokens_used ?? 0,
     generationMs: row.generation_ms ?? 0,
+    evaluationVersion: row.evaluation_version || "legacy-v1",
+    seniority: row.seniority ?? "",
+    domain: row.domain ?? "",
+    directionAlignment: row.direction_alignment ?? "",
+    confidenceLabel: row.confidence_label ?? "",
+    fitComponents: parseJsonOrNull<FitComponents>(row.fit_components_json),
+    hardBlockers: parseJson<HardBlocker[]>(row.hard_blockers_json || "[]"),
+    requirementsSummary: parseJsonOrNull<RequirementSummary>(row.requirements_summary_json),
+    jdHash: row.jd_hash ?? "",
+    modelOutput: parseJsonOrNull<FastEvaluationModelOutput>(row.model_output_json),
+    completenessWarnings: parseJson<string[]>(row.completeness_warnings_json || "[]"),
     createdAt: row.created_at
   };
+}
+
+/**
+ * `{}` is the column default for the fast-v2 JSON objects, and an empty object is
+ * not a usable `FitComponents` or `RequirementSummary` — legacy rows have simply
+ * never had one. Collapse it to null so callers branch on absence rather than on
+ * a shape with every field undefined.
+ */
+function parseJsonOrNull<T>(raw: string | null | undefined): T | null {
+  if (!raw || raw === "{}") return null;
+  const parsed = parseJson<T | null>(raw);
+  return parsed && Object.keys(parsed).length > 0 ? parsed : null;
 }
 
 function mapGeneratedDocument(row: GeneratedDocumentRow): GeneratedDocumentRecord {
@@ -2414,8 +3255,8 @@ export function getAISettings(): AISettingsRecord {
       anthropicApiKey: "",
       geminiApiKey: "",
       openaiApiKey: "",
-      anthropicModel: "claude-sonnet-4-6",
-      geminiModel: "gemini-2.5-flash",
+      anthropicModel: "latest-sonnet",
+      geminiModel: "latest-flash",
       openaiModel: "latest",
       ollamaBaseUrl: "http://localhost:11434",
       ollamaModel: "llama3.1:8b",
@@ -2566,6 +3407,10 @@ type StoryRow = {
   themes_json: string;
   tags_json: string;
   source_job_id: string | null;
+  // Column keeps its original name; the TypeScript field is `storySource`.
+  // Renaming the column would be a data migration for cosmetics, and the values
+  // it holds ('evaluation', 'voice-practice', 'interview-prep') were never
+  // Block-F-specific in the first place.
   source_block_f: string;
   story_kind: string;
   question_id: string | null;
@@ -3137,13 +3982,7 @@ function autoMatchJobsForStory(storyId: string, tags: string[]) {
   for (const application of eligibleJobs) {
     const job = getJobById(application.jobId);
     if (!job) continue;
-    const evaluation = getEvaluationByJobId(application.jobId);
-    const jobKeywords = evaluation?.keywords ?? [];
-    if (evaluation?.keywords.length) {
-      linkJobKeywordConcepts(application.jobId, evaluation.id, [job.title, job.roleArchetype, ...evaluation.keywords], "job_evaluation");
-    } else {
-      linkJobKeywordConcepts(application.jobId, null, [job.title, job.roleArchetype], "job_status");
-    }
+    const jobKeywords = syncJobKeywordConcepts(application.jobId, job);
     const jobConcepts = getJobConceptIds(application.jobId);
     if (hasSpecificConceptOverlap(storyConcepts, jobConcepts) || rawKeywordMatchesHaystack(tags, [job.title, job.roleArchetype, ...jobKeywords])) {
       stmt.run({ storyId, jobId: application.jobId });
@@ -3159,13 +3998,7 @@ function autoMatchJobsForStory(storyId: string, tags: string[]) {
 function autoMatchStoriesForJob(jobId: string) {
   const job = getJobById(jobId);
   if (!job) return;
-  const evaluation = getEvaluationByJobId(jobId);
-  const jobKeywords = evaluation?.keywords ?? [];
-  if (evaluation?.keywords.length) {
-    linkJobKeywordConcepts(jobId, evaluation.id, [job.title, job.roleArchetype, ...evaluation.keywords], "job_evaluation");
-  } else {
-    linkJobKeywordConcepts(jobId, null, [job.title, job.roleArchetype], "job_status");
-  }
+  const jobKeywords = syncJobKeywordConcepts(jobId, job);
   const jobConcepts = getJobConceptIds(jobId);
   if (jobConcepts.size === 0) return;
 
@@ -3202,13 +4035,7 @@ export function getMatchingStoriesForJob(jobId: string): Array<{
 }> {
   const job = getJobById(jobId);
   if (!job) return [];
-  const evaluation = getEvaluationByJobId(jobId);
-  const jobKeywords = evaluation?.keywords ?? [];
-  if (evaluation?.keywords.length) {
-    linkJobKeywordConcepts(jobId, evaluation.id, [job.title, job.roleArchetype, ...evaluation.keywords], "job_evaluation");
-  } else {
-    linkJobKeywordConcepts(jobId, null, [job.title, job.roleArchetype], "job_status");
-  }
+  const jobKeywords = syncJobKeywordConcepts(jobId, job);
   const jobConcepts = getJobConceptIds(jobId);
 
   const linkedRows = getDatabase()
@@ -3343,7 +4170,7 @@ function mapStory(row: StoryRow): StoryRecord {
     conceptTags: [],
     rawKeywords: tags,
     sourceJobId: row.source_job_id,
-    sourceBlockF: row.source_block_f,
+    storySource: row.source_block_f,
     storyKind: coerceStoryKind(row.story_kind),
     questionId: row.question_id,
     promptText: row.prompt_text,
@@ -3742,7 +4569,7 @@ export function commitConsolidation(
           themes: [],
           tags: cluster.canonical.tags,
           sourceJobId,
-          sourceBlockF: "",
+          storySource: "",
           storyKind: "standalone_story",
           assignedJobIds: jobLinks.map((row) => row.job_id)
         },
@@ -3798,7 +4625,7 @@ export function getStoriesByJobId(jobId: string): StoryRecord[] {
 
 export function saveStory(input: StoryInput, options?: { skipAutoMatch?: boolean }) {
   const assessed = assessStoryInput(input);
-  const storyKind = input.storyKind ?? (input.sourceBlockF === "evaluation" ? "evaluation_suggestion" : input.sourceBlockF === "voice-practice" ? "answered_question" : "standalone_story");
+  const storyKind = input.storyKind ?? (input.storySource === "evaluation" ? "evaluation_suggestion" : input.storySource === "voice-practice" ? "answered_question" : "standalone_story");
   const tags = normalizeTags({ tags: input.tags, skills: input.skills, themes: input.themes, storyKind });
   getDatabase().transaction(() => {
     getDatabase()
@@ -3810,7 +4637,7 @@ export function saveStory(input: StoryInput, options?: { skipAutoMatch?: boolean
           last_evaluated_at, updated_at
         ) values (
           @id, @title, @situation, @task, @action, @result, @reflection,
-          @skillsJson, @themesJson, @tagsJson, @sourceJobId, @sourceBlockF,
+          @skillsJson, @themesJson, @tagsJson, @sourceJobId, @storySource,
           @storyKind, @questionId, @promptText, @qualityStatus, @qualityNotes,
           @lastEvaluatedAt, current_timestamp
         )
@@ -3840,7 +4667,7 @@ export function saveStory(input: StoryInput, options?: { skipAutoMatch?: boolean
         themesJson: JSON.stringify(input.themes),
         tagsJson: JSON.stringify(tags),
         sourceJobId: input.sourceJobId ?? null,
-        sourceBlockF: input.sourceBlockF ?? "",
+        storySource: input.storySource ?? "",
         storyKind,
         questionId: input.questionId ?? null,
         promptText: input.promptText ?? "",
@@ -4232,7 +5059,9 @@ export function mergeTaxonomyConcept(sourceId: string, targetId: string) {
 const EVALUATION_STORY_KEYWORD_TAG_LIMIT = 12;
 
 /**
- * Replaces all auto-saved Block F stories for a job with the new set.
+ * Replaces a job's auto-saved evaluation stories with a new set.
+ * Legacy path: Fast Evaluation produces no stories, so nothing calls this for
+ * newly evaluated jobs.
  * Called automatically after every LLM evaluation via runAndSaveJobWithAI.
  * Manually-added or voice-practice stories are never touched.
  *
@@ -4536,10 +5365,52 @@ export function getCompanyProfiles(): Map<string, CompanyProfile> {
 export function upsertCompanyProfile(name: string, industry: string): void {
   getDatabase()
     .prepare(
-      `insert or replace into company_profiles (name, industry, tags_json, updated_at)
-       values (@name, @industry, '[]', current_timestamp)`
+      // Targeted upsert, not `insert or replace`: the row also carries contact-search
+      // metadata (domain, LinkedIn URL, Clay id) that this caller knows nothing about,
+      // and a replace would silently reset all of it to defaults.
+      `insert into company_profiles (name, industry, tags_json, updated_at)
+       values (@name, @industry, '[]', current_timestamp)
+       on conflict(name) do update set industry = excluded.industry, updated_at = current_timestamp`
     )
     .run({ name, industry });
+}
+
+export type CompanyContactMetadata = {
+  domain: string;
+  linkedinUrl: string;
+  clayCompanyId: string;
+  intelligenceSource: string;
+};
+
+export function getCompanyContactMetadata(name: string): CompanyContactMetadata | undefined {
+  const row = getDatabase()
+    .prepare("select domain, linkedin_url, clay_company_id, intelligence_source from company_profiles where name = @name")
+    .get({ name }) as { domain: string; linkedin_url: string; clay_company_id: string; intelligence_source: string } | undefined;
+  return row
+    ? { domain: row.domain, linkedinUrl: row.linkedin_url, clayCompanyId: row.clay_company_id, intelligenceSource: row.intelligence_source }
+    : undefined;
+}
+
+export function saveCompanyContactMetadata(name: string, patch: Partial<CompanyContactMetadata>): void {
+  getDatabase()
+    .prepare(
+      `insert into company_profiles (name, industry, tags_json, domain, linkedin_url, clay_company_id, intelligence_source, intelligence_updated_at, updated_at)
+       values (@name, '', '[]', @domain, @linkedinUrl, @clayCompanyId, @intelligenceSource, current_timestamp, current_timestamp)
+       on conflict(name) do update set
+         domain = case when @domain <> '' then @domain else company_profiles.domain end,
+         linkedin_url = case when @linkedinUrl <> '' then @linkedinUrl else company_profiles.linkedin_url end,
+         clay_company_id = case when @clayCompanyId <> '' then @clayCompanyId else company_profiles.clay_company_id end,
+         intelligence_source = case when @intelligenceSource <> '' then @intelligenceSource else company_profiles.intelligence_source end,
+         intelligence_updated_at = current_timestamp,
+         updated_at = current_timestamp`
+    )
+    .run({
+      name,
+      domain: patch.domain ?? "",
+      linkedinUrl: patch.linkedinUrl ?? "",
+      clayCompanyId: patch.clayCompanyId ?? "",
+      intelligenceSource: patch.intelligenceSource ?? "",
+    });
 }
 
 export function syncCompanyProfilesFromYaml(companies: Array<{ name: string; industry?: string }>): void {

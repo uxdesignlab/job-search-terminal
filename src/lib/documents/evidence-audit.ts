@@ -7,22 +7,82 @@ export type EvidenceAuditIssue = {
   text: string;
 };
 
+// One section whose AI rewrite was thrown away and replaced with the approved
+// source wording. Recorded so the draft can say the summary is not tailored
+// instead of reporting a clean "supported" over untailored text.
+export type EvidenceRevert = {
+  path: string;
+  label: string;
+  claims: string[];
+};
+
 export type EvidenceAudit = {
   status: "supported" | "unsupported-claims";
   issues: EvidenceAuditIssue[];
+  reverted?: EvidenceRevert[];
+  // Lines kept at their source wording so tailoring did not drop job language
+  // the resume already matched. Declared structurally rather than imported from
+  // keyword-preservation, which reads this module.
+  restored?: Array<{ path: string; keywords: string[] }>;
+  // Selected sections the model handed back as written. Same reason for the
+  // structural declaration as `restored`.
+  unchanged?: Array<{ path: string; label: string; unchanged: number; total: number }>;
 };
 
 const METRIC_PATTERN = /(?:[$£€]?\d[\d,.]*(?:%|\+)?)(?!\w)/g;
-const GENERIC_RESUME_TERMS = new Set([
-  "about", "across", "action", "advanced", "aligned", "approach", "based", "built", "collaborated",
-  "created", "delivered", "designed", "developed", "drove", "enabled", "ensured", "executed", "focused",
-  "improved", "including", "initiative", "initiatives", "integrated", "leadership", "leading", "managed",
-  "optimized", "partnered", "process", "program", "programs", "project", "projects", "provided", "results",
-  "role", "solution", "solutions", "strategy", "supported", "team", "teams", "through", "using", "with",
+
+// A rewrite is checked for *claims*, not for vocabulary. Deciding which is which
+// by listing the words that are merely rhetoric does not work: the list leaked
+// "strong", "brings", and "vision", then "consulting" and "expertise", then
+// "stakes" and "cycle", each leak reverting a good summary over a word that
+// asserts nothing. English has more rhetoric than any list can hold.
+//
+// So the default is inverted. An ordinary lowercase word is rhetoric unless it
+// looks like a claim, and only two shapes count as claims:
+//
+//   1. Seniority, credential, and recognition words — inventing one misstates
+//      the candidate's level or qualifications (GUARDED_CLAIM_TERMS).
+//   2. Named entities — tools, employers, standards, products. Detected by case
+//      rather than by list, so "Kubernetes" and "React" are checked without
+//      anyone having to enumerate every tool that exists.
+//
+// Everything else — "high-stakes", "release cycle", "translates", "strong" — is
+// how a resume writer connects facts, and is left alone.
+//
+// The posting's own unconfirmed requirements were tried as a third shape and
+// removed: absent from the resume is not the same as false, and guarding them
+// reverted summaries over "user needs" and "business outcomes". The keyword
+// alignment panel already lists them for the user to judge, which is the right
+// place for a decision this check cannot make.
+const GUARDED_CLAIM_TERMS = new Set([
+  "adjunct", "award", "awarded", "awards", "certification", "certifications", "certified", "chief",
+  "cofounded", "cofounder", "director", "doctorate", "executive", "fellow", "fellowship", "founded",
+  "founder", "head", "honored", "honoree", "licensed", "manager", "master", "masters", "nominated",
+  "patent", "patents", "president", "principal", "professor", "recognized", "staff", "supervisor",
+  "tenured", "vice", "winner",
 ]);
+
 const COMMON_WORDS = new Set([
   "and", "for", "from", "into", "that", "the", "their", "this", "those", "was", "were", "while",
 ]);
+
+const STEM_SUFFIXES = ["ingly", "edly", "ing", "ies", "ed", "es", "ly", "s"];
+
+// Crude stemmer used only to compare a claim term against the evidence corpus.
+// "translates" and "translate", or "wireframes" and "wireframe", are the same
+// claim; treating them as different words reverted rewrites over grammar.
+function stemTerm(term: string): string {
+  let stem = term;
+  for (const suffix of STEM_SUFFIXES) {
+    if (stem.endsWith(suffix) && stem.length - suffix.length >= 4) {
+      stem = suffix === "ies" ? `${stem.slice(0, -3)}y` : stem.slice(0, -suffix.length);
+      break;
+    }
+  }
+  return stem.length > 4 && stem.endsWith("e") ? stem.slice(0, -1) : stem;
+}
+
+const GUARDED_CLAIM_STEMS = new Set([...GUARDED_CLAIM_TERMS].map(stemTerm));
 
 function metricsIn(text: string): Set<string> {
   return new Set((text.match(METRIC_PATTERN) ?? []).map((value) => value.toLowerCase()));
@@ -32,16 +92,57 @@ function normalizeText(text: string) {
   return text.toLowerCase().replace(/[^a-z0-9%+]+/g, " ").trim();
 }
 
+function candidateTerms(text: string): string[] {
+  return normalizeText(text)
+    .split(/\s+/)
+    .filter((term) => term.length >= 4 && !/\d/.test(term) && !COMMON_WORDS.has(term));
+}
+
+/**
+ * Words that read as named entities: an internal capital, or capitalization
+ * anywhere other than the start of a sentence or a bullet. "Figma", "WCAG",
+ * "SaaS", and "Kubernetes" qualify; the first word of a sentence does not,
+ * because every sentence starts capitalized whatever its meaning.
+ */
+function namedEntitiesIn(text: string): Set<string> {
+  const entities = new Set<string>();
+  const pattern = /[A-Za-z][A-Za-z'\u2019-]*/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const token = match[0];
+    const before = text.slice(0, match.index).replace(/["'(\[\u2018\u201c]+$/, "");
+    // A capital only means something away from the opening of a sentence, a line,
+    // or a bullet, because those are capitalized whatever the word means.
+    const atOpening = before.trim() === "" || /[.!?:;\n\u2022]\s*$/.test(before);
+    const hasInternalCapital = /[a-z][A-Z]/.test(token) || /^[A-Z]{2,}$/.test(token.replace(/[^A-Za-z]/g, ""));
+
+    if (hasInternalCapital || (/^[A-Z]/.test(token) && !atOpening)) {
+      // Hyphenated compounds are split, because the words the claim check sees
+      // are already split: "HIPAA-compliant" is read as "hipaa" and "compliant".
+      for (const part of token.toLowerCase().split(/[^a-z]+/)) {
+        if (part.length >= 3) entities.add(part);
+      }
+    }
+  }
+
+  return entities;
+}
+
+/** The terms a rewrite is not free to introduce without evidence. */
 function claimTermsIn(text: string): Set<string> {
+  const entities = namedEntitiesIn(text);
+  return new Set(
+    candidateTerms(text).filter((term) => GUARDED_CLAIM_STEMS.has(stemTerm(term)) || entities.has(term))
+  );
+}
+
+function evidenceStemsIn(text: string): Set<string> {
   return new Set(
     normalizeText(text)
       .split(/\s+/)
-      .filter((term) =>
-        term.length >= 4 &&
-        !/\d/.test(term) &&
-        !COMMON_WORDS.has(term) &&
-        !GENERIC_RESUME_TERMS.has(term)
-      )
+      .filter((term) => term.length >= 4 && !/\d/.test(term))
+      .map(stemTerm)
   );
 }
 
@@ -49,25 +150,96 @@ function evidenceLinesFor(text: string) {
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-function hasRelatedMetricEvidence(text: string, metric: string, evidenceLines: string[]) {
+/**
+ * Whether an evidence line is about the same thing as the claim.
+ *
+ * Topical overlap, using every content word rather than only the ones that
+ * qualify as claims: the point is to tell "reduced latency 40%" apart from "grew
+ * revenue 40%", and neither "latency" nor "revenue" is a claim term on its own.
+ *
+ * One word in common is not overlap. "Managed migration of 50 applications"
+ * shares "managed" with "managed a team of 50 designers", which is enough to
+ * carry the 50 across to an outcome the resume never claimed — and the words
+ * most likely to be the single match are the generic verbs every resume line
+ * starts with. Two independent words is the smallest bar that separates a shared
+ * subject from a shared verb, and listing which words are too generic to count is
+ * the approach this file already abandoned once.
+ */
+const MIN_SHARED_CONTEXT_TERMS = 2;
+
+function sharesClaimContext(text: string, line: string): boolean {
   const normalizedText = normalizeText(text);
-  const textTerms = claimTermsIn(text);
+  const normalizedLine = normalizeText(line);
+  if (normalizedLine.includes(normalizedText) || normalizedText.includes(normalizedLine)) return true;
+  const lineStems = new Set(candidateTerms(line).map(stemTerm));
+  const shared = new Set(candidateTerms(text).map(stemTerm).filter((stem) => lineStems.has(stem)));
+  return shared.size >= MIN_SHARED_CONTEXT_TERMS;
+}
+
+function hasRelatedMetricEvidence(text: string, metric: string, evidenceLines: string[]) {
+  return evidenceLines.some((line) => metricsIn(line).has(metric) && sharesClaimContext(text, line));
+}
+
+// The summary and headline condense the whole resume, so their numbers legitimately
+// come from anywhere in it — "15+ years" belongs to no single line of the summary,
+// and requiring the *whole* section to look like the evidence line reverted figures
+// the resume plainly states. What must not follow is that any occurrence of the
+// digits anywhere in the corpus supports any claim: "reduced latency 40%" would
+// then support "grew revenue 40%", and with descriptive words no longer treated as
+// claims nothing else would catch it.
+//
+// So these sections are checked a sentence at a time. The evidence line may live
+// anywhere, but it has to look like the sentence making the claim. Bullets are a
+// single sentence already, which is why they need no special handling — and their
+// per-line test is what stops a metric moving between roles.
+const SENTENCE_SCOPED_METRIC_PATHS = new Set(["summary", "headline"]);
+
+function sentencesIn(text: string): string[] {
+  const sentences = text.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean);
+  return sentences.length > 0 ? sentences : [text];
+}
+
+function atLeastValue(metric: string): number | null {
+  const match = /^(\d[\d,]*)\+$/.exec(metric);
+  return match ? Number(match[1].replace(/,/g, "")) : null;
+}
+
+// "10+ years" is entailed by an approved resume that says "15+ years": stating
+// less than the evidence supports is not a fabricated claim, and reverting over it
+// discarded an otherwise accurate rewrite. Only open-ended "N+" figures qualify,
+// and the larger figure still has to appear on a line that looks like the claim —
+// otherwise "800+ digital properties" would license "100+ engineers".
+function hasEntailedAtLeastEvidence(text: string, metric: string, evidenceLines: string[]): boolean {
+  const claimed = atLeastValue(metric);
+  if (claimed === null) return false;
   return evidenceLines.some((line) => {
-    if (!metricsIn(line).has(metric)) return false;
-    const normalizedLine = normalizeText(line);
-    if (normalizedLine.includes(normalizedText) || normalizedText.includes(normalizedLine)) return true;
-    const lineTerms = claimTermsIn(line);
-    return [...textTerms].some((term) => lineTerms.has(term));
+    const entails = [...metricsIn(line)].some((known) => {
+      const supported = atLeastValue(known);
+      return supported !== null && supported >= claimed;
+    });
+    return entails && sharesClaimContext(text, line);
   });
 }
 
-// Full check: metrics + vocabulary terms. Used at generation time to revert AI-fabricated content.
+function hasMetricEvidence(path: string, text: string, metric: string, evidenceText: string, evidenceLines: string[]) {
+  const supports = (claim: string) =>
+    hasRelatedMetricEvidence(claim, metric, evidenceLines) || hasEntailedAtLeastEvidence(claim, metric, evidenceLines);
+
+  if (!SENTENCE_SCOPED_METRIC_PATHS.has(path)) return supports(text);
+
+  // Every sentence that states the figure has to stand up on its own; one
+  // supported use must not vouch for an unsupported one beside it.
+  const claims = sentencesIn(text).filter((sentence) => metricsIn(sentence).has(metric));
+  return claims.length > 0 ? claims.every(supports) : supports(text);
+}
+
+// Full check: metrics + claim terms. Used at generation time to revert AI-fabricated content.
 function issuesForText(path: string, text: string, evidenceText: string): EvidenceAuditIssue[] {
   const evidenceLines = evidenceLinesFor(evidenceText);
-  const evidenceTerms = claimTermsIn(evidenceText);
+  const evidenceStems = evidenceStemsIn(evidenceText);
   const issues: EvidenceAuditIssue[] = [];
   for (const metric of metricsIn(text)) {
-    if (!hasRelatedMetricEvidence(text, metric, evidenceLines)) {
+    if (!hasMetricEvidence(path, text, metric, evidenceText, evidenceLines)) {
       issues.push({
         path,
         claim: metric,
@@ -77,7 +249,7 @@ function issuesForText(path: string, text: string, evidenceText: string): Eviden
     }
   }
   for (const term of claimTermsIn(text)) {
-    if (!evidenceTerms.has(term)) {
+    if (!evidenceStems.has(stemTerm(term))) {
       issues.push({
         path,
         claim: term,
@@ -95,7 +267,7 @@ function metricIssuesForText(path: string, text: string, evidenceText: string): 
   const evidenceLines = evidenceLinesFor(evidenceText);
   const issues: EvidenceAuditIssue[] = [];
   for (const metric of metricsIn(text)) {
-    if (!hasRelatedMetricEvidence(text, metric, evidenceLines)) {
+    if (!hasMetricEvidence(path, text, metric, evidenceText, evidenceLines)) {
       issues.push({
         path,
         claim: metric,
@@ -149,41 +321,91 @@ export function auditDraftAgainstEvidence(draft: ResumeTemplateInput, evidenceTe
   return { status: issues.length > 0 ? "unsupported-claims" : "supported", issues };
 }
 
+const REVERT_LABELS: Record<string, string> = {
+  headline: "Headline",
+  summary: "Summary",
+  impactItems: "Key achievement",
+  skills: "Skill",
+  recognition: "Recognition entry",
+  experience: "Experience bullet",
+  extraSections: "Custom section item",
+};
+
+function revertLabelFor(path: string): string {
+  const root = path.split(/[[.]/)[0];
+  return REVERT_LABELS[root] ?? root;
+}
+
 export function revertUnsupportedMetrics(
   source: ResumeTemplateInput,
   tailored: ResumeTemplateInput,
   evidenceText: string
-): { draft: ResumeTemplateInput; audit: EvidenceAudit } {
-  const hasUnsupportedClaims = (path: string, text: string) => issuesForText(path, text, evidenceText).length > 0;
+): { draft: ResumeTemplateInput; audit: EvidenceAudit; reverted: EvidenceRevert[] } {
+  const reverts: EvidenceRevert[] = [];
+  // A revert is a silent loss of tailoring — the section reads as the approved
+  // source wording while the document still reports a supported audit. Recording
+  // the terms that caused it is what lets the editor say so.
+  const revertedText = <T>(path: string, tailoredText: string, sourceText: T): string | T => {
+    const issues = issuesForText(path, tailoredText, evidenceText);
+    if (issues.length === 0) return tailoredText;
+    reverts.push({
+      path,
+      label: revertLabelFor(path),
+      claims: [...new Set(issues.map((issue) => issue.claim))],
+    });
+    return sourceText;
+  };
+
   const reverted = {
     ...tailored,
-    headline: hasUnsupportedClaims("headline", tailored.headline) ? source.headline : tailored.headline,
-    summary: hasUnsupportedClaims("summary", tailored.summary) ? source.summary : tailored.summary,
+    headline: revertedText("headline", tailored.headline, source.headline),
+    summary: revertedText("summary", tailored.summary, source.summary),
     impactItems: tailored.impactItems.map((item, index) =>
-      hasUnsupportedClaims(`impactItems[${index}]`, item) ? source.impactItems[index] ?? item : item
+      revertedText(`impactItems[${index}]`, item, source.impactItems[index] ?? item)
     ),
     skills: tailored.skills.map((item, index) =>
-      hasUnsupportedClaims(`skills[${index}]`, item) ? source.skills[index] ?? item : item
+      revertedText(`skills[${index}]`, item, source.skills[index] ?? item)
     ),
     recognition: tailored.recognition.map((item, index) =>
-      hasUnsupportedClaims(`recognition[${index}]`, item) ? source.recognition[index] ?? item : item
+      revertedText(`recognition[${index}]`, item, source.recognition[index] ?? item)
     ),
     experience: tailored.experience.map((entry, entryIndex) => ({
       ...entry,
       bullets: entry.bullets.map((bullet, bulletIndex) =>
-        hasUnsupportedClaims(`experience[${entryIndex}].bullets[${bulletIndex}]`, bullet)
-          ? source.experience[entryIndex]?.bullets[bulletIndex] ?? bullet
-          : bullet
+        revertedText(
+          `experience[${entryIndex}].bullets[${bulletIndex}]`,
+          bullet,
+          source.experience[entryIndex]?.bullets[bulletIndex] ?? bullet
+        )
       ),
     })),
     extraSections: (tailored.extraSections ?? []).map((section, sectionIndex) => ({
       ...section,
       items: section.items.map((item, itemIndex) =>
-        hasUnsupportedClaims(`extraSections[${sectionIndex}].items[${itemIndex}]`, item)
-          ? source.extraSections?.[sectionIndex]?.items[itemIndex] ?? item
-          : item
+        revertedText(
+          `extraSections[${sectionIndex}].items[${itemIndex}]`,
+          item,
+          source.extraSections?.[sectionIndex]?.items[itemIndex] ?? item
+        )
       ),
     })),
   };
-  return { draft: reverted, audit: auditDraftAgainstEvidence(reverted, evidenceText) };
+
+  const audit = auditDraftAgainstEvidence(reverted, evidenceText);
+  return { draft: reverted, audit: { ...audit, reverted: reverts }, reverted: reverts };
+}
+
+// One sentence naming what lost its tailoring and why, for the draft editor and
+// the stored document. Empty when nothing was reverted.
+export function describeReverts(reverts: EvidenceRevert[]): string {
+  if (reverts.length === 0) return "";
+  const byLabel = new Map<string, number>();
+  for (const revert of reverts) {
+    byLabel.set(revert.label, (byLabel.get(revert.label) ?? 0) + 1);
+  }
+  const sections = [...byLabel.entries()]
+    .map(([label, count]) => (count > 1 ? `${count} ${label.toLowerCase()}s` : label.toLowerCase()))
+    .join(", ");
+  const claims = [...new Set(reverts.flatMap((revert) => revert.claims))].slice(0, 6);
+  return `Reverted to your approved wording: ${sections}. Unsupported in your evidence: ${claims.map((claim) => `"${claim}"`).join(", ")}.`;
 }

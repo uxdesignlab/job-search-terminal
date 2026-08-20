@@ -53,8 +53,12 @@ export class OpenAIProvider implements AIProvider {
     return this.config.model ?? this.defaultModel;
   }
 
+  /** Once a sentinel has been resolved, the concrete id is what ran — and what
+   *  provenance, error reports and the saved evaluation must name. */
+  private resolved = "";
+
   get effectiveModel() {
-    return this.model;
+    return this.resolved || this.model;
   }
 
   /** The stored model may be the "latest" sentinel; turn it into a concrete id.
@@ -62,7 +66,8 @@ export class OpenAIProvider implements AIProvider {
   private async resolveModel(override?: string): Promise<string> {
     const requested = override ?? this.model;
     if (!isLatestSentinel(requested)) return requested;
-    return resolveLatestOpenAIModel(this.client, this.config.apiKey ?? "");
+    this.resolved = await resolveLatestOpenAIModel(this.client, this.config.apiKey ?? "");
+    return this.resolved;
   }
 
   private toOpenAIMessages(messages: AIMessage[]): OpenAI.Chat.ChatCompletionMessageParam[] {
@@ -70,6 +75,10 @@ export class OpenAIProvider implements AIProvider {
       role: m.role,
       content: m.content
     }));
+  }
+
+  async prepare(): Promise<void> {
+    await this.resolveModel();
   }
 
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {

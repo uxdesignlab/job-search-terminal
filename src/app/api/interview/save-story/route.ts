@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       saveVoice: boolean;
       transcript: string;
       sourceJobId?: string | null;
-      sourceBlockF?: string;
+      storySource?: string;
       storyKind?: StoryKind;
       questionId?: string | null;
       promptText?: string;
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       themes: body.themes ?? [],
       tags: body.tags ?? [],
       sourceJobId: body.sourceJobId ?? null,
-      sourceBlockF: body.sourceBlockF ?? (body.storyKind === "evaluation_suggestion" ? "evaluation" : body.storyKind === "answered_question" ? "voice-practice" : ""),
+      storySource: body.storySource ?? (body.storyKind === "evaluation_suggestion" ? "evaluation" : body.storyKind === "answered_question" ? "voice-practice" : ""),
       storyKind: coerceStoryKind(body.storyKind),
       questionId: body.questionId ?? null,
       promptText: body.promptText ?? "",

@@ -4,6 +4,8 @@ import { Shell } from "@/components/ui/shell";
 import { getAllEvaluations, getApplications, getFunnelStages, getGapEvidenceBacklog, getGapEvidenceCounts, getJobs } from "@/lib/db/queries";
 import type { GapEvidenceStatus } from "@/lib/db/types";
 
+import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
+
 export const dynamic = "force-dynamic";
 
 function ScoreBar({ value, max = 100, tone = "accent" }: { value: number; max?: number; tone?: "accent" | "success" | "warning" }) {
@@ -314,13 +316,7 @@ export default function AnalyticsPage() {
                     <p className="truncate text-xs text-muted">{ev.roleArchetype}</p>
                     <div>
                       <Badge
-                        tone={
-                          ev.recommendation === "Priority apply" || ev.recommendation === "Strong apply"
-                            ? "success"
-                            : ev.recommendation === "Skip"
-                              ? "danger"
-                              : "neutral"
-                        }
+                        tone={toneForRecommendation(ev.recommendation)}
                       >
                         {ev.recommendation}
                       </Badge>
