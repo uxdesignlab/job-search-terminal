@@ -112,6 +112,28 @@ describe("evidence guard on the summary", () => {
     expect(supported.reverted).toEqual([]);
   });
 
+  it("will not carry a figure across on one shared verb", () => {
+    // A single four-character word in common is not context: "Managed migration
+    // of 50 applications" shares "managed" with "managed a team of 50 designers",
+    // and the words most likely to be the only match are the generic verbs every
+    // resume line opens with.
+    const withCount = `${evidence}\nManaged migration of 50 applications to the new platform.`;
+
+    const invented = revertUnsupportedMetrics(
+      source,
+      { ...source, summary: "Principal Product Designer who managed a team of 50 designers." },
+      withCount
+    );
+    expect(invented.draft.summary).toBe(source.summary);
+
+    const supported = revertUnsupportedMetrics(
+      source,
+      { ...source, summary: "Principal Product Designer who managed the migration of 50 applications." },
+      withCount
+    );
+    expect(supported.reverted).toEqual([]);
+  });
+
   it("judges each sentence of the summary on its own", () => {
     // One supported use must not vouch for an unsupported one beside it.
     const result = revertUnsupportedMetrics(

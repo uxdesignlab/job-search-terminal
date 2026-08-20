@@ -46,6 +46,15 @@ describe("jd hash", () => {
     expect(a).not.toBe(b);
   });
 
+  it("changes when the posted salary changes", () => {
+    // parsePostedCompensation reads salaryNotes straight into the suggested
+    // answer, and re-evaluation rewrites the field — so a newly extracted range
+    // with everything else unchanged would keep serving the obsolete answer.
+    const a = computeJdHash({ title: "Director", salaryNotes: "$180,000 - $200,000", rawDescription: "Lead", parsedDescription: "" });
+    const b = computeJdHash({ title: "Director", salaryNotes: "$210,000 - $240,000", rawDescription: "Lead", parsedDescription: "" });
+    expect(a).not.toBe(b);
+  });
+
   it("falls back to the parsed description when raw is empty", () => {
     const a = computeJdHash({ title: "D", rawDescription: "", parsedDescription: "text" });
     const b = computeJdHash({ title: "D", rawDescription: "", parsedDescription: "" });

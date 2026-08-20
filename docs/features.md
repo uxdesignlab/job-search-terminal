@@ -459,8 +459,10 @@ rather than claiming the model was stopped.
 loop and the provider chain, not only the deadline wrapped around them. Without that the
 cancelled run kept going underneath: the retry loop would wake and spend another attempt,
 and the chain would walk on to the paid provider behind the slow one — on behalf of a user
-who had already stopped waiting. An in-flight request still cannot be recalled; the next
-one can be, and now is.
+who had already stopped waiting. The chain checks both before a provider and again after
+resolving its model, since resolution is a network call the user can cancel during, and a
+cancelled run never fails over — moving on is the spending being prevented. An in-flight
+request still cannot be recalled; the next one can be, and now is.
 
 Cancelling a local run is usually a verdict on the model's speed, so the answer offered
 is the other models that machine already has: a picker of installed Ollama models,

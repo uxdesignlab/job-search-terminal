@@ -26,16 +26,22 @@ function normalizeForHash(value: string): string {
  * Location is part of it because compensation research asks the market about
  * this title *in this place* (`"<title> salary range <location> 2026"`). Leaving
  * it out let a job move from Remote to on-site in New York and keep serving the
- * research done for the old one, indefinitely.
+ * research done for the old one, indefinitely. The posted salary is part of it
+ * for the same reason, one step earlier: it is parsed straight into the answer.
  */
 export function computeJdHash(job: {
   title: string;
   location?: string;
+  salaryNotes?: string;
   rawDescription: string;
   parsedDescription: string;
 }): string {
   const description = job.rawDescription || job.parsedDescription || "";
-  return sha1(normalizeForHash(`${job.title}\n${job.location ?? ""}\n${description}`));
+  // salaryNotes is here because parsePostedCompensation reads it directly, and a
+  // re-evaluation rewrites it: a newly extracted range with the title, location
+  // and description unchanged would otherwise keep serving the old compensation
+  // answer for good.
+  return sha1(normalizeForHash(`${job.title}\n${job.location ?? ""}\n${job.salaryNotes ?? ""}\n${description}`));
 }
 
 /**

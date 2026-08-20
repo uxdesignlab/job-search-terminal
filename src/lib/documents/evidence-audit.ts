@@ -153,16 +153,27 @@ function evidenceLinesFor(text: string) {
 /**
  * Whether an evidence line is about the same thing as the claim.
  *
- * Topical overlap, so it uses every content word rather than only the ones that
+ * Topical overlap, using every content word rather than only the ones that
  * qualify as claims: the point is to tell "reduced latency 40%" apart from "grew
  * revenue 40%", and neither "latency" nor "revenue" is a claim term on its own.
+ *
+ * One word in common is not overlap. "Managed migration of 50 applications"
+ * shares "managed" with "managed a team of 50 designers", which is enough to
+ * carry the 50 across to an outcome the resume never claimed — and the words
+ * most likely to be the single match are the generic verbs every resume line
+ * starts with. Two independent words is the smallest bar that separates a shared
+ * subject from a shared verb, and listing which words are too generic to count is
+ * the approach this file already abandoned once.
  */
+const MIN_SHARED_CONTEXT_TERMS = 2;
+
 function sharesClaimContext(text: string, line: string): boolean {
   const normalizedText = normalizeText(text);
   const normalizedLine = normalizeText(line);
   if (normalizedLine.includes(normalizedText) || normalizedText.includes(normalizedLine)) return true;
   const lineStems = new Set(candidateTerms(line).map(stemTerm));
-  return candidateTerms(text).map(stemTerm).some((stem) => lineStems.has(stem));
+  const shared = new Set(candidateTerms(text).map(stemTerm).filter((stem) => lineStems.has(stem)));
+  return shared.size >= MIN_SHARED_CONTEXT_TERMS;
 }
 
 function hasRelatedMetricEvidence(text: string, metric: string, evidenceLines: string[]) {

@@ -39,3 +39,30 @@ describe("cancellation stops work that has not started", () => {
     expect(calls).toBe(2);
   });
 });
+
+describe("the provider chain stops when the run is cancelled", () => {
+  it("does not call a provider after cancellation lands during model resolution", async () => {
+    const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
+    const controller = new AbortController();
+    const generateJSON = vi.fn(async () => ({ ok: true }));
+
+    // Resolving a model is a network call of its own; cancelling during it used
+    // to fall through to the paid generation immediately after.
+    const slowToPrepare = {
+      name: "ollama", effectiveModel: "gemma", model: "gemma",
+      prepare: async () => { controller.abort(); },
+      generateJSON,
+      generateText: vi.fn(),
+      stream: vi.fn(),
+      testConnection: vi.fn(),
+    };
+    const paid = { ...slowToPrepare, name: "openai", prepare: vi.fn(), generateJSON: vi.fn() };
+
+    const chain = new FallbackProvider([slowToPrepare, paid] as never);
+    chain.abortOn(controller.signal);
+
+    await expect(chain.generateJSON([], "{}")).rejects.toBeInstanceOf(GenerationCancelledError);
+    expect(generateJSON).not.toHaveBeenCalled();
+    expect(paid.generateJSON).not.toHaveBeenCalled();
+  });
+});

@@ -1036,7 +1036,9 @@ marked fresh.
 
 **Both hashes cover every input a preparation reads, not only its text.** `jd_hash`
 includes `job.location`, because compensation research asks the market about this title
-*in this place* (`"<title> salary range <location> 2026"`). `evidence_hash` includes the
+*in this place* (`"<title> salary range <location> 2026"`), and `job.salary_notes`,
+because `parsePostedCompensation` reads it straight into the suggested answer and
+re-evaluation rewrites the field. `evidence_hash` includes the
 **whole built system prompt**, which carries the profile and role strategy the preparation
 was written under — goal, direction, career intent, compensation target, work preferences,
 target roles, industries, deal breakers, constraints and every role direction. Naming the

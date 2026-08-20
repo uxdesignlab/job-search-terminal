@@ -167,11 +167,18 @@ export class FallbackProvider implements AIProvider {
     for (const provider of this.providers) {
       this.ensureNotCancelled();
       try {
+        // Resolving a model is itself a network call, so the user can cancel
+        // during it. Without a second check the paid generation starts anyway,
+        // which is the exact call this guard exists to prevent.
         await this.announceReady(provider);
+        this.ensureNotCancelled();
         const result = await this.attempt(provider, () => provider.generateText(messages, config));
         this.active = provider;
         return result;
       } catch (error) {
+        // A cancelled run does not fail over: moving on is the spending this
+        // guard is here to stop.
+        if (error instanceof GenerationCancelledError) throw error;
         lastError = error;
         this.record(provider, error);
         if (!shouldFailover(error)) throw error;
@@ -186,11 +193,18 @@ export class FallbackProvider implements AIProvider {
     for (const provider of this.providers) {
       this.ensureNotCancelled();
       try {
+        // Resolving a model is itself a network call, so the user can cancel
+        // during it. Without a second check the paid generation starts anyway,
+        // which is the exact call this guard exists to prevent.
         await this.announceReady(provider);
+        this.ensureNotCancelled();
         const result = await this.attempt(provider, () => provider.generateJSON<T>(messages, hint, config));
         this.active = provider;
         return result;
       } catch (error) {
+        // A cancelled run does not fail over: moving on is the spending this
+        // guard is here to stop.
+        if (error instanceof GenerationCancelledError) throw error;
         lastError = error;
         this.record(provider, error);
         if (!shouldFailover(error)) throw error;
@@ -205,11 +219,18 @@ export class FallbackProvider implements AIProvider {
     for (const provider of this.providers) {
       this.ensureNotCancelled();
       try {
+        // Resolving a model is itself a network call, so the user can cancel
+        // during it. Without a second check the paid generation starts anyway,
+        // which is the exact call this guard exists to prevent.
         await this.announceReady(provider);
+        this.ensureNotCancelled();
         yield* provider.stream(messages, config);
         this.active = provider;
         return;
       } catch (error) {
+        // A cancelled run does not fail over: moving on is the spending this
+        // guard is here to stop.
+        if (error instanceof GenerationCancelledError) throw error;
         lastError = error;
         this.record(provider, error);
         if (!shouldFailover(error)) throw error;
