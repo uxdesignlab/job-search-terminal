@@ -344,9 +344,18 @@ and no keywords, and the insert is `insert or replace`. Writing a `fast-v2` resu
 `keyword_signals_json` and `legitimacy_label`. The first is a straight loss of the old
 analysis; the last three are worse, because they are the fallback tiers resume tailoring
 reads when a job has no Application Preparation keywords — blanking them would leave a
-re-evaluated legacy job with no keyword source at all. `saveJobEvaluation()` detects this
-transition and copies all four forward. The UI hides them once the row reports `fast-v2`,
-but nothing is destroyed.
+re-evaluated legacy job with no keyword source at all. `saveJobEvaluation()` copies all
+four forward. The UI hides them once the row reports `fast-v2`, but nothing is destroyed.
+
+The decision is made **per column and by value**, never by which version wrote the row: a
+stored value is kept only when the incoming one is empty, so real new detail always wins
+and nothing empty ever overwrites something populated. Emptiness is judged structurally,
+because the fast path writes `{"roleSummary":[],"matchWithResume":[],…}` for its sections,
+which is as empty as `{}`. An earlier version keyed the decision off
+`existing.evaluation_version !== "fast-v2"`, which protected a legacy row exactly once —
+the carry rewrote the row as `fast-v2`, so the *second* fast evaluation saw a `fast-v2`
+row, skipped the carry, and wrote the empty arrays it had been holding back. A routine
+re-evaluation silently left resume tailoring with no keywords at all.
 
 **Taxonomy links survive re-evaluation.** `linkJobKeywordConcepts()` deletes a job's
 existing `job_keyword_concepts` rows before re-inserting, so calling it with an empty

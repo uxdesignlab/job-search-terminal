@@ -1340,13 +1340,42 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
    * keyword_signals_json are also tiers 2 and 3 of the effective-keyword
    * fallback that resume tailoring reads. Blanking them would leave a
    * re-evaluated legacy job with no keyword source at all until Phase 2 ships.
-   * Carry the legacy values forward instead; the UI hides them once the row
+   * Carry the stored values forward instead; the UI hides them once the row
    * reports fast-v2, but nothing is destroyed.
+   *
+   * The decision is per column and looks only at the values, never at which
+   * version wrote the row. Keying it off `existing.evaluation_version !==
+   * "fast-v2"` protected a legacy row exactly once: the carry rewrote the row
+   * as fast-v2, so the *second* fast evaluation saw a fast-v2 row, skipped the
+   * carry, and wrote the empty arrays it had been holding back — a routine
+   * re-evaluation silently left resume tailoring with no keywords at all.
+   * Keeping a stored value only when the incoming one is empty survives any
+   * number of re-evaluations and can never mask real new detail.
    */
-  const carryLegacyDetail =
-    input.evaluationVersion === "fast-v2"
-    && existing !== undefined
-    && existing.evaluation_version !== "fast-v2";
+  // Emptiness has to be judged structurally, not by string equality: the fast
+  // path writes `{"roleSummary":[],"matchWithResume":[],...}` for its sections,
+  // which is every bit as empty as "{}" and would otherwise overwrite the
+  // legacy A–G prose it is meant to preserve.
+  const hasContent = (value: unknown): boolean => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim() !== "";
+    if (typeof value === "number" || typeof value === "boolean") return true;
+    if (Array.isArray(value)) return value.some(hasContent);
+    if (typeof value === "object") return Object.values(value).some(hasContent);
+    return false;
+  };
+  const isBlankDetail = (value: string | null | undefined) => {
+    const trimmed = (value ?? "").trim();
+    if (trimmed === "") return true;
+    try {
+      return !hasContent(JSON.parse(trimmed));
+    } catch {
+      // Not JSON — a plain column such as legitimacy_label. Non-empty is content.
+      return false;
+    }
+  };
+  const keepStoredDetail = (incoming: string, stored: string | null | undefined) =>
+    isBlankDetail(incoming) && !isBlankDetail(stored) ? (stored as string) : incoming;
 
   const save = database.transaction(() => {
     database
@@ -1430,18 +1459,13 @@ export function saveJobEvaluation(input: JobEvaluationResultInput) {
         redFlagsJson: JSON.stringify(normalized.redFlags),
         requirementMatchJson: JSON.stringify(normalized.requirementMatch),
         resumeEvidenceJson: JSON.stringify(normalized.resumeEvidence),
-        sectionsJson: carryLegacyDetail && existing
-          ? existing.sections_json
-          : JSON.stringify(normalized.sections),
-        legitimacyLabel: carryLegacyDetail && existing
-          ? existing.legitimacy_label
-          : normalized.legitimacyLabel,
-        keywordsJson: carryLegacyDetail && existing
-          ? existing.keywords_json
-          : JSON.stringify(normalized.keywords),
-        keywordSignalsJson: carryLegacyDetail && existing
-          ? existing.keyword_signals_json
-          : JSON.stringify(normalized.keywordSignals),
+        sectionsJson: keepStoredDetail(JSON.stringify(normalized.sections), existing?.sections_json),
+        legitimacyLabel: keepStoredDetail(normalized.legitimacyLabel, existing?.legitimacy_label),
+        keywordsJson: keepStoredDetail(JSON.stringify(normalized.keywords), existing?.keywords_json),
+        keywordSignalsJson: keepStoredDetail(
+          JSON.stringify(normalized.keywordSignals),
+          existing?.keyword_signals_json
+        ),
         userCorrectionJson: JSON.stringify(normalized.userCorrection),
         fitComponentsJson: JSON.stringify(normalized.fitComponents ?? {}),
         hardBlockersJson: JSON.stringify(normalized.hardBlockers),
