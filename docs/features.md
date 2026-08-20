@@ -483,13 +483,20 @@ preferred qualification, or an inferred culture mismatch are never blockers.
 
 **Both halves are checked against their sources, not just for being present.** The
 candidate constraint has to match one of your saved constraints or deal breakers, and the
-posting side has to hold up too: either the quoted evidence appears in the posting, or the
-matched constraint does. That second form is what the rule-based fallback produces — it
-finds the deal breaker in the posting and writes a sentence about it, so its evidence is a
-description rather than a quotation. Checking only that the model returned two non-empty
-strings let it invent both halves, and nothing downstream questions a blocker once it
-exists: a hallucinated pair ruled a high-fit role out on nothing. A job with no stored
-description blocks nothing, which is the safe direction.
+quoted evidence has to appear in the posting — in any field the model was shown, since an
+imported job often states "On-site" in its location and remote-type fields and never
+repeats it in the body. Checking only that the model returned two non-empty strings let it
+invent both halves, and nothing downstream questions a blocker once it exists: a
+hallucinated pair ruled a high-fit role out on nothing. A job with no stored posting text
+blocks nothing, which is the safe direction.
+
+**Only the AI path raises blockers.** The check confirms a quote is real; whether it
+*conflicts* with the constraint is the model's judgement, and a keyword matcher cannot
+make it. The rule-based fallback tried: it flagged a deal breaker whenever any word over
+three characters appeared anywhere in the posting, so "Remote only" was flagged by every
+posting containing "remote" — including the remote job you want — and the compatible role
+came back `Blocked`. That signal is back to what it always was, a few points off
+`userPreferences`, and §15 stands: an inference never blocks.
 
 **Unknown is not a mismatch.** Requirements the resume is silent on are counted as
 `unknown`, never as gaps.
@@ -537,7 +544,8 @@ includes `Blocked` in the vocabulary.
 - Skill inventory (up to 30 skills with strength level and evidence source).
 - Role strategy (role-fit scores and rationale from the profile).
 - Active resume excerpts — **every** active lane, sharing a 5,400-character budget
-  (1,800 each up to three lanes, less beyond that, never below 700) — so strengths and
+  (1,800 each up to three lanes, and divided evenly beyond that, so the combined excerpts
+  never exceed the budget however many lanes exist) — so strengths and
   proof points are grounded in actual resume text, not inferred from skill abstractions.
   Lanes used to be taken two at a time by array position, which broke the multi-lane model
   from both ends: every active lane name is offered for the resume recommendation, so the
@@ -875,10 +883,13 @@ per-contact action — **Find email** appears on a contact once you have decided
 It is never applied across a search result set, so five results cannot quietly become five
 enrichment charges.
 
-Automatic enrichment, when it is switched on, submits only people whose email is still
-missing. Before that it batched everyone the search returned who had a LinkedIn URL —
-including people saved by an earlier run who already had an email — so re-running the same
-search bought the same addresses again.
+Automatic enrichment, when it is switched on, submits only people the search actually
+created and whose email is still missing. Before that it batched everyone the search
+returned who had a LinkedIn URL, so re-running the same search bought the same addresses
+again. "Has no email" is not the same question as "has not been tried": someone whose
+earlier lookup came back empty would be paid for on every later search that found them, so
+the test is whether the contact is new. Retrying them stays available as the explicit
+per-contact **Find email**, where you are choosing to spend the credit.
 
 > **Why not Clay's MCP integration?** It would avoid the routine, but Clay charges the same
 > credits over MCP as over the API — there is no saving — and it requires OAuth with hourly

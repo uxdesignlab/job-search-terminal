@@ -116,10 +116,18 @@ function matchesEitherWay(a: string, b: string): boolean {
  * `Blocked` outright — a high-fit role ruled out on nothing — and nothing else in
  * the pipeline questions a blocker once it exists.
  *
- * The posting half accepts either the quoted evidence appearing in the posting or
- * the matched constraint appearing there. The second form is what the rule-based
- * fallback produces: it finds the deal breaker in the posting itself and writes a
- * sentence about it, so the sentence is a description rather than a quotation.
+ * The posting half is the quoted evidence appearing in the posting, and nothing
+ * else. An earlier version also accepted the matched constraint appearing there,
+ * to accommodate a caller that described its evidence instead of quoting it — and
+ * that made the presence of a phrase stand in for a conflict with it. A posting
+ * that says "Remote only" contains the deal breaker "Remote only" while
+ * satisfying it perfectly, and the job came back `Blocked`. A constraint and its
+ * violation are not the same string, so nothing here can infer one from the
+ * other: the caller must supply evidence that a human would read as the conflict.
+ *
+ * `postingText` must carry every field the model was shown — title, location and
+ * remote type as well as the description — or a conflict stated only in the
+ * location field is thrown away as unverifiable.
  *
  * With no posting text there is no posting-side evidence and every candidate is
  * dropped, which is the safe direction: a blocker rules a job out entirely.
@@ -141,10 +149,7 @@ export function validateHardBlockers(
       const constraint = saved.find((value) => matchesEitherWay(candidate.candidateConstraint, value));
       if (!constraint) return false;
       const quoted = normalizeKeywordText(candidate.postingEvidence).trim();
-      return (
-        (quoted.length > 0 && posting.includes(quoted))
-        || posting.includes(normalizeKeywordText(constraint).trim())
-      );
+      return quoted.length > 0 && posting.includes(quoted);
     })
     .map((candidate) => ({
       kind: HARD_BLOCKER_KINDS.has(candidate.kind) ? candidate.kind : "other",

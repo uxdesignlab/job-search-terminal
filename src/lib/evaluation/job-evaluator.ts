@@ -1,5 +1,5 @@
 import { getJobById, getResumes, getRoleDirections, getSkills, getUserProfile, saveJobEvaluation } from "../db/queries";
-import type { DirectionAlignment, EvaluationSections, HardBlockerCandidate, JobEvaluationResultInput, JobKeywordSignal, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
+import type { DirectionAlignment, EvaluationSections, HardBlocker, JobEvaluationResultInput, JobKeywordSignal, JobRecord, ResumeRecord, RoleDirectionRecord, SkillRecord, UserProfileRecord } from "../db/types";
 import { formatPostedDate } from "../dates";
 import { pickResumeBase } from "./resume-lane-picker";
 import { LOCAL_FALLBACK_LABEL } from "./evaluation-phases";
@@ -9,7 +9,6 @@ import {
   deriveConfidence,
   deriveRecommendation,
   deriveScoreLabel,
-  validateHardBlockers,
 } from "./fast-evaluation";
 
 type RoleSignal = {
@@ -120,21 +119,17 @@ export function buildEvaluation(
   });
   const score = calculateFitScore(fitComponents);
 
-  // A saved deal breaker the posting text matches is evidence on both sides,
-  // which is exactly what §15 requires — so the fallback can raise a real
-  // blocker rather than quietly folding it into the score as the old
-  // `- constraintRisks.length * 12` term did.
-  const hardBlockers = validateHardBlockers(
-    constraintRisks.map((dealBreaker): HardBlockerCandidate => ({
-      kind: "other",
-      postingEvidence: `The posting matches a saved deal breaker: ${dealBreaker}`,
-      candidateConstraint: dealBreaker,
-    })),
-    {
-      postingText: jobText,
-      savedConstraints: [...profile.constraints, ...profile.dealBreakers],
-    }
-  );
+  // The fallback raises no hard blockers, and `constraintRisks` stays what it has
+  // always been: a term in the posting that also appears in a saved deal breaker,
+  // worth a few points off `userPreferences`.
+  //
+  // It was briefly treated as evidence of a conflict. It is not. `containsAny`
+  // fires when any word over three characters matches, so the deal breaker
+  // "Remote only" is flagged by every posting containing "remote" — including a
+  // remote job, which is the one the user wants. Reading that as a conflict marked
+  // compatible roles `Blocked`, and §15 is emphatic that an inference never
+  // blocks. A keyword heuristic can shade a score; it cannot rule a job out.
+  const hardBlockers: HardBlocker[] = [];
   const directionAlignment = localDirectionAlignment(roleDirection, matchingTargets, roleMatch.archetype);
   const recommendation = deriveRecommendation({ fitScore: score, directionAlignment, hardBlockers });
   const confidence = deriveConfidence({

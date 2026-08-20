@@ -123,12 +123,27 @@ describe("hard blocker validation (§15)", () => {
     ], { ...blockerSource, postingText: "Fully remote role, work from anywhere." })).toHaveLength(0);
   });
 
-  it("accepts the rule-based fallback'sdescription-style evidence when the constraint is in the posting", () => {
-    // The local fallback finds the deal breaker in the posting and writes a
-    // sentence about it, so its evidence is a description rather than a quotation.
+  it("confirms a quote is real, and leaves whether it conflicts to the model", () => {
+    // The boundary worth stating: this checks that both halves exist in their
+    // sources, not that one contradicts the other. "Remote only" quoted from a
+    // posting that says "Remote only" is a real quote against a real constraint
+    // and passes here — judging conflict is the model's job. The rule-based
+    // fallback used to make that judgement with a keyword matcher, and it is the
+    // reason that path no longer raises blockers at all.
     expect(validateHardBlockers([
-      blocker({ postingEvidence: "The posting matches a saved deal breaker: No relocation" }),
-    ], { ...blockerSource, postingText: "We do not offer remote work; no relocation assistance is provided." })).toHaveLength(1);
+      blocker({ kind: "onsite_location", postingEvidence: "Remote only", candidateConstraint: "Remote only" }),
+    ], { postingText: "This role is Remote only.", savedConstraints: ["Remote only"] })).toHaveLength(1);
+  });
+
+  it("checks the quote against every posting field the model was shown", () => {
+    // An imported job often states "On-site" in its location and remote-type
+    // fields and never repeats it in the body.
+    expect(validateHardBlockers([
+      blocker({ kind: "onsite_location", postingEvidence: "On-site", candidateConstraint: "Remote only" }),
+    ], {
+      postingText: "Staff Designer\nAcme\nNew York, NY\nOn-site\nJoin our team building analytics tools.",
+      savedConstraints: ["Remote only"],
+    })).toHaveLength(1);
   });
 
   it("blocks nothing when there is no posting text to check against", () => {

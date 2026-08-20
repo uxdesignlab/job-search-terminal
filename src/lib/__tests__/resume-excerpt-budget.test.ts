@@ -17,19 +17,23 @@ describe("resume excerpts sent to the evaluator", () => {
     expect(excerpts.map((e) => e.name)).toEqual(["Principal", "UX-leadership", "Teaching"]);
   });
 
-  it("keeps one and two lanes at the full excerpt length", () => {
+  it("keeps up to three lanes at the full excerpt length", () => {
     expect(buildResumeExcerpts([lane("Principal")])[0].excerpt).toHaveLength(1800);
     expect(buildResumeExcerpts([lane("Principal"), lane("Teaching")])[1].excerpt).toHaveLength(1800);
+    expect(buildResumeExcerpts([lane("Principal"), lane("UX-leadership"), lane("Teaching")])[2].excerpt)
+      .toHaveLength(1800);
   });
 
-  it("shares a bounded budget once there are many lanes", () => {
-    const many = ["a", "b", "c", "d", "e", "f"].map((n) => lane(n));
-    const excerpts = buildResumeExcerpts(many);
-    expect(excerpts).toHaveLength(6);
-    for (const excerpt of excerpts) {
-      expect(excerpt.excerpt.length).toBeLessThanOrEqual(1800);
-      expect(excerpt.excerpt.length).toBeGreaterThanOrEqual(700);
-    }
+  it.each([[3], [6], [8], [12], [30]])("keeps the combined excerpts within budget at %i lanes", (count) => {
+    // A per-lane minimum that survives division is not a budget: a 700-character
+    // floor already overshot at eight lanes and then grew without limit, and lane
+    // creation has no ceiling.
+    const excerpts = buildResumeExcerpts(Array.from({ length: count }, (_, i) => lane(`lane${i}`)));
+
+    expect(excerpts).toHaveLength(count);
+    const total = excerpts.reduce((sum, e) => sum + e.excerpt.length, 0);
+    expect(total).toBeLessThanOrEqual(5400);
+    for (const excerpt of excerpts) expect(excerpt.excerpt.length).toBeGreaterThan(0);
   });
 
   it("skips inactive lanes and stubs too short to be evidence", () => {

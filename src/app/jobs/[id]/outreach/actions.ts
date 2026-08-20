@@ -163,6 +163,12 @@ export async function findPeopleAction(jobId: string) {
 
   let added = 0;
   const savedContacts: ContactRecord[] = [];
+  // Auto-enrichment pays per person, so it must know who is actually new. A
+  // search that returns someone saved by an earlier run upserts them, and
+  // "already has no email" is not the same question as "has not been tried":
+  // a previous charged lookup that came back empty would be bought again on
+  // every later search that returned them.
+  const newlyAdded: ContactRecord[] = [];
   for (const candidate of candidates) {
     const identity = {
       sourceProvider: "clay",
@@ -173,8 +179,11 @@ export async function findPeopleAction(jobId: string) {
     // A person the user forgot must not come back through a later search.
     if (isContactSuppressed(identity)) continue;
 
+    // saveContact reuses the id of a record this person already matches, so an
+    // unchanged id is the insert signal.
+    const newContactId = `contact-${crypto.randomUUID()}`;
     const contact = saveContact({
-      id: `contact-${crypto.randomUUID()}`,
+      id: newContactId,
       name: candidate.name,
       firstName: candidate.name.split(/\s+/)[0] ?? "",
       lastName: candidate.name.split(/\s+/).slice(1).join(" "),
@@ -204,21 +213,22 @@ export async function findPeopleAction(jobId: string) {
       relevanceReasons: ranked.reasons,
     });
     savedContacts.push(contact);
+    if (contact.id === newContactId) newlyAdded.push(contact);
     added += 1;
   }
 
   // Opt-in: fill in emails for everyone just found, in a single routine run
   // rather than one per person. Off by default because Clay charges per person
   // enriched — batching saves round trips, not credits.
-  if (added > 0 && isAutoEnrichEnabled() && hasEnrichmentRoutine()) {
+  if (newlyAdded.length > 0 && isAutoEnrichEnabled() && hasEnrichmentRoutine()) {
     try {
       // Clay's routine declares Social Profile URL as required and rejects the
       // *entire* batch with a 400 if any item omits it. One contact without a
       // LinkedIn URL would otherwise cost everyone in the search their email.
-      // savedContacts holds everyone the search returned, including people saved
-      // by an earlier run. Clay charges per person enriched, so re-running a
-      // search must not buy the same emails twice.
-      const enrichable = savedContacts.filter(
+      // Only people this search actually created. Retrying someone whose earlier
+      // lookup found nothing stays available as the explicit per-contact
+      // Find email, where the user is choosing to spend the credit.
+      const enrichable = newlyAdded.filter(
         (c) => c.linkedinUrl.trim().length > 0 && c.workEmail.trim().length === 0
       );
       const enriched = enrichable.length > 0

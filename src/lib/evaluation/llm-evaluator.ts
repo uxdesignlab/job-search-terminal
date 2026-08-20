@@ -163,7 +163,6 @@ async function runFastEvaluation(
 // ─── Resume excerpts ───────────────────────────────────────────────────────
 
 const MAX_EXCERPT_CHARS_PER_RESUME = 1800;
-const MIN_EXCERPT_CHARS_PER_RESUME = 700;
 const RESUME_EXCERPT_BUDGET_CHARS = 5400;
 
 /**
@@ -176,17 +175,21 @@ const RESUME_EXCERPT_BUDGET_CHARS = 5400;
  * itself well-evidenced. Evidence unique to the third lane simply did not exist
  * as far as the evaluation was concerned.
  *
- * A budget shared across the lanes keeps the prompt bounded instead. One or two
- * lanes are unaffected; beyond that each gets a smaller slice, with a floor that
- * keeps a slice worth reading.
+ * A budget shared across the lanes keeps the prompt bounded instead. One, two and
+ * three lanes are unaffected; beyond that each gets a smaller slice, and the
+ * combined excerpts never exceed the budget however many lanes exist.
  */
 export function buildResumeExcerpts(resumes: { name: string; extractedText: string; activeStatus: boolean }[]): ResumeExcerpt[] {
   const active = resumes.filter((r) => r.activeStatus && r.extractedText && r.extractedText.length > 100);
   if (active.length === 0) return [];
 
+  // Divided, never floored: a per-lane minimum that survives division stops being
+  // a budget. Lane creation has no ceiling, so eight lanes at a 700-character
+  // floor already exceeded the total and it grew from there — into provider cost
+  // for a cloud model and past the context window for a local one.
   const perResume = Math.min(
     MAX_EXCERPT_CHARS_PER_RESUME,
-    Math.max(MIN_EXCERPT_CHARS_PER_RESUME, Math.floor(RESUME_EXCERPT_BUDGET_CHARS / active.length))
+    Math.max(1, Math.floor(RESUME_EXCERPT_BUDGET_CHARS / active.length))
   );
 
   return active.map((r) => ({ name: r.name, excerpt: r.extractedText.slice(0, perResume) }));
@@ -375,7 +378,18 @@ function buildFastEvaluationResult(input: {
   // with nothing downstream to question it, so an invented pair would rule out a
   // high-fit role on nothing.
   const hardBlockers = validateHardBlockers(output.hardBlockerCandidates, {
-    postingText: job.rawDescription || job.parsedDescription || "",
+    // Every field buildJobContext puts in front of the model, not just the
+    // description. An imported job often states "On-site" in its location and
+    // remote-type fields and never repeats it in the body — the model reads that
+    // correctly, and checking the description alone threw the conflict away as
+    // unverifiable.
+    postingText: [
+      job.title,
+      job.company,
+      job.location,
+      job.remoteType,
+      job.rawDescription || job.parsedDescription || "",
+    ].filter(Boolean).join("\n"),
     savedConstraints: [...input.profile.constraints, ...input.profile.dealBreakers],
   });
   const recommendation = deriveRecommendation({
