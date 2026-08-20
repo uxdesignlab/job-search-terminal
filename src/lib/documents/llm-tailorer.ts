@@ -4,6 +4,7 @@ import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import type { EvaluationRecord, JobKeywordSignal, JobRecord, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
 import { getWritingStyle } from "../db/queries";
+import { keywordMatchTier } from "./keyword-coverage";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 import type { ResumeTemplateInput } from "./resume-template";
 
@@ -102,6 +103,17 @@ function buildMissingKeywordsBlock(missingKeywords: string[]): string {
   return `\n\nKeywords absent from current draft — prioritize weaving these in:\n${missingKeywords.map((k) => `- ${k}`).join("\n")}`;
 }
 
+// The model was only ever told what the draft was missing. Without the other
+// half it would paraphrase a phrase that already matched — "service design"
+// becoming "service maps" — and the rewrite came back with fewer matches than
+// the untouched resume.
+function buildProtectedKeywordsBlock(protectedKeywords: string[]): string {
+  if (protectedKeywords.length === 0) return "";
+  return `\n\n### Job language already present — keep the phrase, not the sentence:\n` +
+    `These exact phrases already appear in the text you are rewriting and already match the posting. Rewrite those lines as freely as any other — reorder, tighten, sharpen, change the framing — but make sure each phrase below still appears verbatim somewhere in the section that carried it. This is a constraint on wording, never a reason to leave a line unchanged.\n` +
+    protectedKeywords.map((k) => `- ${k}`).join("\n");
+}
+
 function buildKeywordStrategyBlock(
   allKeywords: JobKeywordSignal[],
   confirmedKeywords: string[],
@@ -141,10 +153,21 @@ function buildKeywordStrategyBlock(
   }
 
   if (confirmedMissing.length > 0) {
-    parts.push(
-      `### Supported phrases absent from the draft — consider only when relevant to the selected section:\n` +
-      confirmedMissing.map((signal) => `- ${signal.keyword}`).join("\n")
-    );
+    const critical = confirmedMissing.filter((signal) => signal.priority === "critical");
+    const rest = confirmedMissing.filter((signal) => signal.priority !== "critical");
+    if (critical.length > 0) {
+      parts.push(
+        `### Must-have job language the candidate's evidence supports but the draft does not yet state:\n` +
+        `Work each of these into the selected sections unless doing so would misstate the evidence. These are the phrases the posting screens on, and the draft currently misses them.\n` +
+        critical.map((signal) => `- ${signal.keyword} [${signal.category}]`).join("\n")
+      );
+    }
+    if (rest.length > 0) {
+      parts.push(
+        `### Supported phrases absent from the draft — consider only when relevant to the selected section:\n` +
+        rest.map((signal) => `- ${signal.keyword}`).join("\n")
+      );
+    }
   }
 
   return parts.length > 0 ? `## ATS Keywords\n${parts.join("\n\n")}` : "";
@@ -175,7 +198,8 @@ export async function tailorResumeWithAI(
   skills?: SkillRecord[],
   missingKeywords?: string[],
   confirmedKeywords?: string[],
-  keywordSignals: JobKeywordSignal[] = []
+  keywordSignals: JobKeywordSignal[] = [],
+  protectedKeywords: string[] = []
 ): Promise<TailoredResumeSections> {
   const provider = getActiveProvider();
   // Resolved by the caller through the shared resolver (§25). Re-deriving the
@@ -207,6 +231,15 @@ export async function tailorResumeWithAI(
     extraSections: (sourceDraft.extraSections ?? []).filter((section) => modeById.get(section.id ?? `custom-${section.title}`) === "update")
   };
 
+  // Scoped to the sections the model can actually see. A phrase that matches only
+  // in a section left on "keep" is not something this call can preserve, and
+  // listing it would make the instruction false.
+  const selectedText = JSON.stringify(selectedSections);
+  const protectedInSelection = protectedKeywords.filter(
+    (keyword) => keywordMatchTier(selectedText, keyword) === "exact"
+  );
+  const protectedKeywordsBlock = buildProtectedKeywordsBlock(protectedInSelection);
+
   const resumeExcerpt =
     sourceResumeText.length > MAX_RESUME_PROMPT_CHARS
       ? `${sourceResumeText.slice(0, MAX_RESUME_PROMPT_CHARS)}\n\n[Resume excerpt truncated; only use claims supported by the text above.]`
@@ -220,6 +253,9 @@ export async function tailorResumeWithAI(
 PRIMARY TASK:
 Rewrite ONLY the selected resume sections supplied by the user.
 
+WHAT REWRITING MEANS HERE:
+The selected sections were selected because they need to speak to this specific posting. Lead with what this employer is hiring for, foreground the evidence that matches it, trim detail that is irrelevant to this role, and state the job's own supported language where it is accurate. Handing back the input text unchanged is not a rewrite — if a line is already right for this posting, sharpen or resequence it rather than leaving the whole section untouched. None of this licenses invention: the rules below still bind, and a truthful unchanged line is always better than an invented new one.
+
 STRICT RULES — violating any rule is a failure:
 1. Rewrite ONLY sections that are present in the selected sections JSON.
 2. Do NOT add or remove key achievement items.
@@ -230,7 +266,8 @@ STRICT RULES — violating any rule is a failure:
 7. Do NOT invent, fabricate, exaggerate, or imply any achievement, metric, skill, company, title, industry, credential, degree, tool, certification, responsibility, date, or seniority that is not explicitly supported by the candidate source data.
 8. Do NOT move content from one job role, project, company, or time period to another.
 9. Do NOT describe the candidate as having held the target job title unless that title or equivalent seniority/domain is clearly supported by the resume.
-10. Do NOT use vague hype such as "visionary," "world-class," "rockstar," "guru," "unparalleled," "proven track record," or "results-driven" unless the phrase is directly supported and still necessary.
+10. Do NOT use vague hype such as "visionary," "world-class," "rockstar," "guru," "unparalleled," or "results-driven."
+10a. Do NOT open a sentence with a self-assessment of ability. Ban "Expert at," "Expert in," "Proven record," "Proven track record," "Deep expertise," "Mastery of," "Fluent in," "Skilled at," "Adept at," "Passionate about," and "Seasoned." A recruiter discounts self-rating and an ATS gains nothing from it. State what the candidate designed, shipped, or led instead — "Designs multi-role workflows for data-heavy platforms" beats "Expert at workflow design."
 11. Evidence-supported job language is a relevance guide, not a checklist. Use the highest-priority phrases only where they accurately describe the candidate's evidence and improve recruiter clarity.
 12. Never copy the target title into the candidate's held titles. In the summary, use the exact target title only when the source resume supports that professional identity; otherwise use an honest adjacent description such as "product design leader."
 13. Job requirements not confirmed in candidate evidence are gaps. Do not insert them, imply them, or hide them in the skills list.
@@ -238,6 +275,8 @@ STRICT RULES — violating any rule is a failure:
 
 STYLE RULES:
 - Keep summary to 2–4 sentences when summary is selected.
+- Open the summary with the professional identity and evidence, not with a claim about how good the candidate is.
+- Do not replace a named specific with a generic paraphrase. Rewriting "multi-persona IVF application" into "an application", or "healthcare, fintech, SaaS, and logistics" into "complex domains", costs recruiter interest and searchable terms for nothing. Cutting a specific that is irrelevant to this posting is fine; blurring one is not.
 - Keep bullets concise and recruiter-readable.
 - Use third person or implied third person; do not start with "I."
 - Keep it specific, plain, and recruiter-readable.
@@ -264,7 +303,7 @@ ${userTuningPrompt}${styleContextBlock}${skillsPreferenceBlock}`
 	Company: ${job.company}
 	Archetype: ${archetype}
 
-${keywordStrategyBlock}${keywordLines ? `\n\nATS keywords to consider (use only if supported):\n${keywordLines}${missingKeywordsBlock}` : ""}
+${keywordStrategyBlock}${protectedKeywordsBlock}${keywordLines ? `\n\nATS keywords to consider (use only if supported):\n${keywordLines}${missingKeywordsBlock}` : ""}
 
 Candidate strengths to consider (use only if supported):
 ${strengthLines}

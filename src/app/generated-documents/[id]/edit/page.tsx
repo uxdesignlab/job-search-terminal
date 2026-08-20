@@ -4,6 +4,8 @@ import { getGeneratedDocumentById, getEffectiveKeywordSignals, getJobGapResponse
 import { ResumeDraftEditor } from "@/components/resume-draft-editor";
 import type { ResumeTemplateInput } from "@/lib/documents/resume-template";
 import { keywordCoverageFor, isKeywordInText } from "@/lib/documents/keyword-coverage";
+import { describeReverts, type EvidenceAudit } from "@/lib/documents/evidence-audit";
+import { describeUnchanged } from "@/lib/documents/tailoring-effect";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,23 @@ export default async function EditResumePage({ params }: EditPageProps) {
     .toLowerCase();
   const supportedKeywords = keywords.filter((keyword) => isKeywordInText(evidenceText, keyword));
 
+  // A reverted section reads as approved source wording while the document still
+  // reports a supported audit, so without this the draft looks tailored when the
+  // summary — the section that carries the title and domain keywords for ATS —
+  // is the untouched lane default.
+  let revertNotice = "";
+  let unchangedNotice = "";
+  try {
+    const audit = JSON.parse(doc.evidenceAuditJson) as EvidenceAudit;
+    revertNotice = describeReverts(audit.reverted ?? []);
+    // A model that ran and rewrote little is as invisible as a reverted section:
+    // the draft stores a supported audit over source content and reads tailored.
+    unchangedNotice = describeUnchanged(audit.unchanged ?? []);
+  } catch {
+    revertNotice = "";
+    unchangedNotice = "";
+  }
+
   return (
     <Shell activeItem="Resumes">
       <ResumeDraftEditor
@@ -59,6 +78,8 @@ export default async function EditResumePage({ params }: EditPageProps) {
         supportedKeywords={supportedKeywords}
         tailoringStatus={doc.tailoringStatus}
         fallbackReason={doc.fallbackReason}
+        revertNotice={revertNotice}
+        unchangedNotice={unchangedNotice}
       />
     </Shell>
   );

@@ -107,6 +107,19 @@ export function keywordStrengthDetailsForText(text: string, keywords: KeywordInp
   };
 }
 
+export type KeywordMatchTier = "exact" | "partial" | "missing";
+
+// Which of the three alignment tiers a single keyword reaches in a piece of text.
+// `isKeywordInText` answers the broad question — it treats related wording as a
+// hit — so anything that must notice an *exact* phrase turning into a paraphrase
+// has to ask for the tier instead.
+export function keywordMatchTier(text: string, keyword: KeywordInput): KeywordMatchTier {
+  const details = keywordStrengthDetailsForText(text, [keyword]);
+  if (details.exact.length > 0) return "exact";
+  if (details.partial.length > 0) return "partial";
+  return "missing";
+}
+
 // Whether a keyword phrase (or any of its "or"-alternatives) is present verbatim.
 export function isKeywordInText(text: string, keyword: string): boolean {
   const normalizedText = normalizeForKeywordMatching(text);

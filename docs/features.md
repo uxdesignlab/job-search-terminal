@@ -293,7 +293,8 @@ status, posting maintenance, and bulk tools.
 
 ## Job Detail `/jobs/[id]`
 
-Tabbed view for a single job. Four tabs:
+Tabbed view for a single job. Five tabs — Overview, Evaluation, Resume, Apply and
+Outreach:
 
 ### Overview tab
 - Company, title, location, remote type, ATS source, freshness.
@@ -522,6 +523,13 @@ includes `Blocked` in the vocabulary.
 ### Resume tab
 - Generate tailored resume for this job: picks best base resume, produces
   HTML and PDF output with tailoring summary and keyword coverage %.
+- **Per-section Keep / Update / Hide modes.** Summary, key achievements, and
+  experience default to Update; every other section defaults to Keep. Only
+  sections set to Update are sent to the AI and written back. Modes are addressed
+  by section id, and each section type also resolves by its type name, so a lane
+  built from the blank starter (ids like `s-summary`) tailors the same as one
+  extracted from a PDF (ids like `summary`) — previously those lanes silently
+  fell through to Keep and were never tailored at all.
 - Resume draft editor: edit the tailored resume before export.
 - Keyword coverage progress bar.
 - Download PDF button.
@@ -533,6 +541,10 @@ includes `Blocked` in the vocabulary.
 - **Missing keywords** — keywords absent from the pre-AI source draft are identified
   before the AI call and passed as a separate priority list so the AI knows exactly
   which terms to weave in where the source resume provides supporting evidence.
+- **Protected keywords** — the job phrases the source draft already matches
+  exactly, listed as terms the rewrite must not paraphrase away. The mirror image
+  of the missing-keyword list, and enforced after the call by the keyword
+  preservation pass.
 - **Job-specific gaps and red flags** — the evaluation's `gaps` (up to 5) and
   `redFlags` (up to 3) are included so the AI tailors content to address the
   specific shortfalls identified for this position, not just generic keyword coverage.
@@ -1042,14 +1054,85 @@ approved-resume builder experience with identical section controls on every sect
   include the job keywords in the API call. The AI naturally incorporates missing
   keywords into suggestions without forcing them.
 - **Evidence guard** — AI-proposed headline, summary, impact, skill,
-  recognition, experience, and extra-section claims are checked against the
-  approved resume lane plus confirmed gap answers and supplements. Unsupported
+  recognition, experience, and extra-section claims are checked against **every
+  active resume lane** plus confirmed gap answers and supplements. Unsupported
   AI changes revert to source wording. If manual edits introduce unsupported
   quantified claims, PDF export opens a review dialog listing every claim, its
   location, and the affected line. The user can return to the editor to fix the
   claims or explicitly choose **Export anyway** to preserve the draft as written.
-  The saved document audit records both the flagged claims and the explicit
-  export override.
+  The saved document audit records the flagged claims, the explicit export
+  override, and every section that was reverted.
+
+  What counts as an unsupported claim:
+
+  - **Quantified claims.** In the summary and headline the figure must appear
+    somewhere in the evidence corpus — those sections condense the whole resume,
+    so a number there belongs to no single line. An open-ended `N+` figure is
+    also accepted when the evidence states an equal or larger `M+`, because
+    claiming less than the evidence supports is not a fabrication. Everywhere
+    else the figure must appear in a *related* evidence line, which is what stops
+    a metric being moved between roles.
+  - **Named entities.** Tools, standards, employers, and products — detected by
+    capitalization rather than by a list, so "React", "Svelte", "Kubernetes", and
+    "HIPAA" are caught without anyone enumerating every tool that exists. A word
+    counts when it carries an internal capital, is an acronym, or is capitalized
+    anywhere other than the opening of a sentence or bullet.
+  - **Seniority, credential, and recognition words** ("director", "staff",
+    "certified", "award", "professor"). Inventing one misstates the candidate's
+    level or qualifications rather than their phrasing.
+
+  Everything else is treated as rhetoric and never triggers a revert on its own.
+  The guard originally worked the other way — every word absent from the evidence
+  was a claim unless a list said otherwise — and that list leaked three times in
+  practice ("strong"/"brings"/"vision", then "consulting"/"expertise", then
+  "stakes"/"cycle"), each leak throwing away a good summary over a word that
+  asserts nothing. English holds more rhetoric than any list can. Guarding what a
+  claim *is* rather than what it is *not* took the false reverts on the stored
+  corpus from 88 of 93 summaries to 14, with every remaining catch a checkable
+  fact: an invented tech stack, a compliance standard the resume never mentions,
+  a seniority word the evidence does not support. Terms are matched by stem, so
+  "wireframes" is supported by "wireframe".
+
+  Unconfirmed *posting requirements* are deliberately not part of this. Absent
+  from the resume is not the same as fabricated — guarding them reverted
+  summaries over "user needs" and "business outcomes" — and the keyword alignment
+  panel already lists them under **Needs confirmed evidence before use** for the
+  user to judge.
+- **Keyword preservation** — tailoring may add job language but never trade away
+  language the resume already matched. Before the AI call, the phrases the source
+  draft already matches *exactly* are sent as protected terms the rewrite must
+  keep verbatim. After the call, every keyword is re-measured on the three-tier
+  scale (exact / related / missing). Only phrases that were **exact** in the source
+  are defended — a related-wording match is fuzzy overlap across the whole
+  document, so no single line owns it and reverting one would cost real tailoring
+  for no gain an ATS can see. A defended phrase that is no longer exact is
+  repaired by restoring the one source line that carried it, leaving the rest of
+  the rewrite intact. Restoring a line often repairs several phrases at once, so
+  the loss is recomputed after each restore; a phrase no single line can repair is
+  skipped rather than abandoning the repairs that are still possible. The tailoring plan on the preview page names the
+  lines that were kept and the phrases they saved. Without this a rewrite could
+  turn "service design" into "service maps" and come back with fewer matches than
+  the untouched resume while still reporting healthy coverage.
+- **No-op tailoring detection** — a provider outage is already reported, but a
+  model that runs and declines to rewrite was not: the draft stored a supported
+  audit over source content and read as tailored. Every selected section is now
+  compared against the source draft **on the AI's own output**, before the
+  evidence guard and the preservation pass run — both of those restore source
+  wording deliberately and would otherwise be counted as the model doing nothing.
+  A section where at least half the lines came back verbatim is reported; a run
+  where every selected section came back untouched is recorded as `source-only`,
+  the same status a provider failure produces, with the count as its reason. The
+  counts are stored in `evidence_audit_json.unchanged`.
+- **Untailored-section notice** — a revert leaves the section reading as approved
+  source wording while the document still reports a supported audit. When that
+  happens the draft editor says so above the sections: which sections lost their
+  tailoring, and the exact terms that were not supported, so the user can add the
+  evidence and regenerate or edit the section by hand. This matters most for the
+  summary, which carries the target title and domain language an ATS reads
+  first — a silently reverted summary drops keyword coverage with no visible
+  cause. The same block also carries the no-op notice above, so the two ways a
+  draft can read as tailored without being tailored — the guard threw the rewrite
+  away, or the model never wrote one — are stated side by side.
 - Live preview pane updates automatically with a 400 ms debounce; Refresh button
   forces an immediate update.
 - Keyword coverage percentage shown in the page header (color-coded green/yellow/red).

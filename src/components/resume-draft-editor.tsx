@@ -151,6 +151,8 @@ type Props = {
   supportedKeywords: string[];
   tailoringStatus: string;
   fallbackReason: string;
+  revertNotice?: string;
+  unchangedNotice?: string;
 };
 
 function extractStateText(state: EditorState): string {
@@ -240,7 +242,7 @@ const inputCls = "w-full rounded-control border border-border bg-surface px-3 py
 const textareaCls = `${inputCls} resize-y leading-5`;
 const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted";
 
-export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, keywordSignals, supportedKeywords, tailoringStatus, fallbackReason }: Props) {
+export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, keywordSignals, supportedKeywords, tailoringStatus, fallbackReason, revertNotice = "", unchangedNotice = "" }: Props) {
   const router = useRouter();
   const [state, setState] = useState<EditorState>(() => draftToState(initialDraft));
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => {
@@ -863,6 +865,29 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
             <p className="mb-4 rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-xs leading-5 text-muted">
               This draft uses approved source content only{fallbackReason ? ` because AI tailoring could not complete: ${fallbackReason}` : ""}.
             </p>
+          )}
+
+          {/* Two different ways a draft reads as tailored without being tailored:
+              the evidence guard threw the rewrite away, or the model returned the
+              source text. Both leave a supported audit over source content, so
+              both have to be stated rather than inferred. */}
+          {tailoringStatus !== "source-only" && (revertNotice || unchangedNotice) && (
+            <div className="mb-4 space-y-2 rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-xs leading-5 text-muted">
+              {unchangedNotice && (
+                <p>
+                  {unchangedNotice} Those sections read as your base resume, not as a draft for
+                  this posting. Regenerate to try again, use ✨ Improve on the section, or edit it
+                  here.
+                </p>
+              )}
+              {revertNotice && (
+                <p>
+                  Some sections were not tailored. {revertNotice} Add the missing evidence in the
+                  Evidence Bank or on the job&apos;s gaps panel, then regenerate — or edit the
+                  section here yourself.
+                </p>
+              )}
+            </div>
           )}
 
           {/* A draft can tailor successfully and still have no keywords to check

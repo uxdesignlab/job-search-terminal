@@ -10,6 +10,8 @@ import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
 import { keywordCoverageFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
 import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceAuditIssue } from "./evidence-audit";
+import { describeRestores, restoreLostKeywords, type KeywordRestore } from "./keyword-preservation";
+import { analyzeTailoringEffect, describeUnchanged } from "./tailoring-effect";
 
 export { keywordCoverageFor, missingKeywordsFor } from "./keyword-coverage";
 
@@ -89,7 +91,7 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
   // Build evidence before the AI call so we can classify keywords into confirmed vs candidate.
-  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements, otherActiveLanes(resumes, baseResume));
 
   if (hasAIKey) {
     try {
@@ -100,7 +102,13 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
       // Keywords whose words are already in the full evidence corpus → safe to use verbatim.
       const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
       const notExactInDraft = [...partialInDraft, ...missingFromDraft];
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals);
+      // The other half of the same measurement: phrases the source draft already
+      // matches exactly, which the rewrite must not paraphrase away.
+      const notExactSet = new Set(notExactInDraft.map((keyword) => keyword.toLowerCase()));
+      const protectedKws = keywordSignals
+        .map((signal) => signal.keyword)
+        .filter((keyword) => !notExactSet.has(keyword.toLowerCase()));
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals, protectedKws);
     } catch (error) {
       const aiReason = error instanceof Error ? error.message : String(error);
       fallbackReason = fallbackReason ? `${fallbackReason} ${aiReason}` : aiReason;
@@ -112,8 +120,25 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     .map((signal) => signal.keyword)
     .filter((keyword) => isKeywordInText(evidenceText, keyword));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
+  // Measured on the model's own output: the evidence guard and the preservation
+  // pass below both restore source wording deliberately, and counting their work
+  // as the model doing nothing would make this report meaningless.
+  const effect = aiTailoring
+    ? analyzeTailoringEffect(sourceDraft, applied, resolvedSectionModes)
+    : { measured: [], notable: [], noOp: false };
+  // A model that ran and rewrote nothing produced source content, and the draft
+  // says so in the same words a provider failure does.
+  if (effect.noOp) {
+    const noOpReason = describeUnchanged(effect.measured);
+    fallbackReason = fallbackReason ? `${fallbackReason} ${noOpReason}` : noOpReason;
+  }
+
   const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const content = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
+  // §ATS: a rewrite may add job language, never trade away language the source
+  // already matched. Runs after the evidence guard so it only ever puts back
+  // approved source wording.
+  const preserved = restoreLostKeywords(sourceDraft, reverted.draft, keywordSignals);
+  const content = injectMissingConfirmedKeywordsIntoSkills(preserved.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -127,7 +152,7 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     format: paperFormatFor(job)
   });
   const keywordCoverage = keywordCoverageFor(content, keywordSignals);
-  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals);
+  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals, preserved.restored);
   const document: GeneratedDocumentInput = {
     id,
     jobId: job.id,
@@ -144,8 +169,8 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     tailoringPlan,
     draftJson: JSON.stringify(content),
     baseResumeId: baseResume.id,
-    tailoringStatus: aiTailoring ? reverted.audit.status : "source-only",
-    evidenceAuditJson: JSON.stringify(reverted.audit),
+    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
+    evidenceAuditJson: JSON.stringify({ ...reverted.audit, restored: preserved.restored, unchanged: effect.notable }),
     fallbackReason
   };
 
@@ -208,7 +233,7 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
   const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
   const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
 
-  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements);
+  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements, otherActiveLanes(resumes, baseResume));
 
   if (hasAIKey) {
     try {
@@ -218,7 +243,13 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
       );
       const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
       const notExactInDraft = [...partialInDraft, ...missingFromDraft];
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals);
+      // The other half of the same measurement: phrases the source draft already
+      // matches exactly, which the rewrite must not paraphrase away.
+      const notExactSet = new Set(notExactInDraft.map((keyword) => keyword.toLowerCase()));
+      const protectedKws = keywordSignals
+        .map((signal) => signal.keyword)
+        .filter((keyword) => !notExactSet.has(keyword.toLowerCase()));
+      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals, protectedKws);
     } catch (error) {
       const aiReason = error instanceof Error ? error.message : String(error);
       fallbackReason = fallbackReason ? `${fallbackReason} ${aiReason}` : aiReason;
@@ -230,10 +261,26 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     .map((signal) => signal.keyword)
     .filter((keyword) => isKeywordInText(evidenceText, keyword));
   const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
+  // Measured on the model's own output: the evidence guard and the preservation
+  // pass below both restore source wording deliberately, and counting their work
+  // as the model doing nothing would make this report meaningless.
+  const effect = aiTailoring
+    ? analyzeTailoringEffect(sourceDraft, applied, resolvedSectionModes)
+    : { measured: [], notable: [], noOp: false };
+  // A model that ran and rewrote nothing produced source content, and the draft
+  // says so in the same words a provider failure does.
+  if (effect.noOp) {
+    const noOpReason = describeUnchanged(effect.measured);
+    fallbackReason = fallbackReason ? `${fallbackReason} ${noOpReason}` : noOpReason;
+  }
+
   const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  const draft = injectMissingConfirmedKeywordsIntoSkills(reverted.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
+  // §ATS: see generateTailoredResume — tailoring must not cost the resume a
+  // phrase it already matched.
+  const preserved = restoreLostKeywords(sourceDraft, reverted.draft, keywordSignals);
+  const draft = injectMissingConfirmedKeywordsIntoSkills(preserved.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
   const keywordCoverage = keywordCoverageFor(draft, keywordSignals);
-  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals);
+  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals, preserved.restored);
   const date = new Date().toISOString().slice(0, 10);
   const documentId = `document-${job.id}`;
 
@@ -253,12 +300,18 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     tailoringPlan,
     draftJson: JSON.stringify(draft),
     baseResumeId: baseResume.id,
-    tailoringStatus: aiTailoring ? reverted.audit.status : "source-only",
-    evidenceAuditJson: JSON.stringify(reverted.audit),
+    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
+    evidenceAuditJson: JSON.stringify({ ...reverted.audit, restored: preserved.restored, unchanged: effect.notable }),
     fallbackReason,
   });
 
-  return { documentId, draft, tailoringStatus: aiTailoring ? reverted.audit.status : "source-only", evidenceAudit: reverted.audit, fallbackReason };
+  return {
+    documentId,
+    draft,
+    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
+    evidenceAudit: { ...reverted.audit, restored: preserved.restored, unchanged: effect.notable },
+    fallbackReason,
+  };
 }
 
 export async function createPdfForDocument(
@@ -273,7 +326,8 @@ export async function createPdfForDocument(
   if (!job) throw new Error(`Job not found: ${doc.jobId}`);
 
   const profile = getUserProfile();
-  const baseResume = resolveDocumentResumeLane(doc, getResumes());
+  const resumes = getResumes();
+  const baseResume = resolveDocumentResumeLane(doc, resumes);
   if (!baseResume) throw new Error(`Base resume lane not found: ${doc.baseResume}`);
   const sourceResumeText = await loadSourceResumeText(baseResume);
   const approvedVersion = getApprovedResumeVersion(baseResume);
@@ -282,7 +336,8 @@ export async function createPdfForDocument(
     sourceResumeText,
     sourceDraft,
     getJobGapResponses(doc.jobId).filter((response) => response.qualityStatus === "addressed"),
-    getProfileSupplements().filter((supplement) => supplement.qualityStatus === "addressed")
+    getProfileSupplements().filter((supplement) => supplement.qualityStatus === "addressed"),
+    otherActiveLanes(resumes, baseResume)
   );
   const audit = auditDraftAgainstEvidence(draft, evidenceText);
   const hasExplicitExportOverride = options.allowUnsupportedClaims === true;
@@ -346,14 +401,24 @@ function buildEvidenceText(
   sourceResumeText: string,
   sourceDraft: ResumeTemplateInput,
   gapResponses: Array<{ rawResponse: string; polishedResponse: string }>,
-  supplements: Array<{ content: string }>
+  supplements: Array<{ content: string }>,
+  otherLanes: ResumeRecord[] = []
 ) {
   return [
     sourceResumeText,
     evidenceTextForDraft(sourceDraft),
+    // Every active lane counts as evidence, not just the one being tailored. A
+    // fact recorded on another approved resume — a domain, a tool, a span of
+    // years — is still the candidate's own attested history, and scoping the
+    // corpus to a single lane made the guard discard true content as invented.
+    ...otherLanes.map((lane) => lane.extractedText),
     ...gapResponses.flatMap((response) => [response.rawResponse, response.polishedResponse]),
     ...supplements.map((supplement) => supplement.content),
   ].join("\n");
+}
+
+function otherActiveLanes(resumes: ResumeRecord[], baseResume: ResumeRecord): ResumeRecord[] {
+  return resumes.filter((resume) => resume.id !== baseResume.id && resume.activeStatus && resume.extractedText.trim());
 }
 
 function selectBaseResume(evaluation: EvaluationRecord, resumes: ResumeRecord[]) {
@@ -454,16 +519,32 @@ function buildTailoredContent(
   } satisfies ResumeTemplateInput;
 }
 
-function resolveSectionModes(sections: ResumeBuilderSection[], submitted: ResumeSectionModeInput[]): ResumeSectionModeInput[] {
+export function resolveSectionModes(sections: ResumeBuilderSection[], submitted: ResumeSectionModeInput[]): ResumeSectionModeInput[] {
   const submittedById = new Map(submitted.map((item) => [item.sectionId, item.mode]));
-  return sections.map((section) => {
-    const submittedMode = submittedById.get(section.id);
-    if (submittedMode) return { sectionId: section.id, mode: submittedMode };
-    if (section.type === "summary" || section.type === "impact" || section.type === "experience") {
-      return { sectionId: section.id, mode: "update" };
+  const resolved: ResumeSectionModeInput[] = [];
+  // Types already addressable by their own id need no alias, and adding one
+  // would let a later section of the same type override the real one — the
+  // generator resolves a mode by first match, the tailorer by last.
+  const aliased = new Set(sections.filter((section) => section.id === section.type).map((section) => section.type));
+
+  for (const section of sections) {
+    const mode = submittedById.get(section.id)
+      ?? (section.type === "summary" || section.type === "impact" || section.type === "experience" ? "update" : "keep");
+    resolved.push({ sectionId: section.id, mode });
+
+    // Every downstream lookup — here and in the tailorer — asks for a mode by
+    // section *type* ("summary", "experience"), while the UI submits and stores
+    // section *ids*. A lane built from the blank starter uses ids like
+    // "s-summary", so those lookups silently fell through to "keep" and the
+    // section was never sent to the AI or applied back. Publishing a type alias
+    // for the first section of each type keeps both spellings resolvable.
+    if (section.id !== section.type && !aliased.has(section.type)) {
+      resolved.push({ sectionId: section.type, mode });
+      aliased.add(section.type);
     }
-    return { sectionId: section.id, mode: "keep" };
-  });
+  }
+
+  return resolved;
 }
 
 function modeForSection(sectionId: string, sectionModes: ResumeSectionModeInput[]): ResumeSectionMode {
@@ -1095,15 +1176,19 @@ function buildTailoringPlan(
   evaluation: EvaluationRecord,
   resume: ResumeRecord,
   keywordCoverage: number,
-  keywordSignals: JobKeywordSignal[]
+  keywordSignals: JobKeywordSignal[],
+  restored: KeywordRestore[] = []
 ) {
-  return [
+  const plan = [
     `Base resume selected: ${resume.name}.`,
     `Role archetype: ${evaluation.roleArchetype}.`,
     `Top keywords inserted only where supported: ${keywordSignals.slice(0, 8).map((signal) => signal.keyword).join(", ") || "none captured"}.`,
     `Proof points reordered by overlap with the job/evaluation keywords.`,
     `Keyword coverage: ${keywordCoverage}%.`
   ];
+  const restoreNotice = describeRestores(restored);
+  if (restoreNotice) plan.push(restoreNotice);
+  return plan;
 }
 
 function paperFormatFor(job: JobRecord): "letter" | "a4" {
