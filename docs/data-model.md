@@ -411,7 +411,7 @@ Application tracking record linked to a job.
 | `status` | Application status (matches job status values) |
 | `applied_date` | ISO date when user applied |
 | `follow_up_date` | ISO date for next follow-up |
-| `notes` | Free-text notes |
+| `notes` | Free-text notes, written by the user. Preserved on upsert when the incoming record has none, under the same rule as `linkedin_url` and `work_email`: a provider refresh carries no notes, and blanking them loses writing nothing in the app can recover |
 | `contact` | Recruiter or contact info |
 | `response_status` | `no_response` / `responded` / etc. |
 | `created_at` | ISO timestamp |

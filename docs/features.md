@@ -481,6 +481,16 @@ requires explicit evidence on *both* sides: something the posting actually state
 constraint you actually saved. Missing salary, an unknown reporting line, an absent
 preferred qualification, or an inferred culture mismatch are never blockers.
 
+**Both halves are checked against their sources, not just for being present.** The
+candidate constraint has to match one of your saved constraints or deal breakers, and the
+posting side has to hold up too: either the quoted evidence appears in the posting, or the
+matched constraint does. That second form is what the rule-based fallback produces — it
+finds the deal breaker in the posting and writes a sentence about it, so its evidence is a
+description rather than a quotation. Checking only that the model returned two non-empty
+strings let it invent both halves, and nothing downstream questions a blocker once it
+exists: a hallucinated pair ruled a high-fit role out on nothing. A job with no stored
+description blocks nothing, which is the safe direction.
+
 **Unknown is not a mismatch.** Requirements the resume is silent on are counted as
 `unknown`, never as gaps.
 
@@ -526,8 +536,14 @@ includes `Blocked` in the vocabulary.
   target roles, deal breakers, constraints.
 - Skill inventory (up to 30 skills with strength level and evidence source).
 - Role strategy (role-fit scores and rationale from the profile).
-- Active resume excerpts (up to 2 resumes × 1,800 chars each) — so strengths and proof
-  points are grounded in actual resume text, not inferred from skill abstractions.
+- Active resume excerpts — **every** active lane, sharing a 5,400-character budget
+  (1,800 each up to three lanes, less beyond that, never below 700) — so strengths and
+  proof points are grounded in actual resume text, not inferred from skill abstractions.
+  Lanes used to be taken two at a time by array position, which broke the multi-lane model
+  from both ends: every active lane name is offered for the resume recommendation, so the
+  model could pick a lane whose text it never saw, and confidence is derived from the
+  character count of every active lane, so a run that read two of three still reported
+  itself well-evidenced.
 
 ### Resume tab
 - Generate tailored resume for this job: picks best base resume, produces
@@ -858,6 +874,11 @@ affects evaluation, resumes or applications.
 per-contact action — **Find email** appears on a contact once you have decided they matter.
 It is never applied across a search result set, so five results cannot quietly become five
 enrichment charges.
+
+Automatic enrichment, when it is switched on, submits only people whose email is still
+missing. Before that it batched everyone the search returned who had a LinkedIn URL —
+including people saved by an earlier run who already had an email — so re-running the same
+search bought the same addresses again.
 
 > **Why not Clay's MCP integration?** It would avoid the routine, but Clay charges the same
 > credits over MCP as over the API — there is no saving — and it requires OAuth with hourly

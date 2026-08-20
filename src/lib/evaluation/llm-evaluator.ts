@@ -163,16 +163,33 @@ async function runFastEvaluation(
 // ─── Resume excerpts ───────────────────────────────────────────────────────
 
 const MAX_EXCERPT_CHARS_PER_RESUME = 1800;
-const MAX_RESUME_EXCERPTS = 2;
+const MIN_EXCERPT_CHARS_PER_RESUME = 700;
+const RESUME_EXCERPT_BUDGET_CHARS = 5400;
 
-function buildResumeExcerpts(resumes: { name: string; extractedText: string; activeStatus: boolean }[]): ResumeExcerpt[] {
-  return resumes
-    .filter((r) => r.activeStatus && r.extractedText && r.extractedText.length > 100)
-    .slice(0, MAX_RESUME_EXCERPTS)
-    .map((r) => ({
-      name: r.name,
-      excerpt: r.extractedText.slice(0, MAX_EXCERPT_CHARS_PER_RESUME),
-    }));
+/**
+ * Every active lane, trimmed to fit — never the first two by array position.
+ *
+ * Dropping lanes by position broke the multi-lane model from both ends: the
+ * model is offered *all* active lane names to recommend from, so it could pick a
+ * lane whose text it never saw, and confidence is derived from the character
+ * count of *all* active lanes, so a run that read two of three still reported
+ * itself well-evidenced. Evidence unique to the third lane simply did not exist
+ * as far as the evaluation was concerned.
+ *
+ * A budget shared across the lanes keeps the prompt bounded instead. One or two
+ * lanes are unaffected; beyond that each gets a smaller slice, with a floor that
+ * keeps a slice worth reading.
+ */
+export function buildResumeExcerpts(resumes: { name: string; extractedText: string; activeStatus: boolean }[]): ResumeExcerpt[] {
+  const active = resumes.filter((r) => r.activeStatus && r.extractedText && r.extractedText.length > 100);
+  if (active.length === 0) return [];
+
+  const perResume = Math.min(
+    MAX_EXCERPT_CHARS_PER_RESUME,
+    Math.max(MIN_EXCERPT_CHARS_PER_RESUME, Math.floor(RESUME_EXCERPT_BUDGET_CHARS / active.length))
+  );
+
+  return active.map((r) => ({ name: r.name, excerpt: r.extractedText.slice(0, perResume) }));
 }
 
 /** Fast-v2 generates no A–G prose. Written as a complete shape because readers expect the keys. */
@@ -354,7 +371,13 @@ function buildFastEvaluationResult(input: {
   const { job, output } = input;
 
   const fitScore = calculateFitScore(output.fitComponents);
-  const hardBlockers = validateHardBlockers(output.hardBlockerCandidates);
+  // Both halves are checked against their sources: a blocker becomes `Blocked`
+  // with nothing downstream to question it, so an invented pair would rule out a
+  // high-fit role on nothing.
+  const hardBlockers = validateHardBlockers(output.hardBlockerCandidates, {
+    postingText: job.rawDescription || job.parsedDescription || "",
+    savedConstraints: [...input.profile.constraints, ...input.profile.dealBreakers],
+  });
   const recommendation = deriveRecommendation({
     fitScore,
     directionAlignment: output.directionAlignment,

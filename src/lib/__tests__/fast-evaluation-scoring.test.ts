@@ -31,6 +31,11 @@ function componentsFor(total: number): FitComponents {
   return { coreRequirements: core, roleAndSeniority: role, relevantEvidence: evidence, userPreferences: prefs };
 }
 
+const blockerSource = {
+  postingText: "This role requires relocation to Seattle and on-site work five days a week.",
+  savedConstraints: ["No relocation", "Remote only"],
+};
+
 function blocker(overrides: Partial<HardBlockerCandidate> = {}): HardBlockerCandidate {
   return {
     kind: "relocation",
@@ -92,33 +97,60 @@ describe("compatibility score label (§13)", () => {
 
 describe("hard blocker validation (§15)", () => {
   it("keeps a candidate with explicit evidence on both sides", () => {
-    const validated = validateHardBlockers([blocker()]);
+    const validated = validateHardBlockers([blocker()], blockerSource);
     expect(validated).toHaveLength(1);
     expect(validated[0].message).toContain("Requires relocation to Seattle");
     expect(validated[0].message).toContain("No relocation");
   });
 
   it("drops a candidate missing either half — an inference never blocks", () => {
-    expect(validateHardBlockers([blocker({ postingEvidence: "" })])).toHaveLength(0);
-    expect(validateHardBlockers([blocker({ candidateConstraint: "   " })])).toHaveLength(0);
+    expect(validateHardBlockers([blocker({ postingEvidence: "" })], blockerSource)).toHaveLength(0);
+    expect(validateHardBlockers([blocker({ candidateConstraint: "   " })], blockerSource)).toHaveLength(0);
+  });
+
+  it("drops a blocker the model invented on both sides", () => {
+    // Nothing downstream questions a blocker once it exists: deriveRecommendation
+    // turns it straight into Blocked, so a hallucinated pair ruled a high-fit role
+    // out on nothing at all.
+    expect(validateHardBlockers([
+      blocker({ postingEvidence: "Requires a security clearance", candidateConstraint: "No clearance" }),
+    ], blockerSource)).toHaveLength(0);
+  });
+
+  it("drops a real constraint quoted against a posting that never says it", () => {
+    expect(validateHardBlockers([
+      blocker({ postingEvidence: "Requires relocation to Berlin" }),
+    ], { ...blockerSource, postingText: "Fully remote role, work from anywhere." })).toHaveLength(0);
+  });
+
+  it("accepts the rule-based fallback'sdescription-style evidence when the constraint is in the posting", () => {
+    // The local fallback finds the deal breaker in the posting and writes a
+    // sentence about it, so its evidence is a description rather than a quotation.
+    expect(validateHardBlockers([
+      blocker({ postingEvidence: "The posting matches a saved deal breaker: No relocation" }),
+    ], { ...blockerSource, postingText: "We do not offer remote work; no relocation assistance is provided." })).toHaveLength(1);
+  });
+
+  it("blocks nothing when there is no posting text to check against", () => {
+    expect(validateHardBlockers([blocker()], { ...blockerSource, postingText: "" })).toHaveLength(0);
   });
 
   it("falls back to 'other' for an unrecognized kind", () => {
-    const validated = validateHardBlockers([blocker({ kind: "vibes" as HardBlockerCandidate["kind"] })]);
+    const validated = validateHardBlockers([blocker({ kind: "vibes" as HardBlockerCandidate["kind"] })], blockerSource);
     expect(validated[0].kind).toBe("other");
   });
 });
 
 describe("recommendation rules (§14.2)", () => {
   it("returns Blocked ahead of every fit threshold", () => {
-    const blockers = validateHardBlockers([blocker()]);
+    const blockers = validateHardBlockers([blocker()], blockerSource);
     expect(recommendationFor(92, "strong", blockers)).toBe("Blocked");
     expect(recommendationFor(10, "none", blockers)).toBe("Blocked");
   });
 
   it("separates Blocked from a low-fit Skip", () => {
     expect(recommendationFor(20, "none")).toBe("Skip");
-    expect(recommendationFor(20, "none", validateHardBlockers([blocker()]))).toBe("Blocked");
+    expect(recommendationFor(20, "none", validateHardBlockers([blocker()], blockerSource))).toBe("Blocked");
   });
 
   it("requires strong direction alignment for Priority apply", () => {
@@ -269,6 +301,9 @@ describe("model output normalization (§18.3)", () => {
     expect(result.coreValid).toBe(true);
     if (!result.coreValid) return;
     expect(result.output.hardBlockerCandidates).toHaveLength(2);
-    expect(validateHardBlockers(result.output.hardBlockerCandidates)).toHaveLength(1);
+    expect(validateHardBlockers(result.output.hardBlockerCandidates, {
+      postingText: "Relocation required for this role.",
+      savedConstraints: ["No relocation"],
+    })).toHaveLength(1);
   });
 });

@@ -1,3 +1,4 @@
+import { normalizeKeywordText } from "../text/normalize-keyword";
 import type {
   DirectionAlignment,
   EvaluationConfidence,
@@ -90,19 +91,61 @@ function blockerMessage(candidate: HardBlockerCandidate): string {
   return `${candidate.postingEvidence.trim()} — conflicts with: ${candidate.candidateConstraint.trim()}`;
 }
 
+export type HardBlockerSource = {
+  /** The posting the blocker claims to quote. */
+  postingText: string;
+  /** The constraints and deal breakers the user actually saved. */
+  savedConstraints: string[];
+};
+
+function matchesEitherWay(a: string, b: string): boolean {
+  const left = normalizeKeywordText(a).trim();
+  const right = normalizeKeywordText(b).trim();
+  if (!left || !right) return false;
+  return left.includes(right) || right.includes(left);
+}
+
 /**
  * A blocker needs explicit evidence on both sides: something the posting states
  * and something the user saved. A candidate missing either half is an inference,
  * and §15 is emphatic that inferences never block — they are dropped silently
  * rather than downgraded into a red flag, which would smuggle the guess back in.
+ *
+ * Both halves are checked against the sources, not merely required to be
+ * non-empty. A model that invents a constraint and a quote to go with it produced
+ * `Blocked` outright — a high-fit role ruled out on nothing — and nothing else in
+ * the pipeline questions a blocker once it exists.
+ *
+ * The posting half accepts either the quoted evidence appearing in the posting or
+ * the matched constraint appearing there. The second form is what the rule-based
+ * fallback produces: it finds the deal breaker in the posting itself and writes a
+ * sentence about it, so the sentence is a description rather than a quotation.
+ *
+ * With no posting text there is no posting-side evidence and every candidate is
+ * dropped, which is the safe direction: a blocker rules a job out entirely.
  */
-export function validateHardBlockers(candidates: HardBlockerCandidate[]): HardBlocker[] {
+export function validateHardBlockers(
+  candidates: HardBlockerCandidate[],
+  source: HardBlockerSource
+): HardBlocker[] {
+  const saved = source.savedConstraints.map((value) => value.trim()).filter(Boolean);
+  const posting = normalizeKeywordText(source.postingText ?? "");
+
   return candidates
     .filter((candidate) =>
       candidate
       && typeof candidate.postingEvidence === "string" && candidate.postingEvidence.trim().length > 0
       && typeof candidate.candidateConstraint === "string" && candidate.candidateConstraint.trim().length > 0
     )
+    .filter((candidate) => {
+      const constraint = saved.find((value) => matchesEitherWay(candidate.candidateConstraint, value));
+      if (!constraint) return false;
+      const quoted = normalizeKeywordText(candidate.postingEvidence).trim();
+      return (
+        (quoted.length > 0 && posting.includes(quoted))
+        || posting.includes(normalizeKeywordText(constraint).trim())
+      );
+    })
     .map((candidate) => ({
       kind: HARD_BLOCKER_KINDS.has(candidate.kind) ? candidate.kind : "other",
       postingEvidence: candidate.postingEvidence.trim(),

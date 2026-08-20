@@ -1980,7 +1980,10 @@ export function saveContact(input: ContactInput): ContactRecord {
         work_email = case when excluded.work_email <> '' then excluded.work_email else contacts.work_email end,
         profile_confidence = excluded.profile_confidence,
         email_confidence = excluded.email_confidence,
-        notes = excluded.notes,
+        -- Notes are the user's own writing and a provider refresh carries none,
+        -- so the rule above applies here with more force: nothing else in the app
+        -- can recover them.
+        notes = case when excluded.notes <> '' then excluded.notes else contacts.notes end,
         updated_at = current_timestamp`
     )
     .run({ ...normalized, id });

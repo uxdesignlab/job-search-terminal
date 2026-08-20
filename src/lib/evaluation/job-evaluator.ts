@@ -129,7 +129,11 @@ export function buildEvaluation(
       kind: "other",
       postingEvidence: `The posting matches a saved deal breaker: ${dealBreaker}`,
       candidateConstraint: dealBreaker,
-    }))
+    })),
+    {
+      postingText: jobText,
+      savedConstraints: [...profile.constraints, ...profile.dealBreakers],
+    }
   );
   const directionAlignment = localDirectionAlignment(roleDirection, matchingTargets, roleMatch.archetype);
   const recommendation = deriveRecommendation({ fitScore: score, directionAlignment, hardBlockers });

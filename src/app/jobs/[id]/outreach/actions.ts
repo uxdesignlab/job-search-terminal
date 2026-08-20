@@ -215,7 +215,12 @@ export async function findPeopleAction(jobId: string) {
       // Clay's routine declares Social Profile URL as required and rejects the
       // *entire* batch with a 400 if any item omits it. One contact without a
       // LinkedIn URL would otherwise cost everyone in the search their email.
-      const enrichable = savedContacts.filter((c) => c.linkedinUrl.trim().length > 0);
+      // savedContacts holds everyone the search returned, including people saved
+      // by an earlier run. Clay charges per person enriched, so re-running a
+      // search must not buy the same emails twice.
+      const enrichable = savedContacts.filter(
+        (c) => c.linkedinUrl.trim().length > 0 && c.workEmail.trim().length === 0
+      );
       const enriched = enrichable.length > 0
         ? await provider.enrichPeople(
             enrichable.map((c) => ({ name: c.name, linkedinUrl: c.linkedinUrl, companyDomain: c.companyDomain }))
