@@ -140,9 +140,11 @@ export function ResumeTab({
           {!evaluation && (
             <Card>
               <CardHeader>
-                <CardTitle>Evaluate first for best results</CardTitle>
+                <CardTitle>Evaluate this job first</CardTitle>
                 <CardDescription>
-                  Evaluation extracts ATS keywords and match signals used to tailor the resume. You can still generate without it.
+                  Resume generation needs the evaluation: it supplies the ATS keywords and match
+                  signals the draft is tailored against. Generating without one is rejected rather
+                  than run on nothing.
                 </CardDescription>
               </CardHeader>
               <StreamingEvaluation hasExistingEvaluation={false} jobId={id} />

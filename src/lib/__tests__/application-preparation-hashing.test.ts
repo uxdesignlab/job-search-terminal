@@ -37,6 +37,15 @@ describe("jd hash", () => {
     expect(a).not.toBe(b);
   });
 
+  it("changes when the posting's location changes", () => {
+    // Compensation research asks the market about this title in this place, so a
+    // preparation keyed only on title and description served New York research
+    // for a role that had moved to Remote.
+    const a = computeJdHash({ title: "Director", location: "New York, NY", rawDescription: "Lead the team", parsedDescription: "" });
+    const b = computeJdHash({ title: "Director", location: "Remote", rawDescription: "Lead the team", parsedDescription: "" });
+    expect(a).not.toBe(b);
+  });
+
   it("falls back to the parsed description when raw is empty", () => {
     const a = computeJdHash({ title: "D", rawDescription: "", parsedDescription: "text" });
     const b = computeJdHash({ title: "D", rawDescription: "", parsedDescription: "" });
@@ -81,6 +90,20 @@ describe("evidence hash spans the global bank (§26, §30)", () => {
   it("changes when the skill inventory changes", () => {
     const edited = { ...base, skills: [skill(), skill("Accessibility")] };
     expect(computeEvidenceHash(edited)).not.toBe(computeEvidenceHash(base));
+  });
+});
+
+describe("compensation target in the evidence hash", () => {
+  it("changes when the saved compensation target changes", () => {
+    // The suggested compensation response is built from it, so a preparation that
+    // ignored it kept serving an answer for a number the user had already revised.
+    const a = computeEvidenceHash({ ...base, compensationNeeds: "$220k base" });
+    const b = computeEvidenceHash({ ...base, compensationNeeds: "$260k base" });
+    expect(a).not.toBe(b);
+  });
+
+  it("treats an absent target the same as an empty one", () => {
+    expect(computeEvidenceHash(base)).toBe(computeEvidenceHash({ ...base, compensationNeeds: "" }));
   });
 });
 

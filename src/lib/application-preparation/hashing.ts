@@ -20,14 +20,27 @@ function normalizeForHash(value: string): string {
   return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-/** Covers the posting text the preparation was derived from. */
-export function computeJdHash(job: { title: string; rawDescription: string; parsedDescription: string }): string {
+/**
+ * Covers the posting the preparation was derived from.
+ *
+ * Location is part of it because compensation research asks the market about
+ * this title *in this place* (`"<title> salary range <location> 2026"`). Leaving
+ * it out let a job move from Remote to on-site in New York and keep serving the
+ * research done for the old one, indefinitely.
+ */
+export function computeJdHash(job: {
+  title: string;
+  location?: string;
+  rawDescription: string;
+  parsedDescription: string;
+}): string {
   const description = job.rawDescription || job.parsedDescription || "";
-  return sha1(normalizeForHash(`${job.title}\n${description}`));
+  return sha1(normalizeForHash(`${job.title}\n${job.location ?? ""}\n${description}`));
 }
 
 /**
- * Covers the whole global evidence bank, not this job's slice of it.
+ * Covers the whole global evidence bank — not this job's slice of it — plus the
+ * profile inputs a preparation reads directly.
  *
  * Hash broadly, use claims narrowly (§26.2): every gap answer is hashed
  * regardless of quality, including unfinished ones, so that *finishing* an answer
@@ -38,6 +51,8 @@ export function computeEvidenceHash(input: {
   resumes: ResumeRecord[];
   skills: SkillRecord[];
   supplements: ProfileSupplementRecord[];
+  /** The saved compensation target the suggested response is built from. */
+  compensationNeeds?: string;
 }): string {
   const resumeText = input.resumes
     .filter((resume) => resume.activeStatus)
@@ -63,7 +78,7 @@ export function computeEvidenceHash(input: {
     .sort()
     .join("|");
 
-  return sha1(`${resumeText}\n${skillText}\n${supplementText}`);
+  return sha1(`${resumeText}\n${skillText}\n${supplementText}\n${normalizeForHash(input.compensationNeeds ?? "")}`);
 }
 
 export type StalenessReason = "missing" | "jd_changed" | "evidence_changed" | null;

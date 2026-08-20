@@ -1817,6 +1817,15 @@ export function saveIntegrationTestResult(input: {
   accountLabel?: string;
   metadata?: Record<string, JsonValue>;
 }) {
+  // A test reports connection facts — workspace and user ids — and knows nothing
+  // about the settings stored beside them. Writing its metadata wholesale erased
+  // the Clay enrichment routine and the auto-enrich flag, so testing a working
+  // connection silently switched enrichment off. Merge, the way
+  // saveIntegrationMetadata does.
+  const merged = input.metadata
+    ? JSON.stringify({ ...(getIntegration(input.provider)?.metadata ?? {}), ...input.metadata })
+    : "";
+
   getDatabase()
     .prepare(
       `update external_integrations set
@@ -1832,7 +1841,7 @@ export function saveIntegrationTestResult(input: {
       provider: input.provider,
       status: input.status,
       accountLabel: input.accountLabel ?? "",
-      metadataJson: input.metadata ? JSON.stringify(input.metadata) : "",
+      metadataJson: merged,
     });
 }
 

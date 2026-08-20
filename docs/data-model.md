@@ -1019,7 +1019,7 @@ resume. One row per job (`unique(job_id)`).
 | `jd_hash`, `evidence_hash` | Reuse keys — see below |
 | `requirements_json` | Extracted requirements, each with an evidence status and cited evidence ids |
 | `keyword_signals_json` | ATS keyword signals — the work Block E used to do at evaluation time |
-| `evidence_map_json` | Requirement → evidence → suggested resume placement |
+| `evidence_map_json` | Requirement → evidence → suggested resume placement. Every entry must cite an evidence id that was supplied to the model; entries citing an unknown id **or none at all** are dropped, because an unverifiable pointer is how an unsupported claim reaches a resume — or an outreach message, which lists these entries to a real person — looking sourced |
 | `posted_compensation_json` | Parsed from the posting only |
 | `market_compensation_json`, `compensation_sources_json` | Live research and its citations |
 | `compensation_research_status` | `not_run` / `completed` / `unavailable` / `failed` |
@@ -1033,6 +1033,14 @@ improve. Quality status is part of the hash: an answer moving from `needs_follow
 `addressed` changes no text but changes whether a resume may use it. Generation then
 filters to `addressed` only. A hash scoped to one job would leave the rest stale but
 marked fresh.
+
+**Both hashes cover every input a preparation reads, not only its text.** `jd_hash`
+includes `job.location`, because compensation research asks the market about this title
+*in this place* (`"<title> salary range <location> 2026"`), and `evidence_hash` includes
+`user_profile.compensation_needs`, because the suggested response is built from it. When
+these were left out, editing a job's location or your saved target reused the old
+location-specific research and the old answer indefinitely — the preparation was stale but
+reported fresh.
 
 **Compensation provenance is never inferred.** A model's recollection of salary bands is
 not market research. Posted compensation is parsed from the posting; live research runs at
@@ -1060,7 +1068,7 @@ normally when any of them is broken or absent (§63).
 | `account_label` | Workspace or account name, from a successful test |
 | `connection_status` | `not_connected` / `connected` / `invalid_credential` / `unavailable` |
 | `enabled` | Set only by a successful test; cleared whenever the key changes or a test fails |
-| `metadata_json` | Provider details — in Phase 6 this is where the Clay field-catalog cache lives |
+| `metadata_json` | Provider details and the settings stored beside them (Clay's field-catalog cache, `enrichmentRoutineId`, `autoEnrichSearchResults`). Both writers **merge**: `saveIntegrationMetadata()` patches keys, and `saveIntegrationTestResult()` merges the connection facts a test reports rather than replacing the object. Replacing it meant clicking **Test connection**, or re-saving a masked key, silently switched enrichment off |
 | `last_tested_at` | When the connection was last checked |
 
 **Credentials are masked on read.** `getIntegration()` returns `maskedCredential`

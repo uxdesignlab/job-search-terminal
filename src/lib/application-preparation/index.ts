@@ -141,17 +141,20 @@ function normalizeRequirements(raw: unknown): ApplicationRequirement[] {
     .filter((item): item is ApplicationRequirement => item !== null);
 }
 
-function normalizeEvidenceMap(raw: unknown, validIds: Set<string>): EvidenceMapEntry[] {
+export function normalizeEvidenceMap(raw: unknown, validIds: Set<string>): EvidenceMapEntry[] {
   return (Array.isArray(raw) ? raw : [])
     .map((item) => {
       const value = item as Partial<EvidenceMapEntry>;
       const requirement = typeof value?.requirement === "string" ? value.requirement.trim() : "";
       const evidence = typeof value?.evidence === "string" ? value.evidence.trim() : "";
       if (!requirement || !evidence) return null;
-      const evidenceId = typeof value?.evidenceId === "string" ? value.evidenceId : "";
+      const evidenceId = typeof value?.evidenceId === "string" ? value.evidenceId.trim() : "";
       // Drop mappings that cite an id we never supplied: an unverifiable pointer
-      // is how an unsupported claim reaches a resume looking sourced.
-      if (evidenceId && !validIds.has(evidenceId)) return null;
+      // is how an unsupported claim reaches a resume looking sourced. A mapping
+      // with *no* id is the same claim with the pointer left off — the check used
+      // to skip those entirely, and person-outreach lists them to a real human as
+      // the candidate's evidence.
+      if (!evidenceId || !validIds.has(evidenceId)) return null;
       return {
         requirement,
         evidence,
@@ -188,6 +191,7 @@ export async function prepareApplication(jobId: string, options: { force?: boole
       resumes: getResumes(),
       skills: getSkills(),
       supplements: getProfileSupplements(),
+      compensationNeeds: getUserProfile().compensationNeeds ?? "",
     }),
   };
 
