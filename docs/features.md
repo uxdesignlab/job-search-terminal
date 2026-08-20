@@ -644,14 +644,21 @@ working. Outreach currently opens the existing generic-draft page and becomes a 
 workspace in a later phase.
 
 **Evaluation run line.** To the right of the tabs, a single muted line records the run
-behind everything on screen: `Evaluated Aug 19, 2:18 PM · gemini / gemini-3.5-flash · 41.2s`
-— when it ran, the provider and model that ran it, and how long it took. A row saved by the
-old rule-based fallback reads `Evaluated Aug 19, 2:18 PM · scored by local rules, no AI
-model · 152.9s`, because `local-fallback / local-fallback` is a stored value, not a
+behind everything on screen: `Evaluated gemini / gemini-3.5-flash · 41.2s · first assessed
+Aug 19, 2:18 PM` — the provider and model that ran it, how long it took, and when the job
+was first assessed. A row saved by the old rule-based fallback reads `Evaluated scored by
+local rules, no AI model · 152.9s · first assessed Aug 19, 2:18 PM`, because `local-fallback / local-fallback` is a stored value, not a
 sentence, and the one thing such a row has to say is that no model produced it. It is
 read from the stored evaluation (`created_at`, `provider_used`, `model_used`,
 `generation_ms`), so it describes the evaluation you are looking at rather than the last
-run in the session. When an auto option resolved a sentinel, the concrete id it resolved
+run in the session.
+
+**The two halves describe different runs, which is why each is labelled.** `created_at` is
+deliberately preserved across re-evaluations so a job keeps the date it was first
+assessed, while provider, model and duration are replaced every time. The line originally
+read `Evaluated <date> · <model> · <duration>`, which put a stale date beside fresh
+provenance and claimed today's model ran on the day of the first assessment. Either half
+is dropped, separator and all, when it is unknown. When an auto option resolved a sentinel, the concrete id it resolved
 to is what gets recorded and shown — `latest-sonnet` names a policy, not a model, and
 saying it here would answer the wrong question. Nothing is shown for a job that has not
 been evaluated. It sits beside
