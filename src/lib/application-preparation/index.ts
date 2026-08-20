@@ -145,8 +145,17 @@ function normalizeRequirements(raw: unknown): ApplicationRequirement[] {
     .filter((item): item is ApplicationRequirement => item !== null);
 }
 
+/**
+ * Unicode letters and numbers, not `a-z0-9`.
+ *
+ * An ASCII-only class deletes every character of evidence written in Cyrillic,
+ * Chinese, Arabic or any other non-Latin script. Both sides then normalise to the
+ * empty string, `"".includes("")` is true, and the containment check below turns
+ * into an accept-anything — the exact opposite of its purpose, for precisely the
+ * users whose evidence it would be quietly failing to read.
+ */
 function normalizeForGrounding(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9%+]+/g, " ").trim();
+  return value.toLowerCase().replace(/[^\p{L}\p{N}%+]+/gu, " ").trim();
 }
 
 /**
@@ -182,8 +191,12 @@ export function normalizeEvidenceMap(
       // Only enforced when the caller supplied the texts; a caller that cannot
       // resolve ids still gets the id check above.
       const cited = evidenceById.get(evidenceId);
-      if (cited !== undefined && !normalizeForGrounding(cited).includes(normalizeForGrounding(evidence))) {
-        return null;
+      if (cited !== undefined) {
+        const citedText = normalizeForGrounding(cited);
+        const claimText = normalizeForGrounding(evidence);
+        // Nothing to compare is not a match. Either side reducing to nothing means
+        // the check cannot be performed, and an unperformed check must not pass.
+        if (!citedText || !claimText || !citedText.includes(claimText)) return null;
       }
       return {
         requirement,

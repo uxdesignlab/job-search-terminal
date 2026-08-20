@@ -65,6 +65,29 @@ describe("evidence map guard", () => {
     ], validIds, evidenceById)).toEqual([]);
   });
 
+  it("reads evidence written in a non-Latin script instead of erasing it", () => {
+    // An ASCII-only normalisation deleted every character of Cyrillic, Chinese or
+    // Arabic evidence. Both sides became "", "".includes("") is true, and the
+    // containment check turned into an accept-anything — for precisely the users
+    // whose evidence it was failing to read.
+    const cyrillic = new Map([["evidence-1", "Руководил командой дизайнеров в трёх странах."]]);
+
+    expect(normalizeEvidenceMap([
+      mapping({ evidence: "Увеличил выручку на сорок процентов." }),
+    ], validIds, cyrillic)).toEqual([]);
+
+    expect(normalizeEvidenceMap([
+      mapping({ evidence: "Руководил командой дизайнеров" }),
+    ], validIds, cyrillic)).toHaveLength(1);
+  });
+
+  it("refuses a mapping when either side has nothing comparable left", () => {
+    // An unperformed check must not pass.
+    expect(normalizeEvidenceMap([
+      mapping({ evidence: "..." }),
+    ], validIds, new Map([["evidence-1", "---"]]))).toEqual([]);
+  });
+
   it("keeps the id-only check when the caller cannot resolve the texts", () => {
     expect(normalizeEvidenceMap([mapping()], validIds)).toHaveLength(1);
   });
