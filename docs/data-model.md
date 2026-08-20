@@ -1019,7 +1019,7 @@ resume. One row per job (`unique(job_id)`).
 | `jd_hash`, `evidence_hash` | Reuse keys — see below |
 | `requirements_json` | Extracted requirements, each with an evidence status and cited evidence ids |
 | `keyword_signals_json` | ATS keyword signals — the work Block E used to do at evaluation time |
-| `evidence_map_json` | Requirement → evidence → suggested resume placement. Every entry must cite an evidence id that was supplied to the model; entries citing an unknown id **or none at all** are dropped, because an unverifiable pointer is how an unsupported claim reaches a resume — or an outreach message, which lists these entries to a real person — looking sourced |
+| `evidence_map_json` | Requirement → evidence → suggested resume placement. Every entry must cite an evidence id that was supplied to the model, and its `evidence` text must be a **verbatim span of the item it cites** — entries citing an unknown id, none at all, or a claim that cannot be found in the cited item are dropped. A pointer that resolves does not make the text attached to it real: an invented line filed under a real resume id reads as sourced, and `person-outreach` copies this field into a message to a real person at the employer |
 | `posted_compensation_json` | Parsed from the posting only |
 | `market_compensation_json`, `compensation_sources_json` | Live research and its citations |
 | `compensation_research_status` | `not_run` / `completed` / `unavailable` / `failed` |

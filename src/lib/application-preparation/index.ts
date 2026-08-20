@@ -117,7 +117,11 @@ generic traits ("team player", "fast-paced environment").
 
 "evidenceMap": for each high-value requirement, which evidence supports it and where it
 belongs on the resume. Only map evidence that genuinely supports the claim — an unsupported
-mapping becomes a false statement on a document the candidate sends to an employer.
+mapping becomes a false statement on a document the candidate sends to an employer, and on
+messages sent to real people at that employer.
+The "evidence" field must be copied **verbatim** from the evidence item you cite in
+"evidenceId" — a span of its text, not a summary, paraphrase or improvement of it. A
+mapping whose evidence cannot be found in the item it cites is discarded.
 
 "suggestedCompensationResponse": leave as an empty string. Compensation is resolved
 separately from the posting and live research, never from your own recollection.`;
@@ -141,7 +145,27 @@ function normalizeRequirements(raw: unknown): ApplicationRequirement[] {
     .filter((item): item is ApplicationRequirement => item !== null);
 }
 
-export function normalizeEvidenceMap(raw: unknown, validIds: Set<string>): EvidenceMapEntry[] {
+function normalizeForGrounding(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9%+]+/g, " ").trim();
+}
+
+/**
+ * `validIds` proves the pointer resolves; `evidenceById` proves the text attached
+ * to it is the candidate's, not the model's.
+ *
+ * Requiring only a real id left the claim itself unchecked, so an invented line —
+ * "grew revenue 40%" — could be filed under a real resume id and read as sourced.
+ * person-outreach copies this field into a message to a real person at the
+ * employer, which is the furthest an unsupported claim travels anywhere in the
+ * app. The evidence has to be a span of the item it cites, so the check is
+ * containment rather than resemblance: a paraphrase is the model's sentence, and
+ * the point of the evidence bank is that these sentences are not.
+ */
+export function normalizeEvidenceMap(
+  raw: unknown,
+  validIds: Set<string>,
+  evidenceById: Map<string, string> = new Map()
+): EvidenceMapEntry[] {
   return (Array.isArray(raw) ? raw : [])
     .map((item) => {
       const value = item as Partial<EvidenceMapEntry>;
@@ -155,6 +179,12 @@ export function normalizeEvidenceMap(raw: unknown, validIds: Set<string>): Evide
       // to skip those entirely, and person-outreach lists them to a real human as
       // the candidate's evidence.
       if (!evidenceId || !validIds.has(evidenceId)) return null;
+      // Only enforced when the caller supplied the texts; a caller that cannot
+      // resolve ids still gets the id check above.
+      const cited = evidenceById.get(evidenceId);
+      if (cited !== undefined && !normalizeForGrounding(cited).includes(normalizeForGrounding(evidence))) {
+        return null;
+      }
       return {
         requirement,
         evidence,
@@ -238,7 +268,11 @@ export async function prepareApplication(jobId: string, options: { force?: boole
       title: job.title,
       description: job.rawDescription || job.parsedDescription || "",
     });
-    evidenceMap = normalizeEvidenceMap(raw?.evidenceMap, validIds);
+    evidenceMap = normalizeEvidenceMap(
+      raw?.evidenceMap,
+      validIds,
+      new Map(evidence.map((item) => [item.id, item.text]))
+    );
   } catch (error) {
     if (error instanceof GenerationTimeoutError) {
       throw new Error(`Application preparation ${error.message} Try again, or switch provider in Settings.`);
