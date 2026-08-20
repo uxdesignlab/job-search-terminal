@@ -1036,11 +1036,14 @@ marked fresh.
 
 **Both hashes cover every input a preparation reads, not only its text.** `jd_hash`
 includes `job.location`, because compensation research asks the market about this title
-*in this place* (`"<title> salary range <location> 2026"`), and `evidence_hash` includes
-`user_profile.compensation_needs`, because the suggested response is built from it. When
-these were left out, editing a job's location or your saved target reused the old
-location-specific research and the old answer indefinitely — the preparation was stale but
-reported fresh.
+*in this place* (`"<title> salary range <location> 2026"`). `evidence_hash` includes the
+**whole built system prompt**, which carries the profile and role strategy the preparation
+was written under — goal, direction, career intent, compensation target, work preferences,
+target roles, industries, deal breakers, constraints and every role direction. Naming the
+fields that matter went wrong twice: first the key covered only the evidence bank, then
+the bank plus the compensation target, while changing career direction still served
+evidence mappings written for the old one. Hashing what is actually sent means the next
+field added to the prompt is covered by the field being added.
 
 **Compensation provenance is never inferred.** A model's recollection of salary bands is
 not market research. Posted compensation is parsed from the posting; live research runs at

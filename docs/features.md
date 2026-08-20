@@ -455,6 +455,13 @@ is discarded rather than landing on a job they have moved on from. The dialog sa
 (`gemma4:12b-mlx may still be finishing on your machine — its answer is discarded`)
 rather than claiming the model was stopped.
 
+**It also stops the work that has not started.** The abort signal now reaches the retry
+loop and the provider chain, not only the deadline wrapped around them. Without that the
+cancelled run kept going underneath: the retry loop would wake and spend another attempt,
+and the chain would walk on to the paid provider behind the slow one — on behalf of a user
+who had already stopped waiting. An in-flight request still cannot be recalled; the next
+one can be, and now is.
+
 Cancelling a local run is usually a verdict on the model's speed, so the answer offered
 is the other models that machine already has: a picker of installed Ollama models,
 smallest first (on one machine, size is the closest proxy for speed there is), and

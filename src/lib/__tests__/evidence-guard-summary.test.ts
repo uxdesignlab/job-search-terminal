@@ -91,6 +91,56 @@ describe("evidence guard on the summary", () => {
     expect(entailed.reverted).toEqual([]);
   });
 
+  it("will not let a figure from one outcome vouch for another", () => {
+    // Document-scoped metrics accepted any occurrence of the digits anywhere in
+    // the corpus, so "reduced support tickets by 20%" licensed "grew revenue by
+    // 20%" — and with descriptive words no longer treated as claims, nothing else
+    // caught it. The figure now has to appear on a line that looks like the
+    // sentence making the claim.
+    const fabricated = revertUnsupportedMetrics(
+      source,
+      { ...source, summary: "Principal Product Designer who grew revenue by 20% for enterprise clients." },
+      evidence
+    );
+    expect(fabricated.draft.summary).toBe(source.summary);
+
+    const supported = revertUnsupportedMetrics(
+      source,
+      { ...source, summary: "Principal Product Designer who cut support tickets by 20% through onboarding workflows." },
+      evidence
+    );
+    expect(supported.reverted).toEqual([]);
+  });
+
+  it("judges each sentence of the summary on its own", () => {
+    // One supported use must not vouch for an unsupported one beside it.
+    const result = revertUnsupportedMetrics(
+      source,
+      {
+        ...source,
+        summary:
+          "Principal Product Designer who cut support tickets by 20% through onboarding workflows. Also grew revenue by 20% for enterprise clients.",
+      },
+      evidence
+    );
+
+    expect(result.draft.summary).toBe(source.summary);
+  });
+
+  it("does not let an entailed figure escape its context either", () => {
+    // "10+" is entailed by "15", but only where the larger figure sits on a line
+    // about the same thing — otherwise "800+ properties" would license "100+
+    // engineers".
+    const withScale = `${evidence}\nGoverned design systems across 800+ digital properties.`;
+    const result = revertUnsupportedMetrics(
+      source,
+      { ...source, summary: "Principal Product Designer who has hired and led 100+ engineers." },
+      withScale
+    );
+
+    expect(result.draft.summary).toBe(source.summary);
+  });
+
   it("keeps the stricter per-line metric test on experience bullets", () => {
     // A number may not move between roles, so bullets still need a related line.
     const result = revertUnsupportedMetrics(

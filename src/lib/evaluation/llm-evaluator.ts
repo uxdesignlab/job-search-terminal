@@ -248,7 +248,14 @@ export async function evaluateJobWithAI(
 
   // A chain announces each hand-over, so the modal can stop claiming a provider
   // that has already failed and say why it moved on.
-  const chain = provider as { observe?: (listener: (attempt: { provider: string; model: string; after: { provider: string; model: string; error: string } | null }) => void) => void };
+  const chain = provider as {
+    observe?: (listener: (attempt: { provider: string; model: string; after: { provider: string; model: string; error: string } | null }) => void) => void;
+    abortOn?: (signal: AbortSignal) => void;
+  };
+  // Cancelling has to reach the chain, not just the deadline wrapped around it,
+  // or a cancelled run keeps walking down to the paid providers behind the one
+  // that was still going.
+  if (signal) chain.abortOn?.(signal);
   chain.observe?.((attempt) => {
     onPhase?.({
       phase: "evaluating",
@@ -262,7 +269,7 @@ export async function evaluateJobWithAI(
   let normalized: ReturnType<typeof normalizeModelOutput> | null = null;
   try {
     const raw = await withDeadline(
-      () => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt)),
+      () => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt), 3, 1500, signal),
       deadlineMs,
       signal
     );

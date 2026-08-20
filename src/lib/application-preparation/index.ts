@@ -185,13 +185,21 @@ export async function prepareApplication(jobId: string, options: { force?: boole
   const evaluation = getEvaluationByJobId(jobId);
   if (!evaluation) throw new EvaluationRequiredError(jobId);
 
+  // Built before the reuse check, not after, because it *is* part of the reuse
+  // key: the prompt carries the profile and role strategy the preparation was
+  // written under, and reusing across a change to either serves answers for a
+  // candidate the user no longer describes.
+  const profile = getUserProfile();
+  const skills = getSkills();
+  const systemPrompt = buildSystemPrompt(profile, skills, getRoleDirections());
+
   const current = {
     jdHash: computeJdHash(job),
     evidenceHash: computeEvidenceHash({
       resumes: getResumes(),
-      skills: getSkills(),
+      skills,
       supplements: getProfileSupplements(),
-      compensationNeeds: getUserProfile().compensationNeeds ?? "",
+      promptContext: systemPrompt,
     }),
   };
 
@@ -201,12 +209,10 @@ export async function prepareApplication(jobId: string, options: { force?: boole
   }
 
   const startedAt = Date.now();
-  const profile = getUserProfile();
   const evidence = usableEvidence();
   const validIds = new Set(evidence.map((item) => item.id));
 
   const provider = getActiveProvider();
-  const systemPrompt = buildSystemPrompt(profile, getSkills(), getRoleDirections());
   // Keyword extraction needs a fuller view of the posting than evaluation did, to
   // find verbatim phrases and validate them against the body.
   const userPrompt = buildPreparationPrompt(buildJobContext(job, 12000), evidence);

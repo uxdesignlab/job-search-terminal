@@ -39,8 +39,8 @@ export function computeJdHash(job: {
 }
 
 /**
- * Covers the whole global evidence bank — not this job's slice of it — plus the
- * profile inputs a preparation reads directly.
+ * Covers the whole global evidence bank — not this job's slice of it — plus every
+ * profile and role-strategy input the preparation prompt carries.
  *
  * Hash broadly, use claims narrowly (§26.2): every gap answer is hashed
  * regardless of quality, including unfinished ones, so that *finishing* an answer
@@ -51,8 +51,18 @@ export function computeEvidenceHash(input: {
   resumes: ResumeRecord[];
   skills: SkillRecord[];
   supplements: ProfileSupplementRecord[];
-  /** The saved compensation target the suggested response is built from. */
-  compensationNeeds?: string;
+  /**
+   * The system prompt the preparation is generated with, hashed whole.
+   *
+   * Naming the profile fields that matter is how this went wrong twice: the key
+   * covered the evidence bank, then the evidence bank plus the compensation
+   * target, while the prompt also carries goal, direction, career intent, work
+   * preferences, target roles, industries, deal breakers, constraints and the
+   * whole role strategy. Changing career direction went on serving evidence
+   * mappings written for the old one. Hashing what is actually sent means the
+   * next field added to the prompt is covered by the field being added.
+   */
+  promptContext?: string;
 }): string {
   const resumeText = input.resumes
     .filter((resume) => resume.activeStatus)
@@ -78,7 +88,7 @@ export function computeEvidenceHash(input: {
     .sort()
     .join("|");
 
-  return sha1(`${resumeText}\n${skillText}\n${supplementText}\n${normalizeForHash(input.compensationNeeds ?? "")}`);
+  return sha1(`${resumeText}\n${skillText}\n${supplementText}\n${normalizeForHash(input.promptContext ?? "")}`);
 }
 
 export type StalenessReason = "missing" | "jd_changed" | "evidence_changed" | null;

@@ -70,9 +70,24 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, baseDelayMs = 1500): Promise<T> {
+/**
+ * `signal` stops work that has not started yet.
+ *
+ * withDeadline rejects its own promise when the user cancels, but the function
+ * it wrapped keeps running detached — so this loop would sleep, wake, and start
+ * another attempt against a paid provider after the UI had already reported the
+ * run cancelled. Cancelling cannot recall a request that is already in flight;
+ * it can and must stop the next one.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelayMs = 1500,
+  signal?: AbortSignal
+): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) throw new GenerationCancelledError();
     try {
       return await fn();
     } catch (error) {

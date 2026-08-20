@@ -2,7 +2,7 @@ import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, Str
 import { summarizeProviderError } from "./provider-error-summary";
 import { AllProvidersFailedError, type ProviderAttempt } from "./chain-failure";
 import { generationDeadlineMs } from "./deadlines";
-import { GenerationTimeoutError, isMalformedJsonResponse, withDeadline } from "./retry";
+import { GenerationCancelledError, GenerationTimeoutError, isMalformedJsonResponse, withDeadline } from "./retry";
 
 export { AllProvidersFailedError, findChainFailure, type ProviderAttempt } from "./chain-failure";
 
@@ -93,6 +93,25 @@ export class FallbackProvider implements AIProvider {
 
   /** One line per provider tried, in the order they were tried. */
   private attempts: ProviderAttempt[] = [];
+  private cancellation?: AbortSignal;
+
+  /**
+   * Stop moving down the chain once the user has cancelled.
+   *
+   * The run's deadline owns the signal and rejects on abort, but the chain it
+   * wrapped keeps running detached: a slow first provider would fail, and the
+   * chain would then call the paid provider behind it on behalf of a user who had
+   * already stopped waiting. Checked before each provider rather than passed into
+   * them, because an in-flight request cannot be recalled anyway — what must not
+   * happen is starting the next one.
+   */
+  abortOn(signal: AbortSignal) {
+    this.cancellation = signal;
+  }
+
+  private ensureNotCancelled() {
+    if (this.cancellation?.aborted) throw new GenerationCancelledError();
+  }
 
   /**
    * Each provider is bounded on its own, so one slow model cannot spend the budget
@@ -146,6 +165,7 @@ export class FallbackProvider implements AIProvider {
     this.attempts = [];
     let lastError: unknown;
     for (const provider of this.providers) {
+      this.ensureNotCancelled();
       try {
         await this.announceReady(provider);
         const result = await this.attempt(provider, () => provider.generateText(messages, config));
@@ -164,6 +184,7 @@ export class FallbackProvider implements AIProvider {
     this.attempts = [];
     let lastError: unknown;
     for (const provider of this.providers) {
+      this.ensureNotCancelled();
       try {
         await this.announceReady(provider);
         const result = await this.attempt(provider, () => provider.generateJSON<T>(messages, hint, config));
@@ -182,6 +203,7 @@ export class FallbackProvider implements AIProvider {
     this.attempts = [];
     let lastError: unknown;
     for (const provider of this.providers) {
+      this.ensureNotCancelled();
       try {
         await this.announceReady(provider);
         yield* provider.stream(messages, config);

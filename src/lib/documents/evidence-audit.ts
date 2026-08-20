@@ -150,26 +150,43 @@ function evidenceLinesFor(text: string) {
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-function hasRelatedMetricEvidence(text: string, metric: string, evidenceLines: string[]) {
+/**
+ * Whether an evidence line is about the same thing as the claim.
+ *
+ * Topical overlap, so it uses every content word rather than only the ones that
+ * qualify as claims: the point is to tell "reduced latency 40%" apart from "grew
+ * revenue 40%", and neither "latency" nor "revenue" is a claim term on its own.
+ */
+function sharesClaimContext(text: string, line: string): boolean {
   const normalizedText = normalizeText(text);
-  // Relatedness is topical overlap, so it uses every content word rather than
-  // only the ones that qualify as claims.
-  const textStems = new Set(candidateTerms(text).map(stemTerm));
-  return evidenceLines.some((line) => {
-    if (!metricsIn(line).has(metric)) return false;
-    const normalizedLine = normalizeText(line);
-    if (normalizedLine.includes(normalizedText) || normalizedText.includes(normalizedLine)) return true;
-    const lineStems = new Set(candidateTerms(line).map(stemTerm));
-    return [...textStems].some((stem) => lineStems.has(stem));
-  });
+  const normalizedLine = normalizeText(line);
+  if (normalizedLine.includes(normalizedText) || normalizedText.includes(normalizedLine)) return true;
+  const lineStems = new Set(candidateTerms(line).map(stemTerm));
+  return candidateTerms(text).map(stemTerm).some((stem) => lineStems.has(stem));
+}
+
+function hasRelatedMetricEvidence(text: string, metric: string, evidenceLines: string[]) {
+  return evidenceLines.some((line) => metricsIn(line).has(metric) && sharesClaimContext(text, line));
 }
 
 // The summary and headline condense the whole resume, so their numbers legitimately
-// come from anywhere in it — "15+ years" belongs to no single line. Requiring a
-// same-line match there reverted the section over figures the resume plainly states.
-// Bullets keep the stricter per-line test, which is what stops a metric being moved
-// between roles.
-const DOCUMENT_SCOPED_METRIC_PATHS = new Set(["summary", "headline"]);
+// come from anywhere in it — "15+ years" belongs to no single line of the summary,
+// and requiring the *whole* section to look like the evidence line reverted figures
+// the resume plainly states. What must not follow is that any occurrence of the
+// digits anywhere in the corpus supports any claim: "reduced latency 40%" would
+// then support "grew revenue 40%", and with descriptive words no longer treated as
+// claims nothing else would catch it.
+//
+// So these sections are checked a sentence at a time. The evidence line may live
+// anywhere, but it has to look like the sentence making the claim. Bullets are a
+// single sentence already, which is why they need no special handling — and their
+// per-line test is what stops a metric moving between roles.
+const SENTENCE_SCOPED_METRIC_PATHS = new Set(["summary", "headline"]);
+
+function sentencesIn(text: string): string[] {
+  const sentences = text.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean);
+  return sentences.length > 0 ? sentences : [text];
+}
 
 function atLeastValue(metric: string): number | null {
   const match = /^(\d[\d,]*)\+$/.exec(metric);
@@ -177,23 +194,32 @@ function atLeastValue(metric: string): number | null {
 }
 
 // "10+ years" is entailed by an approved resume that says "15+ years": stating
-// less than the evidence supports is not a fabricated claim, and reverting the
-// summary over it discarded an otherwise accurate rewrite. Only open-ended "N+"
-// figures qualify, and only where metrics are already document-scoped.
-function hasEntailedAtLeastEvidence(metric: string, evidenceText: string): boolean {
+// less than the evidence supports is not a fabricated claim, and reverting over it
+// discarded an otherwise accurate rewrite. Only open-ended "N+" figures qualify,
+// and the larger figure still has to appear on a line that looks like the claim —
+// otherwise "800+ digital properties" would license "100+ engineers".
+function hasEntailedAtLeastEvidence(text: string, metric: string, evidenceLines: string[]): boolean {
   const claimed = atLeastValue(metric);
   if (claimed === null) return false;
-  return [...metricsIn(evidenceText)].some((known) => {
-    const supported = atLeastValue(known);
-    return supported !== null && supported >= claimed;
+  return evidenceLines.some((line) => {
+    const entails = [...metricsIn(line)].some((known) => {
+      const supported = atLeastValue(known);
+      return supported !== null && supported >= claimed;
+    });
+    return entails && sharesClaimContext(text, line);
   });
 }
 
 function hasMetricEvidence(path: string, text: string, metric: string, evidenceText: string, evidenceLines: string[]) {
-  if (DOCUMENT_SCOPED_METRIC_PATHS.has(path)) {
-    return metricsIn(evidenceText).has(metric) || hasEntailedAtLeastEvidence(metric, evidenceText);
-  }
-  return hasRelatedMetricEvidence(text, metric, evidenceLines);
+  const supports = (claim: string) =>
+    hasRelatedMetricEvidence(claim, metric, evidenceLines) || hasEntailedAtLeastEvidence(claim, metric, evidenceLines);
+
+  if (!SENTENCE_SCOPED_METRIC_PATHS.has(path)) return supports(text);
+
+  // Every sentence that states the figure has to stand up on its own; one
+  // supported use must not vouch for an unsupported one beside it.
+  const claims = sentencesIn(text).filter((sentence) => metricsIn(sentence).has(metric));
+  return claims.length > 0 ? claims.every(supports) : supports(text);
 }
 
 // Full check: metrics + claim terms. Used at generation time to revert AI-fabricated content.

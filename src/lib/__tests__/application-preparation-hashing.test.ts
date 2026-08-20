@@ -93,17 +93,24 @@ describe("evidence hash spans the global bank (§26, §30)", () => {
   });
 });
 
-describe("compensation target in the evidence hash", () => {
-  it("changes when the saved compensation target changes", () => {
-    // The suggested compensation response is built from it, so a preparation that
-    // ignored it kept serving an answer for a number the user had already revised.
-    const a = computeEvidenceHash({ ...base, compensationNeeds: "$220k base" });
-    const b = computeEvidenceHash({ ...base, compensationNeeds: "$260k base" });
-    expect(a).not.toBe(b);
+describe("prompt context in the evidence hash", () => {
+  it("changes when any profile input the prompt carries changes", () => {
+    // Naming the fields that matter is how this went wrong twice — first the
+    // compensation target was missing, then everything else the prompt carries.
+    // Hashing what is actually sent covers the next field by the field existing.
+    const prompt = (overrides: Record<string, string>) =>
+      Object.entries({ Direction: "IC", Compensation: "$220k base", "Deal breakers": "None", ...overrides })
+        .map(([key, value]) => `${key}: ${value}`)
+        .join("\n");
+
+    const baseline = computeEvidenceHash({ ...base, promptContext: prompt({}) });
+    expect(computeEvidenceHash({ ...base, promptContext: prompt({ Compensation: "$260k base" }) })).not.toBe(baseline);
+    expect(computeEvidenceHash({ ...base, promptContext: prompt({ Direction: "Management" }) })).not.toBe(baseline);
+    expect(computeEvidenceHash({ ...base, promptContext: prompt({ "Deal breakers": "No relocation" }) })).not.toBe(baseline);
   });
 
-  it("treats an absent target the same as an empty one", () => {
-    expect(computeEvidenceHash(base)).toBe(computeEvidenceHash({ ...base, compensationNeeds: "" }));
+  it("treats an absent prompt the same as an empty one", () => {
+    expect(computeEvidenceHash(base)).toBe(computeEvidenceHash({ ...base, promptContext: "" }));
   });
 });
 
