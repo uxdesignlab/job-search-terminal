@@ -382,6 +382,25 @@ user can act on:
 | Unreadable output after 3 tries | `…returned a response that could not be read as JSON, after 3 attempts.` A larger model (14B+ locally) is more reliable at structured output |
 | An answer missing its core fields | `…answered, but the answer was missing what an evaluation is made of (fitComponents, roleArchetype).` |
 | Auth, quota, network | the provider's own message, per provider (see the chain report in Settings) |
+| No provider configured at all | `No AI provider is configured — add an API key in Settings → AI Provider.` |
+
+**The step named is the step that broke.** Each message is prefixed with the phase the
+run failed in, and the phase is now read from a table covering all four progress steps
+rather than a ternary chain with a default. `preparing` fell to that default and was
+attributed to `validate`, so anything thrown before a provider was ever contacted —
+no provider configured, a job-description fetch that failed — was reported as *"The AI
+response was incomplete."* for a run that never asked for a response. Relatedly, the
+not-configured error contains the words "api key", so it matched the invalid-key branch
+and told someone with an empty settings page to *re-enter* a key they had never
+entered; it is answered before that test now. Errors carrying their own phase
+(`EvaluationPhaseError`) still override the table.
+
+The phase table (`PHASE_FAILURE_ATTRIBUTION`), the per-phase prefixes
+(`FAILURE_PHASE_MESSAGE`) and the message mapper (`toUserMessage`) live in
+`src/lib/evaluation/failure-reporting.ts`. They were lifted out of the route because a
+Next.js route file may only export its handlers and a few reserved config symbols —
+anything exported for a test breaks the build — and these three are the part worth
+testing directly.
 
 Evaluations saved by the old behaviour still exist and still render; they say
 `scored by local rules, no AI model` in the run line and carry a banner saying the
@@ -463,6 +482,16 @@ who had already stopped waiting. The chain checks both before a provider and aga
 resolving its model, since resolution is a network call the user can cancel during, and a
 cancelled run never fails over — moving on is the spending being prevented. An in-flight
 request still cannot be recalled; the next one can be, and now is.
+
+**Navigating away counts as cancelling.** Closing the stream is the only cancel signal
+the server gets, and unmounting is a cancel the user never gets to click. Leaving the
+job page mid-run used to leave the `EventSource` open: the route's `cancel` callback
+never fired, the run was never marked aborted, and the evaluation was saved onto a job
+the user had already left — a chain would also walk on to the paid providers behind the
+one that was running. Both of the modal's close paths need a click on a dialog that no
+longer exists, so the stream is now closed when the component unmounts. Navigating away
+and clicking Cancel are the same guarantee: the answer is discarded, and nothing behind
+it is started.
 
 Cancelling a local run is usually a verdict on the model's speed, so the answer offered
 is the other models that machine already has: a picker of installed Ollama models,
