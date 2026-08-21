@@ -51,6 +51,22 @@ export function StreamingEvaluation({ jobId, hasExistingEvaluation }: Props) {
   const esRef = useRef<EventSource | null>(null);
 
   /**
+   * Closing the stream is the only cancel signal the server gets, and unmounting
+   * is a cancel the user never gets to click: navigating away mid-run left the
+   * EventSource open, so the route's cancel callback never fired, the run was
+   * never marked aborted, and the evaluation was saved onto a job the user had
+   * already left — a chain would also walk on to the paid providers behind the
+   * one that was running. Both close() paths need a click on a modal that no
+   * longer exists, so the close on unmount has to happen here.
+   */
+  useEffect(() => {
+    return () => {
+      esRef.current?.close();
+      esRef.current = null;
+    };
+  }, []);
+
+  /**
    * One long generation replaced seven short ones, so there is no partial
    * progress to report while it runs. Elapsed time is the honest substitute —
    * it tells the user the request is alive without inventing a percentage.

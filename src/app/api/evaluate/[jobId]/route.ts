@@ -2,42 +2,13 @@ import { runAndSaveJobWithAI, EvaluationPhaseError } from "@/lib/evaluation/llm-
 import type { PhaseUpdate } from "@/lib/evaluation/llm-evaluator";
 import { EVALUATION_PHASES } from "@/lib/evaluation/evaluation-phases";
 import type { EvaluationFailurePhase } from "@/lib/evaluation/evaluation-phases";
+import {
+  FAILURE_PHASE_MESSAGE,
+  PHASE_FAILURE_ATTRIBUTION,
+  toUserMessage,
+} from "@/lib/evaluation/failure-reporting";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
 import { GenerationCancelledError } from "@/lib/ai/retry";
-import { findChainFailure } from "@/lib/ai/fallback-provider";
-
-function toUserMessage(error: unknown): string {
-  // A chain failure is reported as itself. Collapsing it into "quota exceeded"
-  // named the last provider's problem as if it were the only one, which reads as
-  // nonsense to someone whose first provider is a local model with no quota.
-  const chainFailure = findChainFailure(error);
-  if (chainFailure) return chainFailure.message;
-
-  const msg = error instanceof Error ? error.message : String(error);
-  if (msg.includes("429") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("rate limit")) {
-    return "AI quota exceeded — you've hit the free-tier limit. Check your plan or try again in a few minutes.";
-  }
-  if (msg.includes("401") || msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("invalid key")) {
-    return "Invalid API key — check your AI provider settings and re-enter the key.";
-  }
-  if (msg.toLowerCase().includes("network") || msg.toLowerCase().includes("fetch")) {
-    return "Network error reaching the AI provider. Check your connection and try again.";
-  }
-  // Pass through already-humanized Ollama errors (they're user-readable and specific)
-  if (msg.toLowerCase().includes("ollama") || msg.toLowerCase().startsWith("could not connect")) {
-    return msg;
-  }
-  return "Evaluation failed. Check your AI provider settings and try again.";
-}
-
-/** What each failure phase means to someone who just clicked Evaluate (§18.5). */
-const FAILURE_PHASE_MESSAGE: Record<EvaluationFailurePhase, string> = {
-  input: "The job could not be loaded.",
-  provider: "The AI provider could not be reached.",
-  parse: "The AI response could not be read.",
-  validate: "The AI response was incomplete.",
-  save: "The evaluation ran but could not be saved.",
-};
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +47,7 @@ export async function GET(
         });
 
         const onPhase = (update: PhaseUpdate) => {
-          currentPhase = update.phase === "evaluating" ? "provider" : update.phase === "saving" ? "save" : "validate";
+          currentPhase = PHASE_FAILURE_ATTRIBUTION[update.phase];
           send({
             phase: update.phase,
             message: update.message,
