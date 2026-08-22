@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { loadEnvConfig } from "@next/env";
+
+// This script runs under tsx, outside Next, so nothing loads .env.local for it.
+// Without this, PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH configured for the app is
+// invisible here and the check reports a missing browser that the app can see.
+loadEnvConfig(process.cwd());
+
 import { getGeneratedDocumentById } from "../src/lib/db/queries";
 import { keywordCoverageDetailsForText } from "../src/lib/documents/keyword-coverage";
 import { generateTailoredResume } from "../src/lib/documents/resume-generator";

@@ -32,7 +32,7 @@ browser-board scanning.
 | **Node.js** | Version 20 or later — download from [nodejs.org](https://nodejs.org) |
 | **Git** | Download from [git-scm.com](https://git-scm.com) |
 | **An AI provider** | OpenAI, Anthropic, or Google Gemini API key — or Ollama running locally |
-| **Google Chrome** | Recommended for PDF generation — the app falls back to a bundled Chromium if Chrome is not found |
+| **A Chrome-based browser** | Needed for PDF export. Google Chrome is used automatically if it is installed in the usual place; otherwise see the PDF note below |
 
 You do not need to know how to code. You just need to be comfortable opening a
 terminal (the black or white window where you type commands).
@@ -323,13 +323,28 @@ npm run data:export
 - Run `npm run db:check` to verify the database.
 
 **PDF generation fails**
-- The app looks for Google Chrome first, then falls back to a Chromium browser
-  bundled with the app, so this usually works with no setup at all.
-- On Mac, Chrome is usually at `/Applications/Google Chrome.app`. On Windows,
-  it is in `C:\Program Files\Google\Chrome\Application\chrome.exe`.
-- If your browser is in an unusual location, add this line to `.env.local` and
+
+PDF export drives a Chrome-based browser. The app finds one in this order:
+
+1. The path in `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, if you set it.
+2. Google Chrome at `/Applications/Google Chrome.app` — macOS only.
+3. A Chromium downloaded into Playwright's browser cache.
+
+The app installs `playwright-core`, which does **not** download a browser, so on
+Windows and Linux — and on a Mac without Chrome in the standard location — step 3
+finds nothing until you install one. Either:
+
+- Install a browser into that cache:
+  `npx playwright-core install chromium`
+- Or point the app at a browser you already have. Add this to `.env.local` and
   restart the app:
   `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/full/path/to/chrome`
+
+  On Windows that is usually
+  `C:\Program Files\Google\Chrome\Application\chrome.exe`.
+
+`npm run document:check` reads `.env.local` too, so the same setting applies when
+you verify the fix.
 
 **No AI results**
 - Go to Settings → AI Provider and check that your key is entered and the
@@ -434,11 +449,13 @@ What to do:
    - Run profile extraction from Profile -> Overview after a resume is uploaded.
    - Return to the dashboard and scan for jobs when setup is complete.
 
-10. PDF export normally needs no setup: the app uses Google Chrome if it finds
-    it, and otherwise falls back to a bundled Chromium. Only if export fails
-    because the browser is in an unusual location, add
-    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH to `.env.local` with the full path to
-    the browser binary, then restart the server.
+10. PDF export needs a Chrome-based browser. `npm install` pulls playwright-core,
+    which does not download one, and the app only auto-detects Google Chrome in
+    its standard macOS location. So on Windows and Linux, and on a Mac without
+    Chrome installed normally, either run `npx playwright-core install chromium`
+    or add PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH to `.env.local` pointing at a
+    browser that is already installed, then restart the server. Verify with
+    `npm run document:check`.
 
 11. Safety rules:
     - Never submit job applications, send emails, or message recruiters for me.

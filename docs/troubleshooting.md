@@ -65,7 +65,12 @@ Block F):
 If PDF generation fails:
 
 - Confirm local Chrome exists at the configured executable path.
-- Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` in `.env.local` if your browser is installed somewhere else.
+- `npm install` does not download a browser, so on Windows and Linux (and on a
+  Mac without Chrome in the standard location) install one with
+  `npx playwright-core install chromium`.
+- Or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` in `.env.local` to a browser you
+  already have. `npm run document:check` reads `.env.local`, so the same setting
+  applies when verifying.
 - Run `npm run document:check`.
 
 ## Quality Checks
