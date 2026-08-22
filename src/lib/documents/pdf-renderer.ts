@@ -13,7 +13,8 @@ function resolveChromiumPath(): string {
   if (existsSync(macChromePath)) {
     return macChromePath;
   }
-  // Fall back to the Chromium bundled with playwright
+  // playwright-core does not download browsers, so this path only exists if a
+  // browser was installed into the Playwright cache (npx playwright-core install chromium).
   return chromium.executablePath();
 }
 
