@@ -29,7 +29,7 @@ browser-board scanning.
 | Requirement | Details |
 |---|---|
 | **Computer** | Mac, Windows (WSL), or Linux |
-| **Node.js** | Version 18 or later — download from [nodejs.org](https://nodejs.org) |
+| **Node.js** | Version 20 or later — download from [nodejs.org](https://nodejs.org) |
 | **Git** | Download from [git-scm.com](https://git-scm.com) |
 | **An AI provider** | OpenAI, Anthropic, or Google Gemini API key — or Ollama running locally |
 | **Google Chrome** | Recommended for PDF generation — the app falls back to a bundled Chromium if Chrome is not found |
@@ -121,7 +121,7 @@ For cloud providers, you can use whichever service you have access to:
 To use Ollama, install it, pull a model, start the local server, and configure
 the Ollama base URL inside the app.
 
-Configure your provider inside the app itself (Settings → AI Providers). You do
+Configure your provider inside the app itself (Settings → AI Provider). You do
 not need to create any configuration files manually.
 
 ### 5a. Optional: Add job aggregator and source discovery keys
@@ -214,8 +214,8 @@ Dashboard and click "Scan for new jobs" for an immediate scan.
 | Practice for interviews | Interview Prep |
 | Update your profile | Account → Profile |
 | Upload or replace a resume | Account → Profile → Resumes tab |
-| Add an AI key | Account → Settings → AI Providers |
-| Add Adzuna or Brave Search keys | Account → Settings → AI Providers → Discovery & Aggregators |
+| Add an AI key | Account → Settings → AI Provider |
+| Add Adzuna or Brave Search keys | Account → Settings → AI Provider → Discovery & Aggregators |
 | Discover new ATS sources | Settings → Sources → Scan for new sources or Search discover |
 | Review and approve discovered sources | Settings → Sources → Discovered sources |
 | Check which sources are still live | Settings → Sources → Validate sources |
@@ -323,14 +323,16 @@ npm run data:export
 - Run `npm run db:check` to verify the database.
 
 **PDF generation fails**
-- Make sure Google Chrome is installed.
+- The app looks for Google Chrome first, then falls back to a Chromium browser
+  bundled with the app, so this usually works with no setup at all.
 - On Mac, Chrome is usually at `/Applications/Google Chrome.app`. On Windows,
   it is in `C:\Program Files\Google\Chrome\Application\chrome.exe`.
-- If Chrome is in an unusual location, set the environment variable:
-  `CHROME_EXECUTABLE_PATH=/path/to/chrome`
+- If your browser is in an unusual location, add this line to `.env.local` and
+  restart the app:
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/full/path/to/chrome`
 
 **No AI results**
-- Go to Settings → AI Providers and check that your key is entered and the
+- Go to Settings → AI Provider and check that your key is entered and the
   correct provider is set as active. Use the "Test connection" button to verify.
 
 ---
@@ -352,7 +354,12 @@ Use with caution — this cannot be undone unless you have a backup.
 ## Prompt for Claude Code or Codex (self-service setup)
 
 If you want an AI coding assistant to set up and run this app with minimal
-manual work, paste the following prompt into **Claude Code** or **Codex**:
+manual work, paste the following prompt into **Claude Code** or **Codex**.
+
+It will ask which AI provider you want and can set up Ollama for you, so you can
+finish the whole install without creating an account or paying for anything. If
+you pick a cloud provider instead, it opens the settings page and lets you paste
+your own key — it will not ask you to hand the key over.
 
 ---
 
@@ -366,12 +373,12 @@ Goal:
 Do the setup yourself end to end. Do not give me a list of terminal commands to
 run. Use the terminal and browser tools available to you, verify each step, and
 only ask me for information you cannot safely obtain or create yourself, such as
-an AI API key or the local path to my resume PDF.
+which AI provider I want to use or the local path to my resume PDF.
 
 What to do:
 
 1. Inspect the computer for required tools:
-   - Node.js 18 or newer
+   - Node.js 20 or newer (the project is tested on 22)
    - npm
    - Git
    - Google Chrome or another Chromium browser for PDF generation
@@ -384,7 +391,10 @@ What to do:
    automated installation path.
 
 3. Create or reuse a local project folder:
-   - If the repository is already cloned, use the existing checkout.
+   - If the repository is already cloned, use the existing checkout, and delete
+     any `.next` folder inside it before continuing. A stale build cache left
+     over from an older commit is the most common cause of a confusing
+     first-run failure.
    - If it is not cloned, clone it from the repository URL above.
    - Avoid overwriting or deleting existing user data.
 
@@ -393,7 +403,9 @@ What to do:
 5. Run the project's verification checks:
    - npm run lint
    - npm run typecheck
-   - npm run build
+
+   Do not run `npm run build`. The development server does not need it, and it
+   roughly doubles the setup time for no benefit here.
 
 6. Start the development server. If port 3000 is busy, use the next available
    local port and tell me which URL is running.
@@ -401,9 +413,20 @@ What to do:
 7. Open the app in a browser yourself and verify the dashboard loads. Do not
    simply tell me to open the URL.
 
-8. Complete as much first-time setup as the app allows:
-   - If no AI provider is configured, ask me for one API key, then enter it in
-     Settings -> AI Providers and use the app's connection test if available.
+8. Set up an AI provider. Ask me which I want before doing anything:
+
+   - Ollama runs a model locally on this computer. It is free, needs no account
+     and no API key, and no prompt text leaves the machine. If I choose this,
+     install Ollama if it is missing, pull a general-purpose model, start the
+     local server, then set the Ollama base URL in Settings -> AI Provider.
+
+   - A cloud provider (OpenAI, Anthropic, or Google Gemini) needs an API key
+     that I supply. If I choose this, open Settings -> AI Provider in the
+     browser and let me paste the key in myself. Do not ask me to send you the
+     key and do not type it on my behalf. Once I have pasted it, use the app's
+     connection test if available.
+
+9. Complete the rest of the first-time setup:
    - If a resume is needed, ask me for the local PDF path or use the browser file
      picker if your tools support it. Upload it through Profile -> Resumes.
    - Preserve multiple resume lanes. Do not merge everything into one universal
@@ -411,18 +434,25 @@ What to do:
    - Run profile extraction from Profile -> Overview after a resume is uploaded.
    - Return to the dashboard and scan for jobs when setup is complete.
 
-9. Safety rules:
-   - Never submit job applications, send emails, or message recruiters for me.
-   - Never delete resumes, generated documents, reports, backups, or tracked
-     application data unless I explicitly ask.
-   - Keep all data local.
+10. PDF export normally needs no setup: the app uses Google Chrome if it finds
+    it, and otherwise falls back to a bundled Chromium. Only if export fails
+    because the browser is in an unusual location, add
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH to `.env.local` with the full path to
+    the browser binary, then restart the server.
 
-10. If anything fails, read the actual error, fix what you can, retry once, and
+11. Safety rules:
+    - Never submit job applications, send emails, or message recruiters for me.
+    - Never delete resumes, generated documents, reports, backups, or tracked
+      application data unless I explicitly ask.
+    - Keep all data local. Do not paste my resume, my profile, or my API key
+      into any service other than this app.
+
+12. If anything fails, read the actual error, fix what you can, retry once, and
     then explain the blocker in plain language with the exact next approval or
     input needed from me.
 
-Finish by giving me the running local URL, what you verified, and anything still
-needed from me.
+Finish by giving me the running local URL, what you verified, which AI provider
+is active, and anything still needed from me.
 ```
 
 ---

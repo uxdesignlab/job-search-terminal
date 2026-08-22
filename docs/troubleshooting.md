@@ -65,7 +65,7 @@ Block F):
 If PDF generation fails:
 
 - Confirm local Chrome exists at the configured executable path.
-- Set `CHROME_EXECUTABLE_PATH` if Chrome is installed somewhere else.
+- Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` in `.env.local` if your browser is installed somewhere else.
 - Run `npm run document:check`.
 
 ## Quality Checks

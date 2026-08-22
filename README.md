@@ -134,7 +134,7 @@ resumes, jobs, applications, and settings load from the local database.
 | Requirement | Details |
 |---|---|
 | Computer | Mac, Windows with WSL, or Linux |
-| Node.js | Version 18 or later |
+| Node.js | Version 20 or later |
 | Git | Required to clone the repo |
 | AI provider | OpenAI, Anthropic, or Google Gemini API key — **or use Ollama locally for free** (see below) |
 | Google Chrome | Recommended for PDF generation — falls back to bundled Chromium if not found |
