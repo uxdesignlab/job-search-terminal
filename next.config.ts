@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/favicon.ico",
-        destination: "/logo.svg",
+        destination: "/images/JST-logo.svg",
         permanent: false,
       },
     ];

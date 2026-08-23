@@ -5,9 +5,9 @@ export const metadata: Metadata = {
   title: "Job Search — UX Design Lab",
   description: "Local-first job search dashboard. Runs on your machine, keeps your data private.",
   icons: {
-    icon: "/logo.svg",
-    shortcut: "/logo.svg",
-    apple: "/logo.svg",
+    icon: "/images/JST-logo.svg",
+    shortcut: "/images/JST-logo.svg",
+    apple: "/images/JST-logo.svg",
   }
 };
 
