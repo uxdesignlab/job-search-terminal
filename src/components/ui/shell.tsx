@@ -66,7 +66,7 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-0">
           {/* Logo */}
           <Link className="flex items-center gap-2.5 py-3 shrink-0" href="/dashboard">
-            <Image alt="UX Design Lab" height={28} src="/images/UXDL-logo.svg" width={28} />
+            <Image alt="Job Search Terminal" height={28} src="/images/JST-logo.svg" width={14} />
             <span className="text-sm font-bold tracking-tight text-ink">Job Search Terminal</span>
           </Link>
 

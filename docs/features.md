@@ -29,8 +29,21 @@ credential (API key for cloud providers; a non-empty base URL for Ollama):
 - Red: no credential is configured for any provider in the chain
 
 The app redirects `/` to `/dashboard` on load.
-The app also serves `/favicon.ico` (redirected to the shared `logo.svg`) so
+The app also serves `/favicon.ico` (redirected to `/images/JST-logo.svg`) so
 browser default favicon requests resolve without 404 noise.
+
+### Branding
+
+Job Search Terminal carries its own product mark. `public/images/JST-logo.svg`
+(the red chevron-and-triangle mark, `#d74527`, aspect ratio roughly 1:2) is used
+for the app header logo in `Shell`, for the favicon / shortcut / Apple touch icon
+in `src/app/layout.tsx`, and as the `/favicon.ico` redirect target. The
+Next.js file-convention icon at `src/app/icon.svg` renders the same mark in white
+on a rounded `#d74527` square.
+
+The UX Design Lab mark (`public/images/UXDL-logo.svg`) is retained for
+attribution only: it appears beside the "Made with care by UX Design Lab, LLC"
+line in the shell footer.
 
 ---
 
