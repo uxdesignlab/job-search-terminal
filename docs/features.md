@@ -2191,6 +2191,14 @@ case where postings could have slipped past unseen. Wider sweeps report the
 covered span as scan progress and finish clean. Three consecutive page failures
 abort the walk so a degraded API is not hammered.
 
+**Test coverage:** `src/lib/__tests__/himalayas-scanner.test.ts` covers the pure
+helpers (payload sanitising, date and salary formatting, location mapping, title
+and preference filtering). `src/lib/__tests__/himalayas-scan-run.test.ts` covers
+`runHimalayasScan` itself with the network and importer mocked and the file write
+redirected to a temp directory: both sides of the page-cap reporting rule, the
+freshness-cutoff stop, the consecutive-failure abort, the two-step scan-file
+write, and an importer failure surfacing as an error result.
+
 **Data handling:**
 - `pubDate` is UNIX epoch **seconds**, not milliseconds.
 - The API emits raw control characters inside JSON strings, which `JSON.parse`
