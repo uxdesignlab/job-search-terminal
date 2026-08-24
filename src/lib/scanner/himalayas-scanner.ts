@@ -13,7 +13,8 @@
  * scan can read the newest pages and stop, rather than crawling all ~4,800 pages.
  * A run reads at most `MAX_PAGES`, covering roughly the last ten hours of
  * postings — more than the six-hour scan interval. In practice the page cap, not
- * the freshness cutoff, ends the walk, and the run reports when that happens.
+ * the freshness cutoff, ends the walk, so that alone is not reported; the run
+ * only flags it when the pages read span less than the gap between scans.
  *
  * Measured against this project's own title/location filters: a live run read
  * 1,158 recent postings in ~28s and matched 12. Of those, 3 were `ux`
@@ -41,15 +42,24 @@ const PAGE_SIZE = 20;
  * the six-hour scan interval, with margin.
  *
  * It is the *page cap*, not the freshness cutoff, that normally ends the walk:
- * a 72-hour window would need ~435 pages. If scans are spaced further apart than
- * the covered window, postings in the gap are missed, so the scan says so rather
- * than reporting a clean result.
+ * a 72-hour window would need ~435 pages. See {@link MIN_COVERAGE_HOURS} for
+ * when hitting the cap is worth reporting.
  */
 const MAX_PAGES = 60;
 const REQUEST_TIMEOUT_MS = 30_000;
 const INTER_PAGE_DELAY_MS = 300;
 /** Consecutive page failures that abort the walk, so a degraded API is not hammered. */
 const MAX_CONSECUTIVE_FAILURES = 3;
+/**
+ * Hours of feed a run must cover before the page cap counts as a real gap.
+ *
+ * Hitting the cap is the normal way a run ends — a 72-hour window would need
+ * ~435 pages — so reporting it every time trained the user to ignore a lane's
+ * error row on a run that had just delivered new jobs. What actually matters is
+ * whether the walk covered the gap since the previous scan (six hours), so the
+ * cap is only reported when the postings read span less than that.
+ */
+const MIN_COVERAGE_HOURS = 6;
 
 export type HimalayasScanOptions = {
   titleFilters?: { positive: string[]; negative: string[] };
@@ -199,6 +209,7 @@ export async function runHimalayasScan(
   let consecutiveFailures = 0;
   let reachedCutoff = false;
   let pagesRead = 0;
+  let oldestSeenMs: number | null = null;
 
   for (let page = 0; page < MAX_PAGES && !reachedCutoff; page += 1) {
     const jobs = await fetchPage(page * PAGE_SIZE);
@@ -228,6 +239,12 @@ export async function runHimalayasScan(
         reachedCutoff = true;
         break;
       }
+      if (job.datePosted) {
+        const postedMs = Date.parse(job.datePosted);
+        if (!Number.isNaN(postedMs) && (oldestSeenMs === null || postedMs < oldestSeenMs)) {
+          oldestSeenMs = postedMs;
+        }
+      }
       if (seen.has(job.sourceUrl)) continue;
       seen.add(job.sourceUrl);
       collected.push(job);
@@ -240,16 +257,25 @@ export async function runHimalayasScan(
   onProgress?.(`Read ${pagesRead} Himalayas page(s); ${collected.length} postings within the freshness window.`);
 
   // Exhausting the page budget before reaching the cutoff means the walk stopped
-  // mid-feed, so anything older than the newest ~MAX_PAGES*PAGE_SIZE postings was
-  // never seen. Surface it: a partial sweep reported as a clean one is exactly
-  // how a lane goes quiet without anyone noticing.
+  // mid-feed. That is the normal ending, so it is only worth reporting when the
+  // pages read span less than the interval between scans — that is the case
+  // where postings could have slipped through unseen. A partial sweep reported
+  // as a clean one is how a lane goes quiet without anyone noticing; a full
+  // sweep reported as an error is how a real one stops being read.
   if (!reachedCutoff && pagesRead >= MAX_PAGES) {
-    const detail =
-      `Reached the ${MAX_PAGES}-page cap before the ${freshnessWindowHours}h cutoff — ` +
-      `only the newest ~${MAX_PAGES * PAGE_SIZE} postings were checked. ` +
-      `Postings older than that were not seen this run.`;
-    errors.push(detail);
-    onProgress?.(`Note: ${detail}`);
+    const coveredHours =
+      oldestSeenMs === null ? 0 : (Date.now() - oldestSeenMs) / (60 * 60 * 1000);
+    if (coveredHours < MIN_COVERAGE_HOURS) {
+      const detail =
+        `Reached the ${MAX_PAGES}-page cap after only ${coveredHours.toFixed(1)}h of postings ` +
+        `(under the ${MIN_COVERAGE_HOURS}h between scans) — postings older than that were not seen this run.`;
+      errors.push(detail);
+      onProgress?.(`Note: ${detail}`);
+    } else {
+      onProgress?.(
+        `Reached the ${MAX_PAGES}-page cap, covering the newest ${coveredHours.toFixed(1)}h of postings.`,
+      );
+    }
   }
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
