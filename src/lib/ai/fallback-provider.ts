@@ -27,8 +27,10 @@ function shouldFailover(error: unknown): boolean {
     msg.includes("overloaded") ||
     msg.includes("unavailable") ||
     msg.includes("503") ||
-    // Ollama-specific: invalid JSON output, timeout, or connection failure — try next provider
+    // Ollama-specific: invalid JSON output, empty/truncated text, timeout, or
+    // connection failure — try next provider
     msg.includes("invalid json") ||
+    msg.includes("no usable text") ||
     msg.includes("timed out") ||
     // A provider that ran out of its own time budget is the clearest case for
     // trying the next one: the local model the user put first is slow, and the

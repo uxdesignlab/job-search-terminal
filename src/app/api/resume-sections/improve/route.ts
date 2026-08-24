@@ -52,10 +52,22 @@ export async function POST(req: Request) {
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
-      { maxTokens: 1200 }
+      // A section rewrite is short, but a reasoning model spends tokens thinking
+      // before it writes any of it. At 1200 the thinking alone used the whole
+      // budget and the rewrite came back empty, which the editor could only
+      // report as "AI improvement failed".
+      { maxTokens: 4096 }
     );
 
-    return NextResponse.json({ improved: improved.trim() });
+    const text = improved.trim();
+    if (!text) {
+      return NextResponse.json(
+        { error: "The AI provider returned an empty rewrite. Try again, or switch providers in Settings → AI Provider." },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({ improved: text });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
