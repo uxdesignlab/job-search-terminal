@@ -2180,11 +2180,16 @@ the newest pages and stops instead of walking all ~4,800. `MAX_PAGES` (60) cover
 the newest ~1,200 postings — roughly ten hours at the observed rate, comfortably
 ahead of the six-hour schedule.
 
-**Partial sweeps are reported.** In practice the page cap, not the freshness
-cutoff, ends the walk: a 72-hour window would need ~435 pages. When the cap is
-hit before the cutoff, the run records that older postings were not seen, rather
-than reporting a clean result. Three consecutive page failures abort the walk so
-a degraded API is not hammered.
+**Only genuinely thin sweeps are reported.** In practice the page cap, not the
+freshness cutoff, ends the walk: a 72-hour window would need ~435 pages. Hitting
+the cap is therefore the normal ending and is no longer recorded as an error —
+doing so put an "Other error" row (with a Disable prompt) on the Himalayas lane
+after runs that had just delivered new jobs. Instead the run measures how many
+hours of postings it actually read, and records the cap only when that span is
+under `MIN_COVERAGE_HOURS` (6) — the gap between scheduled scans, and the only
+case where postings could have slipped past unseen. Wider sweeps report the
+covered span as scan progress and finish clean. Three consecutive page failures
+abort the walk so a degraded API is not hammered.
 
 **Data handling:**
 - `pubDate` is UNIX epoch **seconds**, not milliseconds.
