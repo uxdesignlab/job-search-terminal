@@ -63,15 +63,38 @@ export class OllamaProvider implements AIProvider {
   }
 
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
+    const maxTokens = config?.maxTokens ?? 4096;
     try {
       const response = await this.client.chat.completions.create({
         model: config?.model ?? this.model,
-        max_tokens: config?.maxTokens ?? 4096,
+        max_tokens: maxTokens,
         temperature: config?.temperature,
         messages: this.toMessages(messages)
       });
-      return response.choices[0]?.message?.content ?? "";
+      const choice = response.choices[0];
+      const text = choice?.message?.content ?? "";
+
+      // A reasoning model spends the token budget thinking before it writes
+      // anything, so a cap that is merely tight comes back as a well-formed
+      // response whose `content` is empty. Returning "" from here made every
+      // caller invent its own generic failure downstream; saying what happened
+      // also marks the call worth retrying on the next provider in the chain.
+      if (!text.trim()) {
+        if (choice?.finish_reason === "length") {
+          throw new Error(
+            `Ollama returned no usable text: the answer was cut off at the ${maxTokens}-token limit ` +
+              `after ${response.usage?.completion_tokens ?? "?"} tokens, before any content was written. ` +
+              "The model is reasoning at length — raise the token limit or use a non-reasoning model."
+          );
+        }
+        throw new Error(
+          "Ollama returned no usable text: the answer was empty. Try another local model."
+        );
+      }
+
+      return text;
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Ollama returned no usable text")) throw error;
       throw humanizeOllamaError(error);
     }
   }

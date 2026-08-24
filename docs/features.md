@@ -1083,7 +1083,11 @@ from-scratch resumes:
   Awards & Recognition, Experience bullets, and Custom sections. Sends the
   section content to the active AI provider, which returns an improved version.
   The suggestion is shown inline with **Accept** and **Discard** buttons; the
-  original is preserved until the user accepts.
+  original is preserved until the user accepts. The request allows up to 4096
+  output tokens, so local reasoning models have room to think before writing the
+  rewrite. If a provider returns an empty rewrite anyway, the editor shows an
+  explanatory error ("The AI provider returned an empty rewrite…") instead of a
+  generic failure, and a fallback chain moves on to the next configured provider.
 - Helpful placeholder text in every input guides users building from scratch.
 - Uses the same split editor/preview layout as the generated resume editor, so
   source edits can be checked against the rendered resume while reviewing.
