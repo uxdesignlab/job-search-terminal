@@ -38,7 +38,11 @@ const scanOpts = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const ok = (results: unknown[]) => ({ ok: true, status: 200, json: async () => ({ count: results.length, results }) });
-const fail = (status: number) => ({ ok: false, status, headers: { get: () => null } });
+const fail = (status: number, retryAfter: string | null = null) => ({
+  ok: false,
+  status,
+  headers: { get: () => retryAfter },
+});
 const aborted = () => Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
 
 const job = (id: string) => ({
@@ -88,6 +92,16 @@ describe("Adzuna transient failures", () => {
     const result = await settle(runAggregatorScan(scanOpts()));
     expect(result.errors).toEqual(["Adzuna search timed out after 15s"]);
     expect(classifyScanErrorMessage(result.errors[0])).toBe("timeout_or_slow");
+  });
+
+  it("gives up immediately on a long rate-limit wait rather than stalling the scan", async () => {
+    mocks.safeFetch.mockResolvedValue(fail(429, "3600"));
+    const result = await settle(runAggregatorScan(scanOpts()));
+    expect(result.errors).toEqual([
+      "Adzuna is rate limiting this account — it asked us to wait 1 hour before retrying",
+    ]);
+    // One call: it neither slept out the hour nor burned the retry budget.
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(1);
   });
 
   it("passes an abort signal on every Adzuna request", async () => {

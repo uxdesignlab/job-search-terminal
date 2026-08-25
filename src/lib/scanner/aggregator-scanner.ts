@@ -61,7 +61,17 @@ const ADZUNA_FETCH_ATTEMPTS = 3;
  * single hung socket stalled the entire run with no upper bound.
  */
 const ADZUNA_FETCH_TIMEOUT_MS = 15_000;
-const ADZUNA_BACKOFF: BackoffConfig = { baseMs: 1_000, factor: 2, jitterMs: 250 };
+const ADZUNA_BACKOFF: BackoffConfig = {
+  baseMs: 1_000,
+  factor: 2,
+  jitterMs: 250,
+  /**
+   * Tight, because this scan blocks an interactive progress modal. Adzuna's free
+   * tier is quota-based, so a 429 can carry a `Retry-After` measured in hours;
+   * waiting that out would stall the whole discovery run.
+   */
+  maxDelayMs: 10_000,
+};
 /**
  * Consecutive whole-query failures that abandon the sweep.
  *
@@ -69,6 +79,15 @@ const ADZUNA_BACKOFF: BackoffConfig = { baseMs: 1_000, factor: 2, jitterMs: 250 
  * working through the remaining title/location pairs only multiplies the wait.
  */
 const ADZUNA_MAX_CONSECUTIVE_FAILURES = 3;
+
+/** Renders a backpressure interval the way a person would say it. */
+function formatWait(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return `${Math.max(1, Math.round(ms / 1_000))}s`;
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
 
 async function searchAdzuna(
   appId: string,
@@ -108,6 +127,11 @@ async function searchAdzuna(
   // Every attempt failed. Say which way it failed — a timeout and a gateway
   // error read the same to the user otherwise, and they are classified
   // differently on the dashboard.
+  if (outcome.retryAfterMs !== undefined) {
+    throw new Error(
+      `Adzuna is rate limiting this account — it asked us to wait ${formatWait(outcome.retryAfterMs)} before retrying`,
+    );
+  }
   if (outcome.timedOut) {
     throw new Error(`Adzuna search timed out after ${ADZUNA_FETCH_TIMEOUT_MS / 1000}s`);
   }

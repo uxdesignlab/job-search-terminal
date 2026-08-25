@@ -156,6 +156,8 @@ const CC_BACKOFF: BackoffConfig = {
   baseMs: CC_RETRY_BASE_MS,
   factor: CC_RETRY_FACTOR,
   jitterMs: CC_RETRY_JITTER_MS,
+  /** Generous: this is a background sweep, not an interactive scan. */
+  maxDelayMs: 60_000,
 };
 
 export { retryAfterMs };
