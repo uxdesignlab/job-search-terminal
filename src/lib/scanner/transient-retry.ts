@@ -26,6 +26,17 @@ export type BackoffConfig = {
   baseMs: number;
   factor: number;
   jitterMs: number;
+  /**
+   * Longest this lane will wait between attempts.
+   *
+   * The per-attempt deadline bounds the *request*; it does not bound the sleep
+   * between attempts. A quota-exhausted 429 can carry a `Retry-After` measured
+   * in hours, and honouring that verbatim would stall the caller for the full
+   * interval — the same unbounded stall the per-attempt deadline exists to
+   * prevent. Backoff is clamped to this, and a server asking for longer ends
+   * the retries instead (see `retryAfterMs` on the exhausted outcome).
+   */
+  maxDelayMs: number;
 };
 
 export type FetchWithRetryOptions = {
@@ -44,7 +55,17 @@ export type FetchWithRetryResult<T> =
   /** A non-retryable HTTP status. The body has not been read. */
   | { kind: "status"; status: number; response: Response }
   /** Every attempt failed. `lastStatus` is the last retryable status seen, if any. */
-  | { kind: "exhausted"; lastStatus: number | null; timedOut: boolean };
+  | {
+      kind: "exhausted";
+      lastStatus: number | null;
+      timedOut: boolean;
+      /**
+       * Set when the server asked us to wait longer than `maxDelayMs`, in which
+       * case retries stopped early rather than sleeping it out. Callers should
+       * surface this — it is backpressure with a known duration, not a fault.
+       */
+      retryAfterMs?: number;
+    };
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -59,10 +80,11 @@ export function retryAfterMs(res: { headers: { get(name: string): string | null 
 }
 
 /**
- * Backoff for retry attempt `attempt` (0-based).
+ * Backoff for retry attempt `attempt` (0-based), never exceeding `maxDelayMs`.
  *
- * A server-supplied `Retry-After` always wins; otherwise exponential with jitter.
- * Jitter avoids synchronising retries when several queries back off together.
+ * A server-supplied `Retry-After` wins over the exponential schedule; otherwise
+ * exponential with jitter. Jitter avoids synchronising retries when several
+ * queries back off together.
  */
 export function computeBackoffMs(
   attempt: number,
@@ -70,8 +92,11 @@ export function computeBackoffMs(
   backoff: BackoffConfig,
   random: () => number = Math.random,
 ): number {
-  if (serverDelayMs !== null) return serverDelayMs;
-  return backoff.baseMs * backoff.factor ** attempt + Math.floor(random() * backoff.jitterMs);
+  const raw =
+    serverDelayMs !== null
+      ? serverDelayMs
+      : backoff.baseMs * backoff.factor ** attempt + Math.floor(random() * backoff.jitterMs);
+  return Math.min(raw, backoff.maxDelayMs);
 }
 
 /** An aborted request looks different across runtimes; match the name first, then the message. */
@@ -111,6 +136,12 @@ export async function fetchWithRetry<T>(
       if (!TRANSIENT_RETRY_STATUS.has(res.status)) return { kind: "status", status: res.status, response: res };
       lastStatus = res.status;
       serverDelayMs = retryAfterMs(res);
+      if (serverDelayMs !== null && serverDelayMs > backoff.maxDelayMs) {
+        // The server is telling us how long its backpressure lasts. Sleeping it
+        // out would stall the caller; retrying sooner would ignore it and burn
+        // quota. Stop and let the caller report the wait.
+        return { kind: "exhausted", lastStatus, timedOut: false, retryAfterMs: serverDelayMs };
+      }
     } catch (error) {
       // Timeout, connection refused, transport error, or a body that terminated
       // mid-read — all worth another attempt.

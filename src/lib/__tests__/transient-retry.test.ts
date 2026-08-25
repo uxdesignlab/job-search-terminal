@@ -11,7 +11,7 @@ import {
   type BackoffConfig,
 } from "@/lib/scanner/transient-retry";
 
-const BACKOFF: BackoffConfig = { baseMs: 1_000, factor: 2, jitterMs: 250 };
+const BACKOFF: BackoffConfig = { baseMs: 1_000, factor: 2, jitterMs: 250, maxDelayMs: 10_000 };
 
 /** Retries are driven through an injected sleep so tests never wait on real time. */
 const opts = (overrides: Partial<Parameters<typeof fetchWithRetry>[2]> = {}) => ({
@@ -101,6 +101,32 @@ describe("fetchWithRetry", () => {
     expect(slept).toEqual([5_000]);
   });
 
+  it("stops retrying when the server asks for a longer wait than the lane tolerates", async () => {
+    const slept: number[] = [];
+    mocks.safeFetch.mockResolvedValue(fail(429, "3600"));
+    const outcome = await fetchWithRetry(
+      "https://example.test",
+      (r) => r.json(),
+      opts({ sleep: async (ms: number) => { slept.push(ms); } }),
+    );
+    expect(outcome).toEqual({ kind: "exhausted", lastStatus: 429, timedOut: false, retryAfterMs: 3_600_000 });
+    // Crucially: it neither slept for the hour nor kept hammering the endpoint.
+    expect(slept).toEqual([]);
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("still honours a Retry-After that fits inside the cap", async () => {
+    const slept: number[] = [];
+    mocks.safeFetch.mockResolvedValueOnce(fail(429, "5")).mockResolvedValueOnce(ok({}));
+    const outcome = await fetchWithRetry(
+      "https://example.test",
+      (r) => r.json(),
+      opts({ sleep: async (ms: number) => { slept.push(ms); } }),
+    );
+    expect(outcome.kind).toBe("value");
+    expect(slept).toEqual([5_000]);
+  });
+
   it("does not sleep after the final attempt", async () => {
     const slept: number[] = [];
     mocks.safeFetch.mockResolvedValue(fail(502));
@@ -123,6 +149,10 @@ describe("computeBackoffMs", () => {
 
   it("lets a server-supplied Retry-After win over backoff", () => {
     expect(computeBackoffMs(2, 1_500, BACKOFF, () => 0)).toBe(1_500);
+  });
+
+  it("never exceeds maxDelayMs, however far the exponential schedule runs", () => {
+    expect(computeBackoffMs(10, null, BACKOFF, () => 0)).toBe(10_000);
   });
 
   it("adds jitter so parallel retries do not synchronise", () => {

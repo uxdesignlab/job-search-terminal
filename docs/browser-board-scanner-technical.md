@@ -98,7 +98,7 @@ apart:
 | --- | --- |
 | `{ kind: "value", value }` | Request succeeded and the body was read |
 | `{ kind: "status", status, response }` | Non-retryable HTTP status; body not read |
-| `{ kind: "exhausted", lastStatus, timedOut }` | Every attempt failed |
+| `{ kind: "exhausted", lastStatus, timedOut, retryAfterMs? }` | Every attempt failed |
 
 Two invariants are easy to break and worth preserving:
 
@@ -107,14 +107,24 @@ Two invariants are easy to break and worth preserving:
   loop silently stops retrying it.
 - **Every attempt carries its own deadline.** `safeFetch` imposes no timeout of
   its own — a caller that passes no signal can hang indefinitely.
+- **The sleep between attempts is capped too.** The per-attempt deadline bounds
+  the *request*, not the wait between requests. `BackoffConfig.maxDelayMs` caps
+  the exponential schedule, and a server-supplied `Retry-After` longer than that
+  ends the retries immediately, reporting the interval as `retryAfterMs` on the
+  exhausted outcome. Honouring a quota-reset `Retry-After` verbatim would stall
+  the caller for hours — the same unbounded stall the deadline exists to
+  prevent — while ignoring it and retrying sooner would burn quota against a
+  limit the server already told us about.
 
 `ccFetchText` in `source-discovery.ts` is a thin wrapper over this helper
-(3 attempts, 90s deadline, 2s base × 3 backoff). `computeRetryDelayMs` and
+(3 attempts, 90s deadline, 2s base × 3 backoff, 60s delay cap — generous,
+since it is a background sweep). `computeRetryDelayMs` and
 `retryAfterMs` remain exported from `source-discovery.ts` for the CC-tuned
 constants.
 
 Adzuna (`searchAdzuna`) uses a faster profile — 3 attempts, a **15s per-attempt
-deadline**, and a 1s base × 2 backoff — because a search API answers in well
+deadline**, a 1s base × 2 backoff, and a **10s delay cap** — because a search
+API answers in well
 under a second when healthy and the scan fans out over up to 5 titles × 3
 locations sequentially. Before this existed, Adzuna threw on the first non-ok
 status, so a single 502 dropped a whole query and surfaced as an unactionable
@@ -127,6 +137,7 @@ Exhausted Adzuna attempts produce distinct messages so
 
 - Timeout → `Adzuna search timed out after 15s` (badge: *Timed out*)
 - Gateway → `Adzuna API returned HTTP <status> on all 3 attempts`
+- Rate limit → `Adzuna is rate limiting this account — it asked us to wait <interval> before retrying`
 - Neither → `Adzuna could not be reached after 3 attempts`
 
 Non-retryable statuses keep their existing meanings: 401/403 raise the
