@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { safeFetch } from "@/lib/safe-fetch";
+import { fetchWithRetry, type BackoffConfig } from "./transient-retry";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
 import type { FreshnessWindowHours } from "@/lib/db/types";
 import { buildTitleFilter } from "@/lib/jobs/title-filter";
@@ -46,6 +46,30 @@ type AdzunaResponse = {
   results: AdzunaJob[];
 };
 
+/**
+ * Adzuna retry profile.
+ *
+ * Deliberately faster than the Common Crawl profile: a search API answers in
+ * well under a second when healthy, and a scan fans out over up to 5 titles x 3
+ * locations sequentially, so a slow backoff multiplied by 15 queries turns a
+ * brief outage into minutes of stalling.
+ */
+const ADZUNA_FETCH_ATTEMPTS = 3;
+/**
+ * Per-attempt deadline. `safeFetch` imposes none of its own, and this scan runs
+ * under `Promise.all` alongside the other discovery sources — without a signal a
+ * single hung socket stalled the entire run with no upper bound.
+ */
+const ADZUNA_FETCH_TIMEOUT_MS = 15_000;
+const ADZUNA_BACKOFF: BackoffConfig = { baseMs: 1_000, factor: 2, jitterMs: 250 };
+/**
+ * Consecutive whole-query failures that abandon the sweep.
+ *
+ * Mirrors the Common Crawl circuit breaker: once the host is refusing us,
+ * working through the remaining title/location pairs only multiplies the wait.
+ */
+const ADZUNA_MAX_CONSECUTIVE_FAILURES = 3;
+
 async function searchAdzuna(
   appId: string,
   apiKey: string,
@@ -64,14 +88,35 @@ async function searchAdzuna(
   });
   if (where) params.set("where", where);
   const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params}`;
-  const res = await safeFetch(url);
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) throw new Error("Invalid Adzuna credentials — check your App ID and API Key");
-    if (res.status === 404) return [];
-    throw new Error(`Adzuna API returned HTTP ${res.status}`);
+
+  const outcome = await fetchWithRetry(url, (res) => res.json() as Promise<AdzunaResponse>, {
+    attempts: ADZUNA_FETCH_ATTEMPTS,
+    timeoutMs: ADZUNA_FETCH_TIMEOUT_MS,
+    backoff: ADZUNA_BACKOFF,
+  });
+
+  if (outcome.kind === "value") return outcome.value.results ?? [];
+
+  if (outcome.kind === "status") {
+    if (outcome.status === 401 || outcome.status === 403) {
+      throw new Error("Invalid Adzuna credentials — check your App ID and API Key");
+    }
+    if (outcome.status === 404) return [];
+    throw new Error(`Adzuna API returned HTTP ${outcome.status}`);
   }
-  const data = await res.json() as AdzunaResponse;
-  return data.results ?? [];
+
+  // Every attempt failed. Say which way it failed — a timeout and a gateway
+  // error read the same to the user otherwise, and they are classified
+  // differently on the dashboard.
+  if (outcome.timedOut) {
+    throw new Error(`Adzuna search timed out after ${ADZUNA_FETCH_TIMEOUT_MS / 1000}s`);
+  }
+  if (outcome.lastStatus !== null) {
+    throw new Error(
+      `Adzuna API returned HTTP ${outcome.lastStatus} on all ${ADZUNA_FETCH_ATTEMPTS} attempts`,
+    );
+  }
+  throw new Error(`Adzuna could not be reached after ${ADZUNA_FETCH_ATTEMPTS} attempts`);
 }
 
 function adzunaStableUrl(redirectUrl: string): string {
@@ -122,8 +167,9 @@ export async function runAggregatorScan(
   }> = [];
   const errors: string[] = [];
   const seen = new Set<string>();
+  let consecutiveFailures = 0;
 
-  for (const title of opts.titles.slice(0, 5)) {
+  outer: for (const title of opts.titles.slice(0, 5)) {
     for (const location of locations.slice(0, 3)) {
       const where = isRemoteOnly ? "remote" : location;
       onProgress?.(`Searching Adzuna: "${title}"${where ? ` in "${where}"` : ""}…`);
@@ -152,12 +198,23 @@ export async function runAggregatorScan(
           });
         }
         onProgress?.(`Found ${results.length} jobs for "${title}"${where ? ` / "${where}"` : ""}`);
+        consecutiveFailures = 0;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(msg);
         onProgress?.(`Warning: ${msg}`);
         if (msg.includes("credentials")) {
           return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors, jobs: [] };
+        }
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= ADZUNA_MAX_CONSECUTIVE_FAILURES) {
+          // Adzuna is down or throttling us, not failing one odd query. Each
+          // remaining query would burn its full retry budget to learn the same
+          // thing, so stop and report the abort instead of stalling the scan.
+          const abort = `Adzuna stopped responding — gave up after ${consecutiveFailures} consecutive failed searches`;
+          errors.push(abort);
+          onProgress?.(abort);
+          break outer;
         }
       }
       await new Promise((r) => setTimeout(r, 200));

@@ -10,6 +10,7 @@ import yaml from "js-yaml";
 import { tryGetActiveProvider } from "@/lib/ai/factory";
 import { getCustomScanSources } from "@/lib/db/queries";
 import { safeFetch } from "@/lib/safe-fetch";
+import { computeBackoffMs, fetchWithRetry, retryAfterMs, type BackoffConfig } from "./transient-retry";
 import type { AIMessage } from "@/lib/ai/provider";
 
 export const OUTPUT_PATH = path.join(process.cwd(), "data", "discovered-sources.json");
@@ -147,31 +148,25 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 const NO_STORE: RequestInit = { cache: "no-store" };
 
-/** Retryable gateway/rate-limit statuses returned by the CC index under load. */
-const CC_RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
-
-/** Honours `Retry-After` (seconds or HTTP-date) when the server tells us how long to wait. */
-export function retryAfterMs(res: { headers: { get(name: string): string | null } }): number | null {
-  const raw = res.headers.get("retry-after");
-  if (!raw) return null;
-  const seconds = Number(raw);
-  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
-  const at = Date.parse(raw);
-  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
-}
-
 /**
- * Backoff for retry attempt `attempt` (0-based).
- *
- * A server-supplied `Retry-After` always wins; otherwise exponential with jitter.
+ * CC backoff profile. The retry mechanics live in `transient-retry.ts`; only the
+ * timing is CC-specific, because this host throttles by refusing connections.
  */
+const CC_BACKOFF: BackoffConfig = {
+  baseMs: CC_RETRY_BASE_MS,
+  factor: CC_RETRY_FACTOR,
+  jitterMs: CC_RETRY_JITTER_MS,
+};
+
+export { retryAfterMs };
+
+/** Backoff for CC retry attempt `attempt` (0-based). Retained for the CC-tuned constants. */
 export function computeRetryDelayMs(
   attempt: number,
   serverDelayMs: number | null,
   random: () => number = Math.random,
 ): number {
-  if (serverDelayMs !== null) return serverDelayMs;
-  return CC_RETRY_BASE_MS * CC_RETRY_FACTOR ** attempt + Math.floor(random() * CC_RETRY_JITTER_MS);
+  return computeBackoffMs(attempt, serverDelayMs, CC_BACKOFF, random);
 }
 
 /**
@@ -182,26 +177,13 @@ export function computeRetryDelayMs(
  * "query failed" and "no records" previously collapsed into the same silent zero.
  */
 async function ccFetchText(url: string): Promise<string | null> {
-  for (let attempt = 0; attempt < CC_FETCH_ATTEMPTS; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), CC_FETCH_TIMEOUT_MS);
-    let serverDelayMs: number | null = null;
-    try {
-      const res = await safeFetch(url, { signal: controller.signal, ...NO_STORE });
-      if (res.ok) return await res.text();
-      if (res.status === 404) return null;
-      if (!CC_RETRYABLE_STATUS.has(res.status)) return null;
-      serverDelayMs = retryAfterMs(res);
-    } catch {
-      /* timeout, connection refused, or transport error — retry */
-    } finally {
-      clearTimeout(timer);
-    }
-    if (attempt < CC_FETCH_ATTEMPTS - 1) {
-      await sleep(computeRetryDelayMs(attempt, serverDelayMs));
-    }
-  }
-  return null;
+  const outcome = await fetchWithRetry(url, (res) => res.text(), {
+    attempts: CC_FETCH_ATTEMPTS,
+    timeoutMs: CC_FETCH_TIMEOUT_MS,
+    backoff: CC_BACKOFF,
+    init: NO_STORE,
+  });
+  return outcome.kind === "value" ? outcome.value : null;
 }
 
 /**

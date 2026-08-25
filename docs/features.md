@@ -2246,6 +2246,15 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 
 **Limits:** Up to 5 target roles × 3 locations per scan, 50 results per query, and the selected fresh-posting window (24 hours, 72 hours by default, or 7 days). Adzuna's coverage varies by country (default: `us`).
 
+**Reliability:** Adzuna searches retry transient gateway failures (429, 502,
+503, 504) up to 3 times with exponential backoff, so a brief blip on Adzuna's
+side no longer drops a whole search. Each attempt is bounded by a 15-second
+deadline — a hung request can no longer stall the rest of the scan. If three
+consecutive searches fail, the scan stops early and reports that Adzuna stopped
+responding rather than working through the remaining searches. A search that
+fails on timeout is reported as *Timed out* on the scan results dialog; one that
+fails on a gateway error is reported as *Other error*.
+
 **Scan type recorded:** `adzuna-api-scan`. Jobs appear in the Jobs table with an **Adzuna** source badge.
 
 **UI indicators on the Jobs table:**
