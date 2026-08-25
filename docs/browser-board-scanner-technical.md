@@ -85,6 +85,62 @@ in `scan_runs.scan_type`. Adzuna scan summaries use the importer-returned
 inserted job IDs for their new-listing preview, so ignored duplicate rows do
 not displace jobs that were actually added.
 
+### Transient-failure handling (Adzuna and Common Crawl)
+
+Retry mechanics shared by the scanner fetches live in
+`src/lib/scanner/transient-retry.ts`. `fetchWithRetry(url, read, options)`
+retries the statuses in `TRANSIENT_RETRY_STATUS` (429, 502, 503, 504) plus
+transport errors, with exponential backoff that honours a server-supplied
+`Retry-After`. It returns one of three outcomes so callers can tell the cases
+apart:
+
+| Outcome | Meaning |
+| --- | --- |
+| `{ kind: "value", value }` | Request succeeded and the body was read |
+| `{ kind: "status", status, response }` | Non-retryable HTTP status; body not read |
+| `{ kind: "exhausted", lastStatus, timedOut }` | Every attempt failed |
+
+Two invariants are easy to break and worth preserving:
+
+- **The body read happens inside the retry loop.** A response that terminates
+  mid-read is a transient failure like any other; hoisting the read out of the
+  loop silently stops retrying it.
+- **Every attempt carries its own deadline.** `safeFetch` imposes no timeout of
+  its own — a caller that passes no signal can hang indefinitely.
+
+`ccFetchText` in `source-discovery.ts` is a thin wrapper over this helper
+(3 attempts, 90s deadline, 2s base × 3 backoff). `computeRetryDelayMs` and
+`retryAfterMs` remain exported from `source-discovery.ts` for the CC-tuned
+constants.
+
+Adzuna (`searchAdzuna`) uses a faster profile — 3 attempts, a **15s per-attempt
+deadline**, and a 1s base × 2 backoff — because a search API answers in well
+under a second when healthy and the scan fans out over up to 5 titles × 3
+locations sequentially. Before this existed, Adzuna threw on the first non-ok
+status, so a single 502 dropped a whole query and surfaced as an unactionable
+scan error; it also passed no abort signal at all, so one hung socket could
+stall the whole discovery run (all lanes run under `Promise.all` in
+`job-discovery.ts`).
+
+Exhausted Adzuna attempts produce distinct messages so
+`classifyScanErrorMessage` can categorise them correctly on the dashboard:
+
+- Timeout → `Adzuna search timed out after 15s` (badge: *Timed out*)
+- Gateway → `Adzuna API returned HTTP <status> on all 3 attempts`
+- Neither → `Adzuna could not be reached after 3 attempts`
+
+Non-retryable statuses keep their existing meanings: 401/403 raise the
+credentials error that aborts the whole Adzuna scan, and 404 is treated as an
+empty result set rather than a failure.
+
+**Circuit breaker.** `ADZUNA_MAX_CONSECUTIVE_FAILURES` (3) abandons the sweep
+once three consecutive title/location queries fail, mirroring
+`CC_MAX_CONSECUTIVE_FAILURES`. A successful query resets the streak. Without
+it, a full outage would burn the retry budget on all 15 queries to learn the
+same thing. The abort is reported as a scan error
+(`Adzuna stopped responding — gave up after N consecutive failed searches`)
+rather than passing silently.
+
 The Adzuna scanner applies the same `title_filters` (positive/negative keyword
 lists from `getTitleFilters()`) as the Career Ops scanner before writing the
 import file. Jobs whose titles don't pass the filter are skipped and counted in
