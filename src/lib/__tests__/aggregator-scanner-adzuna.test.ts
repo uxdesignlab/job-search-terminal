@@ -104,6 +104,25 @@ describe("Adzuna transient failures", () => {
     expect(mocks.safeFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("ends the whole sweep on a long wait instead of retrying every remaining query", async () => {
+    mocks.safeFetch.mockResolvedValue(fail(429, "3600"));
+    const result = await settle(
+      runAggregatorScan(scanOpts({ titles: ["A", "B", "C", "D", "E"], locations: ["X", "Y", "Z"] })),
+    );
+    // Every remaining query hits the same account limit, so one request and one
+    // error — not one per query until the failure counter trips.
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(1);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  it("does not call a gateway Retry-After an account rate limit", async () => {
+    mocks.safeFetch.mockResolvedValue(fail(503, "3600"));
+    const result = await settle(runAggregatorScan(scanOpts()));
+    expect(result.errors).toEqual([
+      "Adzuna is temporarily unavailable (HTTP 503) — it asked us to wait 1 hour before retrying",
+    ]);
+  });
+
   it("passes an abort signal on every Adzuna request", async () => {
     mocks.safeFetch.mockResolvedValue(ok([]));
     await settle(runAggregatorScan(scanOpts()));

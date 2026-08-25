@@ -137,12 +137,22 @@ Exhausted Adzuna attempts produce distinct messages so
 
 - Timeout → `Adzuna search timed out after 15s` (badge: *Timed out*)
 - Gateway → `Adzuna API returned HTTP <status> on all 3 attempts`
-- Rate limit → `Adzuna is rate limiting this account — it asked us to wait <interval> before retrying`
+- Rate limit (429) → `Adzuna is rate limiting this account — it asked us to wait <interval> before retrying`
+- Gateway backpressure (502/503/504 carrying `Retry-After`) → `Adzuna is temporarily unavailable (HTTP <status>) — it asked us to wait <interval> before retrying`
 - Neither → `Adzuna could not be reached after 3 attempts`
 
 Non-retryable statuses keep their existing meanings: 401/403 raise the
 credentials error that aborts the whole Adzuna scan, and 404 is treated as an
 empty result set rather than a failure.
+
+**Backpressure ends the sweep.** A `Retry-After` longer than the cap raises
+`AdzunaBackpressureError`, which aborts the entire title/location sweep rather
+than counting as one failure toward the circuit breaker — every remaining query
+goes to the same account against the same limit, so continuing only spends
+requests to be told the same thing. Bad credentials raise
+`AdzunaCredentialsError` and end the scan the same way. Both are matched by
+type, never by substring: the messages are user-facing prose and must stay free
+to change without altering control flow.
 
 **Circuit breaker.** `ADZUNA_MAX_CONSECUTIVE_FAILURES` (3) abandons the sweep
 once three consecutive title/location queries fail, mirroring
