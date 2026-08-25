@@ -2252,9 +2252,11 @@ side no longer drops a whole search. Each attempt is bounded by a 15-second
 deadline — a hung request can no longer stall the rest of the scan. If three
 consecutive searches fail, the scan stops early and reports that Adzuna stopped
 responding rather than working through the remaining searches. If Adzuna
-rate-limits the account and asks for a long wait (its free tier is quota-based,
-so this can be hours), the scan reports the wait and stops rather than stalling
-or burning further quota. A search that
+asks for a long wait — either rate-limiting the account (its free tier is
+quota-based, so this can be hours) or reporting itself temporarily unavailable —
+the scan stops the whole sweep at that point and reports the wait, rather than
+stalling for it or spending further requests against a limit it already knows
+about. A search that
 fails on timeout is reported as *Timed out* on the scan results dialog; one that
 fails on a gateway error is reported as *Other error*.
 

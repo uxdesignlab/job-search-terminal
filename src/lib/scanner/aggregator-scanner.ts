@@ -80,6 +80,34 @@ const ADZUNA_BACKOFF: BackoffConfig = {
  */
 const ADZUNA_MAX_CONSECUTIVE_FAILURES = 3;
 
+/**
+ * Adzuna told us how long its backpressure lasts.
+ *
+ * Fatal to the whole sweep, not just the query that hit it: every remaining
+ * title/location pair goes to the same account against the same limit, so
+ * continuing only spends requests to be told the same thing again. Carried as a
+ * type rather than matched out of the message — the message is user-facing prose
+ * and must stay free to change.
+ */
+class AdzunaBackpressureError extends Error {
+  constructor(readonly status: number | null, readonly waitMs: number) {
+    super(
+      status === 429
+        ? `Adzuna is rate limiting this account — it asked us to wait ${formatWait(waitMs)} before retrying`
+        : `Adzuna is temporarily unavailable (HTTP ${status}) — it asked us to wait ${formatWait(waitMs)} before retrying`,
+    );
+    this.name = "AdzunaBackpressureError";
+  }
+}
+
+/** Bad App ID / API Key. Fatal to the sweep for the same reason. */
+class AdzunaCredentialsError extends Error {
+  constructor() {
+    super("Invalid Adzuna credentials — check your App ID and API Key");
+    this.name = "AdzunaCredentialsError";
+  }
+}
+
 /** Renders a backpressure interval the way a person would say it. */
 function formatWait(ms: number): string {
   const minutes = Math.round(ms / 60_000);
@@ -118,7 +146,7 @@ async function searchAdzuna(
 
   if (outcome.kind === "status") {
     if (outcome.status === 401 || outcome.status === 403) {
-      throw new Error("Invalid Adzuna credentials — check your App ID and API Key");
+      throw new AdzunaCredentialsError();
     }
     if (outcome.status === 404) return [];
     throw new Error(`Adzuna API returned HTTP ${outcome.status}`);
@@ -127,10 +155,10 @@ async function searchAdzuna(
   // Every attempt failed. Say which way it failed — a timeout and a gateway
   // error read the same to the user otherwise, and they are classified
   // differently on the dashboard.
+  // Not necessarily a 429 — 502/503/504 carry `Retry-After` too, and a gateway
+  // saying "come back later" must not be reported as an account rate limit.
   if (outcome.retryAfterMs !== undefined) {
-    throw new Error(
-      `Adzuna is rate limiting this account — it asked us to wait ${formatWait(outcome.retryAfterMs)} before retrying`,
-    );
+    throw new AdzunaBackpressureError(outcome.lastStatus, outcome.retryAfterMs);
   }
   if (outcome.timedOut) {
     throw new Error(`Adzuna search timed out after ${ADZUNA_FETCH_TIMEOUT_MS / 1000}s`);
@@ -227,8 +255,14 @@ export async function runAggregatorScan(
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(msg);
         onProgress?.(`Warning: ${msg}`);
-        if (msg.includes("credentials")) {
+        if (err instanceof AdzunaCredentialsError) {
           return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors, jobs: [] };
+        }
+        if (err instanceof AdzunaBackpressureError) {
+          // Adzuna has already told us how long the wait is. Every remaining
+          // query would spend a request to be told the same thing, so end the
+          // sweep here rather than letting the failure counter walk it out.
+          break outer;
         }
         consecutiveFailures += 1;
         if (consecutiveFailures >= ADZUNA_MAX_CONSECUTIVE_FAILURES) {
