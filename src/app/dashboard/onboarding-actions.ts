@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import {
   createResumeLane,
-  getAISettings,
   getUserProfile,
   saveAISettings,
   saveTitleFilters,
@@ -12,6 +11,7 @@ import {
   updateUserProfile,
 } from "@/lib/db/queries";
 import { splitListValue } from "@/lib/profile/intelligence";
+import { normalizePreferredLocations, splitLocationLines } from "@/lib/profile/locations";
 import type { WorkMode } from "@/lib/db/types";
 
 const WORK_MODE_VALUES = new Set<WorkMode>(["remote", "hybrid", "onsite"]);
@@ -47,22 +47,41 @@ function revalidateOnboardingSurfaces() {
   revalidatePath("/jobs");
 }
 
+/** Roles and title keywords. Work arrangement and locations belong to the Locations
+ *  step — they are a different question and were crowding this one. */
 export async function saveOnboardingPreferencesAction(formData: FormData) {
   const previous = getUserProfile();
   const targetRoles = mergeUnique(splitListValue(formData.get("targetRoles")));
   const positive = normalizeTitleKeywords(splitListValue(formData.get("titlePositive")));
   const negative = normalizeTitleKeywords(splitListValue(formData.get("titleNegative")));
+
+  updateUserProfile({ ...previous, targetRoles });
+  saveTitleFilters(positive, negative);
+  setOnboardingPreferencesConfirmed(true);
+
+  revalidateOnboardingSurfaces();
+}
+
+/**
+ * Work arrangement plus the places each arrangement applies to. Scanning needs both:
+ * the on-site/hybrid list becomes the board's location parameter, and the remote list
+ * decides whether a region-restricted remote posting is in scope. An empty remote list
+ * deliberately means "anywhere" rather than "nowhere".
+ */
+export async function saveOnboardingLocationsAction(formData: FormData) {
+  const previous = getUserProfile();
   const workModes = splitWorkModes(formData);
+  const preferredLocations = normalizePreferredLocations(splitLocationLines(formData.get("preferredLocations")));
+  const remoteLocations = splitLocationLines(formData.get("remoteLocations"));
 
   updateUserProfile({
     ...previous,
-    targetRoles,
     workModes,
     hasExplicitWorkModes: workModes.length > 0,
     remotePreference: remotePreferenceFromWorkModes(workModes),
+    preferredLocations,
+    remoteLocations,
   });
-  saveTitleFilters(positive, negative);
-  setOnboardingPreferencesConfirmed(true);
 
   revalidateOnboardingSurfaces();
 }
@@ -73,22 +92,12 @@ export async function createOnboardingResumeLaneAction() {
 }
 
 export async function saveOnboardingIntegrationsAction(formData: FormData) {
-  const existing = getAISettings();
   const adzunaAppId = String(formData.get("adzunaAppId") ?? "").trim();
   const adzunaApiKey = String(formData.get("adzunaApiKey") ?? "").trim();
   const braveSearchApiKey = String(formData.get("braveSearchApiKey") ?? "").trim();
+  // Blank means "leave the saved key alone", and everything this step does not name
+  // keeps its stored value.
   saveAISettings({
-    activeProvider: existing.activeProvider,
-    anthropicApiKey: existing.anthropicApiKey,
-    geminiApiKey: existing.geminiApiKey,
-    openaiApiKey: existing.openaiApiKey,
-    anthropicModel: existing.anthropicModel,
-    geminiModel: existing.geminiModel,
-    openaiModel: existing.openaiModel,
-    ollamaBaseUrl: existing.ollamaBaseUrl,
-    ollamaModel: existing.ollamaModel,
-    fallbackProvider: existing.fallbackProvider,
-    providerOrderJson: existing.providerOrderJson,
     adzunaAppId: adzunaAppId || undefined,
     adzunaApiKey: adzunaApiKey || undefined,
     braveSearchApiKey: braveSearchApiKey || undefined,
@@ -97,23 +106,17 @@ export async function saveOnboardingIntegrationsAction(formData: FormData) {
 }
 
 export async function dismissOnboardingAction() {
-  const settings = getAISettings();
-  saveAISettings({
-    activeProvider: settings.activeProvider,
-    anthropicApiKey: settings.anthropicApiKey,
-    geminiApiKey: settings.geminiApiKey,
-    openaiApiKey: settings.openaiApiKey,
-    anthropicModel: settings.anthropicModel,
-    geminiModel: settings.geminiModel,
-    openaiModel: settings.openaiModel,
-    ollamaBaseUrl: settings.ollamaBaseUrl,
-    ollamaModel: settings.ollamaModel,
-    fallbackProvider: settings.fallbackProvider,
-    providerOrderJson: settings.providerOrderJson,
-    onboardingDismissed: true,
-    onboardingPreferencesConfirmed: settings.onboardingPreferencesConfirmed,
-  });
+  saveAISettings({ onboardingDismissed: true });
   revalidatePath("/dashboard");
+}
+
+/** Puts the first-run wizard back on the dashboard. Dismissal used to be a one-way
+ *  door: nothing in the UI cleared the flag, so the only way back was a side effect of
+ *  re-uploading a resume. */
+export async function reopenOnboardingAction() {
+  saveAISettings({ onboardingDismissed: false });
+  revalidatePath("/dashboard");
+  revalidatePath("/settings");
 }
 
 export async function saveOnboardingScheduleAction(enabled: boolean) {

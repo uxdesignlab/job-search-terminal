@@ -73,6 +73,7 @@ and initializes an empty local profile if the database is empty.
 | `0063_contacts` | Adds `contacts`, `job_contact_links`, `contact_suppressions`; extends `company_profiles` with domain, employee count, Clay id, LinkedIn URL and intelligence provenance |
 | `0064_outreach_messages` | Adds `outreach_messages` — per-contact, per-channel drafts, cascading from `job_contact_links` |
 | `0065_latest_claude_gemini_models` | Moves installs still holding the app's own old default Claude/Gemini models (`claude-sonnet-4-6`, `gemini-2.5-flash`, `gemini-2.0-flash`) onto the auto-resolving `latest-sonnet` / `latest-flash` sentinels, keeping the same tier. Explicitly pinned models are left alone, and the `ai_settings` column defaults change to the sentinels for fresh installs |
+| `0066_provider_enabled_set` | Adds `ai_settings.provider_enabled_json`, splitting which providers are switched on from the order they are tried in. `provider_order_json` had carried both, so disabling a provider erased its rank and an empty list was indistinguishable from "never configured". Existing rows get an empty string and keep the old meaning until their next save |
 
 ---
 
@@ -498,9 +499,10 @@ Singleton row holding AI provider configuration.
 | `ollama_base_url` | Ollama server base URL (default `http://localhost:11434`) |
 | `ollama_model` | Selected Ollama model name (default `llama3.1:8b`) |
 | `fallback_provider` | Legacy fallback (derived from `provider_order_json[1]`). Kept for backward compatibility. |
-| `provider_order_json` | JSON array of `AIProviderName` values in user-configured priority order. Only enabled providers appear. The factory tries them left to right. |
-| `onboarding_dismissed` | 0 = show onboarding, 1 = dismissed |
-| `onboarding_preferences_confirmed` | 0 = first-run job preferences still need user confirmation, 1 = confirmed |
+| `provider_order_json` | JSON array of `AIProviderName` values in user-configured priority order. Holds **all four**, enabled or not, so switching one off does not lose its rank. The factory tries them left to right. Ships defaulted to `["openai","anthropic","gemini"]`, so it is a statement of order, not of what is configured — `AISettingsForm` derives its ticks from the saved credentials instead. |
+| `provider_enabled_json` | JSON array of the `AIProviderName` values currently switched on — membership only; ranking lives in `provider_order_json`. Empty string means a row saved before the two were split, where the order column carried both meanings; an explicit `[]` means the user turned everything off and the factory runs nothing. Added by migration `0066_provider_enabled_set`. |
+| `onboarding_dismissed` | 0 = show onboarding, 1 = dismissed. Written by `dismissOnboardingAction` and cleared by `reopenOnboardingAction` (Resume guided setup); `setOnboardingPreferencesConfirmed` deliberately does not touch it. |
+| `onboarding_preferences_confirmed` | 0 = first-run job preferences still need user confirmation, 1 = confirmed. Cleared by a resume upload that contributed new titles. Recorded for provenance — readiness itself is derived from the saved profile data, not from this column. |
 | `brave_search_api_key` | Optional Brave Search API key for search-based ATS source discovery |
 | `adzuna_app_id` | Optional Adzuna App ID for the job aggregator scanner |
 | `adzuna_api_key` | Optional Adzuna API key for the job aggregator scanner |

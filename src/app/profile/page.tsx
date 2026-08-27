@@ -566,7 +566,7 @@ export default async function ProfilePage({
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Location mode</CardTitle>
+                  <CardTitle>Work arrangement</CardTitle>
                 </CardHeader>
                 <div className="flex flex-wrap gap-1.5">
                   {profile.workModes.length > 0
@@ -624,7 +624,7 @@ export default async function ProfilePage({
               </CardHeader>
               <form action={updatePreferencesAction} className="grid gap-4">
                 <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium text-ink">Location mode</legend>
+                  <legend className="text-sm font-medium text-ink">Work arrangement</legend>
                   <div className="flex flex-wrap gap-3">
                     {(["remote", "hybrid", "onsite"] as WorkMode[]).map((mode) => (
                       <label

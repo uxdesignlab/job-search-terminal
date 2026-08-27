@@ -3,6 +3,8 @@ import { getAISettings, getResumes, getTitleFilters, getUserProfile } from "@/li
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import { hasConfiguredAIProvider } from "@/lib/ai";
 import { getProfileReadiness } from "@/lib/profile/readiness";
+import { laneHasResume } from "@/lib/profile/resume-lane";
+import { hasPreferredLocations } from "@/lib/profile/on-site-locations";
 import { maskApiKey } from "@/lib/ai/masked-key";
 
 function maskSettings(settings: ReturnType<typeof getAISettings>) {
@@ -23,13 +25,14 @@ export async function NewUserOnboarding() {
   const titleFilters = getTitleFilters();
   const readiness = getProfileReadiness({
     hasConfiguredAIProvider: hasConfiguredAIProvider(settings),
-    hasUploadedResume: resumes.some((resume) => Boolean(resume.sourceFile)),
+    hasUploadedResume: resumes.some(laneHasResume),
     hasTargetRoles: profile.targetRoles.length > 0,
     hasPositiveTitleFilters: titleFilters.positive.length > 0,
     hasExplicitWorkModes: profile.hasExplicitWorkModes,
+    hasPreferredLocations: hasPreferredLocations(profile),
   });
   const hasKey = hasConfiguredAIProvider(settings);
-  const hasResume = resumes.some((resume) => Boolean(resume.sourceFile));
+  const hasResume = resumes.some(laneHasResume);
   const hasRolePreferences = readiness.hasRolePreferences;
   const hasLocationPreferences = readiness.hasLocationPreferences;
   // Readiness follows the saved data, regardless of which screen populated it.
@@ -40,7 +43,7 @@ export async function NewUserOnboarding() {
   const hasExtractedProfile = Boolean(profile.currentSearchGoal);
 
   // Load builder versions for all uploaded resumes so the wizard can show the builder inline
-  const uploadedResumes = resumes.filter((r) => Boolean(r.sourceFile));
+  const uploadedResumes = resumes.filter(laneHasResume);
   const versionPairs = await Promise.all(
     uploadedResumes.map(async (r) => [r.id, await ensureResumeBuilderVersion(r, profile)] as const)
   );
@@ -57,6 +60,7 @@ export async function NewUserOnboarding() {
       hasResume={hasResume}
       hasRolePreferences={hasRolePreferences}
       profile={profile}
+      profileLocations={{ preferred: profile.preferredLocations, remote: profile.remoteLocations }}
       resumes={resumes}
       resumeVersions={resumeVersions}
       settings={maskSettings(settings)}

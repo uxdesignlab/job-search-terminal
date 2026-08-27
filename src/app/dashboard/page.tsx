@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { ScanForNewJobsButton } from "@/components/scan-for-new-jobs-button";
 import { NewUserOnboarding } from "@/components/new-user-onboarding";
+import { ResumeOnboardingButton } from "@/components/resume-onboarding-button";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import {
@@ -28,6 +29,8 @@ import { EmailCandidateApprovalModal } from "@/components/email-candidate-approv
 import { LocalDateLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
 import { hasConfiguredAIProvider } from "@/lib/ai";
 import { getProfileReadiness } from "@/lib/profile/readiness";
+import { laneHasResume } from "@/lib/profile/resume-lane";
+import { hasPreferredLocations } from "@/lib/profile/on-site-locations";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -59,10 +62,11 @@ export default function DashboardPage() {
   const titleFilters = getTitleFilters();
   const profileReadiness = getProfileReadiness({
     hasConfiguredAIProvider: hasConfiguredAIProvider(settings),
-    hasUploadedResume: resumes.some((resume) => Boolean(resume.sourceFile)),
+    hasUploadedResume: resumes.some(laneHasResume),
     hasTargetRoles: profile.targetRoles.length > 0,
     hasPositiveTitleFilters: titleFilters.positive.length > 0,
     hasExplicitWorkModes: profile.hasExplicitWorkModes,
+    hasPreferredLocations: hasPreferredLocations(profile),
   });
   const onboardingComplete = profileReadiness.isReady;
   const showOnboarding = !settings.onboardingDismissed;
@@ -135,6 +139,15 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
+            {/* The guided flow is otherwise unreachable once dismissed. */}
+            {!showOnboarding && (
+              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                <ResumeOnboardingButton />
+                <p className="text-xs leading-5 text-muted">
+                  Walks through the same items step by step, in the order the app needs them.
+                </p>
+              </div>
+            )}
           </Card>
         )}
 
