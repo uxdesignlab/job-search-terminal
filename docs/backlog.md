@@ -91,6 +91,33 @@ visibility. Once dismissed, the modal never re-appears.
 
 ---
 
+### OB-3 — Onboarding wizard logged a hydration mismatch and broke drag instructions ✓ Fixed
+
+**Type:** bug (accessibility)
+**Milestone:** v1.1
+**Files:** `src/components/ai-settings-form.tsx:380`
+
+With onboarding showing, every load of `/dashboard` logged *"A tree hydrated but some
+attributes of the server rendered HTML didn't match the client properties"* — server
+`aria-describedby="DndDescribedBy-0"` vs client `DndDescribedBy-1`, on all four
+`SortableProviderRow` drag handles.
+
+The provider priority list's `DndContext` had no `id`, so dnd-kit generated one from
+`useUniqueId`, whose counter lives in a module-level object. That counter restarts at 0
+in the browser but persists for the life of the Next.js server process, so the two
+renders disagreed. The consequence was not cosmetic: dnd-kit's hidden "press space bar
+to start dragging" element is client-only, and the server-rendered `aria-describedby`
+that survived hydration referenced an id that was never in the DOM — keyboard and
+screen-reader users got no drag instructions.
+
+**Fixed:** August 2026 — the `DndContext` now passes `id="ai-settings-provider-priority"`,
+which `useUniqueId` returns verbatim instead of counting. Server and client HTML now both
+emit `aria-describedby="ai-settings-provider-priority"`, and it resolves to a real
+element. The Applications kanban board already set `id="applications-kanban"`; those are
+the only two `DndContext`s in the codebase, so no other surface needed the change.
+
+---
+
 ### RP-1 — Resume parser misclassifies sections on complex "super resume" format
 
 **Type:** bug

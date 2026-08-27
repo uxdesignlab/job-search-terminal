@@ -23,6 +23,12 @@ Job Search Terminal targets WCAG 2.2 AA defaults.
 - Badges include readable status text.
 - Inputs expose `aria-invalid` and descriptions when errors or hints exist.
 - Selects have labels and optional descriptive text.
+- Every `aria-describedby` / `aria-labelledby` resolves to an element that is actually
+  in the DOM. Watch third-party widgets that auto-generate ids from a module-level
+  counter: the count restarts in the browser but persists for the life of the server
+  process, so the server-rendered reference can point at nothing. Give such widgets an
+  explicit, stable `id` — both `DndContext`s (`ai-settings-provider-priority`,
+  `applications-kanban`) do.
 
 ## Manual Checks
 
@@ -33,3 +39,6 @@ Before finishing a UI change:
 - Check text and status contrast.
 - Confirm the page works at narrow mobile width.
 - Confirm reduced motion does not break the interface.
+- Check the browser console for React hydration mismatches. A mismatch on an ARIA
+  attribute is an accessibility bug, not just a warning — the reference that survives
+  hydration is usually the broken one.

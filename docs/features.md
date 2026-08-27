@@ -104,7 +104,13 @@ whether all steps are complete; `onboardingDismissed` is the authoritative gate.
 
 The modal has 5 steps — 4 required and 1 optional:
 
-1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key, or configures an Ollama base URL, inline.
+1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key, or
+   configures an Ollama base URL, inline. This step embeds the same provider priority
+   list as Settings → AI Providers (in `compact` mode), so its drag handles get their
+   keyboard-drag instructions from the same stable `DndContext` id — see
+   [Settings → AI Providers](#ai-providers). Because onboarding renders on `/dashboard`
+   on every load until dismissed, this was where the hydration mismatch surfaced most
+   visibly; the dashboard console is now clean on a first-run load.
 2. **Resume lanes** — uses the normal multi-lane resume upload cards. Uploading a
    PDF seeds desired positions and positive title filters from extracted resume
    titles, and AI extraction can enrich the full profile. The "Add another lane"
@@ -1522,6 +1528,18 @@ Four configuration tabs:
 
 ### AI Providers
 - **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Drag the grip handle on each row to reorder.
+- **The drag handles point screen readers at real instructions.** Each grip handle
+  carries an `aria-describedby` pointing at dnd-kit's hidden "press space bar to start
+  dragging" text. That text is client-only, but the handle's `aria-describedby` is
+  server-rendered, and dnd-kit derives the id from a module-global counter that starts
+  fresh in the browser while persisting for the life of the server process. Server and
+  client therefore disagreed (`DndDescribedBy-0` vs `DndDescribedBy-1`), React logged a
+  hydration mismatch on every load, and the attribute that survived hydration referenced
+  an element that did not exist — so a screen-reader user got no keyboard-drag
+  instructions at all. The priority list's `DndContext` now carries an explicit
+  `id="ai-settings-provider-priority"`, which dnd-kit uses verbatim instead of counting.
+  The board in Applications → Kanban already sets `id="applications-kanban"` for the same
+  reason; these are the only two drag-and-drop surfaces in the app.
 - **Cloud providers** — Anthropic (Claude), OpenAI (GPT), Google (Gemini). Enter an API key and select a default model for each.
 - **Ollama (local)** — free, runs entirely on your machine; no API key required. Enable in the priority list to reveal the configuration section:
   - **Base URL** — Ollama server address (default `http://localhost:11434`).
