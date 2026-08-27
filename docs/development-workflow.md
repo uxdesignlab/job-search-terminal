@@ -59,7 +59,14 @@ rather than deleting your own data.
 
 Every path the app writes to (`data/`, `output/`, `assets/`, `config/*.local.*`)
 is resolved relative to the working directory and is gitignored, so a second
-working copy is fully isolated by construction. No configuration is required.
+working copy is isolated by construction rather than by configuration.
+
+**One thing defeats that: `JST_DATABASE_PATH`.** `src/lib/db/client.ts` prefers it
+over the working-directory default, so if it is exported in your shell — or set in
+either checkout's `.env.local` — both instances open the *same* database file. The
+second instance would then show your real data instead of onboarding, and worse,
+could write to it. Leave it unset when running two instances, or give each one its
+own value. Everything below assumes it is unset.
 
 Create one as a git worktree, so it shares the object store and stays pinned to
 a commit you choose:
@@ -79,37 +86,57 @@ first-run onboarding wizard. The seed inserts an empty profile row and one
 empty resume lane — it is a bootstrap, not a fixture, so nothing needs to be
 cleared afterwards.
 
-To reset between test sessions, **stop the dev server first** — the running
-process holds an open SQLite handle, and deleting the file underneath it leaves
-writes going to a deleted inode. Then remove the runtime state and restart:
+To reset between test sessions, use a script that refuses to run unless it is
+certain it is pointed at the throwaway instance. Do not run bare deletions: the
+same commands in the primary checkout would destroy the real database, imported
+jobs, uploaded resumes, generated documents, and backups, which the working rules
+above forbid. Keep the script outside version control — `.claude/` is gitignored
+and is a reasonable home — and set `EXPECTED` to your own absolute path:
 
-```bash
+```sh
+#!/bin/sh
+# Wipe the testing instance back to a first-run state.
+set -eu
+
+EXPECTED="/absolute/path/to/your/testing/worktree"   # <- edit this
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PORT="${PORT:-3100}"
+
+# Guard 1 — path. A stray copy of this script cannot touch the real instance.
+[ "$ROOT" = "$EXPECTED" ] || {
+  echo "Refusing: $ROOT is not the testing instance" >&2; exit 1; }
+
+# Guard 2 — database location. With JST_DATABASE_PATH set, the paths below are
+# not the database the app actually opens, so deleting them is both useless and
+# unsafe.
+[ -z "${JST_DATABASE_PATH:-}" ] || {
+  echo "Refusing: JST_DATABASE_PATH is set" >&2; exit 1; }
+
+# Guard 3 — liveness. Deleting an open SQLite file does not error; the server
+# keeps writing to an inode that no longer has a name, so the reset appears to
+# succeed and silently does not take. Check the port and the database file, so a
+# server started on some other port is still caught.
+if command -v lsof >/dev/null 2>&1; then
+  busy="$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  [ -f "$ROOT/data/job-search-terminal.sqlite" ] && busy="$busy $(lsof -t -- \
+    "$ROOT/data/job-search-terminal.sqlite" 2>/dev/null || true)"
+  [ -z "$(echo "$busy" | tr -d ' ')" ] || {
+    echo "Refusing: the instance is still running. Stop the dev server." >&2
+    exit 1; }
+else
+  echo "Warning: lsof not found; could not check for a running server." >&2
+fi
+
+cd "$ROOT"
 rm -f data/*.sqlite data/*.sqlite-shm data/*.sqlite-wal
 for dir in data output assets reports; do
-  find "$dir" -mindepth 1 ! -name .gitkeep -delete
+  find "$dir" -mindepth 1 ! -name .gitkeep -delete 2>/dev/null || true
 done
 rm -f config/portals.yml config/*.local.json
 ```
 
-Keep any such reset script outside version control — `.claude/` is gitignored
-and is a reasonable home — and give it two guards:
-
-- **Path.** Compare the resolved script directory against the expected absolute
-  path and refuse otherwise, so a copy of the script can never delete the data
-  in your real instance.
-- **Liveness.** Refuse while the dev server is still up. Deleting an open SQLite
-  file does not error — the server keeps writing to an inode that no longer has
-  a name, so the reset appears to succeed and then silently doesn't. Check for
-  a listener on the port *and* for any process still holding the database file,
-  which catches a server started on some other port:
-
-  ```bash
-  lsof -ti "tcp:$PORT" -sTCP:LISTEN
-  lsof -t -- data/job-search-terminal.sqlite
-  ```
-
-  Next.js spawns short-lived workers, so this can briefly report more than one
-  process. Erring toward refusal is the right bias.
+Next.js spawns short-lived workers, so the liveness check can briefly report more
+than one process. Erring toward refusal is the right bias.
 
 To pick up newer code in the testing worktree, pull in your main checkout and
 then re-point the worktree:
