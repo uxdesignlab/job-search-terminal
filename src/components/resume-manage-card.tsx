@@ -14,12 +14,16 @@ type Props = {
   builderStatus?: ResumeBuilderVersionStatus;
   /** Called after a successful PDF upload — use to navigate to the builder. */
   onUploaded?: () => void;
+  /** Called instead of routing to /profile/resumes/:id/builder. The onboarding wizard
+   *  passes this so the builder opens inside the dialog rather than navigating the page
+   *  away from a modal that tells the user to finish every step there. */
+  onEditRequested?: () => void;
 };
 
 const inputCls =
   "w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent";
 
-export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadOnly = false, builderStatus, onUploaded }: Props) {
+export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadOnly = false, builderStatus, onUploaded, onEditRequested }: Props) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +37,9 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
   const [uploadError, setUploadError] = useState("");
   const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
   const [currentWords, setCurrentWords] = useState(wordCount);
+  /** Titles this upload contributed to desired positions — the upload adds to the
+   *  existing list rather than replacing it, so say what it added. */
+  const [addedRoles, setAddedRoles] = useState(0);
 
   // Editor navigation
   const [editorLoading, setEditorLoading] = useState(false);
@@ -73,10 +80,13 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
     form.append("file", file);
     try {
       const res = await fetch(`/api/resume/${id}/upload`, { method: "POST", body: form });
-      const data = (await res.json()) as { ok?: boolean; wordCount?: number; error?: string; warnings?: string[] };
+      const data = (await res.json()) as {
+        ok?: boolean; wordCount?: number; error?: string; warnings?: string[]; addedRoles?: number;
+      };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "Upload failed");
       setCurrentWords(data.wordCount ?? currentWords);
       setUploadWarnings(data.warnings ?? []);
+      setAddedRoles(data.addedRoles ?? 0);
       setUploadStatus("done");
       router.refresh();
       if (onUploaded) {
@@ -102,6 +112,8 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
     }
   }
 
+  // Same predicate the wizard uses — see laneHasResume. The card only knows the
+  // live word count, which is the half that can disagree.
   const hasFile = currentWords > 0;
   const hasBuilderContent = !!builderStatus && builderStatus !== "missing_source";
   const builderTone = builderStatus === "approved" ? "success" : builderStatus === "missing_source" ? "danger" : "warning";
@@ -148,7 +160,10 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
           <p className="mt-2 text-xs text-danger">{uploadError}</p>
         )}
         {uploadStatus === "done" && uploadWarnings.length === 0 && (
-          <p className="mt-2 text-xs text-success">PDF uploaded and text extracted — {currentWords} words.</p>
+          <p className="mt-2 text-xs text-success">
+            PDF uploaded and text extracted — {currentWords} words.
+            {addedRoles > 0 && ` Added ${addedRoles} ${addedRoles === 1 ? "title" : "titles"} to your desired positions.`}
+          </p>
         )}
         {uploadStatus === "done" && uploadWarnings.length > 0 && (
           <p className="mt-2 text-xs text-warning">
@@ -262,7 +277,11 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
         <button
           className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
           disabled={editorLoading}
-          onClick={() => { setEditorLoading(true); router.push(`/profile/resumes/${id}/builder`); }}
+          onClick={() => {
+            if (onEditRequested) { onEditRequested(); return; }
+            setEditorLoading(true);
+            router.push(`/profile/resumes/${id}/builder`);
+          }}
           type="button"
         >
           {editorLoading ? "Opening…" : builderStatus === "approved" ? "Edit approved version" : "Edit resume"}
@@ -315,7 +334,10 @@ export function ResumeManageCard({ id, name, wordCount, evidence, initialUploadO
         <p className="mt-2 text-xs text-danger">{uploadError}</p>
       )}
       {uploadStatus === "done" && uploadWarnings.length === 0 && (
-        <p className="mt-2 text-xs text-success">PDF uploaded and text extracted — {currentWords} words.</p>
+        <p className="mt-2 text-xs text-success">
+            PDF uploaded and text extracted — {currentWords} words.
+            {addedRoles > 0 && ` Added ${addedRoles} ${addedRoles === 1 ? "title" : "titles"} to your desired positions.`}
+          </p>
       )}
       {uploadStatus === "done" && uploadWarnings.length > 0 && (
         <p className="mt-2 text-xs text-warning">
