@@ -128,7 +128,21 @@ npm run typecheck
 npm run build
 ```
 
-For feature work, also verify the actual dashboard flow in the browser.
+**Stop the dev server before building.** `next dev` and `next build` share the
+same `.next` directory, so running them together in one checkout makes the build
+fail while collecting page data for a route — the failure names whichever route
+lost the race, so it reads like a bug in that route rather than a collision. It
+is intermittent: a rerun often succeeds, which makes it easy to dismiss. If a
+build fails that way, stop the dev server, `rm -rf .next`, and build again before
+looking for a real cause.
+
+This is the second thing in a second instance that needs the server down; the
+first is resetting its database, above.
+
+For feature work, also verify the actual dashboard flow in the browser. Check the
+browser console too — a React hydration mismatch on an ARIA attribute is an
+accessibility bug, not a warning, because React leaves the server's value in place
+and it may reference an element that only ever exists on the client.
 
 ## Lessons
 
