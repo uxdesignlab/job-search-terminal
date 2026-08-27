@@ -373,7 +373,11 @@ export function AISettingsForm({ compact = false, onSaved, settings, submitLabel
           <p className="text-xs text-muted mt-0.5">Enable providers and drag them into priority order. The first enabled provider is used; others are fallbacks.</p>
         </div>
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        {/* An explicit `id` keeps dnd-kit from falling back to its module-global
+            auto-incrementing counter, which numbers differently on the server than
+            in the browser and produced a hydration mismatch on the drag handles'
+            `aria-describedby` (see also the kanban board's DndContext). */}
+        <DndContext id="ai-settings-provider-priority" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={providerOrder} strategy={verticalListSortingStrategy}>
             <div className="grid gap-2">
               {providerOrder.map((id) => (
