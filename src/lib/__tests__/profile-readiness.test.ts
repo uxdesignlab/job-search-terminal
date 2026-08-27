@@ -7,6 +7,7 @@ const COMPLETE_PROFILE = {
   hasTargetRoles: true,
   hasPositiveTitleFilters: true,
   hasExplicitWorkModes: true,
+  hasPreferredLocations: true,
 };
 
 describe("getProfileReadiness", () => {
@@ -25,6 +26,7 @@ describe("getProfileReadiness", () => {
       hasTargetRoles: false,
       hasPositiveTitleFilters: false,
       hasExplicitWorkModes: false,
+      hasPreferredLocations: false,
     });
 
     expect(readiness.missingItems.map((item) => item.id)).toEqual([
@@ -33,6 +35,7 @@ describe("getProfileReadiness", () => {
       "target-roles",
       "title-filters",
       "work-modes",
+      "preferred-locations",
     ]);
   });
 
@@ -58,5 +61,16 @@ describe("getProfileReadiness", () => {
     expect(readiness.isReady).toBe(false);
     expect(readiness.hasLocationPreferences).toBe(false);
     expect(readiness.missingItems.map((item) => item.id)).toEqual(["work-modes"]);
+  });
+
+  it("asks for a place to work only when on-site or hybrid is selected", () => {
+    const readiness = getProfileReadiness({
+      ...COMPLETE_PROFILE,
+      hasPreferredLocations: false,
+    });
+
+    expect(readiness.isReady).toBe(false);
+    expect(readiness.hasLocationPreferences).toBe(false);
+    expect(readiness.missingItems.map((item) => item.id)).toEqual(["preferred-locations"]);
   });
 });

@@ -1,13 +1,16 @@
-import type { TextareaHTMLAttributes } from "react";
+import type { RefObject, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label: string;
   hint?: string;
   error?: string;
+  /** Escape hatch for callers that need to read or rewrite the value imperatively —
+   *  named rather than `ref`, which this component does not forward. */
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
 };
 
-export function Textarea({ className, id, label, hint, error, ...props }: TextareaProps) {
+export function Textarea({ className, id, label, hint, error, textareaRef, ...props }: TextareaProps) {
   const textareaId = id ?? props.name;
   const descriptionId = hint ? `${textareaId}-hint` : undefined;
   const errorId = error ? `${textareaId}-error` : undefined;
@@ -26,6 +29,7 @@ export function Textarea({ className, id, label, hint, error, ...props }: Textar
           className
         )}
         id={textareaId}
+        ref={textareaRef}
         {...props}
       />
       {hint ? (

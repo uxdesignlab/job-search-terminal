@@ -15,6 +15,7 @@ const BASE_SETTINGS: AISettingsRecord = {
   ollamaModel: "llama3.1:8b",
   fallbackProvider: "",
   providerOrderJson: ["openai", "anthropic", "gemini"],
+  providerEnabledJson: null,
   onboardingDismissed: false,
   onboardingPreferencesConfirmed: false,
   braveSearchApiKey: "",

@@ -96,36 +96,215 @@ the shared help components under `src/components/help/`.
 The command center. Has two states depending on setup progress.
 
 **First-run onboarding** (shown until dismissed): Opens as an isolated dashboard
-modal so the user can finish setup without leaving the flow. The × close button
-is always visible. Clicking it when setup is not fully complete shows a warning
+modal so the user can finish setup without leaving the flow.
+
+It is a real modal, not just an element carrying `aria-modal`. `useModalDialog`
+(`src/lib/hooks/use-modal-dialog.ts`) moves focus to the dialog on open, traps Tab
+inside it, marks everything outside `inert`, locks body scroll, routes Escape to the
+same confirmation the × uses, and returns focus on close. Before this the dialog
+declared itself modal while leaving 21 focusable elements reachable behind it — the
+nav, the footer, and the readiness card's links to the very settings the wizard was
+trying to own — with focus still on `<body>` and Escape doing nothing. The `inert`
+pass walks up from the dialog marking each ancestor's other children, because the
+dialog renders deep in the app tree rather than as a child of `<body>`; marking only
+`body`'s children would skip the one branch that contains the whole page.
+
+The dialog's content area is a `<div>`. It used to be a `<main>` nested inside the
+page's own `<main>` — invalid, and it broke the skip-to-content landmark.
+
+Each step button carries `aria-current="step"` when active, visually-hidden position
+and state text ("Step 2 of 5. Locked."), and an `aria-describedby` naming what would
+unlock it. State previously reached assistive tech as a ✓ glyph and a colour only.
+
+The × close button is always visible. Clicking it when setup is not fully complete shows a warning
 with two options — "Back to setup" or "Dismiss setup" (exits immediately and
 records dismissal). Once dismissed, the modal never re-appears regardless of
-whether all steps are complete; `onboardingDismissed` is the authoritative gate.
+whether all steps are complete; `onboardingDismissed` is the authoritative gate,
+and only the user clears it — via **Resume guided setup**, which appears on the
+dashboard's "Finish profile setup" card and under Settings → AI Provider once the
+wizard has been dismissed (`reopenOnboardingAction`). Dismissal used to be a one-way
+door: nothing in the UI cleared the flag, and the wizard's own "Resume onboarding"
+banner rendered for a single paint before the refresh unmounted the component, so it
+was never reachable. That banner is gone; the dashboard card is the persistent
+surface. `setOnboardingPreferencesConfirmed` deliberately
+leaves the flag alone: it used to clear it in the same UPDATE, which meant every
+resume upload — including a routine replacement years into a search — reopened
+the full first-run wizard over an established user's dashboard.
 
-The modal has 5 steps — 4 required and 1 optional:
+On a genuinely fresh start — no provider and no resume — the modal opens on a
+**Before you start** briefing rather than straight into the first step: what setup needs
+(an API key from OpenAI/Claude/Gemini, *or* Ollama installed locally; a text-based resume
+PDF; the roles and places being searched), roughly how long it takes, that everything
+stays on the machine, and the list of steps ahead. **Get started** enters the wizard. It
+is a briefing rather than a step, so it carries no sidebar row and no completion state,
+and it never appears again once a provider or a resume exists — asking for a paid API key
+as the very first thing, with no warning of what else is coming, was the gap it fills.
 
-1. **AI provider** — saves one OpenAI, Anthropic, or Google Gemini API key, or
-   configures an Ollama base URL, inline. This step embeds the same provider priority
-   list as Settings → AI Providers (in `compact` mode), so its drag handles get their
-   keyboard-drag instructions from the same stable `DndContext` id — see
-   [Settings → AI Providers](#ai-providers). Because onboarding renders on `/dashboard`
-   on every load until dismissed, this was where the hydration mismatch surfaced most
-   visibly; the dashboard console is now clean on a first-run load.
+The wizard itself has 6 panels — 4 required steps, 1 optional step, and a closing summary:
+
+1. **AI provider** *(required)* — selects one provider and saves its key inline.
+   The step opens with a required-notice explaining what the key is for (fit scoring,
+   resume tailoring, answer drafting), that one key is enough, and that keys stay on
+   this machine. It embeds the same provider list as Settings → AI Providers (in
+   `compact` mode), so its drag handles get their keyboard-drag instructions from the
+   same stable `DndContext` id — see [Settings → AI Providers](#ai-providers). Because
+   onboarding renders on `/dashboard` on every load until dismissed, this was where the
+   hydration mismatch surfaced most visibly; the dashboard console is now clean on a
+   first-run load.
+
+   **In `compact` mode the step is a three-screen drill-down, not one long form.**
+   Each screen replaces the last inside the same fixed frame, so the panel never grows
+   and the key field is always the thing in front of the user:
+
+   1. **Choose a provider** — four rows, each a full-width button with the provider's
+      name and a one-line blurb ("Cloud · pay per use · GPT models", "Local · free ·
+      runs models on this machine"). Already-added providers are marked *Added* and
+      disabled.
+   2. **Enter the key** — the list is replaced by that provider's key entry, with the
+      caret placed in the field on arrival. Carries a "← Choose a different provider"
+      back link, a link to where that provider issues keys, a collapsed **Model
+      options** disclosure, and **Test connection**. Ollama gets its full configuration
+      block here instead of a key field. Two save buttons share one code path
+      (`persist(nextPhase)`): **Save and continue** verifies, saves, and advances the
+      wizard to the resume step — the step is done, and a button that says continue
+      should continue; **Save and add another** does the same but returns to the
+      chooser, staying on this step so a fallback chain can be built without
+      round-tripping. The second button is hidden when every other provider is already
+      added, and while a verification failure is pending — that moment should be a
+      single decision about the key in front of the user, not a fork.
+   3. **Your AI providers** — the summary, reached by returning to this step once a
+      provider is saved rather than immediately after saving. Lists what is configured
+      in fallback order, each with its verification result and *Edit* (and *Remove* once
+      there is more than one); "Add another provider as a fallback" returns to screen 1,
+      and **Continue** advances the wizard.
+
+   Revealing the key card under the four-row list, as an earlier pass did, pushed the
+   field below the fold and grew the dialog on every selection — the thing this step
+   could least afford. The drag-to-reorder priority list stays in Settings; onboarding
+   orders providers by the sequence they were added.
+
+   Every provider starts unselected. A tick claims the provider is set up, and the
+   `provider_order_json` column ships defaulted to three cloud providers, so seeding
+   selection from it used to greet every new install with three keyless providers
+   presented as ready. `AISettingsForm` now seeds from what actually holds a credential
+   (for Ollama, from presence in the saved order — it has no key to check). A drafted
+   provider joins the saved chain only on a successful save, so an abandoned detour
+   does not leave a keyless provider enabled behind the user. The optional Adzuna and
+   Brave fields do not appear here at all — step 4 owns them.
+
+   The step's intro copy carries a bold **This step is required.** lead-in rather than a
+   bordered warning callout — a warning panel over the primary instruction read as an
+   error on a screen where nothing had gone wrong yet. The lead-in disappears once a
+   key is saved.
+
+   **Ollama is verified down to the model.** Selecting it fetches the installed list from
+   `/api/ai/ollama-models` and moves the model setting onto an installed model when the
+   current value is not one — the stored default is `llama3.1:8b`, which most machines do
+   not have. The model field is a picker of what is installed rather than free text, and
+   falls back to a text input plus **Choose…** only when the list cannot be fetched.
+   `hasCredential("ollama")` requires the server to answer *and* the model to be present,
+   so the row reads *Not running*, *Model needed*, or *Ready* accordingly.
+
+   `OllamaProvider.testConnection` enforces the same thing. It used to return `ok: true`
+   whenever the server answered, displaying `modelNames[0]` when the configured model was
+   absent — so onboarding showed "Verified" against a model the app would never use, the
+   step went green, and the first real request failed with a bare 404 during profile
+   extraction, two steps away from the screen that could fix it. It now fails with the
+   missing model's name, the `ollama pull` command for it, and the list of what is
+   installed; on success it reports the configured model. Its 404 message names the model
+   instead of a literal `<model-name>` placeholder.
+
+   Onboarding passes `requireCredential`, which makes the submit button refuse an empty
+   or keyless chain (with a line naming what is missing) and run the same connection
+   test as the "Test connection" link before saving. A failed test keeps the step open,
+   shows the provider's own error, and re-labels the button **Save without verifying**
+   so an offline or rate-limited setup is not trapped; editing the key clears that
+   escape so a corrected key is verified again. Ollama counts as configured only once
+   it answers, since its "credential" is a base URL that always has a default.
+   Settings leaves `requireCredential` off — an established user may be mid-rotation —
+   and keeps the single-page layout: the drag-to-reorder priority list, all three cloud
+   cards, and the integration keys.
+
+   The wizard opens on the first unfinished **required** step, or Ready when all four
+   are done. A completed step is never locked — gating on prerequisites alone produced
+   sidebar rows that were both ✓ and locked, closed to the user who had just finished
+   them. Including the optional Integrations step in that scan used to park an
+   otherwise-finished user on a step they could skip.
+
+   The step advances on a button press, never on a state change. The auto-advance effect
+   skips the AI step for the same reason it skips the resume step — a key can be saved
+   from several places, and jumping steps the instant one verifies takes the screen away
+   mid-thought. `onComplete` carries the deliberate press back to the wizard, from either
+   **Save and continue** or the summary's **Continue**.
 2. **Resume lanes** — uses the normal multi-lane resume upload cards. Uploading a
-   PDF seeds desired positions and positive title filters from extracted resume
-   titles, and AI extraction can enrich the full profile. The "Add another lane"
+   PDF **adds** any titles it recognizes to desired positions and positive title
+   filters, and AI extraction can enrich the full profile. It never replaces those
+   lists: title extraction matches a fixed vocabulary, so plenty of real resumes
+   (nursing, accounting, teaching, law) yield nothing, and replacing would wipe the
+   values the search actually runs on — including values just confirmed in step 3,
+   reachable through "Add another lane". The upload response reports `addedRoles` and
+   `addedFilters`, and the card says how many titles were added. Re-confirmation of
+   step 3 is requested only when the upload actually contributed something. The
+   "Add another lane"
    button only appears once all existing lanes have a file uploaded (to prevent
-   accidentally adding duplicate empty lanes). If AI extraction fails (e.g.
+   accidentally adding duplicate empty lanes).
+
+   `laneHasResume` (`src/lib/profile/resume-lane.ts`) is the single predicate for
+   "this lane holds a usable resume" — a saved file **and** extracted words. The wizard
+   read `sourceFile` while the lane card read `wordCount > 0`, so a PDF that saved but
+   yielded no text showed "Not uploaded" on a card inside a step the wizard considered
+   satisfied.
+
+   Inside the wizard, **Edit resume** opens the inline builder (`onEditRequested`)
+   rather than routing the page to `/profile/resumes/:id/builder` and abandoning a
+   dialog that says to finish every step there. The inline builder's loading state
+   carries a **Back to setup** button; if the builder version never arrived it was a
+   full-screen dead end with no close, no Escape and no back link, escapable only by
+   reloading. If AI extraction fails (e.g.
    MAX_TOKENS on a long resume), the "Continue to job preferences →" button
    becomes enabled anyway with a note that extraction can be re-run from the
    Profile page; the user is never trapped.
-3. **Job preferences** — requires desired positions, include title filters, and
-   an explicitly saved location work mode. Resume upload or extraction may
+3. **Roles & titles** — requires desired positions and at least one include-title
+   keyword. The form refuses to advance without both and names which is missing; it used
+   to accept a blank submit and move on while the sidebar re-locked the later steps
+   behind the user.
+
+   **Include-filters are keywords, not job titles.** A positive keyword matches from a
+   word boundary with the end left open, so `ux` matches "Senior UX Designer", "UX
+   Researcher" and "UI/UX Designer" — while a whole title like
+   `senior hci engineer / principal ux designer` only matches a job whose title *starts*
+   with that entire phrase, which is effectively a dead filter. Resume upload used to
+   write parsed titles into both the desired-positions list and the include list;
+   `extractTitleKeywords` (`src/lib/jobs/title-keywords.ts`) now derives short keywords
+   for the filter while positions keep the full titles. It matches a curated vocabulary
+   of domain keywords, drops any keyword another kept keyword already covers (`design`
+   covers `design system`), excludes bare role suffixes and bare `product` (which would
+   match "Production Engineer"), and falls back to the words the titles repeat — minus
+   rank words — so a nurse or paralegal resume yields `nurse` / `paralegal` rather than
+   nothing. The step's hints say so, and a list that still holds pasted titles gets an
+   inline **Replace with keywords** offer rather than a silent rewrite.
+4. **Locations** — work arrangement plus where each arrangement applies. Scanning needs
+   both halves: the on-site/hybrid list becomes the location a job board is searched
+   with, and the remote list decides whether a region-restricted remote posting is in
+   scope. Each list is shown only when the arrangement that needs it is selected.
+
+   Both lists use `PreferredLocationsInput` — the same picker as Profile → Preferences,
+   with autocomplete against `/api/locations/search` (OpenStreetMap Nominatim) and
+   "Add typed location" for region groups. That matters beyond convenience: filtering
+   compares against exact stored values, so free-text boxes would have let onboarding
+   save a spelling the scanner then failed to match. The component was already
+   parameterized for both lists on Profile, so onboarding passes its own `inputId`,
+   labels, hints, and the country-oriented placeholder for the remote list. An
+   on-site or hybrid selection requires at least one place; the remote list is
+   deliberately optional, because empty means "anywhere" — a real and common answer, and
+   a listing that names no region is never ruled out. This used to be three checkboxes
+   at the bottom of the preferences step with no way to say *where*, so a search could
+   be set to on-site without ever naming a city. Resume upload or extraction may
    prefill role and title values; readiness follows saved data regardless of
    whether it came from the onboarding wizard, Profile, Settings, or resume
    extraction. A compatibility mode inferred from an older remote-preference
    value does not count as the user's work-mode selection.
-4. **Integrations** *(optional)* — covers two free API keys that extend job
+5. **Integrations** *(optional)* — covers two free API keys that extend job
    coverage. Each card shows a short explanation, a "Help →" link to the
    relevant help section, and inline input fields with a "Leave blank to keep
    existing" placeholder when keys are already saved.
@@ -139,15 +318,33 @@ The modal has 5 steps — 4 required and 1 optional:
    step circle when not yet configured. Clicking "Skip for now" advances to
    Ready without saving. "Save and continue" saves any non-blank fields (blank
    fields keep existing keys) and also advances to Ready.
-5. **Ready** — explains the next operational steps: review scan sources in
+6. **Ready** — explains the next operational steps: review scan sources in
    Settings, run Scan for new jobs on the Dashboard, then review and evaluate
    imported matches.
 
-The resume step is considered complete as soon as a PDF has been uploaded to any
-lane (regardless of whether AI extraction succeeded). The dashboard derives
+   The panel branches on actual readiness. "Skip for now" and the integrations save
+   both land here directly, so it is reachable with required steps unfinished; it used
+   to claim **Setup complete** regardless, over a readiness card that was still listing
+   what was missing. When incomplete it reads **Almost there**, lists the unfinished
+   required steps as links back to the step that owns each, and the button reads
+   *Open dashboard anyway*.
+
+   The scheduled-scan checkbox defaults to **off**, matching the `scan_schedule.enabled`
+   database default, and only the panel's own button writes it. The × used to route
+   through the same handler, so closing the dialog switched on six-hourly background
+   scanning that the user had never been shown.
+
+The resume step is complete once a PDF has been uploaded to any lane — the same rule
+the dashboard uses. It briefly also required AI extraction, which made the two disagree:
+the wizard called the step unfinished while the dashboard showed **Profile ready**,
+because readiness follows the saved profile data regardless of which screen filled it in.
+Extraction is still pushed hard inside the step, and the Continue button stays secondary
+until it has run or failed, but it does not gate the tick and never blocks moving on — a
+failed extraction used to leave the step ticked-but-stuck. The dashboard derives
 readiness from the actual saved setup data: a configured provider in the active
 chain, an uploaded resume, desired positions, at least one included title filter,
-and an explicitly saved location work mode. It does not depend on a wizard-only
+an explicitly saved work arrangement, and — when that arrangement includes on-site or
+hybrid — at least one place to work. It does not depend on a wizard-only
 confirmation flag, and inferred compatibility defaults do not satisfy readiness.
 Unrelated profile edits and resume uploads preserve this distinction instead of
 writing an inferred compatibility mode back as an explicit selection.
@@ -1527,7 +1724,20 @@ expand control labelled Answer / Add detail / Edit by status.
 Four configuration tabs:
 
 ### AI Providers
-- **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Drag the grip handle on each row to reorder.
+- **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Reorder with the grip handle or the **↑ / ↓** buttons on each row. Each row shows a short status once enabled — *Key needed*, *Not verified*, *Verified*, or for Ollama *Reachable* / *Not running*.
+- **↑ / ↓ buttons sit beside the drag handle**, because priority was otherwise drag-only: dnd-kit's keyboard path existed but was announced only inside its hidden instruction text, and a touch user had no path at all.
+- **Order and membership are separate.** `provider_order_json` is the full ranked list of all four; `provider_enabled_json` is which of them are switched on. One column used to carry both, so switching a provider off erased its rank (it came back at the bottom in constant order on the next load), and emptying the list read as "never configured" — the factory then fell back to trying every provider holding a key, the opposite of what the UI showed. Saving with nothing enabled is now refused with an explanation rather than silently producing that divergence.
+- **Each row's checkbox is wrapped in its own `<label>`.** The provider name is the
+  checkbox's accessible name and part of its click target; previously the name was a
+  sibling `<span>` and every box announced only "on". An unselected row keeps full text
+  contrast — it is a live option, not a disabled control, so the checkbox and border
+  carry the state rather than `opacity-50`, which put the unselected provider names at
+  2.08:1.
+- **API key cards follow the priority order** rather than a fixed
+  `anthropic, gemini, openai` list, so the #1 provider's key field is the first one on
+  screen and the "Active" badge is not three cards down. Each key and model input is
+  associated with a label naming its provider ("OpenAI API key", not a bare "API Key"
+  repeated three times).
 - **The drag handles point screen readers at real instructions.** Each grip handle
   carries an `aria-describedby` pointing at dnd-kit's hidden "press space bar to start
   dragging" text. That text is client-only, but the handle's `aria-describedby` is
@@ -1543,7 +1753,8 @@ Four configuration tabs:
 - **Cloud providers** — Anthropic (Claude), OpenAI (GPT), Google (Gemini). Enter an API key and select a default model for each.
 - **Ollama (local)** — free, runs entirely on your machine; no API key required. Enable in the priority list to reveal the configuration section:
   - **Base URL** — Ollama server address (default `http://localhost:11434`).
-  - **Model picker** — click "Choose…" to fetch the list of locally installed models from the running server and select one.
+  - **Model picker** — a dropdown of the models the running server actually has, fetched on enable. If the saved model is not among them (the stored default `llama3.1:8b` usually is not), it is switched to one that is. When the list cannot be fetched the field falls back to free text with a "Choose…" button.
+  - **The connection test checks the model, not just the server.** It fails when the configured model is absent, naming it, giving the `ollama pull` command, and listing what is installed. It used to answer `ok: true` for any reachable server and display the server's first model instead — so a keyless-looking setup passed onboarding and then failed with a bare 404 on the first real request.
   - **Quality guide** — ≥64 GB: `qwen2.5:72b` / `llama3.1:70b` (near cloud quality); ≥12 GB: `qwen2.5:14b` / `mistral-nemo`; ≥8 GB: `llama3.1:8b` / `qwen2.5:7b`.
   - **Unreachability warning** — when Ollama is in the priority chain and the server is not reachable, an inline warning banner appears with a Retry button.
 - **Every provider that was tried is named when the chain fails.** The fallback chain

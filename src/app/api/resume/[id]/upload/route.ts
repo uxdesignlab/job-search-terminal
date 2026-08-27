@@ -12,6 +12,7 @@ import {
   updateUserProfile,
 } from "@/lib/db/queries";
 import { parseSourceResume, validateResumeExtraction } from "@/lib/documents/resume-generator";
+import { extractTitleKeywords } from "@/lib/jobs/title-keywords";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -58,22 +59,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   writeFileSync(absPath, buffer);
 
   updateResumeSource(id, relPath, extractedText, wordCount);
+
+  // Parsed titles are added to what the user already has, never swapped in for it.
+  // extractResumePositions matches a fixed vocabulary, so plenty of real resumes —
+  // nursing, accounting, teaching, law — yield nothing at all; replacing would wipe
+  // the roles and filters the search actually runs on. A second lane uploaded after
+  // the preferences step would do the same to values just confirmed.
   const extractedPositions = extractResumePositions(parsedResume);
+  const existingFilters = getTitleFilters();
+  const mergedRoles = uniqueByLowercase([...profile.targetRoles, ...extractedPositions]);
+  // Desired positions are titles; include-filters are keywords. Writing the titles into
+  // both put entries like "senior hci engineer / principal ux designer" in the filter,
+  // which — matched from a word boundary with an open end — only matches a title
+  // starting with that whole phrase, so it narrowed the search to nothing.
+  const extractedKeywords = extractTitleKeywords(extractedPositions);
+  const mergedPositive = uniqueByLowercase([...existingFilters.positive, ...extractedKeywords]);
+  const addedRoles = mergedRoles.length - profile.targetRoles.length;
+  const addedFilters = mergedPositive.length - existingFilters.positive.length;
+
   updateUserProfile({
     ...profile,
-    targetRoles: extractedPositions,
+    targetRoles: mergedRoles,
   });
-  saveTitleFilters(
-    extractedPositions.map((position) => position.toLowerCase()),
-    getTitleFilters().negative
-  );
-  setOnboardingPreferencesConfirmed(false);
+  saveTitleFilters(mergedPositive, existingFilters.negative);
+
+  // Only ask for re-confirmation when this resume actually introduced something new
+  // to look at. A replacement PDF that adds no titles leaves the step alone.
+  if (addedRoles > 0 || addedFilters > 0) setOnboardingPreferencesConfirmed(false);
 
   return NextResponse.json({
     ok: true,
     wordCount,
     warnings: extractionWarnings,
     positions: extractedPositions,
+    keywords: extractedKeywords,
+    addedRoles,
+    addedFilters,
     sections: {
       summary: Boolean(parsedResume.summary),
       experience: parsedResume.experience.length,
@@ -152,8 +173,8 @@ function normalizePositionTitle(value: string) {
 function uniqueByLowercase(values: string[]) {
   const seen = new Set<string>();
   return values.filter((value) => {
-    const key = value.toLowerCase();
-    if (seen.has(key)) return false;
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });

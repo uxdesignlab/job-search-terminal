@@ -1105,7 +1105,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Review target roles in Account -> Profile.",
           "Tighten positive and negative title filters.",
-          "Review location modes and preferred locations.",
+          "Review your work arrangement and locations.",
           "Disable noisy sources.",
           "Evaluate a few examples before changing too many settings at once.",
         ],

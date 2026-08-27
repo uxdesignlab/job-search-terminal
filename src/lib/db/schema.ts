@@ -1460,5 +1460,18 @@ export const migrations = [
       update ai_settings set gemini_model = 'latest-flash'
         where id = 'singleton' and gemini_model in ('gemini-2.5-flash', 'gemini-2.0-flash');
     `
+  },
+  {
+    id: "0066_provider_enabled_set",
+    sql: `
+      -- provider_order_json carried two meanings at once: the priority order AND which
+      -- providers were on. Disabling one therefore erased its rank (it was re-appended
+      -- in constant order on the next load), and emptying the list read as "never
+      -- configured", so the factory fell back to trying every provider that had a key —
+      -- the opposite of what the UI showed. Order now lives in provider_order_json and
+      -- membership in provider_enabled_json. An empty string means "not split yet";
+      -- those rows keep the old meaning until the next save.
+      alter table ai_settings add column provider_enabled_json text not null default '';
+    `
   }
 ];

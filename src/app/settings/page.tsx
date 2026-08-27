@@ -24,6 +24,7 @@ import {
 import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { AISettingsForm } from "@/components/ai-settings-form";
+import { ResumeOnboardingButton } from "@/components/resume-onboarding-button";
 import { maskApiKey } from "@/lib/ai/masked-key";
 import { TitleFiltersEditor } from "@/components/title-filters-editor";
 import { ProfileSupplementsEditor } from "@/components/profile-supplements-editor";
@@ -406,6 +407,16 @@ export default async function SettingsPage({
               </CardDescription>
             </CardHeader>
             <AISettingsForm settings={maskedSettings} />
+            {/* Second route back into the guided flow, for a user who dismissed it and
+                would rather be walked through setup than assemble it tab by tab. */}
+            {settings.onboardingDismissed && (
+              <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-5">
+                <ResumeOnboardingButton />
+                <p className="text-xs leading-5 text-muted">
+                  Reopens first-run setup on the Dashboard. Nothing already configured is changed.
+                </p>
+              </div>
+            )}
           </Card>
         )}
 
