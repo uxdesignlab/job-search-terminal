@@ -50,6 +50,74 @@ Splitting these files does not shrink the route's client bundle — server compo
 emit no client JS, so the ~1.5 MB dev chunk for this route is the fifteen client
 components it renders plus their dependencies, not the page's own markup.
 
+## Testing the First-Run Experience
+
+Once you have used the app, your instance holds real data and the first-run
+onboarding never appears again. To exercise onboarding — for usability testing,
+or to check a change to the wizard — run a **second, independent instance**
+rather than deleting your own data.
+
+Every path the app writes to (`data/`, `output/`, `assets/`, `config/*.local.*`)
+is resolved relative to the working directory and is gitignored, so a second
+working copy is fully isolated by construction. No configuration is required.
+
+Create one as a git worktree, so it shares the object store and stays pinned to
+a commit you choose:
+
+```bash
+git worktree add --detach ../job-search-terminal-testing main
+cd ../job-search-terminal-testing
+npm ci
+npm run dev -- -p 3100
+```
+
+The second instance needs its own `node_modules` and its own port. Port 3100
+keeps it clear of the default 3000, so both instances can run side by side.
+
+On first page load the app creates an empty database and lands on the
+first-run onboarding wizard. The seed inserts an empty profile row and one
+empty resume lane — it is a bootstrap, not a fixture, so nothing needs to be
+cleared afterwards.
+
+To reset between test sessions, **stop the dev server first** — the running
+process holds an open SQLite handle, and deleting the file underneath it leaves
+writes going to a deleted inode. Then remove the runtime state and restart:
+
+```bash
+rm -f data/*.sqlite data/*.sqlite-shm data/*.sqlite-wal
+for dir in data output assets reports; do
+  find "$dir" -mindepth 1 ! -name .gitkeep -delete
+done
+rm -f config/portals.yml config/*.local.json
+```
+
+Keep any such reset script outside version control — `.claude/` is gitignored
+and is a reasonable home — and give it two guards:
+
+- **Path.** Compare the resolved script directory against the expected absolute
+  path and refuse otherwise, so a copy of the script can never delete the data
+  in your real instance.
+- **Liveness.** Refuse while the dev server is still up. Deleting an open SQLite
+  file does not error — the server keeps writing to an inode that no longer has
+  a name, so the reset appears to succeed and then silently doesn't. Check for
+  a listener on the port *and* for any process still holding the database file,
+  which catches a server started on some other port:
+
+  ```bash
+  lsof -ti "tcp:$PORT" -sTCP:LISTEN
+  lsof -t -- data/job-search-terminal.sqlite
+  ```
+
+  Next.js spawns short-lived workers, so this can briefly report more than one
+  process. Erring toward refusal is the right bias.
+
+To pick up newer code in the testing worktree, pull in your main checkout and
+then re-point the worktree:
+
+```bash
+git checkout --detach main
+```
+
 ## Verification
 
 Run after every change:
