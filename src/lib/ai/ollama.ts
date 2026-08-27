@@ -3,7 +3,7 @@ import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, Str
 import { LOCAL_GENERATION_TIMEOUT_MS } from "./deadlines";
 import { parseJsonResponse } from "./json-response";
 
-function humanizeOllamaError(error: unknown): Error {
+function humanizeOllamaError(error: unknown, model?: string): Error {
   if (error instanceof OpenAI.APIConnectionError || (error instanceof Error && error.message.includes("ECONNREFUSED"))) {
     return new Error("Could not connect to Ollama. Make sure it is running: `ollama serve`");
   }
@@ -18,7 +18,13 @@ function humanizeOllamaError(error: unknown): Error {
   }
   if (error instanceof OpenAI.APIError) {
     const status = error.status;
-    if (status === 404) return new Error(`Model not found in Ollama. Run: ollama pull ${"`<model-name>`"}`);
+    if (status === 404) {
+      return new Error(
+        model
+          ? `Ollama has no model named "${model}". Install it with: ollama pull ${model}`
+          : "Model not found in Ollama. Install it with: ollama pull <model-name>"
+      );
+    }
     return new Error(`Ollama error (HTTP ${status}): ${error.message}`);
   }
   if (error instanceof Error && error.name === "AbortError") {
@@ -95,7 +101,7 @@ export class OllamaProvider implements AIProvider {
       return text;
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Ollama returned no usable text")) throw error;
-      throw humanizeOllamaError(error);
+      throw humanizeOllamaError(error, this.model);
     }
   }
 
@@ -141,7 +147,7 @@ export class OllamaProvider implements AIProvider {
       return parseJsonResponse<T>(text, "Ollama");
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Ollama returned invalid JSON")) throw error;
-      throw humanizeOllamaError(error);
+      throw humanizeOllamaError(error, this.model);
     }
   }
 
@@ -161,7 +167,7 @@ export class OllamaProvider implements AIProvider {
 
       yield { text: "", done: true };
     } catch (error) {
-      throw humanizeOllamaError(error);
+      throw humanizeOllamaError(error, this.model);
     }
   }
 
@@ -170,14 +176,29 @@ export class OllamaProvider implements AIProvider {
     try {
       const list = await this.client.models.list();
       const modelNames = list.data.map((m) => m.id);
-      const matched = modelNames.find((id) => id === this.model) ?? modelNames[0] ?? "ollama";
-      return { ok: true, latencyMs: Date.now() - start, model: matched };
+
+      // A reachable server is not a working provider. This used to report ok:true and
+      // display modelNames[0] whenever the configured model was absent — so onboarding
+      // showed "Verified" against a model the app was not going to use, and the first
+      // real request came back 404 from somewhere the user could not connect to setup.
+      if (!modelNames.includes(this.model)) {
+        const installed = modelNames.length > 0
+          ? ` Installed: ${modelNames.slice(0, 6).join(", ")}${modelNames.length > 6 ? "…" : ""}.`
+          : " No models are installed.";
+        return {
+          ok: false,
+          latencyMs: Date.now() - start,
+          model: this.model,
+          error: `Ollama is running but has no model named "${this.model}". Install it with: ollama pull ${this.model}.${installed}`
+        };
+      }
+      return { ok: true, latencyMs: Date.now() - start, model: this.model };
     } catch (error) {
       return {
         ok: false,
         latencyMs: Date.now() - start,
         model: this.model,
-        error: humanizeOllamaError(error).message
+        error: humanizeOllamaError(error, this.model).message
       };
     }
   }
