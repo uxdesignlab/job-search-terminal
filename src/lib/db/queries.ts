@@ -3238,6 +3238,7 @@ type AISettingsRow = {
   ollama_model: string;
   fallback_provider: string;
   provider_order_json: string;
+  provider_enabled_json: string;
   onboarding_dismissed: number;
   onboarding_preferences_confirmed: number;
   brave_search_api_key: string;
@@ -3262,6 +3263,7 @@ export function getAISettings(): AISettingsRecord {
       ollamaModel: "llama3.1:8b",
       fallbackProvider: "",
       providerOrderJson: ["openai", "anthropic", "gemini"],
+      providerEnabledJson: null,
       onboardingDismissed: false,
       onboardingPreferencesConfirmed: false,
       braveSearchApiKey: "",
@@ -3276,6 +3278,16 @@ export function getAISettings(): AISettingsRecord {
   } catch {
     providerOrderJson = ["openai", "anthropic", "gemini"];
   }
+  // An empty string is a row saved before order and membership were split; null tells
+  // every reader to keep treating provider_order_json as both.
+  let providerEnabledJson: AIProviderName[] | null = null;
+  if (row.provider_enabled_json) {
+    try {
+      providerEnabledJson = JSON.parse(row.provider_enabled_json) as AIProviderName[];
+    } catch {
+      providerEnabledJson = null;
+    }
+  }
   return {
     id: row.id,
     activeProvider: row.active_provider as AIProviderName,
@@ -3289,6 +3301,7 @@ export function getAISettings(): AISettingsRecord {
     ollamaModel: row.ollama_model ?? "llama3.1:8b",
     fallbackProvider: row.fallback_provider,
     providerOrderJson,
+    providerEnabledJson,
     onboardingDismissed: Boolean(row.onboarding_dismissed),
     onboardingPreferencesConfirmed: Boolean(row.onboarding_preferences_confirmed),
     braveSearchApiKey: row.brave_search_api_key ?? "",
@@ -3298,8 +3311,37 @@ export function getAISettings(): AISettingsRecord {
   };
 }
 
-export function saveAISettings(input: AISettingsUpdateInput) {
+/**
+ * Every field not named in `input` keeps its stored value. It used to demand the whole
+ * record, so callers hand-copied seventeen fields and coerced anything missing to a
+ * falsy default — which is how one caller silently cleared both onboarding flags on
+ * every integrations save. Passing only what changed is now the safe default.
+ */
+export function saveAISettings(input: Partial<AISettingsUpdateInput>) {
   const existing = getAISettings();
+  const merged: AISettingsUpdateInput = {
+    activeProvider: input.activeProvider ?? existing.activeProvider,
+    anthropicApiKey: input.anthropicApiKey ?? existing.anthropicApiKey,
+    geminiApiKey: input.geminiApiKey ?? existing.geminiApiKey,
+    openaiApiKey: input.openaiApiKey ?? existing.openaiApiKey,
+    anthropicModel: input.anthropicModel ?? existing.anthropicModel,
+    geminiModel: input.geminiModel ?? existing.geminiModel,
+    openaiModel: input.openaiModel ?? existing.openaiModel,
+    ollamaBaseUrl: input.ollamaBaseUrl ?? existing.ollamaBaseUrl,
+    ollamaModel: input.ollamaModel ?? existing.ollamaModel,
+    fallbackProvider: input.fallbackProvider ?? existing.fallbackProvider,
+    providerOrderJson: input.providerOrderJson ?? existing.providerOrderJson,
+    // `null` is a real value here ("not split yet"), so only an absent key inherits.
+    providerEnabledJson: "providerEnabledJson" in input
+      ? input.providerEnabledJson ?? null
+      : existing.providerEnabledJson,
+    onboardingDismissed: input.onboardingDismissed ?? existing.onboardingDismissed,
+    onboardingPreferencesConfirmed:
+      input.onboardingPreferencesConfirmed ?? existing.onboardingPreferencesConfirmed,
+    braveSearchApiKey: input.braveSearchApiKey ?? existing.braveSearchApiKey,
+    adzunaAppId: input.adzunaAppId ?? existing.adzunaAppId,
+    adzunaApiKey: input.adzunaApiKey ?? existing.adzunaApiKey,
+  };
   getDatabase()
     .prepare(
       `update ai_settings set
@@ -3314,6 +3356,7 @@ export function saveAISettings(input: AISettingsUpdateInput) {
         ollama_model = @ollamaModel,
         fallback_provider = @fallbackProvider,
         provider_order_json = @providerOrderJson,
+        provider_enabled_json = @providerEnabledJson,
         onboarding_dismissed = @onboardingDismissed,
         onboarding_preferences_confirmed = @onboardingPreferencesConfirmed,
         brave_search_api_key = @braveSearchApiKey,
@@ -3323,26 +3366,27 @@ export function saveAISettings(input: AISettingsUpdateInput) {
       where id = 'singleton'`
     )
     .run({
-      ...input,
-      providerOrderJson: JSON.stringify(input.providerOrderJson),
-      onboardingDismissed: input.onboardingDismissed ? 1 : 0,
-      onboardingPreferencesConfirmed: input.onboardingPreferencesConfirmed ? 1 : 0,
-      braveSearchApiKey: input.braveSearchApiKey ?? existing.braveSearchApiKey,
-      adzunaAppId: input.adzunaAppId ?? existing.adzunaAppId,
-      adzunaApiKey: input.adzunaApiKey ?? existing.adzunaApiKey,
+      ...merged,
+      providerOrderJson: JSON.stringify(merged.providerOrderJson),
+      providerEnabledJson: merged.providerEnabledJson === null ? "" : JSON.stringify(merged.providerEnabledJson),
+      onboardingDismissed: merged.onboardingDismissed ? 1 : 0,
+      onboardingPreferencesConfirmed: merged.onboardingPreferencesConfirmed ? 1 : 0,
     });
 }
 
+/** Deliberately leaves `onboarding_dismissed` alone. It used to clear the flag here,
+ *  which meant every resume upload — including a routine replacement years into a
+ *  search — reopened the full first-run wizard over the dashboard. Dismissal is the
+ *  user's decision and only the user reverses it. */
 export function setOnboardingPreferencesConfirmed(confirmed: boolean) {
   getDatabase()
     .prepare(
       `update ai_settings set
         onboarding_preferences_confirmed = @confirmed,
-        onboarding_dismissed = 0,
         updated_at = current_timestamp
       where id = 'singleton'`
     )
-	    .run({ confirmed: confirmed ? 1 : 0 });
+    .run({ confirmed: confirmed ? 1 : 0 });
 }
 
 type AIPromptOverrideRow = {

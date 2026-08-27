@@ -24,17 +24,22 @@ export async function saveAISettingsAction(formData: FormData) {
   const adzunaAppId = (formData.get("adzunaAppId") as string) ?? "";
   const submittedAdzunaKey = (formData.get("adzunaApiKey") as string) ?? "";
 
-  // Parse the ordered provider chain from a JSON string submitted by the form.
-  let providerOrderJson: AIProviderName[] = ["openai", "anthropic", "gemini"];
-  try {
-    const raw = formData.get("providerOrderJson") as string;
-    if (raw) {
+  function parseProviderList(field: string): AIProviderName[] | null {
+    try {
+      const raw = formData.get(field) as string | null;
+      if (raw === null) return null;
       const parsed = JSON.parse(raw) as unknown[];
-      providerOrderJson = parsed.filter((p): p is AIProviderName => ALL_PROVIDERS.includes(p as AIProviderName));
+      return parsed.filter((p): p is AIProviderName => ALL_PROVIDERS.includes(p as AIProviderName));
+    } catch {
+      return null;
     }
-  } catch {
-    // keep default
   }
+
+  // Order is the full ranked list; enabled is which of them are switched on. Keeping
+  // them apart is what lets a provider be turned off without losing its rank, and an
+  // empty enabled set mean "none" rather than "never configured".
+  const providerOrderJson = parseProviderList("providerOrderJson") ?? ["openai", "anthropic", "gemini"];
+  const providerEnabledJson = parseProviderList("providerEnabledJson");
 
   if (!ALL_PROVIDERS.includes(activeProvider)) {
     throw new Error("Invalid provider selection.");
@@ -59,8 +64,7 @@ export async function saveAISettingsAction(formData: FormData) {
     ollamaModel,
     fallbackProvider,
     providerOrderJson,
-    onboardingDismissed: stored.onboardingDismissed,
-    onboardingPreferencesConfirmed: stored.onboardingPreferencesConfirmed,
+    providerEnabledJson,
     braveSearchApiKey,
     adzunaAppId,
     adzunaApiKey,

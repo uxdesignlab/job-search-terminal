@@ -47,8 +47,17 @@ function resolveCandidates(settings: AISettingsRecord): AIProviderName[] {
     ? settings.providerOrderJson
     : FALLBACK_ORDER;
 
+  // providerEnabledJson is the membership set; null means a row saved before order and
+  // membership were split, where the order list carried both meanings. An explicit
+  // empty array is a real answer — the user turned everything off — and must not fall
+  // through to "try every provider that happens to hold a key", which is what the UI
+  // said was not happening.
+  const chain = settings.providerEnabledJson === null
+    ? order
+    : order.filter((name) => settings.providerEnabledJson!.includes(name));
+
   // Filter to providers that have a credential configured.
-  return order.filter((name) => Boolean(providerKey(settings, name)));
+  return chain.filter((name) => Boolean(providerKey(settings, name)));
 }
 
 export function hasConfiguredAIProvider(settings: AISettingsRecord): boolean {

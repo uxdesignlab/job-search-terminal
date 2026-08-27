@@ -892,6 +892,10 @@ export type AISettingsRecord = {
   /** @deprecated Use providerOrderJson instead. */
   fallbackProvider: string;
   providerOrderJson: AIProviderName[];
+  /** Providers the user has switched on, as an unordered membership set — order lives
+   *  in providerOrderJson. `null` means a row saved before the two were split, where
+   *  providerOrderJson still carries both meanings. */
+  providerEnabledJson: AIProviderName[] | null;
   onboardingDismissed: boolean;
   onboardingPreferencesConfirmed: boolean;
   braveSearchApiKey: string;
@@ -912,6 +916,10 @@ export type AISettingsUpdateInput = {
   ollamaModel: string;
   fallbackProvider: string;
   providerOrderJson: AIProviderName[];
+  /** Providers the user has switched on, as an unordered membership set — order lives
+   *  in providerOrderJson. `null` means a row saved before the two were split, where
+   *  providerOrderJson still carries both meanings. */
+  providerEnabledJson: AIProviderName[] | null;
   onboardingDismissed?: boolean;
   onboardingPreferencesConfirmed?: boolean;
   braveSearchApiKey?: string;
