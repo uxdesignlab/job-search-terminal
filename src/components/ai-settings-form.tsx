@@ -425,7 +425,11 @@ export function AISettingsForm({
       setOllamaModels(data.models);
       setOllamaModel((current) => (data.models.includes(current) ? current : data.models[0] ?? current));
     } catch {
-      if (!isCurrent()) return;
+      // An abort is not a server that failed to answer — it means the address moved on.
+      // Treating it as a failure marked the *new* URL unreachable and disabled Save for
+      // the gap until the replacement request finished. The effect cleanup aborts
+      // without bumping the token, so the token check alone does not catch this.
+      if (controller.signal.aborted || !isCurrent()) return;
       setOllamaReachable(false);
       setOllamaModels([]);
     }
