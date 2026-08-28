@@ -149,7 +149,7 @@ export default async function SettingsPage({
     ...yamlCompanies.map((c) => {
       const api = detectApi(c);
       const yamlDefault = c.enabled !== false;
-      const enabled = c.name in overrides ? overrides[c.name] : yamlDefault;
+      const enabled = Object.hasOwn(overrides, c.name) ? overrides[c.name] : yamlDefault;
       const industry = profileMap.get(c.name)?.industry ?? c.industry ?? "";
       return {
         name: c.name,
@@ -163,7 +163,7 @@ export default async function SettingsPage({
     ...customSources
       .filter((c) => !yamlNames.has(c.name))
       .map((c) => {
-        const enabled = c.name in overrides ? overrides[c.name] : c.enabled;
+        const enabled = Object.hasOwn(overrides, c.name) ? overrides[c.name] : c.enabled;
         const industry = profileMap.get(c.name)?.industry ?? "";
         return {
           name: c.name,

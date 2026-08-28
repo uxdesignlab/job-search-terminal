@@ -5338,7 +5338,12 @@ export function getScanSourceOverrides(): Record<string, boolean> {
   const rows = getDatabase()
     .prepare("select name, enabled from scan_source_overrides")
     .all() as Array<{ name: string; enabled: number }>;
-  return Object.fromEntries(rows.map((r) => [r.name, r.enabled === 1]));
+  // Null prototype: source names are user data, and a company genuinely named
+  // "constructor" (constructor.io) would otherwise resolve through
+  // Object.prototype and yield a function instead of a boolean.
+  const overrides: Record<string, boolean> = Object.create(null);
+  for (const row of rows) overrides[row.name] = row.enabled === 1;
+  return overrides;
 }
 
 export function setScanSourceEnabled(name: string, enabled: boolean) {

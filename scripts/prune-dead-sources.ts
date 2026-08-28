@@ -57,7 +57,7 @@ function collectEnabledSources(): Source[] {
   ];
 
   return merged
-    .filter((s) => (s.name in overrides ? overrides[s.name] : s.defaultEnabled))
+    .filter((s) => (Object.hasOwn(overrides, s.name) ? overrides[s.name] : s.defaultEnabled))
     .map((s) => ({
       name: s.name,
       careersUrl: s.careersUrl,

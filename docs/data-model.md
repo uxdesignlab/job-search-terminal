@@ -763,6 +763,19 @@ Enable / disable flags for built-in job sources.
 | `enabled` | 1 = enabled, 0 = disabled |
 | `updated_at` | ISO timestamp |
 
+**Source names are untrusted keys.** `name` is user data — it comes from ATS
+slugs and hand-added sources, and real companies are named `constructor`
+(constructor.io). `getScanSourceOverrides()` therefore returns a
+**null-prototype** object, and every caller must test membership with
+`Object.hasOwn(overrides, name)`, never `name in overrides`. With a plain
+object and the `in` operator, `"constructor" in overrides` is true even when no
+such row exists, and the lookup returns the `Object` constructor function
+instead of a boolean. That has bitten twice: the scanner treated the source as
+permanently enabled (a function is truthy, so the override could not turn it
+off), and the settings page crashed with "Functions cannot be passed directly
+to Client Components" once that value was captured by a server action closure.
+The same rule applies to any future map keyed by company or source name.
+
 ### scan_sources_custom
 
 User-added custom ATS job board URLs.
