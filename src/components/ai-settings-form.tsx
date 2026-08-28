@@ -366,12 +366,14 @@ export function AISettingsForm({
     setPhase(savedProviders.length > 0 ? "summary" : "chooser");
   }
 
+  /** Writes the removal through immediately. Updating only local state left the removed
+   *  provider enabled in the database — the summary's Continue calls onComplete without
+   *  saving, so it kept taking fallback calls after the next refresh. */
   function removeProvider(id: AIProviderName) {
-    setEnabledProviders((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    const nextEnabled = new Set(enabledProviders);
+    nextEnabled.delete(id);
+    setEnabledProviders(nextEnabled);
+    void persistChain(providerOrder, nextEnabled);
   }
 
   // Effective ordered chain (enabled providers in priority order)
@@ -394,9 +396,9 @@ export function AISettingsForm({
      connection test reported the server's first model rather than the configured one, so
      the step went green and the failure surfaced two steps later as a bare 404 during
      profile extraction. */
-  const checkOllamaReachability = useCallback(async () => {
+  const checkOllamaReachability = useCallback(async (baseUrl?: string) => {
     try {
-      const res = await fetch("/api/ai/ollama-models");
+      const res = await fetch(`/api/ai/ollama-models?baseUrl=${encodeURIComponent(baseUrl ?? "")}`);
       const data = await res.json() as { models: string[]; error?: string };
       if (data.error) {
         setOllamaReachable(false);
@@ -413,10 +415,11 @@ export function AISettingsForm({
   }, []);
 
   useEffect(() => {
-    if (enabledProviders.has("ollama") || draftProvider === "ollama") {
-      checkOllamaReachability();
-    }
-  }, [enabledProviders, draftProvider, checkOllamaReachability]);
+    if (!enabledProviders.has("ollama") && draftProvider !== "ollama") return;
+    // Debounced, because this also fires on every keystroke in the Base URL field.
+    const timer = window.setTimeout(() => void checkOllamaReachability(ollamaBaseUrl), 500);
+    return () => window.clearTimeout(timer);
+  }, [enabledProviders, draftProvider, ollamaBaseUrl, checkOllamaReachability]);
 
   const refreshModels = useCallback(async (provider: LiveModelProvider) => {
     try {
@@ -529,7 +532,7 @@ export function AISettingsForm({
     setOllamaPickerLoading(true);
     setOllamaPickerError("");
     try {
-      const res = await fetch("/api/ai/ollama-models");
+      const res = await fetch(`/api/ai/ollama-models?baseUrl=${encodeURIComponent(ollamaBaseUrl)}`);
       const data = await res.json() as { models: string[]; error?: string };
       if (data.error) {
         setOllamaPickerError(data.error);
@@ -579,18 +582,28 @@ export function AISettingsForm({
     const nextEnabled = compact && draftProvider
       ? new Set<AIProviderName>([...enabledProviders, draftProvider])
       : enabledProviders;
-    const chain = providerOrder.filter((p) => nextEnabled.has(p));
 
-    if (chain.length === 0) {
-      setGateError(
-        "Enable at least one provider. With none enabled, job scoring, resume tailoring, and answer drafting cannot run."
-      );
-      return;
-    }
+    // A provider added as a fallback goes to the END of the chain. Filtering the fixed
+    // order instead let a later pick outrank an earlier one: choosing Ollama and then
+    // adding OpenAI as a fallback produced [openai, ollama], so every AI call went to
+    // the paid cloud service rather than the local provider chosen first.
+    const isNewlyAdded = Boolean(compact && draftProvider && !enabledProviders.has(draftProvider));
+    const nextOrder: AIProviderName[] = isNewlyAdded && draftProvider
+      ? [
+          ...providerOrder.filter((p) => p !== draftProvider && enabledProviders.has(p)),
+          draftProvider,
+          ...providerOrder.filter((p) => p !== draftProvider && !enabledProviders.has(p)),
+        ]
+      : providerOrder;
+    const chain = nextOrder.filter((p) => nextEnabled.has(p));
 
     // Onboarding will not let an empty or unusable chain past. Without this the button
     // saved nothing, reported "Saved", and left the user on a step that never unlocked.
     if (requireCredential) {
+      if (chain.length === 0) {
+        setGateError("Select a provider and add its API key to continue.");
+        return;
+      }
       const primary = compact && draftProvider ? draftProvider : chain.find(hasCredential);
       if (!primary || !hasCredential(primary)) {
         setGateError(
@@ -622,6 +635,20 @@ export function AISettingsForm({
       }
     }
 
+    persistChain(nextOrder, nextEnabled, () => {
+      if (compact) {
+        setDraftProvider(null);
+        // Either way the step now has a saved provider, so leave the summary behind for
+        // a later visit; "complete" additionally advances the wizard.
+        setPhase(nextPhase === "chooser" ? "chooser" : "summary");
+        if (nextPhase === "complete") onComplete?.();
+      }
+    });
+  }
+
+  /** The single write path: persists an order plus the set enabled within it. */
+  function persistChain(order: AIProviderName[], enabled: Set<AIProviderName>, after?: () => void) {
+    const chain = order.filter((p) => enabled.has(p));
     const fd = new FormData();
     fd.set("activeProvider", chain[0] ?? activeProvider);
     fd.set("anthropicApiKey", anthropicKey);
@@ -635,24 +662,19 @@ export function AISettingsForm({
     fd.set("fallbackProvider", chain[1] ?? "");
     // The full ranked list, so a provider switched off keeps its place and comes back
     // where the user left it rather than at the bottom in constant order.
-    fd.set("providerOrderJson", JSON.stringify(providerOrder));
+    fd.set("providerOrderJson", JSON.stringify(order));
     fd.set("providerEnabledJson", JSON.stringify(chain));
     fd.set("braveSearchApiKey", braveSearchApiKey);
     fd.set("adzunaAppId", adzunaAppId);
     fd.set("adzunaApiKey", adzunaApiKey);
     startTransition(async () => {
       await saveAISettingsAction(fd);
-      setEnabledProviders(nextEnabled);
+      setProviderOrder(order);
+      setEnabledProviders(enabled);
       setSaved(true);
       router.refresh();
       onSaved?.();
-      if (compact) {
-        setDraftProvider(null);
-        // Either way the step now has a saved provider, so leave the summary behind for
-        // a later visit; "complete" additionally advances the wizard.
-        setPhase(nextPhase === "chooser" ? "chooser" : "summary");
-        if (nextPhase === "complete") onComplete?.();
-      }
+      after?.();
       setTimeout(() => setSaved(false), 3000);
     });
   }
@@ -669,7 +691,7 @@ export function AISettingsForm({
                 Ollama is not reachable at <span className="font-mono">{ollamaBaseUrl}</span>. Run{" "}
                 <span className="font-mono">ollama serve</span> to start it.
               </span>
-              <button className="ml-auto shrink-0 underline" onClick={checkOllamaReachability} type="button">Retry</button>
+              <button className="ml-auto shrink-0 underline" onClick={() => void checkOllamaReachability(ollamaBaseUrl)} type="button">Retry</button>
             </div>
           )}
 

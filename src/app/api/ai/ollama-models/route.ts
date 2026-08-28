@@ -18,9 +18,14 @@ type OllamaTag = { name?: string; size?: number };
  * `/api/tags` carries the size, `/v1/models` does not, so the native endpoint is
  * tried first and the OpenAI-compatible one is the fallback.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const settings = getAISettings();
-  const baseUrl = settings.ollamaBaseUrl || "http://localhost:11434";
+  // The caller may be asking about a URL that is typed but not saved yet. Reading only
+  // the stored value made onboarding impossible for anyone whose Ollama is not at the
+  // default address: the model list never loaded for the URL in the form, so the step's
+  // "is the model installed" check could never pass and Save stayed disabled.
+  const requested = new URL(request.url).searchParams.get("baseUrl")?.trim();
+  const baseUrl = requested || settings.ollamaBaseUrl || "http://localhost:11434";
 
   try {
     const tagged = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
