@@ -128,7 +128,7 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   ];
 
   const enabledCompanies = mergedCompanies.filter((company) => {
-    if (company.name in sourceOverrides) return sourceOverrides[company.name];
+    if (Object.hasOwn(sourceOverrides, company.name)) return sourceOverrides[company.name];
     return company.enabled !== false;
   });
 
@@ -325,10 +325,10 @@ export function isScanSourceEnabled(name: string, configPath?: string): boolean 
   ];
   const company = mergedCompanies.find((c) => c.name === name);
   if (company) {
-    if (name in sourceOverrides) return sourceOverrides[name];
+    if (Object.hasOwn(sourceOverrides, name)) return sourceOverrides[name];
     return company.enabled !== false;
   }
-  if (name in sourceOverrides) return sourceOverrides[name];
+  if (Object.hasOwn(sourceOverrides, name)) return sourceOverrides[name];
   return true;
 }
 
