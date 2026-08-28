@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatDaysAgo, parseStoredDate } from "@/lib/dates";
 
 type LocalDateLabelProps = {
   value: string | null | undefined;
@@ -8,6 +9,11 @@ type LocalDateLabelProps = {
 };
 
 type LocalRelativeTimeLabelProps = {
+  value: string | null | undefined;
+  fallback?: string;
+};
+
+type LocalDaysAgoLabelProps = {
   value: string | null | undefined;
   fallback?: string;
 };
@@ -36,12 +42,32 @@ export function LocalRelativeTimeLabel({ value, fallback = "Never" }: LocalRelat
   return <>{label}</>;
 }
 
+/**
+ * Whole-day age of a timestamp ("today", "3 days ago").
+ *
+ * Rendered on the client because the day boundary depends on the viewer's time
+ * zone, which the server render cannot know without a hydration mismatch.
+ */
+export function LocalDaysAgoLabel({ value, fallback = "never checked" }: LocalDaysAgoLabelProps) {
+  const [label, setLabel] = useState(fallback);
+
+  useEffect(() => {
+    const updateLabel = () => setLabel(formatDaysAgo(value, fallback));
+    updateLabel();
+
+    const timer = window.setInterval(updateLabel, 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [fallback, value]);
+
+  return <>{label}</>;
+}
+
 export function formatLocalDate(value: string | null | undefined, fallback = "") {
   if (!value) {
     return fallback;
   }
 
-  const date = parseDate(value);
+  const date = parseStoredDate(value);
   if (!date) {
     return fallback || value;
   }
@@ -58,7 +84,7 @@ function formatRelativeTime(value: string | null | undefined, fallback: string) 
     return fallback;
   }
 
-  const date = parseDate(value);
+  const date = parseStoredDate(value);
   if (!date) {
     return fallback;
   }
@@ -89,16 +115,6 @@ function formatRelativeTime(value: string | null | undefined, fallback: string) 
     day: "numeric",
     timeZone: getUserTimeZone(),
   }).format(date);
-}
-
-function parseDate(value: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split("-").map(Number);
-    return new Date(year, month - 1, day);
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function getUserTimeZone() {

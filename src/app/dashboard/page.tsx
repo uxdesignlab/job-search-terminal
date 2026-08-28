@@ -3,6 +3,7 @@ import { ScanForNewJobsButton } from "@/components/scan-for-new-jobs-button";
 import { NewUserOnboarding } from "@/components/new-user-onboarding";
 import { ResumeOnboardingButton } from "@/components/resume-onboarding-button";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard } from "@/components/ui";
+import { LinkButton } from "@/components/ui/button";
 import { Shell } from "@/components/ui/shell";
 import {
   getActivity,
@@ -12,6 +13,7 @@ import {
   getAISettings,
   getGapEvidenceCounts,
   getJobSourceBreakdown,
+  getLastSourceCheckAt,
   getLatestScanRun,
   getFreshMatches,
   getRecentScanYieldRuns,
@@ -26,7 +28,7 @@ import { detectZeroYieldLanes, SCAN_YIELD_SAMPLE_PER_LANE } from "@/lib/scanner/
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
-import { LocalDateLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
+import { LocalDateLabel, LocalDaysAgoLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
 import { hasConfiguredAIProvider } from "@/lib/ai";
 import { getProfileReadiness } from "@/lib/profile/readiness";
 import { laneHasResume } from "@/lib/profile/resume-lane";
@@ -84,6 +86,7 @@ export default function DashboardPage() {
   const activity = getActivity();
   const latestScan = getLatestScanRun();
   const latestScanTime = latestScan?.completedAt ?? latestScan?.startedAt;
+  const lastSourceCheckAt = getLastSourceCheckAt();
   const zeroYieldLanes = detectZeroYieldLanes(
     getRecentScanYieldRuns(SCAN_YIELD_SAMPLE_PER_LANE),
     SCAN_YIELD_SAMPLE_PER_LANE,
@@ -103,7 +106,9 @@ export default function DashboardPage() {
         <PageHeader
           actions={onboardingComplete ? (
             <>
-              <Badge tone="success">Profile ready</Badge>
+              <LinkButton href="/settings?tab=sources" variant="secondary">
+                Check sources
+              </LinkButton>
               <ScanForNewJobsButton />
             </>
           ) : undefined}
@@ -176,7 +181,10 @@ export default function DashboardPage() {
                       <p className="mt-0.5 text-xs text-muted">added manually</p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  {/* items-start, not items-center: the right column is two lines now, and
+                      centering would float "Last application" between them instead of
+                      lining it up with "Last scan". */}
+                  <div className="flex flex-col gap-1 border-t border-border pt-3 sm:flex-row sm:items-start sm:justify-between">
                     {lastApplicationDate && (
                       <p className="text-xs text-muted">
                         Last application:{" "}
@@ -185,12 +193,20 @@ export default function DashboardPage() {
                         </span>
                       </p>
                     )}
-                    <p className="text-xs text-muted sm:text-right">
-                      Last scan:{" "}
-                      <span className="font-medium text-ink">
-                        <LocalRelativeTimeLabel value={latestScanTime} />
-                      </span>
-                    </p>
+                    <div className="flex flex-col gap-1 sm:items-end">
+                      <p className="text-xs text-muted sm:text-right">
+                        Last scan:{" "}
+                        <span className="font-medium text-ink">
+                          <LocalRelativeTimeLabel value={latestScanTime} />
+                        </span>
+                      </p>
+                      <p className="text-xs text-muted sm:text-right">
+                        Last source check:{" "}
+                        <span className="font-medium text-ink">
+                          <LocalDaysAgoLabel value={lastSourceCheckAt} />
+                        </span>
+                      </p>
+                    </div>
                   </div>
                 </Card>
               </div>

@@ -336,8 +336,9 @@ The wizard itself has 6 panels — 4 required steps, 1 optional step, and a clos
 
 The resume step is complete once a PDF has been uploaded to any lane — the same rule
 the dashboard uses. It briefly also required AI extraction, which made the two disagree:
-the wizard called the step unfinished while the dashboard showed **Profile ready**,
-because readiness follows the saved profile data regardless of which screen filled it in.
+the wizard called the step unfinished while the dashboard already treated the profile
+as ready, because readiness follows the saved profile data regardless of which screen
+filled it in.
 Extraction is still pushed hard inside the step, and the Continue button stays secondary
 until it has run or failed, but it does not gate the tick and never blocks moving on — a
 failed extraction used to leave the step ticked-but-stuck. The dashboard derives
@@ -349,7 +350,8 @@ confirmation flag, and inferred compatibility defaults do not satisfy readiness.
 Unrelated profile edits and resume uploads preserve this distinction instead of
 writing an inferred compatibility mode back as an explicit selection.
 When setup is incomplete, the dashboard names each missing item and links to the
-screen where it can be completed. When ready, the header shows **Profile ready**.
+screen where it can be completed. Once ready, the header no longer announces
+readiness as a badge — it shows the **Check sources** button instead (below).
 The Integrations step is never a gate — completing it only enables optional
 features.
 
@@ -400,6 +402,39 @@ features.
   a low-frequency one out of the sample. When a lane's whole sample is one
   streak, the warning reads "since at least <date>" rather than implying the
   sample boundary is the true start.
+- **Check sources** button in page header (hidden for new users) — a secondary
+  button linking to Settings → Sources (`/settings?tab=sources`). It replaced the
+  static **Profile ready** badge, which restated something the rest of the header
+  already implied and never changed once setup was done.
+- **Last source check** line in the "This week" card, stacked directly under
+  "Last scan" in a right-aligned column: the age of the last full source check in
+  whole days — "today", "1 day ago", "N days ago" — falling back to "never
+  checked". It sits with the card's other recency lines rather than on the button,
+  so all three ages ("Last application", "Last scan", "Last source check") read as
+  one group. The footer row uses `items-start` rather than `items-center`, so
+  "Last application" lines up with "Last scan" instead of floating between the two
+  right-hand lines; below `sm` all three stack left-aligned.
+
+  The age comes from `getLastSourceCheckAt()`, which returns the newest
+  **CareerOps** run's `completed_at` (falling back to `started_at`). CareerOps is
+  the only lane that walks the entire enabled source list in one pass, so it is
+  what "all sources were last checked" means. Per-source validation (Settings →
+  Sources → **Validate sources**) is deliberately not the source of this number:
+  those results live in component state only and are gone on the next page load,
+  which is why every row in that table reads "Not validated" on load.
+
+  It is rendered by `LocalDaysAgoLabel` (`src/components/local-time-label.tsx`),
+  because the day boundary depends on the viewer's time zone and a server-rendered
+  count would disagree with the client near midnight. The label refreshes hourly.
+  Its formatter, `formatDaysAgo()`, lives in `src/lib/dates.ts` so it is
+  unit-testable — the vitest config only collects `src/**/*.test.ts` and cannot
+  transform JSX, so a formatter left in the `.tsx` file is untestable by
+  construction. It compares calendar days rather than elapsed hours, so a check at
+  11pm reads "1 day ago" the next morning instead of "today", and clamps a future
+  timestamp to "today" rather than reporting negative days. `dates.ts` also now
+  owns `parseStoredDate()`, the ISO / bare-`YYYY-MM-DD` parser that the other
+  local-time labels previously kept as a private copy. Covered by
+  `src/lib/__tests__/days-ago-label.test.ts`.
 - **Scan for new jobs** button in page header (hidden for new users).
 
 ---

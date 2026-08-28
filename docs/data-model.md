@@ -468,6 +468,13 @@ History of job scan executions.
 | `errors_json` | Array of `{ company, error, category? }` — `category` is `dead_or_unreachable`, `timeout_or_slow`, or `other` when set (CareerOps / Adzuna); older rows may omit it |
 | `scan_type` | `careerops` plus every board scan type. Current values: `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`, `adzuna-api-scan`, `email-alert-import`, `dice-mcp-scan`, `himalayas-api-scan`. **Single source of truth:** `BrowserBoardScanType` in `src/lib/scanner/browser-board-sources.ts` — the TypeScript types now derive from that registry rather than restating it, so adding a board only requires editing the registry. Rows written by external agents may carry other values (for example `private-page-scan`). |
 
+No migration was needed for the Dashboard's **Check sources** age, but it reads this
+table: `getLastSourceCheckAt()` takes the newest `scan_type = 'careerops'` row's
+`completed_at` (falling back to `started_at`). CareerOps is the only lane that walks the
+whole enabled source list in one pass, so it is the only scan type that can stand for
+"all sources were last checked". Per-source validation results are not persisted
+anywhere, which is why they cannot answer this.
+
 ### evaluation_feedback
 
 User corrections to saved evaluations.
