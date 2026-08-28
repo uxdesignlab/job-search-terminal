@@ -263,6 +263,8 @@ export function AISettingsForm({
   const [ollamaPickerLoading, setOllamaPickerLoading] = useState(false);
   const [ollamaPickerError, setOllamaPickerError] = useState("");
   const [ollamaReachable, setOllamaReachable] = useState<boolean | null>(null);
+  /** Guards against an older model-list reply overwriting a newer one. */
+  const ollamaCheckRef = useRef<{ token: number; controller: AbortController | null }>({ token: 0, controller: null });
   /** Declared beside the state it reads, because `canSubmit` calls hasCredential
    *  during render — further down was inside its own temporal dead zone. */
   const ollamaModelInstalled = ollamaModels.length > 0 && ollamaModels.includes(ollamaModel);
@@ -397,9 +399,23 @@ export function AISettingsForm({
      the step went green and the failure surfaced two steps later as a bare 404 during
      profile extraction. */
   const checkOllamaReachability = useCallback(async (baseUrl?: string) => {
+    // Editing the Base URL fires this repeatedly. Without cancelling, a slow reply for
+    // an earlier address could land after a newer one and overwrite reachability, the
+    // model list, and the selected model with another server's answer — disabling Save
+    // for a server that is in fact reachable, or offering models it does not have.
+    ollamaCheckRef.current.controller?.abort();
+    const controller = new AbortController();
+    const token = ollamaCheckRef.current.token + 1;
+    ollamaCheckRef.current = { token, controller };
+    const isCurrent = () => ollamaCheckRef.current.token === token;
+
     try {
-      const res = await fetch(`/api/ai/ollama-models?baseUrl=${encodeURIComponent(baseUrl ?? "")}`);
+      const res = await fetch(
+        `/api/ai/ollama-models?baseUrl=${encodeURIComponent(baseUrl ?? "")}`,
+        { signal: controller.signal }
+      );
       const data = await res.json() as { models: string[]; error?: string };
+      if (!isCurrent()) return;
       if (data.error) {
         setOllamaReachable(false);
         setOllamaModels([]);
@@ -409,6 +425,7 @@ export function AISettingsForm({
       setOllamaModels(data.models);
       setOllamaModel((current) => (data.models.includes(current) ? current : data.models[0] ?? current));
     } catch {
+      if (!isCurrent()) return;
       setOllamaReachable(false);
       setOllamaModels([]);
     }
@@ -418,7 +435,11 @@ export function AISettingsForm({
     if (!enabledProviders.has("ollama") && draftProvider !== "ollama") return;
     // Debounced, because this also fires on every keystroke in the Base URL field.
     const timer = window.setTimeout(() => void checkOllamaReachability(ollamaBaseUrl), 500);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      // Also drop a request the previous debounce already started.
+      ollamaCheckRef.current.controller?.abort();
+    };
   }, [enabledProviders, draftProvider, ollamaBaseUrl, checkOllamaReachability]);
 
   const refreshModels = useCallback(async (provider: LiveModelProvider) => {
