@@ -122,9 +122,9 @@ export function OnboardingWizardModal({
     ai: hasKey,
     // Matches the dashboard's readiness definition exactly. Requiring extraction here
     // as well made the two disagree: the wizard called the step unfinished while the
-    // dashboard showed "Profile ready", because readiness follows the saved profile
-    // data regardless of which screen filled it in. Extraction is still pushed hard
-    // inside the step — it just is not what marks the step done.
+    // dashboard already treated the profile as ready, because readiness follows the
+    // saved profile data regardless of which screen filled it in. Extraction is still
+    // pushed hard inside the step — it just is not what marks the step done.
     resume: hasResume,
     preferences: hasConfirmedPreferences,
     locations: hasLocationPreferences,

@@ -583,6 +583,28 @@ export function getLatestScanRun(): ScanRunRecord | undefined {
 }
 
 /**
+ * When every scan source was last contacted.
+ *
+ * The CareerOps lane is the only one that walks the whole enabled source list in
+ * a single pass, so its most recent run is what "all sources were last checked"
+ * means. Per-source validation (Settings → Sources → Validate) is not persisted,
+ * so it cannot answer this.
+ */
+export function getLastSourceCheckAt(): string | undefined {
+  const row = getDatabase()
+    .prepare(
+      `select completed_at, started_at
+       from scan_runs
+       where scan_type = 'careerops'
+       order by started_at desc
+       limit 1`
+    )
+    .get() as { completed_at: string | null; started_at: string } | undefined;
+
+  return row ? (row.completed_at ?? row.started_at) : undefined;
+}
+
+/**
  * Recent runs reduced to the fields zero-yield detection needs.
  *
  * Pulls a window per scan type rather than a flat `limit`, so a high-frequency

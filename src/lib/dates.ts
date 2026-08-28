@@ -35,3 +35,48 @@ export function formatPostedDate(job: JobRecord) {
   return "Date unavailable";
 }
 
+/**
+ * Parses the two timestamp shapes the app stores: full ISO datetimes and bare
+ * `YYYY-MM-DD` dates. The bare form is built from parts so it lands on local
+ * midnight — `new Date("2026-08-27")` parses as UTC and slips a day for anyone
+ * west of Greenwich.
+ */
+export function parseStoredDate(value: string): Date | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Whole-day age of a timestamp: "today", "1 day ago", "N days ago".
+ *
+ * Compares calendar days rather than elapsed hours, so a check at 11pm reads
+ * "1 day ago" the next morning instead of "today" — the point of the label is to
+ * show staleness, and elapsed-hour rounding hides exactly the case that matters.
+ * A future timestamp clamps to "today" rather than reporting negative days.
+ */
+export function formatDaysAgo(value: string | null | undefined, fallback = "never checked") {
+  if (!value) {
+    return fallback;
+  }
+
+  const date = parseStoredDate(value);
+  if (!date) {
+    return fallback;
+  }
+
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(date)) / (24 * 60 * 60 * 1000));
+
+  if (days <= 0) {
+    return "today";
+  }
+  if (days === 1) {
+    return "1 day ago";
+  }
+  return `${days} days ago`;
+}
