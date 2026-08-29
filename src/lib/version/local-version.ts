@@ -31,6 +31,21 @@ export type LocalVersion = {
   dirty: boolean;
   /** `owner/repo` parsed from package.json, so a fork checks its own origin. */
   repo: string | null;
+  /**
+   * The newest commit this checkout shares with the fetched remote branch — the
+   * merge base of HEAD and `origin/main`.
+   *
+   * This, not HEAD, is what the update check may send to GitHub. With no local
+   * commits the two are the same. With local commits HEAD is a private
+   * identifier that exists nowhere but this machine, and sending it would break
+   * the promise the footer makes; the merge base is provably on the remote, and
+   * counting from it still answers the real question — what `git pull` would
+   * bring down.
+   *
+   * Null when no remote-tracking branch is present (a shallow or remoteless
+   * clone), in which case the check reports "unknown" rather than guessing.
+   */
+  publicBaseSha: string | null;
 };
 
 /** Resolved once per process — none of this changes while the server is up. */
@@ -61,6 +76,20 @@ function parseRepo(repositoryUrl: unknown): string | null {
   return match ? `${match[1]}/${match[2]}` : null;
 }
 
+/**
+ * Newest commit shared with a remote-tracking branch. `origin/main` first, then
+ * whatever `origin/HEAD` points at, so a fork with a differently named default
+ * branch still works. Returns null rather than falling back to HEAD — a private
+ * SHA is exactly what this exists to avoid sending.
+ */
+function resolvePublicBase(): string | null {
+  for (const ref of ["origin/main", "origin/HEAD"]) {
+    const base = runGit(["merge-base", "HEAD", ref]);
+    if (base) return base;
+  }
+  return null;
+}
+
 export function getLocalVersion(): LocalVersion {
   if (cached) return cached;
 
@@ -87,6 +116,7 @@ export function getLocalVersion(): LocalVersion {
     commitDate: runGit(["log", "-1", "--format=%cI"]),
     dirty: (runGit(["status", "--porcelain"]) ?? "") !== "",
     repo,
+    publicBaseSha: resolvePublicBase(),
   };
 
   return cached;

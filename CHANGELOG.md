@@ -23,9 +23,10 @@ the numbers mean and when they change.
   it came from. A star after the commit means you have edited files in your copy.
 - A daily update check. Once every 24 hours the app asks GitHub whether newer
   commits exist and shows an **Update available** badge when they do, linking to
-  exactly what changed. It sends only a commit code that is already public, never
-  delays a page, caches its answer on your machine, and switches off entirely
-  with `JST_UPDATE_CHECK=off`.
+  exactly what changed. It sends one commit code that is already published on
+  GitHub — never one of your own unpushed commits — does not delay a page,
+  caches its answer on your machine, and switches off entirely with
+  `JST_UPDATE_CHECK=off`.
 - This changelog, and a versioning rule that keeps it current.
 
 **Changed**

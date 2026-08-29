@@ -72,10 +72,24 @@ project ever starts tagging releases, `/releases/latest` is the natural
 extension point in `src/lib/version/update-check.ts`; the commit compare stays
 as the fallback for untagged checkouts.
 
-**Why `behind_by` and not `status`.** A checkout carrying local commits is
-reported by GitHub as `diverged`, not `behind` — but it is still missing
-upstream work. The status is derived from `behind_by > 0` so those checkouts are
-told the truth.
+**Why `ahead_by`, and why the base is the merge base.** Two things that are easy
+to get backwards, and were:
+
+The request is `compare/{base}...{head}` with base = our commit and head = the
+default branch, and GitHub reports both counts *from the head's point of view*.
+A checkout ninety-four commits stale therefore comes back
+`{status: "ahead", ahead_by: 94, behind_by: 0}` — the branch is ahead of us.
+Reading `behind_by` was wrong twice: zero for every stale checkout, so no update
+was ever reported; and for a checkout carrying local commits it counted *those*,
+announcing the user's own unpushed work as updates waiting to be pulled.
+
+The base sent is `merge-base HEAD origin/main`, not HEAD. With no local commits
+they are the same. With local commits HEAD is a private identifier that exists
+nowhere but that machine, and sending it would break the promise the footer
+makes; the merge base is provably on the remote, and counting from it still
+answers the real question — what `git pull` would bring down. When no
+remote-tracking branch resolves (`origin/main`, then `origin/HEAD`), the check
+reports `unknown` and sends nothing rather than falling back to HEAD.
 
 **Source files:**
 
@@ -2759,8 +2773,10 @@ for new jobs" modal.
   generation, etc.), job-source and liveness fetches, and the daily update check.
 - **The update check is the only unprompted outbound request the app makes.**
   Every other network call happens because the user pressed something. It sends
-  a commit SHA that is already public on GitHub and nothing else — no
-  identifier, no usage data, no job or resume content. It runs at most once per
+  one commit SHA and nothing else — no identifier, no usage data, no job or
+  resume content. That SHA is the merge base of HEAD and the fetched remote
+  branch, chosen precisely so the claim holds: it is provably a commit on the
+  remote, never an unpushed local one. It runs at most once per
   24 hours, caches its answer in `data/update-check.json` so restarts do not
   re-request, and never blocks a render: a page always draws the cached answer
   and refreshes in the background for the next load. Setting

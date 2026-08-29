@@ -4,8 +4,9 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui";
 
 type Props = {
-  count: number;
-  onRemoveAll: () => Promise<void>;
+  /** The candidates this page actually rendered — the set the user is confirming. */
+  names: string[];
+  onRemoveAll: (confirmedNames: string[]) => Promise<void>;
 };
 
 /**
@@ -13,9 +14,10 @@ type Props = {
  * a re-added source has to be re-entered by hand — so the click is deliberately
  * two-step rather than guarded by a native confirm() the browser can suppress.
  */
-export function RemoveAllCleanupButton({ count, onRemoveAll }: Props) {
+export function RemoveAllCleanupButton({ names, onRemoveAll }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
+  const count = names.length;
 
   if (!confirming) {
     return (
@@ -34,7 +36,9 @@ export function RemoveAllCleanupButton({ count, onRemoveAll }: Props) {
         aria-live="polite"
         disabled={pending}
         onClick={() => startTransition(async () => {
-          await onRemoveAll();
+          // Send the names the count was taken from, so the server deletes what
+          // this dialog actually promised and nothing that appeared since.
+          await onRemoveAll(names);
           setConfirming(false);
         })}
       >

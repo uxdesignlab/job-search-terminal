@@ -9,7 +9,10 @@
  *
  * Privacy posture — this is the only outbound call the app makes that the user
  * did not explicitly trigger, so it is deliberately narrow:
- *   - it sends nothing but a commit SHA that is already public on GitHub,
+ *   - it sends nothing but the merge base of HEAD and the fetched remote branch,
+ *     a commit that is provably on the remote already. HEAD itself is never
+ *     sent: with unpushed local commits it is a private identifier existing
+ *     nowhere but this machine, and the footer promises otherwise,
  *   - it runs at most once every 24 hours, cached on disk across restarts,
  *   - it never blocks a render: a page always draws from the cached answer and
  *     refreshes in the background for the *next* load,
@@ -86,20 +89,28 @@ export type GitHubComparison = {
 /**
  * Turns a GitHub comparison into a user-facing status.
  *
- * `behind_by` is what matters, not `status`: a checkout carrying local commits
- * reports "diverged" rather than "behind", but the user is still missing
- * upstream work and still needs to pull.
+ * `ahead_by` is the field that answers the question, and the direction is the
+ * reason. The request is `compare/{base}...{head}` with base = our commit and
+ * head = the default branch, and GitHub reports both counts *from the head's
+ * point of view*. So a checkout ninety commits stale comes back
+ * `{status: "ahead", ahead_by: 90, behind_by: 0}` — the branch is ahead of us.
+ *
+ * Reading `behind_by` here was wrong twice over: it is zero for every stale
+ * checkout, so no update was ever reported, and for a checkout carrying local
+ * commits it counts *those*, announcing the user's own unpushed work as
+ * upstream updates waiting to be pulled.
  */
 export function interpretComparison(
   comparison: GitHubComparison,
   checkedAt: string,
   fallbackCompareUrl: string
 ): UpdateStatus {
-  const behindBy = typeof comparison.behind_by === "number" ? comparison.behind_by : 0;
-  if (behindBy > 0) {
+  // Named for what it means to the user, read from the field that carries it.
+  const commitsMissing = typeof comparison.ahead_by === "number" ? comparison.ahead_by : 0;
+  if (commitsMissing > 0) {
     return {
       state: "behind",
-      behindBy,
+      behindBy: commitsMissing,
       checkedAt,
       compareUrl: comparison.html_url ?? fallbackCompareUrl,
     };
@@ -112,7 +123,7 @@ async function refresh(): Promise<void> {
   const checkedAt = new Date().toISOString();
 
   const store = (status: UpdateStatus) =>
-    writeCache({ localSha: local.commitSha ?? "", checkedAt, status });
+    writeCache({ localSha: local.publicBaseSha ?? local.commitSha ?? "", checkedAt, status });
 
   if (!local.repo) {
     store({ state: "unknown", reason: "No GitHub repository configured in package.json." });
@@ -125,9 +136,19 @@ async function refresh(): Promise<void> {
     });
     return;
   }
+  if (!local.publicBaseSha) {
+    // Rather than fall back to HEAD, which may be a commit that exists only on
+    // this machine, say nothing. The version still renders.
+    store({
+      state: "unknown",
+      reason: "No remote branch to compare against, so no update check was sent.",
+    });
+    return;
+  }
 
-  const compareUrl = `https://github.com/${local.repo}/compare/${local.commitSha}...${DEFAULT_BRANCH}`;
-  const apiUrl = `https://api.github.com/repos/${local.repo}/compare/${local.commitSha}...${DEFAULT_BRANCH}`;
+  const base = local.publicBaseSha;
+  const compareUrl = `https://github.com/${local.repo}/compare/${base}...${DEFAULT_BRANCH}`;
+  const apiUrl = `https://api.github.com/repos/${local.repo}/compare/${base}...${DEFAULT_BRANCH}`;
 
   try {
     const response = await safeFetch(apiUrl, {
@@ -139,7 +160,9 @@ async function refresh(): Promise<void> {
     });
 
     if (response.status === 404) {
-      // Usually an unpushed local commit, or a fork whose upstream moved on.
+      // The merge base should always be on the remote, so this means the remote
+      // history was rewritten or the fork's upstream diverged — not the routine
+      // case it used to cover.
       store({
         state: "unknown",
         reason: "GitHub does not know this commit, so it cannot be compared.",
@@ -171,7 +194,8 @@ export function getUpdateStatus(): UpdateStatus {
 
   const local = getLocalVersion();
   const cache = readCache();
-  const describesThisCheckout = cache?.localSha === (local.commitSha ?? "");
+  // Keyed on the base the answer was computed from, so pulling invalidates it.
+  const describesThisCheckout = cache?.localSha === (local.publicBaseSha ?? local.commitSha ?? "");
   const age = cache ? Date.now() - Date.parse(cache.checkedAt) : Number.POSITIVE_INFINITY;
   const isFresh = describesThisCheckout && Number.isFinite(age) && age < CHECK_INTERVAL_MS;
 

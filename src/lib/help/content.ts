@@ -1038,7 +1038,7 @@ export const helpPages: HelpPage[] = [
           "OpenAI, Anthropic, and Google Gemini receive what is needed for each request. Read the data policy of whichever one you pick; they differ, and they change.",
           "If a document is genuinely sensitive, do not run a cloud AI feature on it. Use Ollama for that one, or handle it yourself.",
           "If you think anyone else has seen your key, delete it on the service\'s website and make a new one.",
-          "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends only the commit your copy is built from — nothing about you, your jobs, or your resumes.",
+          "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends one code identifying a version that is already published on GitHub — nothing about you, your jobs, or your resumes, and nothing you have written yourself.",
         ],
         callout: {
           title: "Fully private with Ollama",

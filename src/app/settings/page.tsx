@@ -302,14 +302,24 @@ export default async function SettingsPage({
     revalidatePath("/settings");
   }
 
-  /** Clears the whole review list in one go. The candidates are recomputed from the
-      database here rather than taken from the rendered page, so a tab left open since
-      before a source was re-enabled cannot delete something that no longer qualifies. */
-  async function removeAllCleanupCandidatesAction() {
+  /**
+   * Clears the review list in one go, deleting only the intersection of two sets:
+   * what the page showed the user, and what still qualifies right now.
+   *
+   * Both halves are load-bearing, in opposite directions. Re-deriving from the
+   * database alone would delete a source that became a candidate after this page
+   * rendered — never displayed, not in the count the user confirmed. Trusting the
+   * submitted list alone would delete one that has since been re-enabled in
+   * another tab and no longer qualifies. Neither is acceptable for an
+   * irreversible bulk delete, so a source must be in both to go.
+   */
+  async function removeAllCleanupCandidatesAction(confirmedNames: string[]) {
     "use server";
+    const confirmed = new Set(confirmedNames);
     const currentOverrides = getScanSourceOverrides();
     const trackedNames = new Set((loadScanConfig().tracked_companies ?? []).map((c) => c.name));
     for (const source of getCustomScanSources()) {
+      if (!confirmed.has(source.name)) continue;
       if (trackedNames.has(source.name)) continue;
       const enabled = Object.hasOwn(currentOverrides, source.name)
         ? currentOverrides[source.name]
@@ -610,7 +620,7 @@ export default async function SettingsPage({
               </div>
               {cleanupCandidates.length > 0 && (
                 <RemoveAllCleanupButton
-                  count={cleanupCandidates.length}
+                  names={cleanupCandidates.map((source) => source.name)}
                   onRemoveAll={removeAllCleanupCandidatesAction}
                 />
               )}

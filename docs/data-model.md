@@ -1010,7 +1010,7 @@ In addition to the SQLite database, the app maintains several files under `data/
 | `data/job-board-imports/` | Drop zone for browser-board JSON scan files; processed and archived automatically by the file watcher |
 | `data/job-board-imports/archive/YYYY-MM-DD/` | Successfully imported scan files, organized by date |
 | `data/linkedin-imports/` | Legacy LinkedIn-only import directory, still watched for backward compatibility |
-| `data/update-check.json` | Cached result of the daily GitHub update check: `localSha`, `checkedAt`, and the `UpdateStatus` union. Keyed on the commit SHA it describes, so a `git pull` invalidates it immediately rather than reporting a stale "N commits behind". Written by `src/lib/version/update-check.ts`; safe to delete, and absent when `JST_UPDATE_CHECK=off`. |
+| `data/update-check.json` | Cached result of the daily GitHub update check: `localSha`, `checkedAt`, and the `UpdateStatus` union. `localSha` holds the *merge base* the answer was computed from, not HEAD, so a `git pull` invalidates it immediately while a purely local commit does not force a needless re-check. Written by `src/lib/version/update-check.ts`; safe to delete, and absent when `JST_UPDATE_CHECK=off`. |
 | `data/.restore-recovery.json` | Transient restore-recovery marker. Written by `applyStagedRestore` before the file swap begins and deleted after a successful swap. If this file exists when the server starts and the database is unhealthy, the server automatically rolls back to the rollback archive recorded in the marker. Normally absent. |
 
 **`data/.restore-recovery.json` schema:**
