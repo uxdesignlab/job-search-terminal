@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import { disableScanSources } from "@/app/actions/scan-source-actions";
 import { IndustryEditor } from "@/components/industry-editor";
+import { LocalDaysAgoLabel } from "@/components/local-time-label";
 import { ScanRunSummaryBody } from "@/components/scan-run-summary-body";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
+import type { SourceCheckResultEntry } from "@/lib/db/types";
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
 import {
   TABLE_SAVED_FILTER_STORAGE_KEYS,
@@ -47,6 +49,8 @@ type Props = {
   /** Full CareerOps pass for every enabled source (same engine as Dashboard ATS scan). */
   onScanAllEnabled?: () => Promise<CompanyScanResultSummary>;
   onValidateAll?: () => Promise<SourceValidationResult[]>;
+  /** Most recent persisted whole-list check, used to pre-fill the Live column. */
+  lastCheck?: { completedAt: string; results: SourceCheckResultEntry[] };
 };
 
 type SortCol = "company" | "industry" | "ats" | "status" | "live";
@@ -124,6 +128,7 @@ export function ScanSourcesTable({
   onScanCompany,
   onScanAllEnabled,
   onValidateAll,
+  lastCheck,
 }: Props) {
   const router = useRouter();
   const {
@@ -159,7 +164,15 @@ export function ScanSourcesTable({
   const [scanError, setScanError] = useState<string | null>(null);
   const [validationMap, setValidationMap] = useState<
     Map<string, { status: string; jobCount: number | null; error?: string }>
-  >(new Map());
+  >(
+    () =>
+      new Map(
+        (lastCheck?.results ?? []).map((r) => [
+          r.name,
+          { status: r.status, jobCount: r.jobCount, error: r.error },
+        ]),
+      ),
+  );
   const [validateDialogOpen, setValidateDialogOpen] = useState(false);
   const [validatePhase, setValidatePhase] = useState<"running" | "done">("running");
   const [validateResults, setValidateResults] = useState<SourceValidationResult[] | null>(null);
@@ -360,6 +373,18 @@ export function ScanSourcesTable({
             |
           </span>{" "}
           <span className="font-medium text-ink">{sourceListStats.enabled}</span> enabled
+          {lastCheck && (
+            <>
+              {" "}
+              <span className="text-border" aria-hidden>
+                |
+              </span>{" "}
+              checked{" "}
+              <span className="font-medium text-ink">
+                <LocalDaysAgoLabel value={lastCheck.completedAt} />
+              </span>
+            </>
+          )}
         </p>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {onScanAllEnabled ? (

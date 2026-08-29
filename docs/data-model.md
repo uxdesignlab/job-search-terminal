@@ -74,6 +74,7 @@ and initializes an empty local profile if the database is empty.
 | `0064_outreach_messages` | Adds `outreach_messages` — per-contact, per-channel drafts, cascading from `job_contact_links` |
 | `0065_latest_claude_gemini_models` | Moves installs still holding the app's own old default Claude/Gemini models (`claude-sonnet-4-6`, `gemini-2.5-flash`, `gemini-2.0-flash`) onto the auto-resolving `latest-sonnet` / `latest-flash` sentinels, keeping the same tier. Explicitly pinned models are left alone, and the `ai_settings` column defaults change to the sentinels for fresh installs |
 | `0066_provider_enabled_set` | Adds `ai_settings.provider_enabled_json`, splitting which providers are switched on from the order they are tried in. `provider_order_json` had carried both, so disabling a provider erased its rank and an empty list was indistinguishable from "never configured". Existing rows get an empty string and keep the old meaning until their next save |
+| `0067_source_check_runs` | Adds the `source_check_runs` table. The Dashboard's "Last source check" age had been reading the newest CareerOps scan run, which runs on the scan schedule and so was permanently "today" — and which a single-source scan also writes, letting one board stand in for the whole list. Whole-list validation passes now persist here instead of dying with the page |
 
 ---
 
@@ -468,12 +469,47 @@ History of job scan executions.
 | `errors_json` | Array of `{ company, error, category? }` — `category` is `dead_or_unreachable`, `timeout_or_slow`, or `other` when set (CareerOps / Adzuna); older rows may omit it |
 | `scan_type` | `careerops` plus every board scan type. Current values: `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`, `adzuna-api-scan`, `email-alert-import`, `dice-mcp-scan`, `himalayas-api-scan`. **Single source of truth:** `BrowserBoardScanType` in `src/lib/scanner/browser-board-sources.ts` — the TypeScript types now derive from that registry rather than restating it, so adding a board only requires editing the registry. Rows written by external agents may carry other values (for example `private-page-scan`). |
 
-No migration was needed for the Dashboard's **Check sources** age, but it reads this
-table: `getLastSourceCheckAt()` takes the newest `scan_type = 'careerops'` row's
-`completed_at` (falling back to `started_at`). CareerOps is the only lane that walks the
-whole enabled source list in one pass, so it is the only scan type that can stand for
-"all sources were last checked". Per-source validation results are not persisted
-anywhere, which is why they cannot answer this.
+The Dashboard's **Last source check** age no longer reads this table. It briefly did —
+`getLastSourceCheckAt()` took the newest `scan_type = 'careerops'` row — on the theory
+that CareerOps is the only lane walking the whole enabled source list. Two things made
+that wrong: CareerOps is the scheduled discovery lane, so it runs every few hours and the
+age was permanently "today"; and a single-source scan (`companyExact`, `persist` defaults
+to `true`) writes a CareerOps row with `companies_scanned = 1`, so checking one board
+claimed the whole list had been checked. Source checks now have their own table
+(`source_check_runs`, below).
+
+### source_check_runs
+
+One row per completed **Settings → Sources → Validate sources** pass. Added in migration
+`0067_source_check_runs`.
+
+| Column | Purpose |
+|---|---|
+| `id` | Row identifier, `source-check-<uuid>` |
+| `started_at` | ISO timestamp when the pass began |
+| `completed_at` | ISO timestamp when it finished — this is what the Dashboard ages |
+| `sources_checked` | Number of sources in the pass |
+| `valid_count` | Sources answering with parseable JSON |
+| `dead_count` | Sources returning HTTP 404 |
+| `unknown_count` | Other HTTP codes, timeouts, non-JSON |
+| `results_json` | Array of `{ name, status, jobCount, error? }`, `status` being `valid` / `dead` / `unknown` |
+
+Deliberately separate from `scan_runs`: a scan looks for new jobs and runs on a schedule,
+a source check asks whether each board still answers and only happens when the user asks
+for it. Folding the two together is what left the staleness cue unable to ever read
+stale.
+
+Written by `recordSourceCheckRun()`, which derives the three verdict counts from
+`results` rather than trusting the caller, so the stored totals cannot disagree with the
+stored results. Read by `getLatestSourceCheckRun()` (ordered `started_at desc, rowid
+desc`, so same-millisecond rows still resolve deterministically) and its timestamp-only
+wrapper `getLastSourceCheckAt()`. A malformed `results_json` blob degrades to an empty
+array rather than throwing — the Sources table loses its pre-filled Live column, not the
+page.
+
+`results_json` exists so the Sources table can open showing the last stored verdicts
+instead of "Not validated" on every row. Rows are kept indefinitely; only the newest is
+ever read today.
 
 ### evaluation_feedback
 

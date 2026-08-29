@@ -1473,5 +1473,31 @@ export const migrations = [
       -- those rows keep the old meaning until the next save.
       alter table ai_settings add column provider_enabled_json text not null default '';
     `
+  },
+  {
+    id: "0067_source_check_runs",
+    sql: `
+      -- Liveness checks over the whole source list, which previously left no trace at
+      -- all: validateAllSources() handed its results to the page and they died on the
+      -- next reload. The Dashboard's "Last source check" therefore had nothing real to
+      -- read and fell back to the newest CareerOps run - the scheduled discovery lane,
+      -- which runs every few hours and so pinned the label to "today" forever.
+      --
+      -- results_json holds the per-source verdicts from the run so the Sources table can
+      -- open showing the last check instead of "Not validated" on every row.
+      create table if not exists source_check_runs (
+        id text primary key,
+        started_at text not null,
+        completed_at text not null,
+        sources_checked integer not null default 0,
+        valid_count integer not null default 0,
+        dead_count integer not null default 0,
+        unknown_count integer not null default 0,
+        results_json text not null default '[]'
+      );
+
+      create index if not exists idx_source_check_runs_started
+        on source_check_runs(started_at desc);
+    `
   }
 ];

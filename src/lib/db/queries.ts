@@ -82,6 +82,8 @@ import type {
   ScannedJobInput,
   ScanRunRecord,
   SkillRecord,
+  SourceCheckResultEntry,
+  SourceCheckRunRecord,
   StoryInput,
   StoryRecord,
   StructuredStory,
@@ -583,25 +585,104 @@ export function getLatestScanRun(): ScanRunRecord | undefined {
 }
 
 /**
- * When every scan source was last contacted.
+ * The most recent whole-list source check (Settings → Sources → Validate all).
  *
- * The CareerOps lane is the only one that walks the whole enabled source list in
- * a single pass, so its most recent run is what "all sources were last checked"
- * means. Per-source validation (Settings → Sources → Validate) is not persisted,
- * so it cannot answer this.
+ * Reads `source_check_runs`, not `scan_runs`. An earlier version read the newest
+ * CareerOps run instead, which was wrong twice over: the CareerOps lane runs on
+ * the scan schedule every few hours, so the answer was always "today" and could
+ * never show staleness; and a single-source check persists a CareerOps run of its
+ * own, so checking one board claimed the whole list had been checked.
  */
-export function getLastSourceCheckAt(): string | undefined {
+export function getLatestSourceCheckRun(): SourceCheckRunRecord | undefined {
   const row = getDatabase()
     .prepare(
-      `select completed_at, started_at
-       from scan_runs
-       where scan_type = 'careerops'
-       order by started_at desc
+      `select id, started_at, completed_at, sources_checked,
+              valid_count, dead_count, unknown_count, results_json
+       from source_check_runs
+       order by started_at desc, rowid desc
        limit 1`
     )
-    .get() as { completed_at: string | null; started_at: string } | undefined;
+    .get() as
+    | {
+        id: string;
+        started_at: string;
+        completed_at: string;
+        sources_checked: number;
+        valid_count: number;
+        dead_count: number;
+        unknown_count: number;
+        results_json: string;
+      }
+    | undefined;
 
-  return row ? (row.completed_at ?? row.started_at) : undefined;
+  if (!row) return undefined;
+
+  return {
+    id: row.id,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    sourcesChecked: row.sources_checked,
+    validCount: row.valid_count,
+    deadCount: row.dead_count,
+    unknownCount: row.unknown_count,
+    results: parseSourceCheckResults(row.results_json),
+  };
+}
+
+/** Timestamp only — what the Dashboard's "Last source check" line ages. */
+export function getLastSourceCheckAt(): string | undefined {
+  return getLatestSourceCheckRun()?.completedAt;
+}
+
+/**
+ * Records a completed check. Verdict counts are derived here rather than taken
+ * from the caller so the stored totals can never disagree with the stored results.
+ */
+export function recordSourceCheckRun(input: {
+  startedAt: string;
+  completedAt?: string;
+  results: SourceCheckResultEntry[];
+}): SourceCheckRunRecord {
+  const run: SourceCheckRunRecord = {
+    id: `source-check-${randomUUID()}`,
+    startedAt: input.startedAt,
+    completedAt: input.completedAt ?? new Date().toISOString(),
+    sourcesChecked: input.results.length,
+    validCount: input.results.filter((r) => r.status === "valid").length,
+    deadCount: input.results.filter((r) => r.status === "dead").length,
+    unknownCount: input.results.filter((r) => r.status === "unknown").length,
+    results: input.results,
+  };
+
+  getDatabase()
+    .prepare(
+      `insert into source_check_runs
+         (id, started_at, completed_at, sources_checked,
+          valid_count, dead_count, unknown_count, results_json)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      run.id,
+      run.startedAt,
+      run.completedAt,
+      run.sourcesChecked,
+      run.validCount,
+      run.deadCount,
+      run.unknownCount,
+      JSON.stringify(run.results)
+    );
+
+  return run;
+}
+
+/** A malformed blob costs the table its pre-filled column, never the whole page. */
+function parseSourceCheckResults(json: string): SourceCheckResultEntry[] {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as SourceCheckResultEntry[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 /**

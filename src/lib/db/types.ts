@@ -563,6 +563,35 @@ export type ScanRunRecord = {
   scanType: "careerops" | BrowserBoardScanType;
 };
 
+export type SourceCheckStatus = "valid" | "dead" | "unknown";
+
+/** One source's verdict from a whole-list liveness check. */
+export type SourceCheckResultEntry = {
+  name: string;
+  status: SourceCheckStatus;
+  jobCount: number | null;
+  error?: string;
+};
+
+/**
+ * One completed pass of Settings -> Sources -> Validate all.
+ *
+ * Distinct from `scan_runs` on purpose: a scan looks for new jobs and runs on a
+ * schedule, a source check asks whether each board still answers and only happens
+ * when the user asks for it. Folding the two together is what made the Dashboard's
+ * staleness cue unable to ever read stale.
+ */
+export type SourceCheckRunRecord = {
+  id: string;
+  startedAt: string;
+  completedAt: string;
+  sourcesChecked: number;
+  validCount: number;
+  deadCount: number;
+  unknownCount: number;
+  results: SourceCheckResultEntry[];
+};
+
 export type ImportResult = {
   success: boolean;
   imported: number;
