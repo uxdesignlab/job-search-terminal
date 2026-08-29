@@ -48,7 +48,7 @@ export function LocalRelativeTimeLabel({ value, fallback = "Never" }: LocalRelat
  * Rendered on the client because the day boundary depends on the viewer's time
  * zone, which the server render cannot know without a hydration mismatch.
  */
-export function LocalDaysAgoLabel({ value, fallback = "never checked" }: LocalDaysAgoLabelProps) {
+export function LocalDaysAgoLabel({ value, fallback = "never" }: LocalDaysAgoLabelProps) {
   const [label, setLabel] = useState(fallback);
 
   useEffect(() => {

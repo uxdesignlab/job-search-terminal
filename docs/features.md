@@ -408,20 +408,30 @@ features.
   already implied and never changed once setup was done.
 - **Last source check** line in the "This week" card, stacked directly under
   "Last scan" in a right-aligned column: the age of the last full source check in
-  whole days — "today", "1 day ago", "N days ago" — falling back to "never
-  checked". It sits with the card's other recency lines rather than on the button,
-  so all three ages ("Last application", "Last scan", "Last source check") read as
-  one group. The footer row uses `items-start` rather than `items-center`, so
-  "Last application" lines up with "Last scan" instead of floating between the two
-  right-hand lines; below `sm` all three stack left-aligned.
+  whole days — "today", "yesterday", "N days ago" (it keeps counting: "100 days
+  ago" reads as 100 days ago) — falling back to "never". It sits with the card's
+  other recency lines rather than on the button, so all three ages ("Last
+  application", "Last scan", "Last source check") read as one group. The footer row
+  uses `items-start` rather than `items-center`, so "Last application" lines up with
+  "Last scan" instead of floating between the two right-hand lines; below `sm` all
+  three stack left-aligned.
 
   The age comes from `getLastSourceCheckAt()`, which returns the newest
-  **CareerOps** run's `completed_at` (falling back to `started_at`). CareerOps is
-  the only lane that walks the entire enabled source list in one pass, so it is
-  what "all sources were last checked" means. Per-source validation (Settings →
-  Sources → **Validate sources**) is deliberately not the source of this number:
-  those results live in component state only and are gone on the next page load,
-  which is why every row in that table reads "Not validated" on load.
+  `source_check_runs` row's `completed_at` — one row per completed **Validate
+  sources** pass. Only that action moves the number, which is what makes it a
+  staleness cue: a source list nobody has validated in three months reads "92 days
+  ago" no matter how many job scans ran in the meantime.
+
+  An earlier version read the newest **CareerOps** scan run instead, on the theory
+  that CareerOps is the only lane walking the whole enabled source list. That was
+  wrong twice over. CareerOps is the scheduled discovery lane, so with scans
+  enabled it runs every few hours and pinned the line to "today" permanently — it
+  could never report staleness, which was its only purpose, and it merely restated
+  "Last scan" in coarser units. And a single-source **Scan jobs** click persists a
+  CareerOps run of its own, so checking one board claimed the entire list had just
+  been checked. Neither the button next to the line nor anything else on the
+  Sources page could move the number, because validation results were not persisted
+  at all.
 
   It is rendered by `LocalDaysAgoLabel` (`src/components/local-time-label.tsx`),
   because the day boundary depends on the viewer's time zone and a server-rendered
@@ -1906,6 +1916,14 @@ control rather than selecting the displayed value, which is truncated with an el
   to rate-limit when hundreds of sources are validated at once. Hover an
   **Unknown** badge to see the last error string (for example `HTTP 429`).
   **Re-validate sources** re-runs the full check.
+
+  Each completed pass is **persisted** as a `source_check_runs` row — timestamp,
+  verdict counts, and the per-source results. Two things follow. The Dashboard's
+  **Last source check** age reads that timestamp, so running this is the only thing
+  that resets it. And the **Live** column is pre-filled from the last stored pass on
+  the next page load, instead of resetting to "Not validated" on every row; the
+  header line next to the source counts shows **checked <age>** so the Sources page
+  and the Dashboard never disagree about when the list was last verified.
 - **Fresh posting window** card: select how far back scans accept postings —
   24 hours, 72 hours (default), or 7 days. Postings older than the window are
   skipped as stale. The selected window applies to company career-site
@@ -2360,7 +2378,7 @@ job titles from real postings as fixtures.
     found no case where that greediness rejected a wanted role.
 - Profile filters: selected location modes, on-site / hybrid locations, and
   remote regions constrain scan inserts.
-- **Settings → Sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; until **Validate sources** has been run, Live shows **Not validated** for each row.
+- **Settings → Sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; it opens pre-filled from the most recent stored **Validate sources** pass, and shows **Not validated** for each row only when no check has ever been run (or for a source added since the last one).
 
 **Performance tuning constants** (in `src/lib/scanner/careerops-scanner.ts`):
 - `CONCURRENCY = 20` — parallel ATS API requests.

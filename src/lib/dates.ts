@@ -52,14 +52,14 @@ export function parseStoredDate(value: string): Date | null {
 }
 
 /**
- * Whole-day age of a timestamp: "today", "1 day ago", "N days ago".
+ * Whole-day age of a timestamp: "today", "yesterday", "N days ago".
  *
  * Compares calendar days rather than elapsed hours, so a check at 11pm reads
- * "1 day ago" the next morning instead of "today" — the point of the label is to
+ * "yesterday" the next morning instead of "today" — the point of the label is to
  * show staleness, and elapsed-hour rounding hides exactly the case that matters.
  * A future timestamp clamps to "today" rather than reporting negative days.
  */
-export function formatDaysAgo(value: string | null | undefined, fallback = "never checked") {
+export function formatDaysAgo(value: string | null | undefined, fallback = "never") {
   if (!value) {
     return fallback;
   }
@@ -76,7 +76,7 @@ export function formatDaysAgo(value: string | null | undefined, fallback = "neve
     return "today";
   }
   if (days === 1) {
-    return "1 day ago";
+    return "yesterday";
   }
   return `${days} days ago`;
 }

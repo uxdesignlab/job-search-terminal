@@ -9,6 +9,7 @@ import {
   getCompanyProfiles,
   getCustomScanSources,
   getProfileSupplements,
+  getLatestSourceCheckRun,
   getScanSourceOverrides,
   getScanSchedule,
   getTitleFilters,
@@ -20,6 +21,7 @@ import {
   upsertCompanyProfile,
   getIntegration,
   getSuppressionCount,
+  recordSourceCheckRun,
 } from "@/lib/db/queries";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
@@ -113,6 +115,13 @@ export default async function SettingsPage({
     connectionStatus: "not_connected" as const, lastTestedAt: null,
   };
 
+  // Serialised for the client table so the Live column opens on the last check
+  // instead of "Not validated" on every row.
+  const latestSourceCheck = getLatestSourceCheckRun();
+  const lastSourceCheck = latestSourceCheck
+    ? { completedAt: latestSourceCheck.completedAt, results: latestSourceCheck.results }
+    : undefined;
+
   const settings = getAISettings();
   // Mask keys before they reach the client component — the full value is never
   // serialised into the RSC payload. The form detects the mask sentinel and
@@ -200,9 +209,24 @@ export default async function SettingsPage({
   async function validateAllSourcesAction(): Promise<SourceValidationResult[]> {
     "use server";
     const { validateAllSources } = await import("@/lib/scanner/source-validator");
-    return validateAllSources(
+    const startedAt = new Date().toISOString();
+    const results = await validateAllSources(
       allCompanies.map((c) => ({ name: c.name, careersUrl: c.careersUrl, apiType: c.apiType }))
     );
+    // Persisted so the check outlives the page: this is what the Dashboard's "Last
+    // source check" ages, and what pre-fills the Live column on the next visit.
+    recordSourceCheckRun({
+      startedAt,
+      results: results.map((r) => ({
+        name: r.name,
+        status: r.status,
+        jobCount: r.jobCount,
+        ...(r.error ? { error: r.error } : {}),
+      })),
+    });
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
+    return results;
   }
 
   async function searchDiscoverSourcesAction() {
@@ -456,6 +480,7 @@ export default async function SettingsPage({
                 onScanCompany={scanCompanyJobsAction}
                 onScanAllEnabled={scanAllEnabledCareerSourcesAction}
                 onValidateAll={validateAllSourcesAction}
+                lastCheck={lastSourceCheck}
               />
             </Card>
 
