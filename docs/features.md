@@ -1079,6 +1079,26 @@ coverage, `Top keywords inserted only where supported: none captured`, and the b
 merely reordered. The bound now comes from `totalGenerationDeadlineMs` over the chain's
 provider names (`runDeadlineMs` in `src/lib/application-preparation/index.ts`).
 
+**A provider's budget covers its retries.** Summing per-provider budgets only bounds the
+run if each provider actually stays inside its own. It did not: a local provider gets a
+second try when the first returned unusable JSON, and every try was handed a *fresh* full
+budget — so Ollama could spend 2 × 600s against a run bounded at 600 + 150 + 10. The run's
+deadline expired mid-retry and the cloud provider behind it never ran, which is the
+failure the sum was introduced to prevent, reappearing one level down. A retry now gets
+what is left of the provider's budget. That keeps the retry worth having where it pays —
+a mangled answer that came back quickly leaves room for another go — while a first
+attempt that consumed the whole budget has spent that provider's turn, and the chain
+behind it is the better use of the remaining time.
+
+**A run that ends stops the chain behind it.** `withDeadline` rejects its own promise, but
+the chain it wrapped kept running detached: after preparation reported failure, the chain
+walked on and called the paid provider anyway, spending a cloud call for a user who had
+already been told the run failed. Preparation now bounds the run with `withChainDeadline`
+(`src/lib/ai/retry.ts`), which tells the chain to stop as soon as the run is over, however
+it ended. A request already in flight cannot be recalled; what stops is the *next*
+provider starting, which is the part that costs money. Evaluation guards the equivalent
+path for user cancellation, but not yet for its own deadline expiring.
+
 **Preparation failure is visible in the draft.** Resume generation degrades rather than
 aborting when preparation fails — a resume without keyword targeting beats no resume —
 and the reason is recorded on the document. It used to be shown only when *tailoring*

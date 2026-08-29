@@ -1,6 +1,6 @@
 import { getActiveProvider } from "../ai/factory";
 import { CLOUD_GENERATION_TIMEOUT_MS, STRUCTURED_OUTPUT_MAX_TOKENS, totalGenerationDeadlineMs } from "../ai/deadlines";
-import { withRetry, withDeadline, GenerationTimeoutError } from "../ai/retry";
+import { withRetry, withChainDeadline, GenerationTimeoutError } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import {
   getApplicationPreparation,
@@ -277,7 +277,8 @@ export async function prepareApplication(jobId: string, options: { force?: boole
   let evidenceMap: EvidenceMapEntry[] = [];
 
   try {
-    const raw = await withDeadline(
+    const raw = await withChainDeadline(
+      provider as { abortOn?: (signal: AbortSignal) => void },
       () => withRetry(() => provider.generateJSON<Record<string, unknown>>(
         [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }] as AIMessage[],
         PREPARATION_SHAPE,
