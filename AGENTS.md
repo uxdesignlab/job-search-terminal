@@ -38,13 +38,24 @@ Update `/help` in the same change set when the change touches any of:
 If none apply, say so explicitly when reporting the work. Silence is not an
 answer.
 
-Write help copy in plain language at roughly a grade 6–8 reading level, name
-controls exactly as the UI labels them, and keep `steps` (an ordered procedure)
-distinct from `bullets` (facts). The registry stores serializable icon *names* —
-never pass a React component reference from it into a client component. Claude
-Code has a `help-writer` skill at `.claude/skills/help-writer/SKILL.md` holding
-the full contract; Codex should read that file directly before writing help
-copy.
+**Read [docs/help-writing.md](docs/help-writing.md) before writing or auditing
+any help copy.** It is the full contract — the audience definition, where content
+lives, the registry's shape, the voice rules, the trigger list above in longer
+form, the procedure for adding a guide, the audit procedure, and the pre-finish
+checklist. It is written as instructions to whoever is doing the writing, and it
+applies to Codex exactly as it applies to Claude Code.
+
+Both agents use that one file. Claude Code reaches it through a `help-writer`
+skill in `.claude/skills/` that does nothing but point at it; Codex reads it
+directly from this instruction. Anything you would add to either agent's own
+configuration belongs in `docs/help-writing.md` instead, so the two never drift
+apart.
+
+The rules broken most often, if you read nothing else: plain language at roughly
+a grade 6–8 reading level; name controls exactly as the UI labels them; keep
+`steps` (an ordered procedure) distinct from `bullets` (facts); and never pass a
+React component reference out of the registry into a client component — it stores
+serializable icon *names* and passing the component crashes the build.
 
 
 ---

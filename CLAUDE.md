@@ -36,12 +36,17 @@ lie to the people using the product.
 If none of those apply, **say so explicitly** when reporting the work — "help
 unaffected, this is internal to X" is a valid answer; silence is not.
 
-**Use the `help-writer` skill for this.** It lives at
-`.claude/skills/help-writer/SKILL.md` and carries the audience definition, the
-voice rules, the registry's content shape, and the pre-finish checklist. Invoke
-it before writing or auditing help copy rather than writing from instinct —
-help has its own reading level and its own conventions, and they are not the
-ones used in `docs/`.
+**The writing contract is [docs/help-writing.md](docs/help-writing.md).** It
+carries the audience definition, the voice rules, the registry's content shape,
+the procedure for a new guide, the audit procedure, and the pre-finish checklist.
+Read it before writing or auditing help copy rather than writing from instinct —
+help has its own reading level and its own conventions, and they are not the ones
+used in `docs/`.
+
+Claude Code reaches it through the **`help-writer` skill**, which exists only to
+send you to that file. Codex reads the same file directly, pointed there by
+`AGENTS.md`. One document, both agents, no second copy to drift. Guidance about
+writing help goes in `docs/help-writing.md` — never into the skill.
 
 **What "thoroughly documented" means:**
 

@@ -145,11 +145,15 @@ reading level, or they drift back into feature-listing.
 two have different reading levels, vocabularies, and goals. Do not translate one
 into the other by copying.
 
-Claude Code carries a **`help-writer` skill** at
-`.claude/skills/help-writer/SKILL.md` holding the audience definition, voice
-rules, the registry's content shape, the change→help trigger list, the audit
-procedure, and a pre-finish checklist. Invoke it before writing or auditing help
-copy. Codex should read the same file directly.
+The full contract lives in **[help-writing.md](help-writing.md)**: the audience
+definition, voice rules, the registry's content shape, the change→help trigger
+list, the procedure for adding a guide, the audit procedure, and a pre-finish
+checklist. Read it before writing or auditing help copy.
+
+It is deliberately one file for both agents. Claude Code reaches it through a
+`help-writer` skill in `.claude/skills/` that only points at it; Codex is sent
+there by `AGENTS.md`. Add new guidance to `help-writing.md`, never to the skill,
+or the two agents start writing to different standards.
 
 The rules that most often get broken:
 
