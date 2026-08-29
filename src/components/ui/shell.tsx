@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { getAISettings } from "@/lib/db/queries";
+import { AppVersion } from "@/components/app-version";
 
 type ShellProps = {
   children: ReactNode;
@@ -153,7 +154,8 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
               <p className="text-sm font-medium text-ink">Free &amp; open source</p>
               <p className="text-xs leading-5 text-muted max-w-prose">
                 This tool is free to use, self-hosted, and runs entirely on your computer — your data never leaves your machine.
-                No subscriptions, no tracking, no cloud. Fork it, adapt it, share it.
+                No subscriptions, no tracking, no cloud. Once a day it asks GitHub whether a newer version exists; nothing about
+                you is sent, and <code className="font-mono">JST_UPDATE_CHECK=off</code> turns that off. Fork it, adapt it, share it.
               </p>
               <p className="text-xs leading-5 text-muted max-w-prose"><a
                 className="hover:text-accent hover:underline transition-colors"
@@ -189,11 +191,12 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
             </div>
           </div>
 
-          <div className="mt-6 border-t border-border pt-4 flex items-center justify-between gap-4">
+          <div className="mt-6 border-t border-border pt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <p className="flex items-center gap-1.5 text-xs text-muted">
               <Image alt="" aria-hidden height={16} src="/images/UXDL-logo.svg" width={16} />
               Made with care by <span className="font-medium text-ink">UX Design Lab, LLC</span>
             </p>
+            <AppVersion />
             <p className="text-xs text-muted">© {new Date().getFullYear()} · Local-first. No app account or subscription required.</p>
           </div>
         </div>

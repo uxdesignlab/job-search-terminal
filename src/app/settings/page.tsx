@@ -33,6 +33,7 @@ import { ProfileSupplementsEditor } from "@/components/profile-supplements-edito
 import { DiscoveredSourcesButton } from "@/components/discovered-sources-button";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
+import { RemoveAllCleanupButton } from "@/components/remove-all-cleanup-button";
 import { AggregatorScanButton } from "@/components/aggregator-scan-button";
 import { DiceScanButton } from "@/components/dice-scan-button";
 import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
@@ -91,6 +92,8 @@ const TABS = [
   { id: "ai", label: "AI Provider" },
   { id: "integrations", label: "Integrations" },
   { id: "sources", label: "Sources" },
+  { id: "scan-sources", label: "Scan sources" },
+  { id: "cleanup", label: "Cleanup" },
   { id: "preferences", label: "Preferences" },
   { id: "data", label: "Data & Backup" },
 ] as const;
@@ -299,6 +302,24 @@ export default async function SettingsPage({
     revalidatePath("/settings");
   }
 
+  /** Clears the whole review list in one go. The candidates are recomputed from the
+      database here rather than taken from the rendered page, so a tab left open since
+      before a source was re-enabled cannot delete something that no longer qualifies. */
+  async function removeAllCleanupCandidatesAction() {
+    "use server";
+    const currentOverrides = getScanSourceOverrides();
+    const trackedNames = new Set((loadScanConfig().tracked_companies ?? []).map((c) => c.name));
+    for (const source of getCustomScanSources()) {
+      if (trackedNames.has(source.name)) continue;
+      const enabled = Object.hasOwn(currentOverrides, source.name)
+        ? currentOverrides[source.name]
+        : source.enabled;
+      const apiType = atsTypeFromUrl(source.careersUrl, source.api);
+      if (!enabled || !apiType) deleteCustomScanSource(source.name);
+    }
+    revalidatePath("/settings");
+  }
+
   async function saveIndustryAction(name: string, industry: string) {
     "use server";
     upsertCompanyProfile(name, industry);
@@ -404,7 +425,7 @@ export default async function SettingsPage({
         />
 
         {/* Tab navigation */}
-        <nav className="-mb-px flex gap-1 border-b border-border">
+        <nav className="-mb-px flex flex-wrap gap-1 border-b border-border">
           {TABS.map((t) => (
             <Link
               key={t.id}
@@ -444,46 +465,51 @@ export default async function SettingsPage({
           </Card>
         )}
 
+        {/* ── Scan sources tab ────────────────────────────────────────────── */}
+        {activeTab === "scan-sources" && (
+          <Card>
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle>Scan sources</CardTitle>
+                <CardDescription>
+                  Toggle companies on/off — changes apply on the next scan. Click an industry badge to edit it.
+                  Discovery looks for companies you are not yet tracking and adds them to Discovered sources
+                  for you to review — it never turns a source on by itself.
+                </CardDescription>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <DiscoveredSourcesButton entries={importableDiscovered} onImport={importDiscoveredAction} />
+                <ScanJobsForm
+                  action={discoverSourcesAction}
+                  label="Crawl for companies"
+                  pendingLabel="Crawling…"
+                />
+                {settings.braveSearchApiKey && (
+                  <ScanJobsForm
+                    action={searchDiscoverSourcesAction}
+                    label="Search for companies"
+                    pendingLabel="Searching…"
+                  />
+                )}
+              </div>
+            </div>
+            <ScanSourcesTable
+              sources={allCompanies}
+              onToggle={toggleSourceEnabledAction}
+              onToggleAll={toggleAllSourcesAction}
+              onRemove={removeSourceAction}
+              onSaveIndustry={saveIndustryAction}
+              onScanCompany={scanCompanyJobsAction}
+              onScanAllEnabled={scanAllEnabledCareerSourcesAction}
+              onValidateAll={validateAllSourcesAction}
+              lastCheck={lastSourceCheck}
+            />
+          </Card>
+        )}
+
         {/* ── Sources tab ─────────────────────────────────────────────────── */}
         {activeTab === "sources" && (
           <>
-            <Card>
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <CardTitle>Scan sources</CardTitle>
-                  <CardDescription>
-                    Toggle companies on/off — changes apply on the next scan. Click an industry badge to edit it.
-                  </CardDescription>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <DiscoveredSourcesButton entries={importableDiscovered} onImport={importDiscoveredAction} />
-                  <ScanJobsForm
-                    action={discoverSourcesAction}
-                    label="Scan for new sources"
-                    pendingLabel="Discovering…"
-                  />
-                  {settings.braveSearchApiKey && (
-                    <ScanJobsForm
-                      action={searchDiscoverSourcesAction}
-                      label="Search discover"
-                      pendingLabel="Searching…"
-                    />
-                  )}
-                </div>
-              </div>
-              <ScanSourcesTable
-                sources={allCompanies}
-                onToggle={toggleSourceEnabledAction}
-                onToggleAll={toggleAllSourcesAction}
-                onRemove={removeSourceAction}
-                onSaveIndustry={saveIndustryAction}
-                onScanCompany={scanCompanyJobsAction}
-                onScanAllEnabled={scanAllEnabledCareerSourcesAction}
-                onValidateAll={validateAllSourcesAction}
-                lastCheck={lastSourceCheck}
-              />
-            </Card>
-
             {/* Fresh posting window */}
             <Card>
               <CardHeader>
@@ -538,35 +564,6 @@ export default async function SettingsPage({
               </form>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Cleanup review</CardTitle>
-                <CardDescription>
-                  Review disabled or malformed user-added sources. Nothing is removed automatically.
-                </CardDescription>
-              </CardHeader>
-              {cleanupCandidates.length > 0 ? (
-                <ul className="grid gap-2">
-                  {cleanupCandidates.map((source) => (
-                    <li className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface px-3 py-2" key={source.name}>
-                      <div>
-                        <p className="text-sm font-medium text-ink">{source.name}</p>
-                        <p className="text-xs text-muted">
-                          {!source.apiType ? "Unsupported or malformed ATS URL" : "Disabled user-added source"}
-                        </p>
-                      </div>
-                      <form action={removeCleanupCandidateAction}>
-                        <input name="name" type="hidden" value={source.name} />
-                        <SubmitButton label="Remove source" savedLabel="Removed" variant="secondary" />
-                      </form>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted">No user-added sources need cleanup review.</p>
-              )}
-            </Card>
-
             {/* Job aggregators */}
             <Card>
               <div className="mb-4 space-y-1">
@@ -599,6 +596,46 @@ export default async function SettingsPage({
               </div>
             </Card>
           </>
+        )}
+
+        {/* ── Cleanup tab ─────────────────────────────────────────────────── */}
+        {activeTab === "cleanup" && (
+          <Card>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle>Cleanup review</CardTitle>
+                <CardDescription>
+                  Review disabled or malformed user-added sources. Nothing is removed automatically.
+                </CardDescription>
+              </div>
+              {cleanupCandidates.length > 0 && (
+                <RemoveAllCleanupButton
+                  count={cleanupCandidates.length}
+                  onRemoveAll={removeAllCleanupCandidatesAction}
+                />
+              )}
+            </div>
+            {cleanupCandidates.length > 0 ? (
+              <ul className="grid gap-2">
+                {cleanupCandidates.map((source) => (
+                  <li className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface px-3 py-2" key={source.name}>
+                    <div>
+                      <p className="text-sm font-medium text-ink">{source.name}</p>
+                      <p className="text-xs text-muted">
+                        {!source.apiType ? "Unsupported or malformed ATS URL" : "Disabled user-added source"}
+                      </p>
+                    </div>
+                    <form action={removeCleanupCandidateAction}>
+                      <input name="name" type="hidden" value={source.name} />
+                      <SubmitButton label="Remove source" savedLabel="Removed" variant="secondary" />
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted">No user-added sources need cleanup review.</p>
+            )}
+          </Card>
         )}
 
         {/* ── Preferences tab ──────────────────────────────────────────────── */}

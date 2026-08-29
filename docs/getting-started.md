@@ -140,7 +140,7 @@ jobs and sources the app can find automatically.
 **Brave Search** (ATS source discovery — free tier, 2,000 queries/month):
 - Register at [brave.com/search/api](https://brave.com/search/api) to get a
   free API key.
-- Once configured, the **Search discover** button appears in Settings → Sources
+- Once configured, the **Search for companies** button appears in Settings → Scan sources
   and finds new Ashby, Greenhouse, and Lever companies from live web search
   results (not just the Common Crawl archive).
 
@@ -216,9 +216,9 @@ Dashboard and click "Scan for new jobs" for an immediate scan.
 | Upload or replace a resume | Account → Profile → Resumes tab |
 | Add an AI key | Account → Settings → AI Provider |
 | Add Adzuna or Brave Search keys | Account → Settings → AI Provider → Discovery & Aggregators |
-| Discover new ATS sources | Settings → Sources → Scan for new sources or Search discover |
-| Review and approve discovered sources | Settings → Sources → Discovered sources |
-| Check which sources are still live | Settings → Sources → Validate sources |
+| Discover new ATS sources | Settings → Scan sources → Crawl for companies or Search for companies |
+| Review and approve discovered sources | Settings → Scan sources → Discovered sources |
+| Check which sources are still live | Settings → Scan sources → Validate sources |
 | See role fit strategy | Account → Strategy |
 | Back up or restore the local account | Account → Settings → Data & Backup |
 
@@ -270,13 +270,29 @@ npm run dev
 
 ## Updating the app
 
-When a new version is available:
+The footer of every page shows the version you are running, for example
+`Version 0.1.0 · b5bcb0d`. Once a day the app asks GitHub whether newer commits
+exist. When they do, the footer shows an **Update available** badge — open it to
+see exactly what changed.
+
+To update:
 
 ```bash
 git pull
 npm install
 npm run dev
 ```
+
+**Turning the check off.** The check sends only the commit your copy is built
+from — nothing about you, your jobs, or your resumes — and it never delays a
+page, because the answer is cached on your machine. If you would rather it never
+contacted GitHub, start the app with `JST_UPDATE_CHECK=off`:
+
+```bash
+JST_UPDATE_CHECK=off npm run dev
+```
+
+The version keeps showing; only the GitHub call stops.
 
 ---
 

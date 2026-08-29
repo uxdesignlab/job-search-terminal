@@ -1265,7 +1265,7 @@ export function AISettingsForm({
           <p className="text-xs text-muted">Optional keys for search-based source discovery (Brave) and job aggregator scanning (Adzuna).</p>
 
           <div className="grid gap-2">
-            <label className="text-xs text-muted">Brave Search API Key <span className="text-muted/60">(for Sources &rarr; Search discover)</span></label>
+            <label className="text-xs text-muted">Brave Search API Key <span className="text-muted/60">(for Scan sources &rarr; Search for companies)</span></label>
             <input
               className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
               onChange={(e) => setBraveSearchApiKey(e.target.value)}

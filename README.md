@@ -180,6 +180,7 @@ Go to **Settings → AI Provider**, enable the **Ollama (Local)** row in the pri
 ### For users
 
 - [Getting Started](docs/getting-started.md)
+- [Changelog](CHANGELOG.md) — what changed in each version
 - [Features](docs/features.md)
 - [Help Site](docs/help-site.md)
 - [Browser Job Board Scanner Guide](docs/linkedin-scanner-guide.md)

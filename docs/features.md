@@ -45,6 +45,46 @@ The UX Design Lab mark (`public/images/UXDL-logo.svg`) is retained for
 attribution only: it appears beside the "Made with care by UX Design Lab, LLC"
 line in the shell footer.
 
+### Footer version and update check
+
+The shell footer's bottom bar carries a build stamp between the attribution and
+the copyright line: `Version 0.1.0 · b5bcb0d`. The number is `version` from
+`package.json`; the short code is the commit HEAD points at. A trailing `*`
+means the working copy has uncommitted changes. The number itself links to
+`CHANGELOG.md` on GitHub — the changelog is what makes a version number mean
+anything, so it hangs off the number rather than needing its own footer item. Hovering the stamp reveals the
+branch, how long ago the commit was made, and whether the copy is modified.
+
+Beside it, the update state:
+
+| State | Rendering |
+|---|---|
+| Behind | Amber `Update available — N commits behind ↗` badge, linking to the GitHub compare view for those exact commits. Title text tells the user to run `git pull`. |
+| Current | `· Up to date`, with the last check time in the title. |
+| Unknown | `· Update status unknown`, with the reason in the title (no git history, GitHub unreachable, rate-limited, commit not pushed). |
+| Disabled | Nothing beyond the version. |
+
+**Why commits and not releases.** The repository publishes no tags or releases,
+so a version string cannot tell anyone whether they are behind. The check asks
+GitHub's compare API how far `HEAD` is behind the default branch, which is the
+same question a user would answer by hand with `git pull --dry-run`. If the
+project ever starts tagging releases, `/releases/latest` is the natural
+extension point in `src/lib/version/update-check.ts`; the commit compare stays
+as the fallback for untagged checkouts.
+
+**Why `behind_by` and not `status`.** A checkout carrying local commits is
+reported by GitHub as `diverged`, not `behind` — but it is still missing
+upstream work. The status is derived from `behind_by > 0` so those checkouts are
+told the truth.
+
+**Source files:**
+
+| File | Purpose |
+|---|---|
+| `src/lib/version/local-version.ts` | Resolves the running version: `package.json` version, HEAD SHA, branch, commit date, dirty flag, and the `owner/repo` parsed from the repository URL. Every field degrades to `null` rather than throwing, so a zip download with no `.git` still renders. |
+| `src/lib/version/update-check.ts` | Cached GitHub comparison and the `UpdateStatus` union. |
+| `src/components/app-version.tsx` | Server component rendering the stamp and badge. |
+
 ---
 
 ## Help Site `/help`
@@ -81,8 +121,8 @@ guides, and per-topic pages.
 - `/help/applications` — statuses, table and kanban tracking, follow-ups, and
   archive vs. delete behavior.
 - `/help/interview-prep` — STAR stories and voice practice.
-- `/help/privacy-data` — local data, AI-provider data flow, backups, and safety
-  boundaries.
+- `/help/privacy-data` — local data, AI-provider data flow, the daily version
+  and update check, backups, and safety boundaries.
 - `/help/troubleshooting` — common setup, AI, resume/PDF, scan, and LinkedIn
   fixes.
 
@@ -312,8 +352,8 @@ The wizard itself has 6 panels — 4 required steps, 1 optional step, and a clos
      `/help/job-search#aggregator`. Enables Adzuna API scanning alongside ATS
      sources on every dashboard scan.
    - **Brave Search (source discovery)** — API Key. Links to
-     `/help/ai-providers#discovery-aggregators`. Enables the "Search discover"
-     button in Settings → Sources.
+     `/help/ai-providers#discovery-aggregators`. Enables the "Search for companies"
+     button in Settings → Scan sources.
    The sidebar marks this step with a dashed "Optional" badge and a `·` in the
    step circle when not yet configured. Clicking "Skip for now" advances to
    Ready without saving. "Save and continue" saves any non-blank fields (blank
@@ -403,7 +443,8 @@ features.
   streak, the warning reads "since at least <date>" rather than implying the
   sample boundary is the true start.
 - **Check sources** button in page header (hidden for new users) — a secondary
-  button linking to Settings → Sources (`/settings?tab=sources`). It replaced the
+  button linking to Settings → Scan sources (`/settings?tab=scan-sources`, the tab
+  that holds the sources table). It replaced the
   static **Profile ready** badge, which restated something the rest of the header
   already implied and never changed once setup was done.
 - **Last source check** line in the "This week" card, stacked directly under
@@ -1814,7 +1855,10 @@ expand control labelled Answer / Add detail / Edit by status.
 
 ## Settings `/settings`
 
-Four configuration tabs:
+Seven configuration tabs — `ai`, `integrations`, `sources`, `scan-sources`,
+`cleanup`, `preferences`, and `data` — selected by the `?tab=` search param. The
+tab strip wraps (`flex-wrap`) rather than overflowing once the source tabs split
+the row:
 
 ### AI Providers
 - **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Reorder with the grip handle or the **↑ / ↓** buttons on each row. Each row shows a short status once enabled — *Key needed*, *Not verified*, *Verified*, or for Ollama *Reachable* / *Not running*.
@@ -1934,26 +1978,57 @@ control rather than selecting the displayed value, which is truncated with an el
 > connection plumbing only.
 
 ### Job Sources
-- All configured sources appear in a unified table — companies from
-  `portals.example.yml` and any manually added sources are treated equally.
+
+Source management is split across three Settings tabs, because the sources table is
+long enough that everything sharing a page with it was reachable only by scrolling
+past several hundred rows:
+
+| Tab | Query string | Holds |
+|---|---|---|
+| **Sources** | `?tab=sources` | Fresh posting window, Add a company, Job aggregators |
+| **Scan sources** | `?tab=scan-sources` | The sources table and the two discovery buttons |
+| **Cleanup** | `?tab=cleanup` | Cleanup review |
+
+The Dashboard's **Check sources** button links to `?tab=scan-sources`.
+
+- All configured sources appear in a unified table on the **Scan sources** tab —
+  companies from `portals.example.yml` and any manually added sources are treated
+  equally.
 - Enable or disable individual sources (disabled sources are skipped on the
   next scan).
 - Column filters and saved filter presets on the sources table.
 - Sources from `portals.example.yml` cannot be removed (they reload from the
   config file); manually added sources have a Remove button.
-- Add any company by pasting its careers page URL — Greenhouse, Ashby, and
-  Lever are auto-detected.
-- "Scan for new sources" queries the Common Crawl index to discover additional
+- Add any company by pasting its careers page URL on the **Sources** tab —
+  Greenhouse, Ashby, and Lever are auto-detected.
+- **"Crawl for companies"** queries the Common Crawl index to discover additional
   ATS boards automatically. See **Source discovery (Common Crawl)** below for how
   the sweep is bounded and why it is incremental.
-- Discovered sources stay pending until the user reviews and explicitly selects
-  the validated companies to add.
-- Cleanup review lists disabled or malformed user-added sources for explicit
-  removal. Existing sources are never removed automatically.
-- "Search discover" queries Brave Search API for ATS job boards not in Common
+- **"Search for companies"** queries Brave Search API for ATS job boards not in Common
   Crawl (requires Brave Search API key in AI Provider settings). Merges new
   findings into `data/discovered-sources.json` without overwriting existing
   entries.
+
+  Both labels name their method and their outcome. The previous pair — "Scan for new
+  sources" and "Search discover" — read as if only one of them scanned and left the
+  other's job ambiguous; in fact both look for companies you are not tracking yet, and
+  neither enables anything. The card description states that shared outcome once ("never
+  turns a source on by itself") so the labels only have to carry the difference between
+  the two methods. It is worded without counting the buttons, because the Brave one is
+  hidden until a Brave Search API key is saved.
+
+- Discovered sources stay pending until the user reviews and explicitly selects
+  the validated companies to add.
+- **Cleanup review** (its own **Cleanup** tab) lists disabled or malformed user-added
+  sources for explicit removal. Existing sources are never removed automatically.
+  Each row has a **Remove source** button, and a **Remove all (N)** control in the card
+  header clears the whole list in one pass. Removal is irreversible from the UI — a
+  removed source has to be re-entered by hand — so "Remove all" expands in place into
+  "Remove N sources? This cannot be undone." with **Yes, remove all** / **Cancel**
+  rather than firing on the first click. The server action recomputes the candidate set
+  from the database rather than trusting the rendered page, so a tab left open since
+  before a source was re-enabled cannot delete something that no longer qualifies.
+  Removing a source also drops its `scan_source_overrides` row.
 - "Validate sources" opens a **modal** (progress, then summary counts and a scrollable list of dead/unknown boards — same interaction pattern as **Scan for new jobs** on the Dashboard). It checks each tracked board’s public ATS JSON URL (same
   host as CareerOps scans). Results: **Live** / **N jobs** when HTTP 200 and JSON
   parse succeeds, **Dead** on HTTP 404, **Unknown** for other HTTP codes, timeouts,
@@ -2281,7 +2356,7 @@ custom URLs configured in Settings.
 9. A `scan_runs` record is created with metrics.
 10. The Dashboard updates with a combined scan summary across company career sites, Dice, and Adzuna when configured.
 
-**Scan progress and results dialog** (Dashboard “Scan for new jobs” and Settings → Sources per-company scan): while the Dashboard scan runs, the modal receives live server progress and shows the actual state of the company career-site, Dice, and Adzuna lanes. Parallel lanes can be marked **Scanning now** at the same time; each changes to **Complete**, **Skipped**, or **Stopped** as its state changes. The current activity is exposed through a polite, atomic live region for screen readers. Adzuna is shown as skipped when it is not configured.
+**Scan progress and results dialog** (Dashboard “Scan for new jobs” and Settings → Scan sources per-company scan): while the Dashboard scan runs, the modal receives live server progress and shows the actual state of the company career-site, Dice, and Adzuna lanes. Parallel lanes can be marked **Scanning now** at the same time; each changes to **Complete**, **Skipped**, or **Stopped** as its state changes. The current activity is exposed through a polite, atomic live region for screen readers. Adzuna is shown as skipped when it is not configured.
 
 The results header shows count badges: run status, **N new in app**, **N found at source**, **N sources scanned**, **N skipped**, **N filtered by profile rules**, **N duplicates skipped**, and **N re-posts of a closed role** (shown only when non-zero — new listings that re-open a role the user had already applied to, rejected, skipped, or archived).
 
@@ -2426,7 +2501,7 @@ job titles from real postings as fixtures.
     found no case where that greediness rejected a wanted role.
 - Profile filters: selected location modes, on-site / hybrid locations, and
   remote regions constrain scan inserts.
-- **Settings → Sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; it opens pre-filled from the most recent stored **Validate sources** pass, and shows **Not validated** for each row only when no check has ever been run (or for a source added since the last one).
+- **Settings → Scan sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; it opens pre-filled from the most recent stored **Validate sources** pass, and shows **Not validated** for each row only when no check has ever been run (or for a source added since the last one).
 
 **Performance tuning constants** (in `src/lib/scanner/careerops-scanner.ts`):
 - `CONCURRENCY = 20` — parallel ATS API requests.
@@ -2681,7 +2756,17 @@ for new jobs" modal.
 
 - All data is stored locally in `data/job-search-terminal.sqlite` on the user's machine.
 - No data is sent to any server except AI provider API calls (evaluation,
-  generation, etc.).
+  generation, etc.), job-source and liveness fetches, and the daily update check.
+- **The update check is the only unprompted outbound request the app makes.**
+  Every other network call happens because the user pressed something. It sends
+  a commit SHA that is already public on GitHub and nothing else — no
+  identifier, no usage data, no job or resume content. It runs at most once per
+  24 hours, caches its answer in `data/update-check.json` so restarts do not
+  re-request, and never blocks a render: a page always draws the cached answer
+  and refreshes in the background for the next load. Setting
+  `JST_UPDATE_CHECK=off` (also `false`, `0`, `no`) disables it completely; the
+  version still renders, only the GitHub call stops. The footer states all of
+  this in place rather than burying it here.
 - The database file is excluded from git.
 - Portable account backup: Account → Settings → Data & Backup creates a `.jst-backup`
   archive with the database, database-referenced resume lane files, generated documents, source
