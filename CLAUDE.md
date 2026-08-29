@@ -26,6 +26,58 @@ When making any change to this codebase — new feature, bug fix, refactor, or c
 
 ---
 
+## Working Copies — Two Checkouts, One Repo
+
+There are two checkouts of this repository. They are **git worktrees of the same repo**,
+not independent clones.
+
+| Path | Branch | Database | Port | Purpose |
+|---|---|---|---|---|
+| `~/Work/js` | `personal` | real job-search data | 3000 | the instance actually used day to day |
+| `~/Work/js-dev` | `main` | seed / throwaway data | 3100 | where development happens |
+
+**Git forbids checking out the same branch in two worktrees.** `js-dev` holds `main`, so
+`js` cannot also be on `main` — that is why `js` has its own branch, `personal`, tracking
+`origin/main`. Do not try to "fix" this by checking out `main` in `js`: git will refuse.
+Do not leave `js` on a detached HEAD either, which is where it used to sit — `git pull`
+does not work at all in that state, and any uncommitted work is stranded on no branch.
+
+### Updating
+
+- In `~/Work/js-dev`: `git pull`
+- In `~/Work/js`: `git pull --rebase`
+
+`--rebase` is not optional in `js`. `personal` tracks `origin/main`, so a commit made in
+`js` puts the branch ahead of its upstream; rebase replays that work on top of the latest
+`main` instead of failing or manufacturing merge commits.
+
+### Commit before pulling
+
+Every change here must update `docs/` (see Documentation Requirements above), so
+`docs/features.md` is touched by nearly every commit. Pulling into a checkout that holds
+uncommitted edits to that file aborts with `Your local changes to the following files
+would be overwritten by merge`. Commit the work first, then pull. Git aborts safely and
+never clobbers uncommitted changes — but the update simply does not happen until the tree
+is clean, which is the usual reason a checkout is silently found to be several commits
+behind.
+
+### Never bare-`git stash` in a worktree
+
+The stash stack is shared across every worktree of this repo, and more than one agent
+session may be running at once — a bare `git stash` / `git stash pop` can pop someone
+else's work. Prefer a temporary WIP commit. If a stash is truly unavoidable, use
+`git stash push -u -m "<unique-tag>"`, re-find the entry by its tag, and restore with
+`git stash apply <sha>` rather than `pop`.
+
+### The databases never move
+
+`data/*` is gitignored, so no pull, checkout, rebase, or merge can touch either SQLite
+file. Real data in `js` and seed data in `js-dev` stay where they are. A migration
+introduced by a commit runs only when the app next starts in that checkout — so pulling
+is safe, and the first restart afterwards is the moment schema changes actually land.
+
+---
+
 ## Browser Job Board Scanner Agent Instructions
 
 This file also contains instructions for Claude Desktop to perform browser-assisted job discovery and write results into Job Search Terminal's import pipeline. Codex follows the same scanner contract from `AGENTS.md`.
