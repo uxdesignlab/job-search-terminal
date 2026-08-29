@@ -291,7 +291,7 @@ export async function evaluateJobWithAI(
   try {
     const raw = await withChainDeadline(
       chain,
-      () => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt), 3, 1500, signal),
+      (runSignal) => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt), 3, 1500, runSignal),
       deadlineMs,
       signal
     );

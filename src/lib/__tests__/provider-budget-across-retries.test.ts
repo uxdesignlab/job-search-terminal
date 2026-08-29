@@ -139,6 +139,35 @@ describe("a run that ends stops the chain behind it", () => {
     expect(local.generateJSON).not.toHaveBeenCalled();
   });
 
+  /**
+   * The chain is not the only thing that can start work after the run is over, and
+   * on the commonest setup there is no chain at all: with exactly one provider
+   * configured, `buildProvider` returns the raw adapter, which has no `abortOn`.
+   * `withRetry` also sits outside the chain, so a request that outlived the deadline
+   * and then failed retryably would wake the loop and start another one — paid or
+   * local work begun after the user was already shown the failure.
+   */
+  it("stops a detached retry loop when there is no chain to abort", async () => {
+    const { withRetry } = await import("@/lib/ai/retry");
+
+    let calls = 0;
+    const flaky = async () => {
+      calls += 1;
+      await sleep(30);
+      throw new Error("503 service unavailable"); // retryable — the loop would go again
+    };
+
+    await expect(
+      // `{}` stands in for a lone provider: no abortOn, nothing to tell.
+      withChainDeadline({}, (runSignal) => withRetry(flaky, 3, 5, runSignal), 20)
+    ).rejects.toBeInstanceOf(GenerationTimeoutError);
+
+    const whenTheRunGaveUp = calls;
+    await sleep(150);
+    expect(calls).toBe(whenTheRunGaveUp);
+    expect(calls).toBe(1);
+  });
+
   it("leaves a successful run's result alone", async () => {
     const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
 

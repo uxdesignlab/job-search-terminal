@@ -187,10 +187,18 @@ export function withDeadline<T>(fn: () => Promise<T>, timeoutMs: number, signal?
  * The caller's signal is still what bounds `withDeadline`, so cancelling continues to
  * raise `GenerationCancelledError` and a lapsed deadline `GenerationTimeoutError`:
  * callers distinguish those, and one is not a failure.
+ *
+ * `fn` receives that combined signal, and must pass it to any retry loop it runs.
+ * Telling the chain alone is not enough for two reasons. A single configured provider
+ * is not a chain at all — `buildProvider` returns the raw adapter, which has no
+ * `abortOn` — and even with a chain, `withRetry` sits *outside* it: a request that
+ * outlives the deadline and then rejects with a retryable error would wake the loop
+ * and start another one, after the run had already been reported as failed. That is
+ * the same paid-work-after-failure this wrapper exists to stop.
  */
 export async function withChainDeadline<T>(
   chain: { abortOn?: (signal: AbortSignal) => void },
-  fn: () => Promise<T>,
+  fn: (runSignal: AbortSignal) => Promise<T>,
   timeoutMs: number,
   signal?: AbortSignal
 ): Promise<T> {
@@ -201,7 +209,7 @@ export async function withChainDeadline<T>(
 
   chain.abortOn?.(runAbort.signal);
   try {
-    return await withDeadline(fn, timeoutMs, signal);
+    return await withDeadline(() => fn(runAbort.signal), timeoutMs, signal);
   } finally {
     signal?.removeEventListener("abort", forward);
     runAbort.abort();
