@@ -1067,6 +1067,18 @@ preparation failed on every attempt, which meant **no job ever had ATS keywords*
 resume builder's keyword panel was empty and its header read `0% job keyword alignment`
 on every draft.
 
+**Run budget covers the whole chain, not the first provider.** Preparation is bounded
+the same way evaluation is: each provider gets its own deadline (150s cloud, 10 minutes
+local) and the run's outer bound covers their sum. It previously used a flat 150s bound
+regardless of the chain, which cut the run off at the first provider — a local model
+placed first burned the entire budget and the cloud provider configured behind it never
+got its turn. The run failed as `Application preparation Generation exceeded 150s and was
+abandoned` instead of falling over, and because preparation is the **only** source of ATS
+keyword signals, the resume that followed was tailored against nothing: `0%` keyword
+coverage, `Top keywords inserted only where supported: none captured`, and the base lane
+merely reordered. The bound now comes from `totalGenerationDeadlineMs` over the chain's
+provider names (`runDeadlineMs` in `src/lib/application-preparation/index.ts`).
+
 **Preparation failure is visible in the draft.** Resume generation degrades rather than
 aborting when preparation fails — a resume without keyword targeting beats no resume —
 and the reason is recorded on the document. It used to be shown only when *tailoring*

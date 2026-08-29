@@ -1,5 +1,5 @@
 import { getActiveProvider } from "../ai/factory";
-import { STRUCTURED_OUTPUT_MAX_TOKENS } from "../ai/deadlines";
+import { CLOUD_GENERATION_TIMEOUT_MS, STRUCTURED_OUTPUT_MAX_TOKENS, totalGenerationDeadlineMs } from "../ai/deadlines";
 import { withRetry, withDeadline, GenerationTimeoutError } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import {
@@ -46,7 +46,19 @@ export class EvaluationRequiredError extends Error {
 }
 
 /** Same ceiling as evaluation: not every provider bounds itself. */
-export const PREPARATION_GENERATION_TIMEOUT_MS = 150_000;
+export const PREPARATION_GENERATION_TIMEOUT_MS = CLOUD_GENERATION_TIMEOUT_MS;
+
+/**
+ * The whole run's budget: each provider in the chain gets its own, in turn.
+ *
+ * A flat cloud-sized bound here cut the chain off at the first provider, so a
+ * local model placed first burned the entire budget and the cloud fallback
+ * behind it never got its turn — the run failed as a timeout instead of falling
+ * over. Same policy evaluation already uses.
+ */
+export function runDeadlineMs(provider: { name: string; providerNames?: string[] }): number {
+  return totalGenerationDeadlineMs(provider.providerNames ?? [provider.name]);
+}
 
 const PREPARATION_SHAPE = `{
   "requirements": [{ "text": "string", "type": "must_have | preferred | responsibility | tool | method | credential | domain", "evidenceStatus": "supported | partial | unknown", "evidenceIds": ["string"] }],
@@ -271,7 +283,7 @@ export async function prepareApplication(jobId: string, options: { force?: boole
         PREPARATION_SHAPE,
         { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS }
       )),
-      PREPARATION_GENERATION_TIMEOUT_MS
+      runDeadlineMs(provider as { name: string; providerNames?: string[] })
     );
 
     requirements = normalizeRequirements(raw?.requirements);
