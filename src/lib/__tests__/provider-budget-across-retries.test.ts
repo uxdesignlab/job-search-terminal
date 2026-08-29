@@ -100,6 +100,74 @@ describe("a run that ends stops the chain behind it", () => {
     expect(paid.generateJSON).not.toHaveBeenCalled();
   });
 
+  /**
+   * The chain has to stop for either reason — the user stopped waiting, or the run
+   * is over. Evaluation used to tell it about only the first, so a lapsed deadline
+   * still walked on to the paid provider behind the one that had stalled.
+   */
+  it("still forwards the caller's own cancellation to the chain", async () => {
+    const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
+    const { GenerationCancelledError } = await import("@/lib/ai/retry");
+
+    const controller = new AbortController();
+    const local = fakeProvider("ollama", async () => {
+      controller.abort();
+      throw new Error("503 service unavailable");
+    });
+    const paid = fakeProvider("openai", async () => ({ ok: true }));
+    const chain = new FallbackProvider([local, paid] as never, () => 200);
+
+    await expect(
+      withChainDeadline(chain, () => chain.generateJSON([], "{}"), 200, controller.signal)
+    ).rejects.toBeInstanceOf(GenerationCancelledError);
+
+    await sleep(40);
+    expect(paid.generateJSON).not.toHaveBeenCalled();
+  });
+
+  it("does not start a provider when the caller's signal is already aborted", async () => {
+    const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
+
+    const controller = new AbortController();
+    controller.abort();
+    const local = fakeProvider("ollama", async () => ({ ok: true }));
+    const chain = new FallbackProvider([local] as never, () => 200);
+
+    await expect(
+      withChainDeadline(chain, () => chain.generateJSON([], "{}"), 200, controller.signal)
+    ).rejects.toBeTruthy();
+    expect(local.generateJSON).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The chain is not the only thing that can start work after the run is over, and
+   * on the commonest setup there is no chain at all: with exactly one provider
+   * configured, `buildProvider` returns the raw adapter, which has no `abortOn`.
+   * `withRetry` also sits outside the chain, so a request that outlived the deadline
+   * and then failed retryably would wake the loop and start another one — paid or
+   * local work begun after the user was already shown the failure.
+   */
+  it("stops a detached retry loop when there is no chain to abort", async () => {
+    const { withRetry } = await import("@/lib/ai/retry");
+
+    let calls = 0;
+    const flaky = async () => {
+      calls += 1;
+      await sleep(30);
+      throw new Error("503 service unavailable"); // retryable — the loop would go again
+    };
+
+    await expect(
+      // `{}` stands in for a lone provider: no abortOn, nothing to tell.
+      withChainDeadline({}, (runSignal) => withRetry(flaky, 3, 5, runSignal), 20)
+    ).rejects.toBeInstanceOf(GenerationTimeoutError);
+
+    const whenTheRunGaveUp = calls;
+    await sleep(150);
+    expect(calls).toBe(whenTheRunGaveUp);
+    expect(calls).toBe(1);
+  });
+
   it("leaves a successful run's result alone", async () => {
     const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
 

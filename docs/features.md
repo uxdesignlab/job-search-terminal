@@ -1096,8 +1096,24 @@ walked on and called the paid provider anyway, spending a cloud call for a user 
 already been told the run failed. Preparation now bounds the run with `withChainDeadline`
 (`src/lib/ai/retry.ts`), which tells the chain to stop as soon as the run is over, however
 it ended. A request already in flight cannot be recalled; what stops is the *next*
-provider starting, which is the part that costs money. Evaluation guards the equivalent
-path for user cancellation, but not yet for its own deadline expiring.
+provider starting, which is the part that costs money.
+
+Evaluation is bounded the same way. It had guarded this path for user cancellation only,
+so a lapsed deadline still let the chain walk on to a paid provider. `withChainDeadline`
+now takes the caller's own cancellation signal too and forwards both reasons into one
+signal for the chain, so cancelling and timing out both stop it. The caller's signal is
+still what bounds the wait, so the two stay distinguishable where it matters: cancelling
+raises `GenerationCancelledError`, which evaluation treats as "the user stopped waiting"
+rather than a failure, and a lapsed deadline still raises `GenerationTimeoutError`.
+
+Telling the chain is necessary but not sufficient, for two reasons. On the commonest
+setup there is no chain: with exactly one provider configured, `buildProvider` returns
+the raw adapter, which has no `abortOn` at all. And `withRetry` sits *outside* the chain
+either way — a request that outlived the deadline and then failed with a retryable error
+would wake the retry loop and start another one, after the run had already been reported
+as failed. So the combined signal is handed to the wrapped function as well, and both
+preparation and evaluation pass it into their retry loop. Work already in flight still
+cannot be recalled; what stops is anything further being started.
 
 **Preparation failure is visible in the draft.** Resume generation degrades rather than
 aborting when preparation fails — a resume without keyword targeting beats no resume —

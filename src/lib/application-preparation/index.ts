@@ -279,11 +279,11 @@ export async function prepareApplication(jobId: string, options: { force?: boole
   try {
     const raw = await withChainDeadline(
       provider as { abortOn?: (signal: AbortSignal) => void },
-      () => withRetry(() => provider.generateJSON<Record<string, unknown>>(
+      (runSignal) => withRetry(() => provider.generateJSON<Record<string, unknown>>(
         [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }] as AIMessage[],
         PREPARATION_SHAPE,
         { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS }
-      )),
+      ), 3, 1500, runSignal),
       runDeadlineMs(provider as { name: string; providerNames?: string[] })
     );
 
