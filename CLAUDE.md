@@ -12,7 +12,41 @@ When making any change to this codebase — new feature, bug fix, refactor, or c
 - **`docs/data-model.md`** — documents the database schema, migrations, and all types. Update it whenever a migration is added, a column changes, or a new type is introduced.
 - **`docs/browser-board-scanner-technical.md`** — technical reference for browser-assisted LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster imports. Update code snippets, file descriptions, and architecture notes when touching that subsystem.
 - **`docs/linkedin-scanner-guide.md`** — user guide for the browser-assisted scanner. Update when behavior visible to the user changes.
+- **`src/lib/help/content.ts`** — the in-app help site at `/help`. This is a code file, but it is documentation, and it is the **only** support surface shipped to users. Update it whenever a change alters what a user sees or does. See the rule below.
 - **`CLAUDE.md`** — project rules and Claude Desktop agent instructions. Update when adding new rules or changing the browser job-board workflow.
+
+### The help site is not optional documentation
+
+`docs/` is written for developers. `/help` is written for job seekers, and it is
+the only place they can look things up — there is no support inbox and no forum.
+A change that updates `docs/features.md` but leaves `/help` stale has shipped a
+lie to the people using the product.
+
+**Update `/help` in the same change set when the change touches any of:**
+
+- a new page, tab, nav item, or route
+- a renamed button, label, badge, status, table column, or filter
+- a new or changed setup step, credential, or environment variable
+- what leaves the machine, or any privacy or safety boundary
+- a new scan source, import path, or integration
+- what an AI feature does, costs, or refuses to do
+- a new failure mode a user can hit (this goes in the `troubleshooting` guide)
+- anything that makes an existing help sentence false
+
+If none of those apply, **say so explicitly** when reporting the work — "help
+unaffected, this is internal to X" is a valid answer; silence is not.
+
+**The writing contract is [docs/help-writing.md](docs/help-writing.md).** It
+carries the audience definition, the voice rules, the registry's content shape,
+the procedure for a new guide, the audit procedure, and the pre-finish checklist.
+Read it before writing or auditing help copy rather than writing from instinct —
+help has its own reading level and its own conventions, and they are not the ones
+used in `docs/`.
+
+Claude Code reaches it through the **`help-writer` skill**, which exists only to
+send you to that file. Codex reads the same file directly, pointed there by
+`AGENTS.md`. One document, both agents, no second copy to drift. Guidance about
+writing help goes in `docs/help-writing.md` — never into the skill.
 
 **What "thoroughly documented" means:**
 
@@ -23,6 +57,82 @@ When making any change to this codebase — new feature, bug fix, refactor, or c
 5. New files or subsystems must have their purpose, exported API, and behavior documented.
 
 **When there is no matching doc section**, add one. Do not skip documentation because a section doesn't exist yet.
+
+
+---
+
+## Versioning — Bump Every Release, Never Reach 1.0
+
+**Every change set that a user could notice must bump the version and add a
+`CHANGELOG.md` entry.** This is a hard rule, in the same class as the
+documentation requirements above. Pavel should never have to remember to do it,
+or be asked which number to use — decide it from the table and apply it.
+
+The version lives in one place, `package.json`, and the app footer reads it from
+there. A change that ships without a bump makes the running app misreport
+itself.
+
+### Which number to move
+
+| Bump | When | Example |
+|---|---|---|
+| **Minor** — `0.11.0` → `0.12.0` | A new capability a user can see: a page, tab, integration, scan source, AI behaviour, or setting. **Also** any database migration, and any change to what leaves the machine. | Added the Cleanup tab; added the Himalayas lane; added the daily update check |
+| **Patch** — `0.11.0` → `0.11.1` | A fix or refinement to something that already exists: a bug, wording, layout, accessibility, or performance. | Renamed "Search discover" to "Search for companies"; fixed a stale Dashboard date |
+| **Neither** | Documentation, tests, comments, and internal refactors with no user-visible effect. No bump, no changelog entry. | Rewrote a test helper; corrected a stale line in `docs/` |
+
+When one change set contains both a new capability and fixes, it is a **minor**
+bump — the highest applicable bump wins, and the fixes ride along in the same
+entry.
+
+### Never bump to 1.0.0
+
+The version stays at `0.x` and keeps climbing in the minor position:
+`0.9.0` → `0.10.0` → `0.11.0` → `0.12.0`. `0.10.0` is newer than `0.9.0` — the
+parts are counted separately, not read as a decimal.
+
+**Only Pavel decides when 1.0.0 happens**, and it is a deliberate promise of
+stability rather than a feature count. Never propose it as part of ordinary
+work, and never let a bump cross into it.
+
+### What a changelog entry looks like
+
+Add a new section at the **top** of `CHANGELOG.md`, above the previous release:
+
+```markdown
+## 0.12.0 — 2026-09-04 — Short name for the release
+
+**Added**
+
+- What a user can now do that they could not before, in their words.
+
+**Changed**
+
+- What behaves differently, and why it was worth changing.
+
+**Fixed**
+
+- What was broken, described as the user experienced it.
+```
+
+Rules for the entry itself:
+
+- **Title the release.** A short name — "Local models and new scan lanes",
+  "Evaluation you can audit". A number with no name tells nobody anything.
+- **Date it** in `YYYY-MM-DD`, the date the work lands.
+- **Write it for the user, not the commit log.** "Cancelling a run actually
+  stops it" — not "thread the abort signal through the retry loop".
+- **Omit empty groups.** A release with no fixes has no **Fixed** heading.
+- **Say what a change costs** when it costs something: a re-scan, a
+  re-evaluation, a migration that runs on next start.
+
+### The order of operations
+
+1. Make the change.
+2. Update `docs/` and the in-app help (see Documentation Requirements above).
+3. Decide the bump from the table.
+4. Edit `version` in `package.json`.
+5. Add the `CHANGELOG.md` entry at the top.
+6. Report the new version number when you report the work.
 
 ---
 

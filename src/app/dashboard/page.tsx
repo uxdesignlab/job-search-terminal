@@ -106,7 +106,7 @@ export default function DashboardPage() {
         <PageHeader
           actions={onboardingComplete ? (
             <>
-              <LinkButton href="/settings?tab=sources" variant="secondary">
+              <LinkButton href="/settings?tab=scan-sources" variant="secondary">
                 Check sources
               </LinkButton>
               <ScanForNewJobsButton />

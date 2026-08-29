@@ -1,7 +1,7 @@
 /**
  * Core source discovery logic — runs the Common Crawl pipeline and writes
  * data/discovered-sources.json. Called from both the CLI script and the
- * Settings "Scan for new sources" server action.
+ * Settings "Crawl for companies" server action.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

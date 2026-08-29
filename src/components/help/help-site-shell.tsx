@@ -21,15 +21,17 @@ export function HelpSiteShell({ activeSlug, children }: HelpSiteShellProps) {
               <Badge>Open-source help site</Badge>
               <div className="grid gap-3">
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-normal text-ink md:text-5xl">
-                  Job Search Terminal docs
+                  Help
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted">
-                  Complete guidance for setup, AI providers, resume lanes, ATS-friendly PDFs, job scanning, LinkedIn imports,
-                  tailoring, applications, interviews, data, and troubleshooting.
+                  How to set the app up, find jobs worth applying for, tailor a resume to each one, and keep track of
+                  where everything stands. Written for people looking for work, not for developers — if a guide
+                  loses you, that is a fault in the guide.
                 </p>
                 <p className="max-w-2xl text-sm leading-6 text-muted">
-                  Stored data stays on your machine. AI actions use the provider you configure: OpenAI, Anthropic,
-                  Google Gemini, or Ollama running locally.
+                  Your resumes, jobs, and notes stay on your own computer. The app has no artificial intelligence of
+                  its own, so you connect one: OpenAI, Anthropic, Google Gemini, or Ollama, which is free and runs on
+                  your machine.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -43,7 +45,7 @@ export function HelpSiteShell({ activeSlug, children }: HelpSiteShellProps) {
                   className="inline-flex min-h-10 items-center justify-center rounded-control border border-border bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent"
                   href="/help/resume-lanes"
                 >
-                  Resume and ATS guide
+                  Start with your resume
                 </Link>
               </div>
             </div>

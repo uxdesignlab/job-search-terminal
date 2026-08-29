@@ -180,6 +180,7 @@ Go to **Settings → AI Provider**, enable the **Ollama (Local)** row in the pri
 ### For users
 
 - [Getting Started](docs/getting-started.md)
+- [Changelog](CHANGELOG.md) — what changed in each version
 - [Features](docs/features.md)
 - [Help Site](docs/help-site.md)
 - [Browser Job Board Scanner Guide](docs/linkedin-scanner-guide.md)
@@ -191,6 +192,7 @@ Go to **Settings → AI Provider**, enable the **Ollama (Local)** row in the pri
 
 - [Development Workflow](docs/development-workflow.md)
 - [Design System](docs/design-system.md)
+- [Writing Help Copy](docs/help-writing.md)
 - [Data Model](docs/data-model.md)
 - [Accessibility Checklist](docs/accessibility-checklist.md)
 - [Quality Hardening](docs/quality-hardening.md)

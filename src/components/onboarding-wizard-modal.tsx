@@ -871,7 +871,7 @@ export function OnboardingWizardModal({
                           </a>
                         </div>
                         <p className="text-sm leading-6 text-muted">
-                          Powers the &ldquo;Search discover&rdquo; button in Settings → Sources. Finds new companies using Ashby, Greenhouse, or Lever
+                          Powers the &ldquo;Search for companies&rdquo; button in Settings → Scan sources. Finds new companies using Ashby, Greenhouse, or Lever
                           from live search results. Free tier: 2,000 queries/month.
                         </p>
                         <div className="mt-4 grid gap-3">

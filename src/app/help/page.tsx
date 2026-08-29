@@ -21,8 +21,8 @@ export default function HelpPage() {
               <h2 className="mt-3 text-2xl font-semibold text-ink">Browse by workflow</h2>
             </div>
             <p className="max-w-xl text-sm leading-6 text-muted">
-              This help site is organized around the work people actually do: setup, profile building, job discovery,
-              LinkedIn import, evaluation, tailoring, tracking, interview prep, and recovery.
+              These are grouped in the order you will meet them: set the app up, tell it about yourself, find jobs,
+              decide which are worth it, apply, then prepare for the interview. Start at the top if you are new.
             </p>
           </div>
 
@@ -31,13 +31,13 @@ export default function HelpPage() {
               <CardHeader>
                 <CardTitle>{category}</CardTitle>
                 <CardDescription>
-                  {category === "Setup" && "Get the local app ready and connect the AI features."}
-                  {category === "Profile" && "Build the resume and profile foundation for scoring and tailoring."}
-                  {category === "Jobs" && "Find, import, filter, review, and maintain your job pipeline."}
-                  {category === "Apply" && "Evaluate fit and produce reviewed application materials."}
-                  {category === "Track" && "Move applications through the funnel and stay on top of follow-ups."}
-                  {category === "Prep" && "Prepare evidence-backed interview answers."}
-                  {category === "Reference" && "Understand privacy, data, safety rules, and common fixes."}
+                  {category === "Setup" && "Install it, connect an AI service, and run your first scan."}
+                  {category === "Profile" && "Upload your resumes and tell the app what work you are after. Everything else depends on this."}
+                  {category === "Jobs" && "Where jobs come from, how to add ones the app missed, and how to keep the list manageable."}
+                  {category === "Apply" && "Score how well a job fits you, then write a resume and answers for it. You still apply yourself."}
+                  {category === "Track" && "Keep track of where each application stands and what needs chasing."}
+                  {category === "Prep" && "Build the stories you will retell in every interview, and practise them out loud."}
+                  {category === "Reference" && "What happens to your data, what the app will never do, and what to try when something breaks."}
                 </CardDescription>
               </CardHeader>
               <div className="grid gap-3 md:grid-cols-2">

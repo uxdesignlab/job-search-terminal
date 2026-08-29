@@ -37,8 +37,11 @@ config/*.local.json
 # These stay local; they are not part of the public repo.
 docs/archive/
 
-# Claude Code local config
-.claude/
+# Claude Code local config — personal settings stay out, shared skills ship.
+# CLAUDE.md and AGENTS.md both point contributors at .claude/skills/, so those
+# files have to be in the repo or the rules reference something nobody has.
+.claude/*
+!.claude/skills/
 
 # Personal notes / resume text dumps
 memory/

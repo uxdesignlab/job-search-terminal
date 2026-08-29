@@ -55,7 +55,7 @@ export const helpPages: HelpPage[] = [
     slug: "getting-started",
     title: "Getting started with Job Search Terminal",
     shortTitle: "Getting started",
-    description: "Set up the local app, finish onboarding, add optional Adzuna and Brave keys, and understand the core workflow.",
+    description: "Set the app up, teach it what work you want, and learn the routine you will repeat each day.",
     category: "Setup",
     readTime: "10 min",
     icon: "laptop",
@@ -64,101 +64,121 @@ export const helpPages: HelpPage[] = [
       alt: "Job Search Terminal dashboard with setup and activity sections",
     },
     highlights: [
-      "Everything runs locally on your machine.",
-      "One AI provider is required. Cloud providers (OpenAI, Anthropic, Gemini) need an API key; Ollama is free and needs no key — it runs models locally on your machine.",
-      "The Dashboard scan runs company career sites and Dice together, plus Adzuna once credentials are configured.",
+      "The app runs on your own computer. Your resumes and job list stay there.",
+      "You need to connect one AI service before the app can score jobs or write resumes. Some cost money to use; Ollama is free.",
+      "Once set up, the daily routine is: scan for jobs, review them, tailor a resume, apply yourself.",
     ],
     sections: [
       {
         id: "what-it-is",
         title: "What this app does",
         intro:
-          "Job Search Terminal is a local-first job-search workspace. It scans supported career sources, imports manual and browser-board jobs, pulls jobs from aggregator APIs, evaluates fit with AI, generates tailored resumes, prepares application answers, and tracks every application through the funnel.",
+          "Job Search Terminal is a job-search workspace that runs on your own computer. It finds job postings, scores how well each one fits you, writes a tailored resume for the ones worth applying to, and keeps track of where every application stands.",
         bullets: [
-          "No cloud account is required for the app itself.",
-          "Your profile, resumes, generated documents, jobs, and application history stay on your computer.",
-          "AI providers are contacted only when you ask the app to evaluate, generate, extract, research, transcribe, or polish content.",
-          "The app never submits applications, sends recruiter messages, or fills external forms for you.",
+          "You do not create an account, and there is nothing to subscribe to.",
+          "Your profile, resumes, job list, and application history are saved on your computer, not on someone else's.",
+          "The app contacts an AI service only when you ask it to do something — score a job, write a resume, draft an answer. It is not listening in the background.",
+          "The app never applies for you. It never sends a message to a recruiter and never fills in a form on a company's website. You do that part yourself, deliberately.",
+        ],
+      },
+      {
+        id: "words",
+        title: "A few words you will see",
+        intro:
+          "This app borrows some words from the hiring industry. You do not need to know them to use it, but they turn up on screen, so here is what they mean.",
+        bullets: [
+          "AI service (or provider) — the company whose artificial intelligence does the thinking: OpenAI, Anthropic, Google Gemini, or Ollama. You pick one. The app has no AI of its own.",
+          "API key — a long password you get from an AI service so the app can use your account there. You copy it once and paste it into Settings. Treat it like a credit card number.",
+          "ATS, or applicant tracking system — the software companies use to collect and sort applications. Greenhouse, Lever, and Ashby are common ones. When the app says it is scanning ATS sources, it means it is reading company job pages directly, the same ones you would open in a browser.",
+          "Job aggregator — a site that gathers postings from many places into one list. Adzuna is one the app can read from.",
+          "Scan — one round of looking for new jobs. You start it; it does not run on its own.",
+          "Lane — one version of your resume, kept for one kind of role. Most people need two or three.",
         ],
       },
       {
         id: "first-run",
-        title: "First-run setup",
+        title: "Setting up the first time",
         intro:
-          "The app is useful only after it understands who you are, what roles you want, and which AI provider should power the assistant features.",
+          "The app cannot help until it knows who you are and what work you are looking for. This takes about fifteen minutes and you only do it once.",
         steps: [
           {
-            title: "Add one AI provider",
-            body: "Open Account → Settings → AI Providers. For cloud providers (OpenAI, Anthropic, or Gemini), paste an API key. To use Ollama instead, install it on your machine, pull a model, start the server, and enter the base URL — no key required. Save and test the connection. See the AI providers guide for Ollama setup steps.",
+            title: "Connect one AI service",
+            body: "Open Account → Settings → AI Provider. Pick one service and follow it through. OpenAI, Anthropic, and Google Gemini each need an API key, which you get from their website — this usually costs a few dollars a month in usage. Ollama is free and runs on your own computer instead, but it takes more setting up and needs a reasonably powerful machine. Save, then press the test button to check it works. The AI providers guide walks through each one.",
           },
           {
-            title: "Upload your base resumes",
-            body: "Open Account → Profile → Resumes. Upload each PDF into the lane that matches its career angle, such as Leadership, IC, Operations, or Consulting.",
+            title: "Upload your resumes",
+            body: "Open Account → Profile → Resumes. Upload a PDF for each kind of role you are going after — for example one for leadership roles and one for hands-on roles. Each of these is called a lane. One is enough to start.",
           },
           {
-            title: "Extract your profile",
-            body: "Open Account → Profile → Overview and run Extract with AI after at least one resume has been uploaded. Review the extracted profile before using it.",
+            title: "Let the app read your resume",
+            body: "Open Account → Profile → Overview and press Extract with AI. The app reads your uploaded resume and fills in your skills, job titles, and history. Read what it came up with before you move on — it gets things wrong sometimes, and everything is editable.",
           },
           {
-            title: "Confirm preferences",
-            body: "Review roles, title filters, locations, work modes, industries, constraints, and deal breakers. These choices affect scanning and scoring.",
+            title: "Say what you are looking for",
+            body: "Still in Profile, go through the job titles you want, the words that should rule a job out, where you are willing to work, whether you want remote or on-site, and anything you will not accept. These answers decide which jobs the app finds and how it scores them, so it is worth being honest rather than broad.",
           },
           {
             title: "Run your first scan",
-            body: "Return to the Dashboard and click Scan for new jobs. The scan checks all enabled ATS career portals and Dice, plus Adzuna when its credentials are configured. The progress dialog shows which sources are active as the parallel scans run. New jobs appear in Jobs.",
-          },
-        ],
-      },
-      {
-        id: "optional-keys",
-        title: "Optional: expand job coverage",
-        intro:
-          "Two free API keys unlock additional job sources and source discovery. Neither is required to use the core app.",
-        steps: [
-          {
-            title: "Adzuna (job aggregator)",
-            body: "Register at developer.adzuna.com for a free App ID and API Key (2,000 queries/month). Add both in Account → Settings → AI Provider → Discovery & Aggregators. Once set, the Dashboard scan automatically includes Adzuna results alongside ATS sources — no extra step needed.",
-          },
-          {
-            title: "Brave Search (source discovery)",
-            body: "Register at brave.com/search/api for a free API key (2,000 queries/month). Add it in Account → Settings → AI Provider → Discovery & Aggregators. Once set, the Search discover button appears in Settings → Sources and finds new companies using Ashby, Greenhouse, or Lever from live search results.",
+            body: "Go back to the Dashboard and press Scan for new jobs. The app checks around fifty company job pages, plus Dice, plus Adzuna if you set it up. A progress window shows what it is working through. When it finishes, the new jobs are waiting under Jobs.",
           },
         ],
         callout: {
-          title: "Already tracking 50+ ATS sources",
-          body: "The app ships with ~50 curated companies in portals.yml. Use Settings → Sources → Scan for new sources (Common Crawl) or Search discover (Brave) to find more, then review and explicitly approve the validated companies you want to add.",
+          title: "The first scan can look disappointing",
+          body: "A first scan often returns few jobs, or none. That usually means your job titles are too narrow or your locations too specific, not that the app is broken. Widen them in Profile and scan again.",
+        },
+      },
+      {
+        id: "optional-keys",
+        title: "Optional: find more jobs",
+        intro:
+          "Two more services widen the search. Both have a free tier, and the app works without either. Skip this section until you want more jobs than the built-in sources give you.",
+        steps: [
+          {
+            title: "Adzuna — more job listings",
+            body: "Adzuna gathers postings from across the web. Sign up at developer.adzuna.com for a free App ID and API Key, worth 2,000 searches a month. Paste both into Account → Settings → AI Provider → Discovery & Aggregators. From then on every scan includes Adzuna automatically — there is nothing else to press.",
+          },
+          {
+            title: "Brave Search — find more companies to watch",
+            body: "This one does not find jobs. It finds new companies whose job pages the app can then watch. Sign up at brave.com/search/api for a free key, worth 2,000 searches a month, and paste it into the same Discovery & Aggregators section. A Search for companies button then appears in Settings → Scan sources.",
+          },
+        ],
+        callout: {
+          title: "You already have around fifty companies",
+          body: "The app comes with roughly fifty companies set up and ready to scan. Settings → Scan sources has two buttons that look for more — Crawl for companies and Search for companies. Neither turns anything on by itself: they add candidates to a list, and you decide which ones to keep.",
         },
       },
       {
         id: "daily-loop",
-        title: "The daily workflow",
+        title: "What you do each day",
+        intro:
+          "Once you are set up, the same four steps repeat. Fifteen to thirty minutes is a normal session.",
         steps: [
           {
-            title: "Scan or import",
-            body: "Click Scan for new jobs on the Dashboard — ATS portals, Dice, and Adzuna (if configured) run together. Or use manual Add Job, or the browser job board scanner for LinkedIn and similar boards.",
+            title: "Find new jobs",
+            body: "Press Scan for new jobs on the Dashboard. You can also add a job by hand with Add Job when you find one somewhere else, or use the browser scanner to pull jobs from LinkedIn and similar sites.",
           },
           {
-            title: "Review and evaluate",
-            body: "Filter the Jobs table, use the Source link to inspect where each role came from, open promising roles, and run AI evaluation to understand fit, gaps, red flags, and recommended next action.",
+            title: "Review what came in",
+            body: "Open Jobs and narrow the list with the filters. Open anything promising and press Evaluate. The app scores the fit, names the gaps between you and the role, flags anything that looks off about the posting, and suggests what to do next.",
           },
           {
-            title: "Tailor and apply manually",
-            body: "Generate a tailored resume and copy-ready application answers. Submit applications yourself on the employer or job-board site.",
+            title: "Tailor a resume and apply",
+            body: "For jobs worth pursuing, generate a resume written for that posting and draft answers to their application questions. Then go to the company's own site and apply yourself. The app does not submit anything.",
           },
           {
-            title: "Track follow-up",
-            body: "Move jobs through statuses and set follow-up dates so the Dashboard action queue can surface what needs attention.",
+            title: "Keep track",
+            body: "Update each job's status as things move, and set a follow-up date when you are waiting on someone. The Dashboard then tells you what needs attention today so you are not keeping it in your head.",
           },
         ],
       },
     ],
-    related: ["ai-providers", "job-search", "linkedin-scanner"],
+    related: ["ai-providers", "job-search", "privacy-data"],
   },
   {
     slug: "ai-providers",
     title: "Add and manage AI providers",
     shortTitle: "AI providers",
-    description: "Configure OpenAI, Anthropic, Google Gemini, or Ollama; create API keys or set up a local server; build a provider priority chain; and test connections.",
+    description: "Connect the AI service that scores your jobs and writes your resumes. Covers what each one costs, how to get a key, and how to set up a free local option.",
     category: "Setup",
     readTime: "12 min",
     icon: "key",
@@ -167,22 +187,22 @@ export const helpPages: HelpPage[] = [
       alt: "AI provider settings screen with provider cards and connection controls",
     },
     highlights: [
-      "One provider is enough to start. Ollama is free and needs no API key.",
-      "Cloud keys and the Ollama base URL are saved locally with the app data.",
-      "Use the built-in connection test before relying on AI features.",
+      "One service is enough. You can add more later as backups.",
+      "OpenAI, Anthropic, and Google Gemini charge for what you use. Ollama is free but runs on your own computer.",
+      "Always press Test connection after saving. It is the only way to know it actually works.",
     ],
     sections: [
       {
         id: "provider-choice",
-        title: "Choose a provider",
+        title: "Choosing a service",
         intro:
-          "The app supports four providers through one unified layer. Configure as many as you like and rank them in a priority list — the app tries providers from top to bottom and fails over automatically when one is unavailable. You can put Ollama first (free, fully local) with a cloud provider as backup, or use a single cloud provider.",
+          "The app has no artificial intelligence of its own. It borrows someone else's, and you decide whose. There are four to choose from, and one is enough. If you set up more than one, you put them in order and the app works down the list: the top one does the work, and if it is down or refuses, the next one takes over without asking you.",
         bullets: [
-          "OpenAI is used for evaluation, answers, outreach, research, transcription, and generation.",
-          "Anthropic is used for evaluation, answers, outreach, and research.",
-          "Google Gemini is used for evaluation, answers, outreach, research, and transcription.",
-          "Ollama (local) is used for evaluation, answers, outreach, and research. No API key or billing required.",
-          "The first enabled provider in your priority list with valid credentials is used for each task. The rest act as automatic fallbacks.",
+          "OpenAI — does everything the app can do, including turning your spoken interview practice into text. A common first choice.",
+          "Anthropic — scores jobs, drafts answers, writes outreach messages, and researches companies.",
+          "Google Gemini — the same, and it can also handle spoken practice.",
+          "Ollama — free, and runs on your own computer, so nothing you feed it ever leaves the machine. It cannot do spoken practice, and it needs a reasonably powerful computer.",
+          "The three paid services bill you for what you use. Scoring a single job costs a fraction of a cent; a heavy day might reach a few dollars. Set a spending limit on their website if that worries you.",
         ],
       },
       {
@@ -199,7 +219,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Add it to the app",
-            body: "In Job Search Terminal, open Account -> Settings -> AI Providers, select OpenAI, paste the key, choose the model, save, and test the connection.",
+            body: "In Job Search Terminal, open Account → Settings → AI Provider, select OpenAI, paste the key, choose the model, save, and test the connection.",
           },
         ],
       },
@@ -217,7 +237,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Add it to the app",
-            body: "Open Account -> Settings -> AI Providers, select Anthropic, paste the key, save, and run the connection test.",
+            body: "Open Account → Settings → AI Provider, select Anthropic, paste the key, save, and run the connection test.",
           },
         ],
       },
@@ -235,7 +255,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Add it to the app",
-            body: "Open Account -> Settings -> AI Providers, select Google Gemini, paste the key, save, and run the connection test.",
+            body: "Open Account → Settings → AI Provider, select Google Gemini, paste the key, save, and run the connection test.",
           },
         ],
       },
@@ -243,7 +263,7 @@ export const helpPages: HelpPage[] = [
         id: "setup-ollama",
         title: "Set up Ollama (free local AI, no API key)",
         intro:
-          "Ollama runs open-source language models on your machine. No API key, no cloud account, no usage fees — and when Ollama is your active provider, no data leaves your computer. You need Ollama installed, a model pulled, and the server running before configuring the app.",
+          "Ollama is a free program that runs artificial intelligence on your own computer instead of someone else's. Nothing you give it leaves your machine, and it costs nothing to run. The trade-off is that it needs a fairly powerful computer, the answers are usually a little weaker than the paid services, and there are a few more steps to get going. Those steps involve typing commands into a terminal — the plain text window described in the setup guide. You only do it once.",
         steps: [
           {
             title: "Install Ollama",
@@ -251,67 +271,68 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Pull a model",
-            body: "Open a terminal and run: ollama pull llama3.1:8b — this downloads an 8B parameter model suitable for most tasks and needs about 6 GB of RAM. Larger models give better results: qwen2.5:14b needs roughly 10 GB, llama3.1:70b needs roughly 48 GB. Browse available models at ollama.com/library.",
+            body: "A model is the actual artificial intelligence — Ollama is only the program that runs it, so you have to download one. Open a terminal and type: ollama pull llama3.1:8b — then wait, because it is a few gigabytes. That one suits most people and needs about 6 GB of memory free. Bigger models answer better but need more: qwen2.5:14b wants about 10 GB, llama3.1:70b about 48 GB. There are more to browse at ollama.com/library.",
           },
           {
             title: "Start the server",
-            body: "Run ollama serve in a terminal, or open the Ollama desktop app if you installed it. The server starts on http://localhost:11434 by default. Leave it running while using the app — it stops when you close the terminal or quit the app.",
+            body: "Ollama has to be awake for the app to reach it. Either open the Ollama app from your applications, or type ollama serve in a terminal. Leave it running the whole time you are using Job Search Terminal. If you close the terminal or quit the Ollama app, it stops, and Job Search Terminal will report that it cannot reach it.",
           },
           {
             title: "Enable Ollama in settings",
-            body: "Open Account → Settings → AI Providers. In the provider priority list, check the box next to Ollama. The configuration section expands below the list.",
+            body: "Open Account → Settings → AI Provider and tick the box next to Ollama. A settings panel opens underneath.",
           },
           {
             title: "Confirm the base URL",
-            body: "The base URL defaults to http://localhost:11434. Leave it unchanged if Ollama is running on the same machine. Change it only if you run Ollama on a different host or port.",
+            body: "The base URL is the address the app uses to reach Ollama. It is already filled in as http://localhost:11434, which means \"this computer\". Leave it exactly as it is unless you deliberately set Ollama up on a different machine.",
           },
           {
             title: "Choose a model",
-            body: "Click Choose… to open the model picker. The app contacts your running Ollama server and lists every installed model. Select the model you pulled in step 2. If the list is empty, pull a model first and try again.",
+            body: "Press Choose… and the app asks Ollama which models you have downloaded. Pick the one from step 2. An empty list means either Ollama is not running or the download did not finish — go back and check both.",
           },
           {
             title: "Set priority and save",
-            body: "Drag Ollama to the top of the priority list to use it by default. Cloud providers lower in the list act as automatic fallbacks when Ollama is unavailable. Click Save, then Test connection to verify the server responds and the model loads.",
+            body: "Drag Ollama to the top of the list so it does the work by default. Anything below it is a backup for when Ollama is not running. Press Save, then Test connection — this is the step that tells you whether it genuinely works, so do not skip it.",
           },
         ],
         callout: {
           title: "Choose the right model size for your machine",
-          body: "A model that does not fit in available RAM will be very slow or fail. Rough guide: 7B–8B models need 6–8 GB (good for most tasks), 14B models need 10–12 GB (better structured output), 70B+ models need 40–48 GB (near cloud quality). The quality guide in Settings → AI Providers lists specific recommended models by RAM tier.",
+          body: "A model too big for your computer\'s memory will crawl or fail outright, so match it to your machine. Roughly: 7B–8B models want 6–8 GB free and are fine for most work; 14B models want 10–12 GB and give tidier answers; 70B models want 40–48 GB and come close to the paid services. Settings → AI Provider lists suggested models for each memory size.",
         },
       },
       {
         id: "key-safety",
-        title: "Key safety",
+        title: "Keeping your key safe",
+        intro:
+          "An API key is charged to your card. Anyone who gets hold of one can spend your money, so it deserves the same care as a password.",
         bullets: [
-          "Treat API keys like passwords.",
-          "Do not paste keys into public issues, pull requests, screenshots, shared docs, or chat transcripts.",
-          "Do not commit keys to git.",
-          "Rotate a key immediately if you think it leaked.",
-          "Use provider billing alerts or usage limits where available.",
+          "Never paste a key into a screenshot, a shared document, a chat, or anywhere public.",
+          "If you think a key has been seen by anyone else, delete it on the service\'s website and make a new one. This is quick and free.",
+          "Set a monthly spending limit on the service\'s website. Every one of them offers this, and it is the safest way to cap a surprise.",
+          "The app stores your key on your own computer, alongside its other data. It is not sent anywhere except to the service it belongs to.",
         ],
         callout: {
           title: "Why the app asks for a key",
           body:
-            "Job Search Terminal is open source and local-first. It does not operate a hosted AI account for users. Your own provider key lets the local app call the provider directly when you choose to run AI features.",
+            "Job Search Terminal is free and runs on your computer. There is no company behind it paying an AI bill on your behalf, and no subscription to collect one from you. So when the app needs artificial intelligence, it uses your account at the service you chose — which is why it needs your key.",
         },
       },
       {
         id: "discovery-aggregators",
         title: "Discovery and aggregator keys",
         intro:
-          "Two optional key groups power ATS source discovery and direct job aggregator scanning. Neither is required for core AI features — they extend how the app finds new sources and jobs.",
+          "These two are optional and have nothing to do with the AI features. They widen where the app looks for work. Skip them until the built-in sources stop being enough.",
         steps: [
           {
             title: "Brave Search API key",
-            body: "Enables the Search discover button in Settings → Sources. Brave Search queries ATS board patterns (site:jobs.ashbyhq.com, site:jobs.lever.co, site:boards.greenhouse.io) and merges new company slugs into your discovered sources list. Register at brave.com/search/api for a free tier of 2,000 queries per month.",
+            body: "This one finds companies, not jobs. It searches the web for company job pages the app knows how to read, and adds what it finds to a list for you to review — it never switches a company on by itself. Sign up at brave.com/search/api for a free key worth 2,000 searches a month. A Search for companies button then appears in Settings → Scan sources.",
           },
           {
             title: "Adzuna App ID and API Key",
-            body: "Enables the Scan with Adzuna button in Settings → Sources → Job aggregators. Adzuna pulls matching jobs from its aggregator index using your saved target roles and locations — no browser or logged-in session required. Register at developer.adzuna.com for a free tier of 2,000 queries per month.",
+            body: "Adzuna gathers job postings from across the web. Once its keys are in, the app searches it using the job titles and locations from your profile — no browser, no login, nothing to click. Sign up at developer.adzuna.com for a free App ID and API Key worth 2,000 searches a month.",
           },
           {
             title: "Add the keys",
-            body: "Open Account → Settings → AI Provider, scroll to Discovery & Aggregators, paste your keys, and save. The Search discover button appears in Settings → Sources once the Brave key is present. The Job aggregators card with the Scan with Adzuna button appears once both Adzuna keys are present.",
+            body: "Open Account → Settings → AI Provider, scroll to Discovery & Aggregators, paste your keys, and save. The Search for companies button appears in Settings → Scan sources once the Brave key is present. The Job aggregators card with the Scan with Adzuna button appears once both Adzuna keys are present.",
           },
         ],
       },
@@ -329,9 +350,9 @@ export const helpPages: HelpPage[] = [
   },
   {
     slug: "resume-lanes",
-    title: "Upload resumes and build ATS-friendly PDFs",
+    title: "Your resumes: uploading, building, and getting them read",
     shortTitle: "Resume lanes",
-    description: "Use multiple resume lanes, upload clean PDFs, and understand what ATS compliance actually means.",
+    description: "Keep a separate resume for each kind of role you want, and write them so the software companies use to sort applications can actually read them.",
     category: "Profile",
     readTime: "14 min",
     icon: "file",
@@ -340,21 +361,21 @@ export const helpPages: HelpPage[] = [
       alt: "Profile setup screen with resume and profile extraction sections",
     },
     highlights: [
-      "Keep one base resume per career angle.",
-      "Use clean, parseable resumes for ATS-heavy applications.",
-      "PDF is usually a strong default, but always follow the employer's accepted file types.",
+      "Keep one resume for each kind of role you are going after, not one resume for everything.",
+      "Plain layouts get read correctly. Columns, graphics, and text boxes often do not.",
+      "PDF is usually the safest file type — but always send whatever the employer asks for.",
     ],
     sections: [
       {
         id: "lanes",
-        title: "What resume lanes are",
+        title: "What a lane is",
         intro:
-          "A lane is a source resume for a specific career direction. Do not collapse your job search into one universal resume when you are targeting meaningfully different roles.",
+          "A lane is one of your resumes, kept for one kind of role. If you are applying for two genuinely different sorts of job — say, managing a team and doing the work yourself — one resume cannot make a strong case for both. So you keep two, and the app tailors whichever one fits the job in front of it. Two or three lanes is normal. Start with one.",
         bullets: [
-          "Use a Leadership lane for people-management, strategy, and executive-facing roles.",
-          "Use an IC lane for hands-on product, design, engineering, research, or execution-heavy roles.",
-          "Use an Operations or Program lane for delivery, systems, process, enablement, and cross-functional work.",
-          "Use a Domain lane when a market, industry, or specialty needs different evidence.",
+          "A leadership lane, for roles where you manage people, set direction, or answer to executives.",
+          "A hands-on lane, for roles where you do the work yourself — designing, building, researching, shipping.",
+          "An operations or programme lane, for roles about delivery, process, and joining up work across teams.",
+          "An industry lane, when a particular field expects experience you would otherwise bury.",
         ],
       },
       {
@@ -363,7 +384,7 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Open the Resumes tab",
-            body: "Go to Account -> Profile -> Resumes. Each lane has its own upload area.",
+            body: "Go to Account → Profile → Resumes. Each lane has its own upload area.",
           },
           {
             title: "Rename the lane",
@@ -379,7 +400,7 @@ export const helpPages: HelpPage[] = [
 	          },
 	          {
 	            title: "Run extraction",
-	            body: "Go back to Account -> Profile -> Overview and run Extract with AI. Then review the profile tabs before scanning jobs.",
+	            body: "Go back to Account → Profile → Overview and run Extract with AI. Then review the profile tabs before scanning jobs.",
 	          },
 	        ],
 	      },
@@ -391,7 +412,7 @@ export const helpPages: HelpPage[] = [
 	        steps: [
 	          {
 	            title: "Click Create new resume",
-	            body: "Open the Resumes page or go to Account -> Profile -> Resumes. Click the Create new resume button. The app generates a blank resume with starter sections.",
+	            body: "Open the Resumes page or go to Account → Profile → Resumes. Click the Create new resume button. The app generates a blank resume with starter sections.",
 	          },
 	          {
 	            title: "Enter your name and headline",
@@ -429,46 +450,48 @@ export const helpPages: HelpPage[] = [
 	      },
       {
         id: "ats-meaning",
-        title: "What ATS compliant means",
+        title: "Why a plain resume gets further",
         intro:
-          "An applicant tracking system stores, parses, searches, and routes applications for recruiters. ATS-friendly does not mean tricking software. It means your document is easy for both machines and humans to parse.",
+          "Most companies collect applications through software — an applicant tracking system, usually shortened to ATS. Greenhouse, Lever, and Workday are common ones. When you upload a resume, that software tries to read it and pull out your job titles, dates, and skills. If it cannot read your layout, it fills in blanks or garbles them, and a recruiter searching for your skill may never see you. None of this is about tricking the software. It is about not confusing it.",
         bullets: [
-          "Use standard section headings such as Summary, Experience, Education, Skills, Certifications, and Projects.",
-          "Prefer chronological or hybrid structure. Put the most recent experience first.",
-          "Use real text, not screenshots or image-only resumes.",
-          "Avoid important content inside graphics, icons, tables, text boxes, headers, and footers.",
-          "Use a readable font and consistent formatting.",
-          "Mirror important language from the job description when it truthfully matches your experience.",
-          "Keep contact information in normal body text and also fill in required application fields after upload.",
+          "Use the headings people expect: Summary, Experience, Education, Skills, Certifications, Projects.",
+          "Put your most recent job first and work backwards.",
+          "Make sure your resume is real text. If you cannot select a line with your cursor, neither can the software.",
+          "Keep anything that matters out of graphics, icons, tables, text boxes, and page headers and footers. These are where content most often gets lost.",
+          "Use one ordinary font and keep the formatting consistent.",
+          "Where a job posting uses a particular word for something you have genuinely done, use their word. Never claim something you have not done to match a posting.",
+          "Keep your phone and email as ordinary text, and fill in the application form fields too — do not rely on the upload alone.",
         ],
       },
       {
         id: "pdf",
-        title: "Why PDF matters",
+        title: "Which file type to send",
         intro:
-          "PDF is often the best delivery format because it preserves layout and is not casually editable. Many ATS products accept PDF, DOC, and DOCX, but the right file type is always the one the employer requests.",
+          "PDF is usually safest: it looks the same on every computer and nobody can edit it by accident. But the right file type is always the one the employer asked for. If the form says Word, send Word.",
         bullets: [
-          "Use PDF when the application accepts it and your PDF contains selectable text.",
-          "Use DOCX if the employer asks for Word format.",
-          "Do not upload scanned image PDFs. If you cannot select the text, the parser may struggle too.",
-          "Name files professionally, for example Firstname-Lastname-Resume-Product-Leadership.pdf.",
-          "Keep a plain ATS-friendly version even if you also maintain a more visual networking or portfolio resume.",
+          "Send a PDF when the form accepts one — and check you can select the text in it with your cursor first.",
+          "Send a Word file (.docx) when the employer asks for Word.",
+          "Never send a scanned or photographed resume. To software it is a picture, and a picture contains no words it can read.",
+          "Name the file so a stranger knows what it is: Jane-Smith-Resume-Product-Leadership.pdf.",
+          "If you also keep a designed, visual resume for networking, keep a plain version alongside it for applications.",
         ],
       },
       {
         id: "bullet-quality",
-        title: "Write bullets that help scoring and hiring review",
+        title: "Writing bullet points that land",
+        intro:
+          "This matters twice over: a recruiter reads these in about six seconds, and the app scores against them too. Vague bullets score badly and read badly.",
         bullets: [
-          "Start with the action you took.",
-          "Name the system, product, audience, or business problem.",
-          "Include measurable outcomes where you can.",
-          "Connect accomplishments to the requirements in the target posting.",
-          "Remove vague claims that are not supported by evidence.",
+          "Start with what you did. \"Rebuilt the checkout flow\", not \"Was responsible for checkout\".",
+          "Say what it was — the product, the team, the customers, the problem. A stranger should picture it.",
+          "Give a number wherever you honestly can: how much, how many, how much faster.",
+          "Tie your strongest bullets to what the job posting actually asks for.",
+          "Cut anything you could not back up in an interview. Those bullets cost you more than they earn.",
         ],
         callout: {
-          title: "Best practice",
+          title: "Keep your uploaded resume honest",
           body:
-            "Use the base lane as truthful source material. Let the app tailor emphasis and wording for a specific job, then review the generated resume before exporting.",
+            "Your uploaded resume is the source of truth, so everything in it should be true and yours. The app rewrites emphasis and wording for a specific job from that material — it should never be inventing anything. Read every generated resume before you send it, and check that you recognise every claim.",
         },
       },
     ],
@@ -484,7 +507,7 @@ export const helpPages: HelpPage[] = [
     slug: "job-search",
     title: "Search, import, and review jobs",
     shortTitle: "Job search",
-    description: "Use dashboard scans, ATS source management, Adzuna aggregator scanning, manual entry, filters, and saved presets.",
+    description: "How the app finds jobs, how to add ones it missed, and how to keep the list manageable once it fills up.",
     category: "Jobs",
     readTime: "13 min",
     icon: "search",
@@ -493,9 +516,9 @@ export const helpPages: HelpPage[] = [
       alt: "Jobs table with fit scores, filters, and application statuses",
     },
     highlights: [
-      "Scans use saved role, title, and location preferences.",
-      "Adzuna aggregator scanning pulls jobs from its API without a browser — configure in Settings.",
-      "Filters and saved presets keep the table usable as the pipeline grows.",
+      "A scan searches using the job titles and locations you set in your profile. If it finds nothing, that is usually the place to look first.",
+      "Nothing runs on its own unless you switch on automatic scans. You press the button.",
+      "Once you have a few hundred jobs, save a filter you use often so you are not rebuilding it daily.",
     ],
     sections: [
       {
@@ -504,48 +527,50 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Confirm setup",
-            body: "Make sure the Dashboard setup checklist is complete. The scan button is hidden until AI, resume, and preferences are ready.",
+            body: "The Dashboard shows a checklist of what is still missing. The scan button does not appear until you have connected an AI service, uploaded a resume, and said what you are looking for — a scan without those would have nothing to search for and nothing to score against.",
           },
           {
             title: "Start the scan",
-            body: "Click Scan for new jobs from the Dashboard. The app checks all enabled ATS sources and Dice, and also runs Adzuna when its credentials are configured. The dialog updates each source from waiting to scanning and complete.",
+            body: "Press Scan for new jobs on the Dashboard. The app works through the company job pages you have switched on, plus Dice, plus Adzuna if you set it up. A window shows each source moving from waiting to scanning to complete, so you can see what is slow and what failed.",
           },
           {
             title: "Read the scan summary",
-            body: "The Dashboard reports companies scanned, new jobs from all scan lanes, filtered jobs, duplicates, skipped sources, and any source errors.",
+            body: "When it finishes, the Dashboard tells you how many companies it checked, how many new jobs it found, how many it filtered out for not matching your titles, how many it had already seen, and which sources it could not reach. A source that fails is worth noticing — a company that has moved its job page will keep failing until you fix or remove it.",
           },
           {
             title: "Review Fresh matches",
-            body: "Fresh matches is the scan inbox at the top of the Dashboard. It only shows newly discovered scan results inside your selected freshness window. Manually added jobs and anything already applied to or rejected stay out.",
+            body: "Fresh matches sits at the top of the Dashboard and holds only what this and recent scans turned up, within the time window you chose. Jobs you added by hand stay out of it, as does anything you have already applied to or turned down — it is meant to be the new post, not the whole pile.",
           },
           {
             title: "Choose the freshness window and schedule",
-            body: "Open Account → Settings → Sources and use the Fresh posting window card to select how far back scans accept postings: 24 hours, 72 hours by default, or 7 days. Company career-site, Dice, and Adzuna scans all use that selected window. Optional six-hour automatic scans are enabled separately under Account → Settings → Data & Backup.",
+            body: "Old postings are usually filled. Open Account → Settings → Sources and use the Fresh posting window card to say how far back to accept: 24 hours, 72 hours (the default), or 7 days. Every source obeys it. If you would rather the app scan by itself every six hours, switch that on under Account → Settings → Data & Backup.",
           },
         ],
       },
       {
         id: "sources",
-        title: "Manage job sources",
+        title: "Choosing which companies to watch",
+        intro:
+          "A source is one company\'s job page that the app checks on every scan. You start with around fifty and can add, remove, or switch off any of them. Three Settings tabs cover this, split up because the company list is long enough to bury anything sharing a page with it.",
         bullets: [
-          "Open Account → Settings → Sources.",
-          "Enable or disable existing company sources.",
-          "Set the Fresh posting window (24 hours, 72 hours by default, or 7 days) to control how old a posting can be before scans skip it as stale.",
-          "Add a supported career page (Ashby, Greenhouse, or Lever) when you want the scanner to watch a new company.",
+          "Settings → Sources holds the fresh posting window, adding a company by hand, and job aggregators. Settings → Scan sources holds the company list itself and the two buttons that look for more. Settings → Cleanup is where you clear out ones that no longer work.",
+          "Open Account → Settings → Scan sources to enable or disable existing company sources.",
+          "Set the Fresh posting window (24 hours, 72 hours by default, or 7 days) under Settings → Sources to control how old a posting can be before scans skip it as stale.",
+          "Add a supported career page (Ashby, Greenhouse, or Lever) under Settings → Sources when you want the scanner to watch a new company.",
           "Use title include filters for roles you want and exclude filters for titles you never want.",
-          "Disable noisy or failing sources instead of deleting useful search criteria.",
-          "Click Validate sources to check which career portals are still live — each row shows a live job count, Dead, or Unknown badge.",
-          "Use Scan for new sources to discover new Ashby, Greenhouse, and Lever companies via Common Crawl.",
-          "Use Search discover (requires Brave Search API key in AI Provider settings) to find new companies from live web search results instead of the crawl archive.",
-          "Review discovered sources and explicitly select the validated companies you want to add. Discovery never enables every result automatically.",
-          "Use Cleanup review for disabled or malformed user-added sources. The app never removes an existing source automatically.",
+          "When a company floods you with irrelevant roles, switch it off rather than deleting it. Switching off is reversible; deleting loses the setup.",
+          "Press Validate sources to check which company pages still work. Each row then shows how many jobs it found, or Dead if the page has gone, or Unknown if it could not tell.",
+          "Crawl for companies searches a large public archive of the web for company job pages the app can read.",
+          "Search for companies does the same against live web search instead, so it catches newer companies. It needs a Brave Search key, added under Settings → AI Provider.",
+          "Both buttons only ever produce a list of suggestions. You choose which ones to keep — neither switches a company on by itself.",
+          "Settings → Cleanup lists companies you added that are now switched off or whose address no longer works. Remove them one at a time, or press Remove all and confirm. The app never removes a source on its own.",
         ],
       },
       {
         id: "manual",
         title: "Add a job manually",
         intro:
-          "Manual jobs are useful for referrals, recruiter emails, LinkedIn roles, niche job boards, or positions found outside supported ATS sources.",
+          "Plenty of good jobs never turn up in a scan — a friend forwards one, a recruiter emails, or it sits on a job board the app cannot read. Add those by hand and they behave exactly like scanned jobs from then on.",
         steps: [
           {
             title: "Open Jobs",
@@ -553,11 +578,11 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Click Add Job",
-            body: "Paste the employer, title, posting URL, location, and full job description. More posting detail produces better AI evaluation.",
+            body: "Fill in the company, the job title, the link to the posting, the location, and the full job description. Paste the whole description, not a summary — the app scores you against the words in it, so a thin description produces a thin score.",
           },
           {
             title: "Evaluate normally",
-            body: "Manual jobs can be scored, tailored, researched, moved through the application funnel, skipped, archived, and restored just like scanned jobs.",
+            body: "From here it is an ordinary job. You can score it, generate a tailored resume, research the company, track it, skip it, or archive it, exactly as with anything a scan found.",
           },
         ],
       },
@@ -565,13 +590,13 @@ export const helpPages: HelpPage[] = [
         id: "email-alerts",
         title: "Import job alert emails",
         intro:
-          "Drop exported job-alert emails into the local import folder when good leads arrive by email instead of a supported scanner.",
+          "Job boards send alert emails full of postings. Rather than copying each one out by hand, save the email as a file and drop it into a folder the app watches.",
         bullets: [
-          "Place `.eml`, `.html`, or `.txt` files in `data/email-job-alert-imports/` while the app is running.",
-          "The app queues extracted candidates for approval instead of adding them automatically.",
-          "Unchecked candidates stay pending until you add or dismiss them.",
-          "Open an email lead and use Resolve posting when you want to search on demand or paste the real posting URL.",
-          "Email import never connects to your mailbox and never runs search during import.",
+          "Save the email from your mail program, then put the file into the `data/email-job-alert-imports/` folder inside the app\'s folder while the app is running. It accepts `.eml`, `.html`, and `.txt` files.",
+          "The app reads the file and lists what it found, but adds nothing yet. You approve each one, or dismiss it.",
+          "Anything you do not act on stays waiting. Nothing is added behind your back.",
+          "Alert emails often link back to the job board rather than the employer. Open the job and press Resolve posting to go looking for the real posting.",
+          "The app never connects to your mailbox. It only reads files you put in that folder yourself.",
         ],
       },
       {
@@ -581,7 +606,7 @@ export const helpPages: HelpPage[] = [
           "Adzuna is a job aggregator that indexes listings from many sources. Unlike browser-board scanning, it requires no browser or active session — the app queries its API directly from Settings.",
         steps: [
           {
-            title: "Get free credentials",
+            title: "Get the free keys",
             body: "Register at developer.adzuna.com for a free App ID and API Key. The free tier covers 2,000 queries per month, which is more than enough for regular scanning.",
           },
           {
@@ -620,7 +645,7 @@ export const helpPages: HelpPage[] = [
     slug: "linkedin-scanner",
     title: "Browser job board scanner guide",
     shortTitle: "Job board scanner",
-    description: "Set up Claude or Codex Chrome scanning, understand browser-board imports, review duplicates, and avoid unsafe actions.",
+    description: "Get jobs out of LinkedIn, Indeed, and similar sites, which the app cannot read on its own. Needs a separate AI assistant that can drive your browser.",
     category: "Jobs",
     readTime: "16 min",
     icon: "globe",
@@ -629,32 +654,34 @@ export const helpPages: HelpPage[] = [
       alt: "Jobs table showing imported job records and filterable source data",
     },
     highlights: [
-      "Claude Desktop or Codex browses supported boards in Chrome and writes a local import file.",
-      "Job Search Terminal imports the file and marks possible duplicates.",
-      "The scanner reads only postings. It must never click Apply or message anyone.",
+      "This is the one part of the app that needs another program: an AI assistant that can use your browser.",
+      "The assistant reads job postings and saves them to a file. Job Search Terminal picks that file up on its own.",
+      "It only ever reads. It must never press Apply or message anyone, and you should stop it if it tries.",
     ],
     sections: [
       {
         id: "requirements",
-        title: "What you need",
+        title: "What you need first",
+        intro:
+          "Sites like LinkedIn do not let other programs read their listings, so the app cannot scan them the way it scans company job pages. The way round it is to have an AI assistant look at the pages in your own browser, as if you were reading them yourself, and write down what it sees.",
         bullets: [
-          "Claude Desktop with Claude in Chrome, or Codex with the Codex Chrome Extension.",
-          "LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster open in Chrome if the board requires an active session.",
-          "Job Search Terminal running locally or available to the agent.",
-          "Target roles, preferred locations, work modes, and title filters saved in Job Search Terminal.",
+          "Claude Desktop with the Claude in Chrome extension, or Codex with its Chrome extension. Either one works; these are separate programs you install yourself.",
+          "You already signed in to the job site in Chrome. The assistant uses your existing session and must never log in for you.",
+          "Job Search Terminal running, and the assistant pointed at the app\'s folder so it can read the instructions kept there.",
+          "Your job titles, locations, work preferences, and title filters filled in — the assistant reads its search terms from those rather than asking you.",
         ],
       },
       {
         id: "criteria",
-        title: "How search criteria are chosen",
+        title: "What it searches for",
         intro:
-          "The agent reads the criteria from your saved profile and settings. You do not need to retype them for every scan.",
+          "You do not type search terms. The assistant reads them out of your profile, which means a scan is only as good as what you put there.",
         bullets: [
-          "Target roles determine the job-title searches.",
-          "Preferred locations and work modes narrow where Claude searches.",
-          "Positive title filters help keep relevant roles.",
-          "Negative title filters skip titles you do not want.",
-          "Jobs posted in the last seven days are prioritized by the scanner workflow.",
+          "Your target job titles become the searches it runs.",
+          "Your locations and remote preferences decide where it looks.",
+          "Words you marked as wanted keep matching roles in.",
+          "Words you marked as unwanted throw matching roles out before you ever see them.",
+          "It favours jobs posted in the last seven days, because older ones are usually gone.",
         ],
       },
       {
@@ -663,15 +690,15 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Open Claude or Codex",
-            body: "Make sure the agent is using this project folder so it can read the project instructions.",
+            body: "Start the assistant and point it at the Job Search Terminal folder. The instructions it needs — which sites, what to collect, what it must never do — are kept in a file there.",
           },
           {
             title: "Start with a simple prompt",
-            body: "Ask the agent to scan LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, or Monster for jobs matching your saved criteria.",
+            body: "Ask it in plain words: \"scan LinkedIn for jobs matching my saved criteria\". It supports LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster.",
           },
           {
             title: "Confirm before browsing",
-            body: "The agent should summarize the saved criteria before it starts browsing a session-dependent board.",
+            body: "Before it starts, it should tell you what it is about to search for. Read that back — if the titles or locations look wrong, fix your profile rather than letting it run.",
           },
           {
             title: "Let it browse the results",
@@ -705,7 +732,7 @@ export const helpPages: HelpPage[] = [
         id: "duplicates",
         title: "Duplicates and imported jobs",
         bullets: [
-          "Browser-board jobs enter the pipeline with status Found and recommendation Needs review.",
+          "Imported jobs arrive marked Found and Needs review, the same as anything a scan turned up. Nothing is scored until you ask for it.",
           "LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster badges identify imported jobs in the Jobs table.",
           "A Duplicate badge appears when the original posting key, URL, or company plus title and location matches an existing record.",
           "Duplicate jobs are not silently dropped; they stay visible so you can review them.",
@@ -736,7 +763,7 @@ export const helpPages: HelpPage[] = [
     slug: "evaluate-tailor",
     title: "Evaluate jobs, tailor resumes, and draft answers",
     shortTitle: "Evaluate and tailor",
-    description: "Use fit scoring, gap analysis, tailored resume generation, PDF export, and answer drafting.",
+    description: "Find out how well a job actually fits you, then get a resume and application answers written for that one posting.",
     category: "Apply",
     readTime: "13 min",
     icon: "bot",
@@ -745,10 +772,10 @@ export const helpPages: HelpPage[] = [
       alt: "Tailored resume generation screen with keyword coverage and document actions",
     },
     highlights: [
-      "Evaluation explains fit, concerns, gaps, red flags, and recommendation.",
-      "Tailoring starts from the best matching resume lane.",
-      "Gap answers need concrete evidence before they influence a resume.",
-      "Generated answers are for copy-paste; the app never submits them.",
+      "Scoring tells you how well you fit, what is missing, what looks off about the posting, and whether to bother.",
+      "The score is an opinion, not a verdict. You can overrule it, and sometimes you should.",
+      "A tailored resume rearranges and rewords what is already in your uploaded resume. It should never add anything new.",
+      "Everything the app writes is for you to copy and paste. It never sends or submits a thing.",
     ],
     sections: [
       {
@@ -761,15 +788,15 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Review the overview",
-            body: "Check company, title, location, source, posting freshness, current score, recommendation, salary notes, requirements, gaps, and red flags.",
+            body: "The top of the page collects what is known so far: the company and title, where the job came from, how old the posting is, pay if it was stated, what the role requires, and — once you have scored it — how well you match and anything that looked off.",
           },
           {
             title: "Run AI analysis",
-            body: "Open the Analysis tab and run evaluation. The app streams the reasoning so you can see how the recommendation is produced.",
+            body: "Open the Analysis tab and press the button to score the job. The reasoning appears as it is written rather than all at once at the end, so you can follow how it reached its answer instead of being handed a number to trust.",
           },
           {
             title: "Correct the AI if needed",
-            body: "Override the score or recommendation when your judgment, private context, or networking information is better than the model's read.",
+            body: "You can change the score and the recommendation yourself. Do it whenever you know something the app does not — you have met the hiring manager, you know the team, the posting is misleading. Your judgement outranks it.",
           },
           {
             title: "Address gaps with evidence",
@@ -840,16 +867,16 @@ export const helpPages: HelpPage[] = [
     slug: "applications",
     title: "Track applications and follow-ups",
     shortTitle: "Applications",
-    description: "Use statuses, the table, the kanban board, follow-up dates, and archive behavior.",
+    description: "Keep track of where every application stands, so nothing you sent quietly disappears.",
     category: "Track",
     readTime: "9 min",
     icon: "applications",
     image: {
       src: "/images/job-search-terminal/job-search-terminal-applications-kanban.png",
-      alt: "Applications kanban board showing jobs by status",
+      alt: "Applications board showing jobs grouped by status",
     },
     highlights: [
-      "Statuses turn a list of jobs into an application funnel.",
+      "A status is what turns a pile of jobs into something you can actually work through.",
       "Follow-up dates drive the action queue.",
       "Archive is reversible; delete is final.",
     ],
@@ -870,25 +897,25 @@ export const helpPages: HelpPage[] = [
         id: "applications-page",
         title: "Use the Applications page",
         bullets: [
-          "Table view is best for sorting, filtering, and reviewing applied dates.",
-          "Kanban view is best for understanding funnel shape.",
-          "Overdue indicators show when follow-up dates have passed.",
-          "Saved filters help you reuse recurring views.",
+          "The table view is for working: sorting, filtering, and checking when you applied to what.",
+          "The board view lays out the same jobs in columns by status. It is for stepping back — you can see at a glance whether you are applying plenty but hearing nothing, or the reverse.",
+          "Anything whose follow-up date has passed is marked overdue, so a chase you meant to do does not quietly disappear.",
+          "If you keep building the same filter, save it and pick it from the list next time.",
         ],
       },
       {
         id: "dashboard-queue",
         title: "Keep the Dashboard useful",
         intro:
-          "Use Fresh matches for newly discovered scan results, Apply next for evaluated priority roles, and In flight for submitted applications. Accurate statuses and follow-up dates keep each list focused on the next action.",
+          "The Dashboard has three lists, and each answers a different question. Fresh matches is what just came in. Apply next is what you have scored and should act on. In flight is what you are waiting to hear back about. They stay useful only if you keep statuses and follow-up dates honest — a job left at the wrong status quietly stops appearing where you need it.",
       },
       {
         id: "archive-delete",
         title: "Archive vs delete",
         bullets: [
-          "Archive or skip when the role should leave the active pipeline but may need to be referenced later.",
-          "Restore from Archived if the opportunity becomes relevant again.",
-          "Delete only when you are sure you do not need the job, notes, generated documents, or activity history.",
+          "Archive or skip a job to get it out of your way while keeping it. This is what you want almost every time.",
+          "Anything archived can be brought back from the Archived page if the role reopens or a contact resurfaces.",
+          "Delete removes the job and everything attached to it — your notes, the resumes you generated for it, and its history. It cannot be undone, so use it only for genuine mistakes and duplicates.",
         ],
       },
     ],
@@ -898,7 +925,7 @@ export const helpPages: HelpPage[] = [
     slug: "interview-prep",
     title: "Prepare for interviews",
     shortTitle: "Interview prep",
-    description: "Build a STAR story bank, practice voice answers, and connect evidence to target roles.",
+    description: "Collect the handful of stories you will retell in every interview, and practise saying them out loud.",
     category: "Prep",
     readTime: "8 min",
     icon: "message",
@@ -907,15 +934,17 @@ export const helpPages: HelpPage[] = [
       alt: "Interview preparation screen with story bank and voice practice tools",
     },
     highlights: [
-      "Stories should be specific, evidence-backed, and reusable.",
-      "Custom questions and standalone stories can both become structured STAR stories.",
-      "AI-structured drafts are reviewed before they are saved.",
-      "Tags, position assignments, filters, and source labels help retrieve the right example quickly.",
+      "Most interview questions are answered from the same six or eight stories. Get those right and you are prepared for most of what comes.",
+      "A story works only if it is specific and actually yours. Detail is what makes it convincing.",
+      "The app can shape a rough story into a clearer one, but nothing is saved until you have read it.",
+      "Tag your stories so you can find the right one under pressure rather than hunting for it.",
     ],
     sections: [
       {
         id: "star",
-        title: "Build STAR stories",
+        title: "Build your stories",
+        intro:
+          "STAR is a way of structuring an answer so it lands. Interviewers are trained on it, so an answer shaped this way is easy for them to follow and score. Five parts:",
         bullets: [
           "Situation: what was happening and why it mattered.",
           "Task: what you owned or were expected to change.",
@@ -930,7 +959,7 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Choose or add a question",
-            body: "Use the Practice tab to pick one of the default prompts or open the add-question modal for a reusable custom prompt.",
+            body: "Open the Practice tab and pick one of the questions already there, or press to add your own — a question a company actually asked you, or one you know is coming. Your own questions are kept for next time.",
           },
           {
             title: "Type or record",
@@ -978,19 +1007,19 @@ export const helpPages: HelpPage[] = [
     slug: "privacy-data",
     title: "Privacy, local data, and safety rules",
     shortTitle: "Privacy and data",
-    description: "Understand what stays local, what can leave the machine, backups, exports, and safety boundaries.",
+    description: "What stays on your computer, the few things that leave it and why, how to back everything up, and what the app will never do on your behalf.",
     category: "Reference",
     readTime: "10 min",
     icon: "lock",
     highlights: [
-      "The app is local-first and has no hosted account system.",
-      "AI requests go to the provider you configure.",
-      "Submitting applications and sending messages always stays manual.",
+      "Your resumes, jobs, notes, and application history sit on your own computer. There is no account and no server holding them.",
+      "When you ask for something AI-powered, the relevant text goes to the service you chose. If that matters to you, use Ollama and nothing leaves at all.",
+      "The app never applies for a job, never sends a message, and never fills in a form for you.",
     ],
     sections: [
       {
         id: "local-first",
-        title: "What stays local",
+        title: "What stays on your computer",
         bullets: [
           "Profile data and preferences.",
           "Uploaded resume text and lane metadata.",
@@ -1001,28 +1030,49 @@ export const helpPages: HelpPage[] = [
       },
       {
         id: "what-leaves",
-        title: "What can leave the machine",
+        title: "What leaves your computer, and when",
         intro:
-          "When you run an AI feature, the relevant prompt context is sent to the active provider. That can include job descriptions, resume-derived profile facts, questions, or writing samples needed for the requested task.",
+          "When you ask the app to score a job or write something, it has to send the AI service enough to work with. That usually means the job description and the parts of your resume and profile that are relevant. It sends this at the moment you press the button, and not otherwise — there is no background upload and nothing is stored on their side by the app.",
         bullets: [
-          "If Ollama is your active provider, all AI processing runs locally — nothing is sent to an external service.",
-          "Cloud providers (OpenAI, Anthropic, Gemini) receive prompt context through their APIs. Choose a provider whose terms and data practices you accept.",
-          "Do not run cloud AI features on materials you do not want sent to that provider.",
-          "Rotate cloud API keys if they may have been exposed.",
+          "If Ollama is doing the work, nothing leaves at all — the AI is running on your own machine.",
+          "OpenAI, Anthropic, and Google Gemini receive what is needed for each request. Read the data policy of whichever one you pick; they differ, and they change.",
+          "If a document is genuinely sensitive, do not run a cloud AI feature on it. Use Ollama for that one, or handle it yourself.",
+          "If you think anyone else has seen your key, delete it on the service\'s website and make a new one.",
+          "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends one code identifying a version that is already published on GitHub — nothing about you, your jobs, or your resumes, and nothing you have written yourself.",
         ],
         callout: {
           title: "Fully private with Ollama",
-          body: "When Ollama is first in your provider priority chain and the server is reachable, all AI prompts — including job descriptions, resume content, and application questions — are processed on your own machine. No data leaves your computer for those requests.",
+          body: "Put Ollama at the top of your list in Settings → AI Provider and keep it running, and every AI request — job descriptions, resume content, application answers — is handled on your own computer. Nothing at all leaves the machine.",
+        },
+      },
+      {
+        id: "version-updates",
+        title: "Version and update checks",
+        intro:
+          "The footer on every page shows which version you are running and whether the project has moved on since you last pulled.",
+        bullets: [
+          "The version reads as a number and a short commit code, for example 0.11.0 · b5bcb0d. A star after the code means you have edited files in your copy.",
+          "Click the version number to see what changed in each release.",
+          "Once a day the app asks GitHub whether newer commits exist. The answer is cached on your machine, so pages never wait on the network.",
+          "When you are behind, the footer shows an Update available badge. Open it to see exactly what changed on GitHub.",
+          "To update, open a terminal in your Job Search Terminal folder and run git pull, then npm install, then restart the app.",
+          "To switch the check off entirely, set JST_UPDATE_CHECK=off in the environment you start the app from. The version still shows; only the GitHub call stops.",
+        ],
+        callout: {
+          title: "Why the check exists",
+          body: "Self-hosted copies do not update themselves. Without this you would only learn about a fix by checking GitHub by hand. The check sends no personal data and can be turned off.",
         },
       },
       {
         id: "safety",
-        title: "Safety boundaries",
+        title: "What the app will never do",
+        intro:
+          "These are deliberate limits, not features that have not been built yet. Applying for a job is a decision, and the app does not make decisions for you.",
         bullets: [
-          "The app does not submit applications for you.",
-          "The app does not send emails or LinkedIn messages for you.",
-          "The app does not click Apply during browser-board scanning.",
-          "The app preserves resumes, reports, outputs, and tracked data unless you explicitly delete them.",
+          "It never submits an application. It writes the material; you send it.",
+          "It never emails anyone, and never sends a LinkedIn message.",
+          "When an AI assistant is reading job boards in your browser, it must never press Apply or contact anyone. If you see it try, stop it.",
+          "It never deletes your resumes, documents, or job history on its own. Everything stays until you remove it yourself.",
         ],
       },
       {
@@ -1031,7 +1081,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Open Account → Settings → Data & Backup to create one portable archive before large cleanup, migration work, or moving machines.",
           "A portable backup includes the database, resume files referenced by your resume lanes, generated documents, source configuration, and scanner import history. Other files under assets are always ignored.",
-          "Password protection is optional. Unencrypted archives require a privacy acknowledgment because they contain locally stored provider credentials.",
+          "You can put a password on the backup file. If you choose not to, the app makes you confirm you understand — the file contains your resumes and your saved AI keys in readable form, so anyone who gets the file gets those too.",
           "Backup creation shows a progress dialog while files are packaged locally. Keep the window open until the browser download starts.",
           "Restore validates the archive in a bounded disk staging area, shows a preview, and creates an automatic rollback backup before replacing managed local data. Unrelated files under assets stay untouched.",
           "Use export when you need a readable snapshot outside the database.",
@@ -1039,41 +1089,39 @@ export const helpPages: HelpPage[] = [
         ],
       },
     ],
-    related: ["ai-providers", "linkedin-scanner", "troubleshooting"],
+    related: ["getting-started", "ai-providers", "troubleshooting"],
   },
   {
     slug: "troubleshooting",
     title: "Troubleshooting",
     shortTitle: "Troubleshooting",
-    description: "Fix common setup, AI, resume, PDF, scanner, LinkedIn, and data issues.",
+    description: "The things that most often go wrong, and what to do about each one.",
     category: "Reference",
     readTime: "12 min",
     icon: "briefcase",
     highlights: [
-      "Most issues are setup, provider, source, or browser-state issues.",
-      "Use the connection test before debugging AI features.",
-      "For scanner noise, adjust preferences and title filters first.",
+      "Most problems come down to four things: setup is incomplete, the AI service is not reachable, a company page has moved, or the browser is showing you an old copy of the page.",
+      "When anything AI-related misbehaves, press Test connection first. It answers the question in seconds.",
+      "If scans return junk, fix your job titles and title filters before anything else. That is nearly always the cause.",
     ],
     sections: [
       {
         id: "app-start",
         title: "The app will not start",
         bullets: [
-          "Make sure dependencies have been installed.",
-          "If one port is busy, the development server may choose another local port.",
-          "Restart the server if pages show stale or inconsistent data.",
+          "If you have just downloaded an update, run npm install in a terminal in the app\'s folder before starting it. New versions sometimes need new supporting files.",
+          "The app normally opens at localhost:3000. If something else on your computer is already using that address, the app picks a different one and prints it in the terminal — read the terminal text and use the address it gives you.",
+          "If pages look wrong or show old information, stop the app with Ctrl + C in the terminal and start it again.",
         ],
       },
       {
         id: "ai",
         title: "AI features fail",
         bullets: [
-          "Open Account → Settings → AI Providers.",
-          "For cloud providers (OpenAI, Anthropic, Gemini): confirm a key is saved for that provider.",
-          "For Ollama: confirm the server is running (ollama serve), the base URL is correct, and the selected model is installed (ollama list).",
-          "Run the connection test for the failing provider.",
-          "Check billing, usage limits, and key permissions for cloud providers.",
-          "Review your provider priority chain — the first provider with valid credentials is used. If the one you expect is failing, the next one in the chain takes over automatically.",
+          "Open Account → Settings → AI Provider and press Test connection. Whatever it says is the fastest clue you will get.",
+          "For OpenAI, Anthropic, or Gemini: check the key is still saved, then check the service\'s own website for an unpaid bill or a spending limit you have hit. A key that worked yesterday usually stopped for one of those two reasons.",
+          "For Ollama: check it is actually running, and that the model you picked is still installed. Type ollama list in a terminal to see what you have.",
+          "If you set up more than one service, remember the app works down the list. If the top one is failing, the next one takes over — so features may still work while the service you expected is broken.",
         ],
       },
       {
@@ -1085,7 +1133,7 @@ export const helpPages: HelpPage[] = [
           "If evaluation errors early in a run: the model may still be loading into memory. Wait a few seconds and retry.",
           "If generation is very slow or the server stops responding: the selected model may not fit in available RAM. Try a smaller model.",
           "If you changed the Ollama port: update the base URL in Settings to match, for example http://localhost:11435.",
-          "If the Account health dot is yellow: Ollama is first in the priority chain but unreachable. Check that ollama serve is running.",
+          "A yellow dot next to Account means the service at the top of your list cannot be reached, so the app has fallen back to the next one. If that is Ollama, check it is still running.",
           "If a cloud provider is handling requests when you expected Ollama: Ollama is in the chain but the server is not reachable. The app automatically fell over to the next provider.",
         ],
       },
@@ -1103,7 +1151,7 @@ export const helpPages: HelpPage[] = [
         id: "scan-quality",
         title: "Scans return the wrong jobs",
         bullets: [
-          "Review target roles in Account -> Profile.",
+          "Review target roles in Account → Profile.",
           "Tighten positive and negative title filters.",
           "Review your work arrangement and locations.",
           "Disable noisy sources.",
@@ -1114,7 +1162,7 @@ export const helpPages: HelpPage[] = [
         id: "linkedin",
         title: "Browser-board scanner issues",
         bullets: [
-          "If criteria are empty, save target roles and preferences first.",
+          "If the assistant reports it has nothing to search for, your profile is missing job titles or locations. Fill those in first.",
           "If CAPTCHA or bot detection appears, stop scanning and reduce scope later.",
           "If no import notification appears, open Jobs and check whether imported jobs are already present.",
           "If all jobs are duplicates, the scan likely overlaps a previous scan.",
