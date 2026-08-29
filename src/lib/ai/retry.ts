@@ -167,3 +167,30 @@ export function withDeadline<T>(fn: () => Promise<T>, timeoutMs: number, signal?
     );
   });
 }
+
+/**
+ * Bound a run, and stop the provider chain when it ends.
+ *
+ * `withDeadline` rejects its own promise, but the chain it wrapped keeps running
+ * detached — so a run that timed out carried on walking down to the paid providers
+ * behind the one still going, spending a cloud call on behalf of a user who had
+ * already been told the run failed. The chain is told to stop however the run
+ * ended; a request already in flight cannot be recalled, but the next provider
+ * never starts, which is the part that costs money.
+ *
+ * Aborting on the success path is deliberate and harmless: the chain is built per
+ * call (`getActiveProvider` returns a fresh one), so nothing later reuses it.
+ */
+export async function withChainDeadline<T>(
+  chain: { abortOn?: (signal: AbortSignal) => void },
+  fn: () => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  const runAbort = new AbortController();
+  chain.abortOn?.(runAbort.signal);
+  try {
+    return await withDeadline(fn, timeoutMs);
+  } finally {
+    runAbort.abort();
+  }
+}

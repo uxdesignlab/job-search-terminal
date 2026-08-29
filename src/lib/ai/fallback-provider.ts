@@ -119,21 +119,35 @@ export class FallbackProvider implements AIProvider {
    * Each provider is bounded on its own, so one slow model cannot spend the budget
    * the providers behind it were configured to cover.
    *
-   * A local provider gets a second try when the failure was unusable JSON. Output
-   * quality is non-deterministic — the same model that fenced or mangled one answer
-   * usually produces a clean one next time — and the economics are lopsided: a local
-   * retry costs time the user has already committed, while moving on spends a paid
-   * call. Cloud providers are not retried here; `withRetry` already covers the whole
+   * A local provider gets a second try when the failure was unusable JSON, out of
+   * what remains of its budget. Output quality is non-deterministic — the same model
+   * that fenced or mangled one answer usually produces a clean one next time — and
+   * the economics are lopsided: a local retry costs time the user has already
+   * committed, while moving on spends a paid call. Sharing one budget across both
+   * tries keeps that trade honest: a mangled answer that came back fast leaves room
+   * for another go, while one that took the whole budget has already spent the
+   * provider's turn, and the chain behind it is the better use of what is left.
+   * Cloud providers are not retried here; `withRetry` already covers the whole
    * chain, and retrying a paid call twice in a row is how a rate limit becomes two.
    */
   private async attempt<T>(provider: AIProvider, run: () => Promise<T>): Promise<T> {
     const budget = this.deadlineFor(provider.name);
     const tries = provider.name === "ollama" ? 2 : 1;
+    const startedAt = Date.now();
 
     let lastError: unknown;
     for (let attempt = 1; attempt <= tries; attempt += 1) {
+      // The budget belongs to the provider, not to each attempt: a retry gets what
+      // is left of it. Handing every attempt a fresh full budget let one provider
+      // outlast the whole run's bound — that bound is the sum of the chain's
+      // per-provider budgets, so a local model that failed on malformed JSON near
+      // its own limit could spend a second full budget while the run's deadline
+      // expired mid-retry, and the providers behind it never ran. That is the
+      // exact failure the sum was introduced to prevent.
+      const remaining = budget - (Date.now() - startedAt);
+      if (remaining <= 0) break;
       try {
-        return await withDeadline(run, budget);
+        return await withDeadline(run, remaining);
       } catch (error) {
         lastError = error;
         if (attempt === tries || !isMalformedJsonResponse(error)) throw error;
