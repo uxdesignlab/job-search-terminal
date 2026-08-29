@@ -180,17 +180,30 @@ export function withDeadline<T>(fn: () => Promise<T>, timeoutMs: number, signal?
  *
  * Aborting on the success path is deliberate and harmless: the chain is built per
  * call (`getActiveProvider` returns a fresh one), so nothing later reuses it.
+ *
+ * `signal` is the caller's own cancellation, when it has one. The chain has to stop
+ * for either reason — the user stopped waiting, or the run is over — so the two are
+ * forwarded into one signal rather than the chain being told about only one of them.
+ * The caller's signal is still what bounds `withDeadline`, so cancelling continues to
+ * raise `GenerationCancelledError` and a lapsed deadline `GenerationTimeoutError`:
+ * callers distinguish those, and one is not a failure.
  */
 export async function withChainDeadline<T>(
   chain: { abortOn?: (signal: AbortSignal) => void },
   fn: () => Promise<T>,
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<T> {
   const runAbort = new AbortController();
+  const forward = () => runAbort.abort();
+  if (signal?.aborted) runAbort.abort();
+  else signal?.addEventListener("abort", forward, { once: true });
+
   chain.abortOn?.(runAbort.signal);
   try {
-    return await withDeadline(fn, timeoutMs);
+    return await withDeadline(fn, timeoutMs, signal);
   } finally {
+    signal?.removeEventListener("abort", forward);
     runAbort.abort();
   }
 }

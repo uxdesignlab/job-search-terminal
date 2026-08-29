@@ -100,6 +100,45 @@ describe("a run that ends stops the chain behind it", () => {
     expect(paid.generateJSON).not.toHaveBeenCalled();
   });
 
+  /**
+   * The chain has to stop for either reason — the user stopped waiting, or the run
+   * is over. Evaluation used to tell it about only the first, so a lapsed deadline
+   * still walked on to the paid provider behind the one that had stalled.
+   */
+  it("still forwards the caller's own cancellation to the chain", async () => {
+    const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
+    const { GenerationCancelledError } = await import("@/lib/ai/retry");
+
+    const controller = new AbortController();
+    const local = fakeProvider("ollama", async () => {
+      controller.abort();
+      throw new Error("503 service unavailable");
+    });
+    const paid = fakeProvider("openai", async () => ({ ok: true }));
+    const chain = new FallbackProvider([local, paid] as never, () => 200);
+
+    await expect(
+      withChainDeadline(chain, () => chain.generateJSON([], "{}"), 200, controller.signal)
+    ).rejects.toBeInstanceOf(GenerationCancelledError);
+
+    await sleep(40);
+    expect(paid.generateJSON).not.toHaveBeenCalled();
+  });
+
+  it("does not start a provider when the caller's signal is already aborted", async () => {
+    const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
+
+    const controller = new AbortController();
+    controller.abort();
+    const local = fakeProvider("ollama", async () => ({ ok: true }));
+    const chain = new FallbackProvider([local] as never, () => 200);
+
+    await expect(
+      withChainDeadline(chain, () => chain.generateJSON([], "{}"), 200, controller.signal)
+    ).rejects.toBeTruthy();
+    expect(local.generateJSON).not.toHaveBeenCalled();
+  });
+
   it("leaves a successful run's result alone", async () => {
     const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
 

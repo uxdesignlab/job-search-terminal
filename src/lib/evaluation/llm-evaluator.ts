@@ -1,7 +1,7 @@
 import { getActiveProvider } from "../ai/factory";
 import {
   withRetry,
-  withDeadline,
+  withChainDeadline,
   isMalformedJsonResponse,
   GenerationCancelledError,
   GenerationTimeoutError,
@@ -274,8 +274,9 @@ export async function evaluateJobWithAI(
   };
   // Cancelling has to reach the chain, not just the deadline wrapped around it,
   // or a cancelled run keeps walking down to the paid providers behind the one
-  // that was still going.
-  if (signal) chain.abortOn?.(signal);
+  // that was still going. `withChainDeadline` below owns that wiring, and extends
+  // it to the deadline lapsing — which left the chain walking on to a paid provider
+  // after the run had already been reported as failed.
   chain.observe?.((attempt) => {
     onPhase?.({
       phase: "evaluating",
@@ -288,7 +289,8 @@ export async function evaluateJobWithAI(
 
   let normalized: ReturnType<typeof normalizeModelOutput> | null = null;
   try {
-    const raw = await withDeadline(
+    const raw = await withChainDeadline(
+      chain,
       () => withRetry(() => runFastEvaluation(provider, systemPrompt, userPrompt), 3, 1500, signal),
       deadlineMs,
       signal
