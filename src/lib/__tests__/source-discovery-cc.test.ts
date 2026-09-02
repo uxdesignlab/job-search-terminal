@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ safeFetch: vi.fn() }));
@@ -6,6 +9,7 @@ vi.mock("@/lib/safe-fetch", () => ({ safeFetch: mocks.safeFetch }));
 import {
   computeRetryDelayMs,
   isQueryDegraded,
+  loadLastSourceDiscoveryAt,
   queryCcIndex,
   resolveCcIndexes,
   retryAfterMs,
@@ -14,6 +18,33 @@ import {
   type CcQueryOutcome,
   type DiscoveredEntry,
 } from "@/lib/scanner/source-discovery";
+
+describe("loadLastSourceDiscoveryAt", () => {
+  it("reads the completion time written by a discovery run", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "jst-source-discovery-"));
+    const outputPath = path.join(dir, "discovered-sources.json");
+    try {
+      writeFileSync(outputPath, JSON.stringify({ fetchedAt: "2026-09-02T17:48:32.509Z", entries: [] }));
+      expect(loadLastSourceDiscoveryAt(outputPath)).toBe("2026-09-02T17:48:32.509Z");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not report missing, corrupt, or invalid timestamps", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "jst-source-discovery-"));
+    const outputPath = path.join(dir, "discovered-sources.json");
+    try {
+      expect(loadLastSourceDiscoveryAt(outputPath)).toBeUndefined();
+      writeFileSync(outputPath, "{not json");
+      expect(loadLastSourceDiscoveryAt(outputPath)).toBeUndefined();
+      writeFileSync(outputPath, JSON.stringify({ fetchedAt: "sometime" }));
+      expect(loadLastSourceDiscoveryAt(outputPath)).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 const ok = (body: string) => ({ ok: true, status: 200, text: async () => body });
 const fail = (status: number) => ({

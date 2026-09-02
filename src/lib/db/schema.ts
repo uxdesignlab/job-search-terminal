@@ -1479,9 +1479,8 @@ export const migrations = [
     sql: `
       -- Liveness checks over the whole source list, which previously left no trace at
       -- all: validateAllSources() handed its results to the page and they died on the
-      -- next reload. The Dashboard's "Last source check" therefore had nothing real to
-      -- read and fell back to the newest CareerOps run - the scheduled discovery lane,
-      -- which runs every few hours and so pinned the label to "today" forever.
+      -- next reload. Persist them so the Sources table can restore its Live column and
+      -- report when the full list was last validated.
       --
       -- results_json holds the per-source verdicts from the run so the Sources table can
       -- open showing the last check instead of "Not validated" on every row.

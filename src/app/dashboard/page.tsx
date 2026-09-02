@@ -13,7 +13,6 @@ import {
   getAISettings,
   getGapEvidenceCounts,
   getJobSourceBreakdown,
-  getLastSourceCheckAt,
   getLatestScanRun,
   getFreshMatches,
   getRecentScanYieldRuns,
@@ -24,11 +23,12 @@ import {
   setScanSourceEnabled,
 } from "@/lib/db/queries";
 import { isScanSourceEnabled } from "@/lib/scanner/careerops-scanner";
+import { loadLastSourceDiscoveryAt } from "@/lib/scanner/source-discovery";
 import { detectZeroYieldLanes, SCAN_YIELD_SAMPLE_PER_LANE } from "@/lib/scanner/scan-yield";
 import { cn } from "@/lib/utils";
 import { ApplyNextCard, InFlightCard } from "@/components/action-queue-card";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
-import { LocalDateLabel, LocalDaysAgoLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
+import { LocalDateLabel, LocalRelativeTimeLabel } from "@/components/local-time-label";
 import { hasConfiguredAIProvider } from "@/lib/ai";
 import { getProfileReadiness } from "@/lib/profile/readiness";
 import { laneHasResume } from "@/lib/profile/resume-lane";
@@ -86,7 +86,7 @@ export default function DashboardPage() {
   const activity = getActivity();
   const latestScan = getLatestScanRun();
   const latestScanTime = latestScan?.completedAt ?? latestScan?.startedAt;
-  const lastSourceCheckAt = getLastSourceCheckAt();
+  const lastSourceCheckAt = loadLastSourceDiscoveryAt();
   const zeroYieldLanes = detectZeroYieldLanes(
     getRecentScanYieldRuns(SCAN_YIELD_SAMPLE_PER_LANE),
     SCAN_YIELD_SAMPLE_PER_LANE,
@@ -203,7 +203,7 @@ export default function DashboardPage() {
                       <p className="text-xs text-muted sm:text-right">
                         Last source check:{" "}
                         <span className="font-medium text-ink">
-                          <LocalDaysAgoLabel value={lastSourceCheckAt} />
+                          <LocalRelativeTimeLabel fallback="never" value={lastSourceCheckAt} />
                         </span>
                       </p>
                     </div>

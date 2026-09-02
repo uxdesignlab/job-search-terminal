@@ -74,7 +74,7 @@ and initializes an empty local profile if the database is empty.
 | `0064_outreach_messages` | Adds `outreach_messages` — per-contact, per-channel drafts, cascading from `job_contact_links` |
 | `0065_latest_claude_gemini_models` | Moves installs still holding the app's own old default Claude/Gemini models (`claude-sonnet-4-6`, `gemini-2.5-flash`, `gemini-2.0-flash`) onto the auto-resolving `latest-sonnet` / `latest-flash` sentinels, keeping the same tier. Explicitly pinned models are left alone, and the `ai_settings` column defaults change to the sentinels for fresh installs |
 | `0066_provider_enabled_set` | Adds `ai_settings.provider_enabled_json`, splitting which providers are switched on from the order they are tried in. `provider_order_json` had carried both, so disabling a provider erased its rank and an empty list was indistinguishable from "never configured". Existing rows get an empty string and keep the old meaning until their next save |
-| `0067_source_check_runs` | Adds the `source_check_runs` table. The Dashboard's "Last source check" age had been reading the newest CareerOps scan run, which runs on the scan schedule and so was permanently "today" — and which a single-source scan also writes, letting one board stand in for the whole list. Whole-list validation passes now persist here instead of dying with the page |
+| `0067_source_check_runs` | Adds the `source_check_runs` table so whole-list validation results persist instead of dying with the page and the Sources table can restore its Live column |
 
 ---
 
@@ -469,14 +469,10 @@ History of job scan executions.
 | `errors_json` | Array of `{ company, error, category? }` — `category` is `dead_or_unreachable`, `timeout_or_slow`, or `other` when set (CareerOps / Adzuna); older rows may omit it |
 | `scan_type` | `careerops` plus every board scan type. Current values: `linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`, `adzuna-api-scan`, `email-alert-import`, `dice-mcp-scan`, `himalayas-api-scan`. **Single source of truth:** `BrowserBoardScanType` in `src/lib/scanner/browser-board-sources.ts` — the TypeScript types now derive from that registry rather than restating it, so adding a board only requires editing the registry. Rows written by external agents may carry other values (for example `private-page-scan`). |
 
-The Dashboard's **Last source check** age no longer reads this table. It briefly did —
-`getLastSourceCheckAt()` took the newest `scan_type = 'careerops'` row — on the theory
-that CareerOps is the only lane walking the whole enabled source list. Two things made
-that wrong: CareerOps is the scheduled discovery lane, so it runs every few hours and the
-age was permanently "today"; and a single-source scan (`companyExact`, `persist` defaults
-to `true`) writes a CareerOps row with `companies_scanned = 1`, so checking one board
-claimed the whole list had been checked. Source checks now have their own table
-(`source_check_runs`, below).
+The Dashboard's **Last source check** age does not read this table. Job scans look for
+postings at companies already being watched; the Dashboard's source timestamp instead
+comes from `data/discovered-sources.json`, which is written when **Crawl for companies**
+or **Search for companies** completes.
 
 ### source_check_runs
 
@@ -487,7 +483,7 @@ One row per completed **Settings → Scan sources → Validate sources** pass. A
 |---|---|
 | `id` | Row identifier, `source-check-<uuid>` |
 | `started_at` | ISO timestamp when the pass began |
-| `completed_at` | ISO timestamp when it finished — this is what the Dashboard ages |
+| `completed_at` | ISO timestamp when the full-list validation finished |
 | `sources_checked` | Number of sources in the pass |
 | `valid_count` | Sources answering with parseable JSON |
 | `dead_count` | Sources returning HTTP 404 |

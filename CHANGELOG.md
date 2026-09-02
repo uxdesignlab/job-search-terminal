@@ -15,6 +15,14 @@ the numbers mean and when they change.
 
 ---
 
+## 0.11.1 — 2026-09-02 — Accurate source activity
+
+**Fixed**
+
+- The Dashboard's **Last source check** now shows when **Crawl for companies** or
+  **Search for companies** last finished. Importing sources no longer leaves the
+  misleading impression that the source search never happened.
+
 ## 0.11.0 — 2026-08-29 — Knowing what you are running
 
 **Added**

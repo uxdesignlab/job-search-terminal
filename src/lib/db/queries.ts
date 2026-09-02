@@ -629,7 +629,7 @@ export function getLatestSourceCheckRun(): SourceCheckRunRecord | undefined {
   };
 }
 
-/** Timestamp only — what the Dashboard's "Last source check" line ages. */
+/** Timestamp only for consumers that need the latest full-list validation time. */
 export function getLastSourceCheckAt(): string | undefined {
   return getLatestSourceCheckRun()?.completedAt;
 }

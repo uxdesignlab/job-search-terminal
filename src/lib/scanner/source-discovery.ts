@@ -877,6 +877,24 @@ export function loadDiscoveredEntries(): DiscoveredEntry[] {
   }
 }
 
+/**
+ * Completion time of the latest Crawl for companies or Search for companies run.
+ *
+ * Both discovery paths replace `fetchedAt` only after their output is ready, so
+ * this is the durable source-activity timestamp the Dashboard should report.
+ */
+export function loadLastSourceDiscoveryAt(outputPath = OUTPUT_PATH): string | undefined {
+  if (!existsSync(outputPath)) return undefined;
+  try {
+    const data = JSON.parse(readFileSync(outputPath, "utf-8")) as { fetchedAt?: unknown };
+    return typeof data.fetchedAt === "string" && Number.isFinite(Date.parse(data.fetchedAt))
+      ? data.fetchedAt
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function runSearchDiscovery(
   braveApiKey: string,
   onProgress?: (msg: string) => void,

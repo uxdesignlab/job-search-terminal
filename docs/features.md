@@ -462,20 +462,20 @@ features.
   static **Profile ready** badge, which restated something the rest of the header
   already implied and never changed once setup was done.
 - **Last source check** line in the "This week" card, stacked directly under
-  "Last scan" in a right-aligned column: the age of the last full source check in
-  whole days — "today", "yesterday", "N days ago" (it keeps counting: "100 days
-  ago" reads as 100 days ago) — falling back to "never". It sits with the card's
+  "Last scan" in a right-aligned column: the age of the last completed **Crawl for
+  companies** or **Search for companies** run, using minute/hour/day relative time
+  and falling back to "never". It sits with the card's
   other recency lines rather than on the button, so all three ages ("Last
   application", "Last scan", "Last source check") read as one group. The footer row
   uses `items-start` rather than `items-center`, so "Last application" lines up with
   "Last scan" instead of floating between the two right-hand lines; below `sm` all
   three stack left-aligned.
 
-  The age comes from `getLastSourceCheckAt()`, which returns the newest
-  `source_check_runs` row's `completed_at` — one row per completed **Validate
-  sources** pass. Only that action moves the number, which is what makes it a
-  staleness cue: a source list nobody has validated in three months reads "92 days
-  ago" no matter how many job scans ran in the meantime.
+  The age comes from `loadLastSourceDiscoveryAt()`, which reads `fetchedAt` from
+  `data/discovered-sources.json`. Both discovery paths write that field only after
+  their result is ready, so the widget reports the button activity that actually
+  searches for sources. Importing an already-pending candidate does not invent a
+  newer search time.
 
   An earlier version read the newest **CareerOps** scan run instead, on the theory
   that CareerOps is the only lane walking the whole enabled source list. That was
@@ -2055,12 +2055,10 @@ The Dashboard's **Check sources** button links to `?tab=scan-sources`.
   **Re-validate sources** re-runs the full check.
 
   Each completed pass is **persisted** as a `source_check_runs` row — timestamp,
-  verdict counts, and the per-source results. Two things follow. The Dashboard's
-  **Last source check** age reads that timestamp, so running this is the only thing
-  that resets it. And the **Live** column is pre-filled from the last stored pass on
+  verdict counts, and the per-source results. The **Live** column is pre-filled from the last stored pass on
   the next page load, instead of resetting to "Not validated" on every row; the
-  header line next to the source counts shows **checked <age>** so the Sources page
-  and the Dashboard never disagree about when the list was last verified.
+  header line next to the source counts shows **checked <age>**. This full-list
+  validation history is separate from the Dashboard's discovery timestamp.
 - **Fresh posting window** card: select how far back scans accept postings —
   24 hours, 72 hours (default), or 7 days. Postings older than the window are
   skipped as stale. The selected window applies to company career-site

@@ -563,6 +563,7 @@ export const helpPages: HelpPage[] = [
           "Crawl for companies searches a large public archive of the web for company job pages the app can read.",
           "Search for companies does the same against live web search instead, so it catches newer companies. It needs a Brave Search key, added under Settings → AI Provider.",
           "Both buttons only ever produce a list of suggestions. You choose which ones to keep — neither switches a company on by itself.",
+          "The Dashboard's Last source check shows when either company search last finished. Validate sources is separate: it refreshes the Live column for the full company list.",
           "Settings → Cleanup lists companies you added that are now switched off or whose address no longer works. Remove them one at a time, or press Remove all and confirm. The app never removes a source on its own.",
         ],
       },
