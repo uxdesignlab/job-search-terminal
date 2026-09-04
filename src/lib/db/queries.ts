@@ -14,6 +14,7 @@ import {
   type BrowserBoardScanType,
 } from "../scanner/browser-board-sources";
 import { filterFreshScanMatches } from "../jobs/fresh-match-dedupe";
+import { APPLIED_JOB_STATUSES, type CompanyJobStats } from "../jobs/company-link";
 import { GAP_EVIDENCE_TAG, gapEvidenceId } from "../gaps/evidence-id";
 import { followUpQuestionsFromJson } from "../gaps/gap-answer-assessor";
 import { maskApiKey, resolveMaskedKey } from "../ai/masked-key";
@@ -533,6 +534,27 @@ export function createResumeLane(name: string): string {
 export function getJobById(id: string): JobRecord | undefined {
   const row = getDatabase().prepare("select * from jobs where id = ?").get(id) as JobRow | undefined;
   return row ? mapJob(row) : undefined;
+}
+
+/**
+ * How many active jobs the user tracks at one company, and how many of those they
+ * have applied to. Counted over non-archived jobs only, so the numbers match what
+ * the Jobs list actually shows when it is filtered to that company.
+ */
+export function getCompanyJobStats(company: string): CompanyJobStats {
+  const name = company.trim();
+  if (!name) return { total: 0, applied: 0 };
+  const placeholders = APPLIED_JOB_STATUSES.map(() => "?").join(", ");
+  const row = getDatabase()
+    .prepare(
+      `select
+        count(*) as total,
+        sum(case when status in (${placeholders}) then 1 else 0 end) as applied
+      from jobs
+      where archived = 0 and company = ?`
+    )
+    .get(...APPLIED_JOB_STATUSES, name) as { total: number; applied: number | null };
+  return { total: row?.total ?? 0, applied: row?.applied ?? 0 };
 }
 
 export function getJobByUrl(url: string): JobRecord | undefined {

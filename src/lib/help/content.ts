@@ -635,6 +635,19 @@ export const helpPages: HelpPage[] = [
           "Use Archived when you need to restore skipped or archived roles.",
         ],
       },
+      {
+        id: "company-jobs",
+        title: "See every position at one company",
+        intro:
+          "Open any job and the company name sits under the job title. When the app is tracking more than this one role there, or you have applied there before, the name is a link.",
+        bullets: [
+          "Click it to open Jobs showing every position at that company — all of them, whatever status each one is at.",
+          "A number after the name, like Reddit (2), is how many positions at that company you have already applied to. It counts anything you marked Applied or moved past it, including ones that came back as a rejection.",
+          "The company name is plain text when the app is tracking only this one role there and you have never applied. There would be nothing on the other side of the link.",
+          "While the list is focused on a company, your usual column filters are set aside so nothing is hidden — that is why applications and rejections show up here even though the list normally leaves them out. Press Show all jobs to go back to your own filters.",
+          "Only active jobs are counted and shown. Anything you archived stays on the Archived page.",
+        ],
+      },
     ],
     externalLinks: [
       { label: "Adzuna developer API (free tier)", href: "https://developer.adzuna.com" },

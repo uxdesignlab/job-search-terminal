@@ -18,7 +18,17 @@ import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
 
 export const dynamic = "force-dynamic";
 
-export default async function JobsPage() {
+type Props = {
+  searchParams: Promise<{ company?: string }>;
+};
+
+export default async function JobsPage({ searchParams }: Props) {
+  // `?company=` arrives from a job detail header. It focuses the list on one
+  // company across every position and status, ignoring the saved column filters —
+  // otherwise the default status filter would hide the applications the link is
+  // there to show.
+  const { company: rawCompanyFocus } = await searchParams;
+  const companyFocus = rawCompanyFocus?.trim() || null;
   const profile = getUserProfile();
   const preferenceFilter = buildJobPreferenceFilter(profile);
   const reviewQueueCount = getReviewQueueCount();
@@ -37,6 +47,10 @@ export default async function JobsPage() {
       hasResolvedPosting: hasResolvedPosting(job),
     };
   });
+
+  // The mobile card list has no column filters of its own, so the focus is applied
+  // here rather than inside the desktop table component.
+  const mobileJobs = companyFocus ? jobs.filter((job) => job.company === companyFocus) : jobs;
 
   return (
     <Shell activeItem="Jobs">
@@ -80,7 +94,17 @@ export default async function JobsPage() {
 
         {/* Mobile card view */}
         <div className="grid gap-4 lg:hidden">
-          {jobs.map((job) => (
+          {companyFocus ? (
+            <div className="flex items-center justify-between gap-3 rounded-panel border border-accent/40 bg-accent/8 px-4 py-3 text-sm">
+              <span className="font-medium text-ink">
+                All {companyFocus} positions ({mobileJobs.length})
+              </span>
+              <Link className="text-xs font-medium text-accent hover:underline" href="/jobs">
+                Show all jobs
+              </Link>
+            </div>
+          ) : null}
+          {mobileJobs.map((job) => (
             <div className="rounded-panel border border-border bg-panel p-4" key={job.id}>
               <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
                 {job.title}
@@ -126,7 +150,7 @@ export default async function JobsPage() {
         {/* Desktop table with column filters + batch actions */}
         {jobs.length > 0 ? (
           <div className="hidden lg:block">
-            <BatchEvaluateForm jobs={jobs} />
+            <BatchEvaluateForm companyFocus={companyFocus} jobs={jobs} />
           </div>
         ) : null}
       </div>

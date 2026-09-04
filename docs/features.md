@@ -516,6 +516,18 @@ status, posting maintenance, and bulk tools.
   recommendation, posted date availability, and added date availability.
 - The last sort and filter settings are restored automatically on the next
   visit; named presets are still available for recurring review modes.
+- **Company focus (`/jobs?company=<name>`)** — arriving from a job detail header
+  link (see [Job Detail](#job-detail-jobsid)) focuses the list on one company and
+  shows every position at it in every status. While focused, the saved column
+  filters are deliberately bypassed rather than merged: the default status filter
+  hides `Applied`, `Rejected` and `Skipped`, which are exactly the rows the link
+  exists to surface. A banner names the company and the row count, and
+  **Show all jobs** clears the focus and restores the saved filters via
+  `router.replace("/jobs")`. Opening any column filter menu also clears the focus,
+  since a filter that did nothing would look broken. The focus is never persisted
+  to the saved table state. The mobile card list applies the same filter
+  server-side in `src/app/jobs/page.tsx`; the desktop table receives the full job
+  list plus a `companyFocus` prop.
 - **Preference column** — shows `Match` when a job still fits the current
   profile preferences and constraints, or `Out of scope` when saved preferences
   have changed and the job no longer fits. This is a derived display/filter
@@ -611,6 +623,30 @@ status, posting maintenance, and bulk tools.
 
 Tabbed view for a single job. Five tabs — Overview, Evaluation, Resume, Apply and
 Outreach:
+
+### Header company link
+
+The company name in the page header (`{company} · {location} · {remoteType}`) is a
+link to the Jobs list focused on that company, when there is anything there beyond
+the job already open. The rules live in
+[`src/lib/jobs/company-link.ts`](../src/lib/jobs/company-link.ts) and are driven by
+`getCompanyJobStats(company)`, which counts non-archived `jobs` rows for that exact
+company name:
+
+| Company state | Header renders |
+|---|---|
+| Applied to one or more positions (`applied > 0`) | Link with the applied count — `Reddit (2)` |
+| More than one active position, none applied to (`total > 1`, `applied === 0`) | Link, no count |
+| A single active position, never applied to | Plain text, no link |
+
+`applied` counts the statuses in `APPLIED_JOB_STATUSES` — `Applied`,
+`Follow-up needed`, `Recruiter responded`, `Interviewing`, `Offer`, and `Rejected`.
+Everything after `Applied` can only be reached by having applied, so all of them
+count as an application at that company; `Skipped` and `Archived` do not.
+
+The link is `/jobs?company=<encoded name>`. Counting and matching are exact on
+`jobs.company`, matching the Jobs table's own company filter, and archived jobs are
+excluded so the count always equals what the focused list shows.
 
 ### Overview tab
 - Company, title, location, remote type, ATS source, freshness.

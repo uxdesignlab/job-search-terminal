@@ -15,6 +15,19 @@ the numbers mean and when they change.
 
 ---
 
+## 0.13.0 — 2026-09-03 — Every position at one company
+
+**Added**
+
+- The company name on a job page is now a link to every position the app is
+  tracking at that company, in every status. If you have applied there before, the
+  number of applications is shown after the name — `Reddit (2)`.
+- The Jobs list can be focused on a single company. While it is, your saved column
+  filters are set aside so applications and rejections are visible instead of
+  hidden. **Show all jobs** puts your own filters back.
+- The company name stays plain text when the app is tracking only that one role
+  there and you have never applied — there would be nothing to open.
+
 ## 0.12.0 — 2026-09-03 — A useful outreach shortlist
 
 **Added**

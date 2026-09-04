@@ -75,6 +75,13 @@ function fmtPostedCell(iso: string | null | undefined): string {
 
 export type BatchEvaluateFormProps = {
   jobs: MainJobTableRecord[];
+  /**
+   * Company name from `/jobs?company=`, set by the company link on a job detail
+   * page. While it is set the table shows every position and status at that
+   * company and the saved column filters are set aside — a status filter that hid
+   * the user's own applications would defeat the point of the link.
+   */
+  companyFocus?: string | null;
 };
 
 const COL_DEFS: Array<{ col: SortCol; label: string }> = [
@@ -90,8 +97,9 @@ const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "source", label: "Source" },
 ];
 
-export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
+export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFormProps) {
   const router = useRouter();
+  const [activeCompanyFocus, setActiveCompanyFocus] = useState<string | null>(companyFocus);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [jobStatus, setJobStatus] = useState<Record<string, JobRowStatus>>({});
   const [running, setRunning] = useState(false);
@@ -151,24 +159,31 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
     setDuplicateGroupFilter(null);
   }, [clearAllFilters]);
 
+  // Column filters are ignored while a company focus is on, so touching one has to
+  // drop the focus — otherwise the filter would silently do nothing.
+  const handleFilterWithFocus = useCallback(
+    (col: SortCol, values: Set<string> | undefined) => {
+      setActiveCompanyFocus((current) => {
+        if (current) router.replace("/jobs");
+        return null;
+      });
+      handleFilter(col, values);
+    },
+    [handleFilter, router],
+  );
+
   const handleApplySortAndFilters = useCallback((snapshot: DataTableSortFilterSnapshot<SortCol>) => {
     applySortAndFilters(snapshot);
     setDuplicateGroupFilter(null);
   }, [applySortAndFilters]);
 
-  const displayJobs = useMemo(() => {
-    let result = jobs;
-    for (const [col, allowed] of Object.entries(filters) as [SortCol, Set<string>][]) {
-      if (!allowed) continue;
-      result = result.filter((j) => matchesMainJobColFilter(j, col, allowed));
-    }
-    if (duplicateGroupFilter) {
-      const { company, title } = duplicateGroupFilter;
-      result = result.filter(
-        (j) => j.company.toLowerCase() === company.toLowerCase() && j.title.toLowerCase() === title.toLowerCase(),
-      );
-    }
-    return [...result].sort((a, b) => {
+  const clearCompanyFocus = useCallback(() => {
+    setActiveCompanyFocus(null);
+    router.replace("/jobs");
+  }, [router]);
+
+  const compareJobs = useCallback(
+    (a: MainJobTableRecord, b: MainJobTableRecord) => {
       let cmp = 0;
       switch (sort.col) {
         case "title": cmp = a.title.localeCompare(b.title); break;
@@ -184,8 +199,27 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
         case "duplicate": cmp = (a.isDuplicate ? 1 : 0) - (b.isDuplicate ? 1 : 0); break;
       }
       return sort.dir === "asc" ? cmp : -cmp;
-    });
-  }, [jobs, sort, filters, duplicateGroupFilter]);
+    },
+    [sort],
+  );
+
+  const displayJobs = useMemo(() => {
+    let result = jobs;
+    if (activeCompanyFocus) {
+      return [...result.filter((j) => j.company === activeCompanyFocus)].sort(compareJobs);
+    }
+    for (const [col, allowed] of Object.entries(filters) as [SortCol, Set<string>][]) {
+      if (!allowed) continue;
+      result = result.filter((j) => matchesMainJobColFilter(j, col, allowed));
+    }
+    if (duplicateGroupFilter) {
+      const { company, title } = duplicateGroupFilter;
+      result = result.filter(
+        (j) => j.company.toLowerCase() === company.toLowerCase() && j.title.toLowerCase() === title.toLowerCase(),
+      );
+    }
+    return [...result].sort(compareJobs);
+  }, [jobs, activeCompanyFocus, compareJobs, filters, duplicateGroupFilter]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -308,7 +342,24 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
 
     <div className="relative">
       <Card>
-        {(activeFilterCount > 0 ||
+        {activeCompanyFocus ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-panel border border-accent/40 bg-accent/8 px-4 py-2.5 text-sm">
+            <span className="font-medium text-ink">
+              All {activeCompanyFocus} positions — {displayJobs.length} job
+              {displayJobs.length !== 1 ? "s" : ""}, every status
+            </span>
+            <button
+              className="text-xs font-medium text-accent hover:underline"
+              onClick={clearCompanyFocus}
+              type="button"
+            >
+              Show all jobs
+            </button>
+          </div>
+        ) : null}
+
+        {!activeCompanyFocus &&
+          (activeFilterCount > 0 ||
           (savedFiltersState.ready && savedFiltersState.items.length > 0)) && (
           <DataTableActiveFiltersSummary
             entityLabel="jobs"
@@ -523,7 +574,7 @@ export function BatchEvaluateForm({ jobs }: BatchEvaluateFormProps) {
           pos={filterPos}
           onSortAsc={() => handleSort(openFilterCol, "asc")}
           onSortDesc={() => handleSort(openFilterCol, "desc")}
-          onFilter={(vals) => handleFilter(openFilterCol, vals)}
+          onFilter={(vals) => handleFilterWithFocus(openFilterCol, vals)}
           onClose={() => setOpenFilterCol(null)}
         />
       )}

@@ -1367,6 +1367,30 @@ beneath it is worse than no count.
 
 ---
 
+## Derived Types — Company Job Stats
+
+Defined in `src/lib/jobs/company-link.ts`. No schema change — these are read models
+over the existing `jobs` table, used by the company link in the job detail header.
+
+| Type / value | Shape | Purpose |
+|---|---|---|
+| `APPLIED_JOB_STATUSES` | `ApplicationStatus[]` | `Applied`, `Follow-up needed`, `Recruiter responded`, `Interviewing`, `Offer`, `Rejected` — every status only reachable by having submitted an application |
+| `isAppliedStatus(status)` | `boolean` | Set membership test for the above |
+| `CompanyJobStats` | `{ total, applied }` | Non-archived `jobs` rows at one company, and how many of those were applied to |
+| `CompanyLink` | `{ href, appliedCount }` | What the header renders — `appliedCount > 0` shows as `(n)` after the name |
+| `companyJobsHref(company)` | `string` | `/jobs?company=<encoded name>` |
+| `companyLinkFor(company, stats)` | `CompanyLink \| null` | `null` when the name is blank, or when `applied === 0 && total < 2` — a link with nothing on the other side |
+
+`getCompanyJobStats(company)` in `src/lib/db/queries.ts` produces the stats with a
+single count query filtered on `archived = 0` and an exact `company` match, so the
+count always equals the row count of the focused Jobs list. Archived jobs are
+deliberately excluded — they live on `/archived`, which the link does not reach.
+
+`Rejected` counts as applied because a rejection can only follow a submission;
+`Skipped` and `Archived` do not, because they are ways of dropping a role.
+
+---
+
 ## Notes on Schema Values
 
 **`generated_documents.document_type`:** Accepts `'resume'` or `'cover_letter'`.

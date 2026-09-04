@@ -18,6 +18,7 @@ import {
   getEmailImportEvidence,
   getGeneratedDocumentById,
   getCompanyContactMetadata,
+  getCompanyJobStats,
   getJobById,
   getResolvedJobGapResponses,
   getResumes,
@@ -36,6 +37,7 @@ import {
   getOutreachMessagesForJob,
 } from "@/lib/db/queries";
 import { resolveCompanyIdentifier } from "@/lib/contacts/company-domain";
+import { companyLinkFor } from "@/lib/jobs/company-link";
 import {
   reportsToTitleFromDescription,
   titleKeywordsForPeopleSearch,
@@ -99,6 +101,9 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const peopleSearchReportsToTitle = reportsToTitleFromDescription(
     job.rawDescription || job.parsedDescription,
   );
+  // The company name in the header links to the Jobs list focused on that company,
+  // but only when there is more there than the job already open (§ company-link).
+  const companyLink = companyLinkFor(job.company, getCompanyJobStats(job.company));
   const outreachDrafts = getOutreachDrafts(id);
   const outreachMessages = getOutreachMessagesForJob(id);
   const stage = {
@@ -312,7 +317,25 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
           <div className="min-w-0">
             <p className="text-xs text-muted">Job detail</p>
             <h1 className="text-xl font-semibold text-ink">{job.title}</h1>
-            <p className="mt-0.5 text-sm text-muted">{job.company} · {job.location} · {job.remoteType}</p>
+            <p className="mt-0.5 text-sm text-muted">
+              {companyLink ? (
+                <Link
+                  className="font-medium text-accent hover:underline"
+                  href={companyLink.href}
+                  title={
+                    companyLink.appliedCount > 0
+                      ? `See all ${job.company} positions — you have applied to ${companyLink.appliedCount}`
+                      : `See all ${job.company} positions`
+                  }
+                >
+                  {job.company}
+                  {companyLink.appliedCount > 0 ? ` (${companyLink.appliedCount})` : ""}
+                </Link>
+              ) : (
+                job.company
+              )}{" "}
+              · {job.location} · {job.remoteType}
+            </p>
           </div>
 
           {/* Header actions — evaluate, liveness, posting link */}
