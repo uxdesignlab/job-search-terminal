@@ -11,6 +11,8 @@ const OUTREACH_ERRORS: Record<string, string> = {
   "missing-job": "That job could not be found.",
   suppressed: "You previously chose to forget this person. Clear the forgotten list in Settings before adding them again.",
   "needs-company": "This company has no saved domain, and the job link points at a job board rather than the employer. Add the company's domain before searching so results come from the right organisation.",
+  "invalid-company-identifier": "Use the employer's own website, domain, or LinkedIn company page. Job-board links cannot identify the hiring company.",
+  "missing-role-keywords": "Add at least one role keyword before searching for people.",
   // §63: each provider failure needs a different response from the user, so each
   // gets its own message rather than a single "Clay error".
   "clay-not_connected": "Connect Clay in Settings → Integrations before searching for people.",
@@ -29,20 +31,30 @@ const OUTREACH_ERRORS: Record<string, string> = {
 
 type Props = {
   clayConnected: boolean;
+  companyIdentifier: string;
+  companyName: string;
   contacts: JobContact[];
   id: string;
+  jobTitle: string;
   outreachDrafts: OutreachDraftRecord[];
   outreachError: string | undefined;
   outreachMessages: Map<string, OutreachMessageRecord[]>;
+  reportsToTitle: string;
+  roleKeywords: string[];
 };
 
 export function OutreachTab({
   clayConnected,
+  companyIdentifier,
+  companyName,
   contacts,
   id,
+  jobTitle,
   outreachDrafts,
   outreachError,
   outreachMessages,
+  reportsToTitle,
+  roleKeywords,
 }: Props) {
   return (
     <div className="grid gap-8">
@@ -52,7 +64,17 @@ export function OutreachTab({
         </p>
       ) : null}
 
-      <ContactsPanel clayConnected={clayConnected} contacts={contacts} jobId={id} messagesByLink={outreachMessages} />
+      <ContactsPanel
+        clayConnected={clayConnected}
+        companyIdentifier={companyIdentifier}
+        companyName={companyName}
+        contacts={contacts}
+        jobId={id}
+        jobTitle={jobTitle}
+        messagesByLink={outreachMessages}
+        reportsToTitle={reportsToTitle}
+        roleKeywords={roleKeywords}
+      />
 
       {outreachDrafts.length > 0 && (
         <section>

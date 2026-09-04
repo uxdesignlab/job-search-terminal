@@ -21,9 +21,22 @@ import {
 } from "@/lib/db/queries";
 import { rankContact } from "@/lib/contacts/ranking";
 import { generateAndSavePersonOutreach } from "@/lib/outreach/person-outreach";
-import { resolveCompanyIdentifier } from "@/lib/contacts/company-domain";
+import { OutreachFramingError } from "@/lib/outreach/framing";
+import {
+  isLinkedInCompanyIdentifier,
+  normalizeCompanyIdentifier,
+  resolveCompanyIdentifier,
+} from "@/lib/contacts/company-domain";
+import {
+  buildPeopleSearchPlan,
+  candidateFitsSearchLane,
+  parsePeopleSearchKeywords,
+  reportsToTitleFromDescription,
+} from "@/lib/contacts/search-details";
 import { ContactProviderError } from "@/lib/contacts/provider";
-import { ClayProvider, DEFAULT_PEOPLE_LIMIT, hasEnrichmentRoutine, isAutoEnrichEnabled } from "@/lib/integrations/clay/provider";
+import type { ContactCandidate } from "@/lib/contacts/provider";
+import { identityKeys } from "@/lib/contacts/identity";
+import { ClayProvider, hasEnrichmentRoutine, isAutoEnrichEnabled } from "@/lib/integrations/clay/provider";
 import type { ContactRecord, OutreachChannel } from "@/lib/db/types";
 import type { ContactRole, ContactStatus } from "@/lib/db/types";
 
@@ -119,16 +132,28 @@ export async function forgetContactAction(jobId: string, contactIdValue: string)
  * Explicit user action only — §5.2. Nothing here runs on discovery, evaluation
  * or page load, because each result costs the user's Clay allowance.
  */
-export async function findPeopleAction(jobId: string) {
+export async function findPeopleAction(jobId: string, formData: FormData) {
   const job = getJobById(jobId);
   if (!job) redirect(`/jobs/${jobId}?tab=outreach&error=missing-job`);
 
   const saved = getCompanyContactMetadata(job.company);
-  const resolved = resolveCompanyIdentifier({
+  const existing = resolveCompanyIdentifier({
     job,
     profileDomain: saved?.domain,
     profileLinkedIn: saved?.linkedinUrl,
   });
+  const rawIdentifier = String(formData.get("companyIdentifier") ?? "").trim();
+  const submittedIdentifier = normalizeCompanyIdentifier(rawIdentifier);
+  const titleKeywords = parsePeopleSearchKeywords(String(formData.get("roleKeywords") ?? ""));
+  if (rawIdentifier && !submittedIdentifier) {
+    redirect(`/jobs/${jobId}?tab=outreach&error=invalid-company-identifier`);
+  }
+  if (titleKeywords.length === 0) {
+    redirect(`/jobs/${jobId}?tab=outreach&error=missing-role-keywords`);
+  }
+  const resolved = submittedIdentifier
+    ? { identifier: submittedIdentifier, source: "profile" as const, needsConfirmation: false }
+    : existing;
 
   // §40: an ambiguous company must be confirmed, never guessed. Searching the
   // wrong employer returns real people who have nothing to do with this role.
@@ -136,24 +161,43 @@ export async function findPeopleAction(jobId: string) {
     redirect(`/jobs/${jobId}?tab=outreach&error=needs-company`);
   }
 
-  // Remember a domain derived from the posting so the next search skips this step.
-  if (resolved.source === "job_url") {
-    saveCompanyContactMetadata(job.company, { domain: resolved.identifier, intelligenceSource: "job_url" });
+  // Remember the confirmed identifier so the next search starts ready. LinkedIn
+  // company pages and employer domains have separate profile fields.
+  if (isLinkedInCompanyIdentifier(resolved.identifier)) {
+    saveCompanyContactMetadata(job.company, { linkedinUrl: resolved.identifier, intelligenceSource: "user_confirmed" });
+  } else {
+    saveCompanyContactMetadata(job.company, {
+      domain: resolved.identifier,
+      intelligenceSource: submittedIdentifier ? "user_confirmed" : "job_url",
+    });
   }
 
   const provider = new ClayProvider();
-  let candidates;
+  const searchPlan = buildPeopleSearchPlan({
+    jobTitle: job.title,
+    reportsToTitle: reportsToTitleFromDescription(job.rawDescription || job.parsedDescription),
+    roleKeywords: titleKeywords,
+  });
+  const candidates: Array<{ candidate: ContactCandidate; lane: (typeof searchPlan)[number] }> = [];
   try {
-    // §71: company, titles, seniority and location only. The resume, private
-    // notes, Story Bank and gap history never leave JST.
-    candidates = await provider.searchPeople({
-      companyName: job.company,
-      companyIdentifier: resolved.identifier,
-      titleKeywords: titleKeywordsFor(job.roleArchetype || job.title),
-      seniorityLevels: [],
-      countries: [],
-      limit: DEFAULT_PEOPLE_LIMIT,
-    });
+    // Search separate outreach roles instead of accepting Clay's first five broad
+    // matches. Across all three calls the requested result allowance still totals
+    // five. The JD is used locally to build this plan; only the visible titles and
+    // company identifier leave JST.
+    const laneResults = await Promise.all(searchPlan.map(async (lane) => ({
+      lane,
+      candidates: (await provider.searchPeople({
+        companyName: job.company,
+        companyIdentifier: resolved.identifier,
+        titleKeywords: lane.titleKeywords,
+        seniorityLevels: [],
+        countries: [],
+        limit: lane.limit,
+      })).filter((candidate) => candidateFitsSearchLane(lane.id, candidate.title)),
+    })));
+    candidates.push(...laneResults.flatMap(({ lane, candidates: laneCandidates }) => (
+      laneCandidates.map((candidate) => ({ candidate, lane }))
+    )));
   } catch (error) {
     if (error instanceof ContactProviderError) {
       redirect(`/jobs/${jobId}?tab=outreach&error=clay-${error.kind}`);
@@ -169,13 +213,18 @@ export async function findPeopleAction(jobId: string) {
   // a previous charged lookup that came back empty would be bought again on
   // every later search that returned them.
   const newlyAdded: ContactRecord[] = [];
-  for (const candidate of candidates) {
+  const seenCandidates = new Set<string>();
+  for (const { candidate, lane } of candidates) {
     const identity = {
       sourceProvider: "clay",
       sourceRecordId: candidate.providerRecordId,
       linkedinUrl: candidate.linkedinUrl,
       workEmail: candidate.workEmail,
     };
+    const dedupeKey = identityKeys(identity)[0]
+      || `${candidate.name.trim().toLowerCase()}|${candidate.title.trim().toLowerCase()}`;
+    if (seenCandidates.has(dedupeKey)) continue;
+    seenCandidates.add(dedupeKey);
     // A person the user forgot must not come back through a later search.
     if (isContactSuppressed(identity)) continue;
 
@@ -204,6 +253,7 @@ export async function findPeopleAction(jobId: string) {
       contact,
       role: candidate.suggestedRole,
       job: { title: job.title, company: job.company },
+      searchLane: lane.id,
     });
     linkContactToJob({
       jobId,
@@ -257,14 +307,6 @@ export async function findPeopleAction(jobId: string) {
   redirect(`/jobs/${jobId}?tab=outreach`);
 }
 
-/** Function keywords for the search, derived from the role rather than the full title. */
-function titleKeywordsFor(role: string): string[] {
-  const cleaned = role.replace(/[^a-zA-Z ]/g, " ").toLowerCase();
-  const stop = new Set(["senior", "staff", "principal", "lead", "of", "and", "the", "sr", "jr", "i", "ii", "iii"]);
-  const words = cleaned.split(/\s+/).filter((w) => w.length > 2 && !stop.has(w));
-  return words.length > 0 ? [words.slice(0, 3).join(" ")] : [];
-}
-
 /**
  * Find a work email for one contact (§49).
  *
@@ -316,10 +358,20 @@ export async function enrichContactAction(jobId: string, contactIdValue: string)
  * generation or Application Preparation (§34) — both sharpen the message when
  * they exist, and neither is a precondition for reaching out.
  */
-export async function draftMessageAction(jobId: string, contactIdValue: string, formData: FormData) {
+export type DraftMessageActionResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function draftMessageAction(
+  jobId: string,
+  contactIdValue: string,
+  formData: FormData,
+): Promise<DraftMessageActionResult> {
   const contact = getContact(contactIdValue);
   const link = getJobContactLink(jobId, contactIdValue);
-  if (!contact || !link) redirect(`/jobs/${jobId}?tab=outreach&error=missing-contact`);
+  if (!contact || !link) {
+    return { ok: false, error: "This contact is no longer linked to the job. Refresh the page and try again." };
+  }
 
   const channel = ((formData.get("channel") as string) || "linkedin_message") as OutreachChannel;
 
@@ -327,11 +379,20 @@ export async function draftMessageAction(jobId: string, contactIdValue: string, 
     await generateAndSavePersonOutreach({ jobId, contact, link, channel });
   } catch (error) {
     console.error("[outreach] draft generation failed:", error);
-    redirect(`/jobs/${jobId}?tab=outreach&error=draft-failed`);
+    if (error instanceof OutreachFramingError) {
+      return {
+        ok: false,
+        error: "The model could not write an organization-first message, so the draft was not saved. Try again.",
+      };
+    }
+    return {
+      ok: false,
+      error: "The message could not be drafted. Check your AI provider in Settings and try again.",
+    };
   }
 
   revalidatePath(`/jobs/${jobId}`);
-  redirect(`/jobs/${jobId}?tab=outreach`);
+  return { ok: true };
 }
 
 /** Save the user's edits. The draft is theirs to change before it is sent. */

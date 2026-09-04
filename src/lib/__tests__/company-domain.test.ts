@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { domainFromUrl, isEmployerHost, resolveCompanyIdentifier } from "@/lib/contacts/company-domain";
+import {
+  domainFromUrl,
+  isEmployerHost,
+  isLinkedInCompanyIdentifier,
+  normalizeCompanyIdentifier,
+  resolveCompanyIdentifier,
+} from "@/lib/contacts/company-domain";
 
 describe("employer host detection (§40)", () => {
   it("rejects applicant-tracking hosts", () => {
@@ -35,6 +41,25 @@ describe("domain from url", () => {
 
   it("returns nothing for a malformed url", () => {
     expect(domainFromUrl("not a url")).toBe("");
+  });
+});
+
+describe("company identifier input", () => {
+  it("accepts a bare employer domain and strips a pasted page path", () => {
+    expect(normalizeCompanyIdentifier("Acme.com")).toBe("acme.com");
+    expect(normalizeCompanyIdentifier("https://www.acme.com/about/team")).toBe("acme.com");
+  });
+
+  it("keeps a LinkedIn company page as a supported identifier", () => {
+    const identifier = normalizeCompanyIdentifier("linkedin.com/company/acme/about");
+    expect(identifier).toBe("https://www.linkedin.com/company/acme");
+    expect(isLinkedInCompanyIdentifier(identifier)).toBe(true);
+  });
+
+  it("rejects job boards and non-company LinkedIn pages", () => {
+    expect(normalizeCompanyIdentifier("https://www.indeed.com/viewjob?jk=123")).toBe("");
+    expect(normalizeCompanyIdentifier("https://linkedin.com/jobs/view/123")).toBe("");
+    expect(normalizeCompanyIdentifier("Acme")).toBe("");
   });
 });
 

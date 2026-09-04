@@ -98,6 +98,17 @@ describe("contact ranking (§48)", () => {
     expect(reachable.score).toBeGreaterThan(unreachable.score);
   });
 
+  it("explains why a planned shortlist slot makes the person useful", () => {
+    const ranked = rankContact({
+      contact: { ...base, title: "Talent Acquisition Partner, Product" },
+      role: "recruiter",
+      job,
+      searchLane: "recruiter",
+    });
+    expect(ranked.reasons).toContain("Matches the role-relevant recruiter search");
+    expect(ranked.score).toBeGreaterThanOrEqual(30);
+  });
+
   it("stays within 0-100", () => {
     const maxed = rankContact({
       contact: { ...base, title: "VP Director Head of Product Design Principal", linkedinUrl: "l", workEmail: "e" },

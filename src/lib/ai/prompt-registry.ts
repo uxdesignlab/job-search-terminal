@@ -26,23 +26,23 @@ export const PROMPT_DEFINITIONS: PromptDefinition[] = [
   {
     id: "outreach_recruiter",
     label: "Recruiter outreach",
-    description: "Controls LinkedIn connection messages to recruiters.",
+    description: "Controls organization-first LinkedIn connection messages to recruiters.",
     defaultPrompt:
-      "Write a LinkedIn connection request message from {{name}} to a recruiter at {{company}} for the {{role}} role. Requirements: under 300 characters, no opener like \"Hi [Name]\" because the user will add it, mention the role, one specific reason the candidate is a fit, end with a low-friction ask. First-person, no \"I am\" opener."
+      "Write a LinkedIn connection request message from {{name}} to a recruiter at {{company}} for the {{role}} role. Start with what {{company}} needs from this role and how the candidate can help deliver it. Use candidate experience only as supporting evidence, not as the subject. Requirements: under 300 characters, no opener like \"Hi [Name]\" because the user will add it, mention the role, and end with a low-friction ask."
   },
   {
     id: "outreach_hiring_manager",
     label: "Hiring manager outreach",
-    description: "Controls LinkedIn notes to hiring managers.",
+    description: "Controls organization-first LinkedIn notes to hiring managers.",
     defaultPrompt:
-      "Write a LinkedIn note from {{name}} to the hiring manager for the {{role}} role at {{company}}. Requirements: under 300 characters, lead with the candidate's most relevant strength for this specific role at {{company}}, not generic. First-person, no \"I am\" opener. Specific to {{company}}'s known work."
+      "Write a LinkedIn note from {{name}} to the hiring manager for the {{role}} role at {{company}}. Start with the specific outcome or challenge {{company}} needs this role to address, then state how the candidate can help. Use candidate experience only as evidence for that contribution. Requirements: under 300 characters, first-person, grounded in the supplied role context, and not generic."
   },
   {
     id: "outreach_peer",
     label: "Peer outreach",
-    description: "Controls LinkedIn messages to potential teammates.",
+    description: "Controls organization-first LinkedIn messages to potential teammates.",
     defaultPrompt:
-      "Write a LinkedIn message from {{name}} to a potential peer/team member at {{company}} (not a recruiter). Requirements: under 300 characters, professional but warm, mention genuine curiosity about the team's technical challenges or culture, not just asking for a referral. First-person, conversational."
+      "Write a LinkedIn message from {{name}} to a potential peer/team member at {{company}} (not a recruiter). Start with the team's relevant challenge or outcome and explain how the candidate could help. Use background only as proof, not as the subject. Requirements: under 300 characters, professional but warm, genuinely curious, first-person, and conversational; do not lead by asking for a referral."
   }
 ];
 

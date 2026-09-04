@@ -42,7 +42,8 @@ components. The help registry stores serializable icon names, and
 - Browser-board scanner setup, result scrolling/paging behavior, imports,
   duplicates, limits, and safety notes
 - Job evaluation, tailored resume generation, application answers, research,
-  and outreach drafting
+  organization-first outreach drafting and progress, and Clay's five-person
+  contact-shortlist plan, readiness, privacy, allowance use, and recovery
 - Application tracking, statuses, kanban/table views, follow-ups, archive vs.
   delete
 - Interview preparation with STAR stories and voice practice
@@ -76,14 +77,14 @@ all** — a user who opens them has nowhere to look:
 | Analytics | `/analytics`, primary nav | 0 |
 | Evidence bank | `/evidence`, reached from Analytics and Dashboard | 0 (the word "evidence" appears, the page does not) |
 | Strategy | `/strategy`, Account menu | 0 |
-| Clay enrichment | Settings → Integrations | 0 |
 | Himalayas remote board | In-app scanner, no credentials | 0 |
 | Archived jobs | `/archived` | 0 |
 | Email job-alert imports | Pending candidate approval flow | 0 |
 
 Thinner than the feature warrants, but not absent: saved filter presets,
 the resume builder, the keyword/taxonomy manager, story consolidation, and the
-interview plan.
+interview plan. Clay contact search now explains its prerequisites and common
+failures, but the one-time email-enrichment routine setup is still thin.
 
 Analytics and the Evidence bank are the sharpest gaps — the Evidence bank is
 deliberately kept out of the primary nav, so help is the only place a user could

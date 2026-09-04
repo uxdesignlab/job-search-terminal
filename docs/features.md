@@ -1249,23 +1249,37 @@ Real people rather than abstract personas. Contacts are **global**, so the same 
 be linked to several opportunities, while their role, relevance and outreach status stay
 **per job** — someone marked *Contacted* for one role remains *Found* for another.
 
-**Finding people with Clay.** When Clay is connected, **Find relevant people** searches for
-up to five people at the hiring company. It runs only when you click it — never on
-discovery, evaluation or page load — because each result spends your Clay allowance.
+**Finding people with Clay.** When Clay is connected, **Find relevant people** builds a
+five-person outreach shortlist at the hiring company. It runs only when you click it —
+never on discovery, evaluation or page load — because each result spends your Clay
+allowance.
 
-Only the company identifier, role keywords and seniority are sent. Your resume, private
-notes, Story Bank and gap answers never leave Job Search Terminal.
+The People card shows the search requirements before that click: Clay API connection,
+hiring company, company website or LinkedIn company page, and role focus. Missing required
+details are labelled in place, and **Find relevant people** stays disabled until the search
+is ready. The company identifier and role focus can be fixed in the card; the confirmed
+identifier is saved to the company profile for later searches.
 
-Results are normalised, ranked by JST's own rules, and saved as ordinary contacts you can
-edit, delete or forget. Anyone you previously chose to forget is filtered out before being
-saved, so a later search cannot resurrect them.
+The card previews three searches and their exact title phrases: two likely hiring leaders,
+two leaders close to the function or team, and one recruiter targeted to the role. A
+`Reports to` title in the job description is used first when available. Job Search Terminal
+uses the job description locally to build that plan; Clay receives only the company
+identifier and the displayed title phrases. Your job description, resume, private notes,
+Story Bank and gap answers never leave Job Search Terminal.
+
+The three searches request no more than five results in total: 2 + 2 + 1. Results are
+deduplicated, ranked by Job Search Terminal's own rules, and saved as ordinary contacts you
+can edit, delete or forget. Search-lane fit is included in the visible relevance reasons.
+Anyone you previously chose to forget is filtered out before being saved, so a later search
+cannot resurrect them.
 
 **The company must be identified first.** A saved company domain is used if there is one;
 otherwise it is derived from the job URL — but only when that URL is the employer's own
 site. Links to Greenhouse, Lever, Ashby, Workday, LinkedIn, Indeed and similar are refused,
 because deriving a domain from them would search a real company that is not the employer.
-When nothing reliable is available, you are asked to add the domain rather than being given
-confident results from the wrong organisation.
+When nothing reliable is available, the card asks for the employer's website, domain, or
+LinkedIn company page before enabling search rather than returning confident results from
+the wrong organisation. Job-board links are rejected if pasted into that field.
 
 **When Clay has a problem**, each case says something different and useful: key rejected,
 allowance used up, rate limited, company ambiguous, or unreachable. A Clay failure never
@@ -1284,9 +1298,10 @@ earlier lookup came back empty would be paid for on every later search that foun
 the test is whether the contact is new. Retrying them stays available as the explicit
 per-contact **Find email**, where you are choosing to spend the credit.
 
-> **Why not Clay's MCP integration?** It would avoid the routine, but Clay charges the same
-> credits over MCP as over the API — there is no saving — and it requires OAuth with hourly
-> token refresh. The routine is less machinery for the same cost.
+> **Clay API, not the ChatGPT Clay MCP connection.** Job Search Terminal uses the scoped
+> Clay API key saved under Settings → Integrations. It does not share ChatGPT's Clay MCP
+> session. The app reproduces the useful part of that workflow with three targeted searches
+> while keeping the job description and private career material local.
 
 > **Step-by-step setup:** see [docs/clay-enrichment-routine.md](clay-enrichment-routine.md),
 > including `npm run clay:routine` to validate a routine id before saving it.
@@ -1331,7 +1346,23 @@ AI call is involved.
 **Drafting a message.** Each contact has its own draft area. Pick a channel — LinkedIn
 connection note, LinkedIn message, or email — and the message is written *to that person*
 about *this role*, using the job, its evaluation, your Application Preparation when it
-exists, the contact's relationship to the role, and your saved writing style.
+exists, the contact's relationship to the role, and your saved writing style. Every draft
+starts with the organization's or team's need and explains how you can help. Your
+background appears only as evidence for that contribution, not as the subject of the
+message or as a compressed biography.
+
+The button changes to **Generating message…** as soon as the request starts. An inline
+status names the person and channel, explains that the AI is still working, and remains
+visible until the draft is saved or an error needs attention. The contact is not reported
+as newly drafted by this control while generation is still running.
+
+The active AI provider receives the role-specific part of the job description, relevant
+evaluation and Application Preparation evidence, the contact's professional details, and
+the saved writing style needed to write the draft. It does not receive unrelated jobs or
+contacts. If the first result centers the candidate, Job Search Terminal asks for one
+automatic rewrite. A second failure is shown clearly and no draft is saved.
+When the older three-message generator is used, it validates all three replacements before
+changing the saved set, so a failed regeneration keeps the previous drafts intact.
 
 **Length follows the channel**, not one universal cap. A connection note aims for ~280
 characters and warns past 300; an email aims for ~1,200 and has a subject line. The count
@@ -1340,7 +1371,8 @@ worse than a long one.
 
 **What the drafts will not do.** No generic praise, no fake familiarity, no claims about
 the company that are not in the context, no assertion that this person owns the role unless
-that is known, and no invented experience, metrics or mutual connections. Drafts are
+that is known, and no invented experience, metrics or mutual connections. Organization-first
+framing is a locked rule even when the editable outreach prompts are customized. Drafts are
 editable in place before you use them.
 
 **There is no Send button.** Job Search Terminal drafts, tracks, and stops there. Copy the
@@ -1804,7 +1836,7 @@ The page has two tabs:
   from the current profile and skill inventory. The app replaces the current
   role-direction set after generation and keeps the editable correction workflow
   below each direction.
-- **AI Prompts** — prompt overrides for resume tailoring, application answers, and outreach. Prompt overrides are stored locally and can be reset to the app defaults; locked resume-safety rules remain enforced in code.
+- **AI Prompts** — prompt overrides for resume tailoring, application answers, and outreach. Prompt overrides are stored locally and can be reset to the app defaults; locked resume-safety and organization-first outreach rules remain enforced in code.
 
 ---
 

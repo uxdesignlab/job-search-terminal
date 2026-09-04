@@ -10,6 +10,8 @@ type SubmitButtonProps = {
   savedLabel?: string;
   variant?: "primary" | "secondary" | "quiet";
   className?: string;
+  disabled?: boolean;
+  "aria-describedby"?: string;
 };
 
 const variants = {
@@ -23,7 +25,9 @@ export function SubmitButton({
   pendingLabel = "Saving…",
   savedLabel = "Saved",
   variant = "primary",
-  className
+  className,
+  disabled = false,
+  "aria-describedby": ariaDescribedBy,
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
   const [wasPending, setWasPending] = useState(false);
@@ -43,13 +47,14 @@ export function SubmitButton({
   return (
     <button
       aria-busy={pending}
+      aria-describedby={ariaDescribedBy}
       className={cn(
         "inline-flex min-h-11 items-center justify-center rounded-control border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55",
         variants[variant],
         showSaved && variant === "primary" && "border-success bg-success/10 text-success",
         className
       )}
-      disabled={pending}
+      disabled={pending || disabled}
       type="submit"
     >
       {pending ? pendingLabel : showSaved ? savedLabel : label}

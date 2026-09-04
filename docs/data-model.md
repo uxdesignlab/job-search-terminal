@@ -1199,7 +1199,12 @@ there is no stable record id, so dedupe falls to the normalized LinkedIn URL. Th
 catalog is cached in `external_integrations.metadata_json` with a 24-hour TTL, a 7-day
 stale fallback when Clay is unreachable, and a single invalidate-refetch-retry when a
 filter name is rejected. `has_more` is deliberately ignored: the run endpoint is a stateful
-iterator and continuing would spend more allowance than the user asked for.
+iterator and continuing would spend more allowance than the user asked for. One click
+creates three searches with a fixed 2 + 2 + 1 allocation: likely hiring leaders, nearby
+team or function leaders, and a role-relevant recruiter. Their title phrases are derived
+locally from the job title, role focus and any `Reports to` line in the description. The
+three run limits total five, results are deduplicated before persistence, and the full job
+description is never sent to Clay.
 
 **Why not Clay MCP?** Clay exposes an MCP server with its own find-and-enrich tools, which
 would remove the need to author a routine. It was evaluated on 2026-08-18 and not adopted:

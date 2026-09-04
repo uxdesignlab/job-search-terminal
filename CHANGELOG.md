@@ -15,6 +15,43 @@ the numbers mean and when they change.
 
 ---
 
+## 0.12.0 — 2026-09-03 — A useful outreach shortlist
+
+**Added**
+
+- **Find relevant people** now builds a five-person outreach shortlist: two likely
+  hiring leaders, two leaders close to the function or team, and one recruiter
+  targeted to the role. It uses a `Reports to` title from the job description when
+  one is available.
+- The People card previews every title search and its result count before Clay runs.
+  The three searches request no more than five results in total.
+
+**Changed**
+
+- The People card now distinguishes Job Search Terminal's Clay API connection from
+  a separate Clay MCP connection in ChatGPT. The job description is used locally to
+  prepare the search, while Clay receives only the company identifier and displayed
+  title phrases.
+- Every generated outreach draft now starts with the organization's or team's need
+  and explains how you can help. Candidate background is supporting evidence rather
+  than the subject; this framing remains enforced when custom prompts are used.
+- If a model returns candidate-first outreach, the app requests one automatic rewrite.
+  A second framing failure is explained and is not saved. Regenerating the older
+  three-message set also keeps the previous drafts if any replacement fails.
+
+**Fixed**
+
+- The Outreach tab now shows everything **Find relevant people** needs before a
+  Clay search: API connection, company, company website or LinkedIn page, and
+  role focus. Missing details are labelled where you can fix them, and the button
+  stays disabled until the search is ready.
+- Company identifiers are checked before a paid search. Employer websites and
+  LinkedIn company pages are accepted; job-board links are rejected with a
+  clear next step.
+- **Draft message** now changes to **Generating message…** and shows which person and
+  channel the AI is working on. **Draft saved** appears only after generation finishes,
+  and provider or framing failures stay visible with a recovery step.
+
 ## 0.11.1 — 2026-09-02 — Accurate source activity
 
 **Fixed**

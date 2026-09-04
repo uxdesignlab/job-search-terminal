@@ -1,4 +1,5 @@
 import type { ContactRecord, ContactRole } from "../db/types";
+import type { PeopleSearchLaneId } from "./search-details";
 
 /**
  * Deterministic contact relevance (PRD v0.2.1 §48).
@@ -24,6 +25,12 @@ const HIRING_AUTHORITY: Partial<Record<ContactRole, number>> = {
   recruiter: 12,
   referral: 8,
   peer: 4,
+};
+
+const SEARCH_LANE_SIGNAL: Record<PeopleSearchLaneId, { points: number; reason: string }> = {
+  hiring_leader: { points: 18, reason: "Matches the likely hiring-leader search" },
+  team_leader: { points: 14, reason: "Leads or works close to the relevant team" },
+  recruiter: { points: 16, reason: "Matches the role-relevant recruiter search" },
 };
 
 const SENIORITY_TERMS: Array<{ pattern: RegExp; score: number }> = [
@@ -53,6 +60,7 @@ export function rankContact(input: {
   contact: Pick<ContactRecord, "title" | "company" | "companyDomain" | "linkedinUrl" | "workEmail">;
   role: ContactRole;
   job: { title: string; company: string };
+  searchLane?: PeopleSearchLaneId;
 }): RankedRelevance {
   const reasons: string[] = [];
   let score = 0;
@@ -68,6 +76,12 @@ export function rankContact(input: {
   if (authority > 0) {
     score += authority;
     reasons.push(`Role is ${input.role.replace(/_/g, " ")}`);
+  }
+
+  if (input.searchLane) {
+    const signal = SEARCH_LANE_SIGNAL[input.searchLane];
+    score += signal.points;
+    reasons.push(signal.reason);
   }
 
   const seniority = SENIORITY_TERMS.find((term) => term.pattern.test(input.contact.title.toLowerCase()));

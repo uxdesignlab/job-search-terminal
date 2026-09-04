@@ -2,6 +2,7 @@ import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, Select, Sub
 import { outreachRecommendation } from "@/lib/contacts/ranking";
 import type { ContactRole, ContactStatus, JobContact, OutreachMessageRecord } from "@/lib/db/types";
 import { MessagePanel } from "./message-panel";
+import { PeopleSearchForm } from "./people-search-form";
 import {
   addContactAction,
   deleteContactAction,
@@ -34,11 +35,26 @@ const RECOMMENDATION_TONE = {
   "Low value": "neutral",
 } as const;
 
-export function ContactsPanel({ jobId, contacts, clayConnected, messagesByLink }: {
+export function ContactsPanel({
+  jobId,
+  contacts,
+  clayConnected,
+  companyIdentifier,
+  companyName,
+  jobTitle,
+  messagesByLink,
+  reportsToTitle,
+  roleKeywords,
+}: {
   jobId: string;
   contacts: JobContact[];
   clayConnected: boolean;
+  companyIdentifier: string;
+  companyName: string;
+  jobTitle: string;
   messagesByLink: Map<string, OutreachMessageRecord[]>;
+  reportsToTitle: string;
+  roleKeywords: string[];
 }) {
   return (
     <div className="grid gap-6">
@@ -52,17 +68,17 @@ export function ContactsPanel({ jobId, contacts, clayConnected, messagesByLink }
           </CardDescription>
         </CardHeader>
 
-        {clayConnected && (
-          <div className="mb-4 flex flex-wrap items-center gap-3 border-b border-border pb-4">
-            <form action={findPeopleAction.bind(null, jobId)}>
-              <SubmitButton label="Find relevant people" savedLabel="Searched" variant="secondary" />
-            </form>
-            <p className="text-xs text-muted">
-              Searches Clay for up to five people at this company. Only the company, role
-              keywords and seniority are sent — never your resume, notes or answers.
-            </p>
-          </div>
-        )}
+        <div className="mb-4">
+          <PeopleSearchForm
+            clayConnected={clayConnected}
+            companyName={companyName}
+            initialCompanyIdentifier={companyIdentifier}
+            initialRoleKeywords={roleKeywords}
+            jobTitle={jobTitle}
+            reportsToTitle={reportsToTitle}
+            searchAction={findPeopleAction.bind(null, jobId)}
+          />
+        </div>
 
         {contacts.length > 0 && (
           <ul className="grid gap-3">
@@ -163,13 +179,6 @@ export function ContactsPanel({ jobId, contacts, clayConnected, messagesByLink }
           <div><SubmitButton label="Add contact" savedLabel="Added" /></div>
         </form>
       </Card>
-
-      {!clayConnected && (
-        <p className="text-xs text-muted">
-          Optional: connect Clay in <a className="text-accent hover:underline" href="/settings?tab=integrations">Settings → Integrations</a>{" "}
-          to find relevant people automatically. Job Search Terminal works fully without it.
-        </p>
-      )}
     </div>
   );
 }

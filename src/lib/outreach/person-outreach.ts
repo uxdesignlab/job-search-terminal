@@ -13,6 +13,13 @@ import {
 import type { ContactRecord, JobContactLinkRecord, OutreachChannel } from "../db/types";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 import { channelSpec } from "./channels";
+import {
+  assertOrganizationFirstMessage,
+  assertOrganizationFirstSubject,
+  ORGANIZATION_FIRST_MESSAGE_RULES,
+  organizationNeedExcerpt,
+  OutreachFramingError,
+} from "./framing";
 
 /**
  * Outreach written to an actual person (PRD v0.2.1 §53–§55).
@@ -48,7 +55,9 @@ const MESSAGE_RULES = `Rules:
 - Make no claim about the company that is not in the context below.
 - Do not assert this person is the hiring manager or owns the role unless the context says so.
 - No placeholder text in brackets. The user must be able to send it as written.
-- Do not invent mutual connections, shared schools or shared employers.`;
+- Do not invent mutual connections, shared schools or shared employers.
+
+${ORGANIZATION_FIRST_MESSAGE_RULES}`;
 
 function buildContext(input: {
   contact: ContactRecord;
@@ -64,6 +73,12 @@ function buildContext(input: {
     "## The opportunity",
     `Role: ${job?.title ?? "unknown"} at ${job?.company ?? "unknown"}`,
   ];
+
+  if (job?.summary) lines.push(`Organization need summary: ${job.summary}`);
+  const needExcerpt = organizationNeedExcerpt(job?.parsedDescription || job?.rawDescription || "");
+  if (needExcerpt) {
+    lines.push("", "## What the organization needs from this role", needExcerpt);
+  }
 
   // §53: evaluation supplies why this role is worth pursuing at all.
   if (evaluation) {
@@ -123,6 +138,8 @@ export async function generatePersonOutreach(input: {
   link: JobContactLinkRecord;
   channel: OutreachChannel;
 }): Promise<PersonOutreachResult> {
+  const job = getJobById(input.jobId);
+  if (!job) throw new Error(`Job not found: ${input.jobId}`);
   const provider = getActiveProvider();
   const spec = channelSpec(input.channel);
   const style = getWritingStyle();
@@ -152,15 +169,45 @@ ${spec.hasSubject
     },
   ];
 
-  const raw = await withRetry(() =>
-    provider.generateJSON<{ subject?: string; message?: string }>(
-      messages,
-      spec.hasSubject ? '{"subject":"string","message":"string"}' : '{"message":"string"}'
-    )
-  );
+  let raw: { subject?: string; message?: string } | null = null;
+  let framingIssue = "";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const attemptMessages = framingIssue
+      ? [
+          ...messages,
+          {
+            role: "user" as const,
+            content: `Rewrite the draft. It was not saved because it broke this locked rule: ${framingIssue} Center the organization need and how the candidate can help.`,
+          },
+        ]
+      : messages;
+    raw = await withRetry(() =>
+      provider.generateJSON<{ subject?: string; message?: string }>(
+        attemptMessages,
+        spec.hasSubject ? '{"subject":"string","message":"string"}' : '{"message":"string"}'
+      )
+    );
+
+    try {
+      assertOrganizationFirstMessage((raw.message ?? "").trim(), job.company);
+      if (spec.hasSubject) {
+        assertOrganizationFirstSubject((raw.subject ?? "").trim(), job.company, job.title);
+      }
+      framingIssue = "";
+      break;
+    } catch (error) {
+      if (!(error instanceof OutreachFramingError)) throw error;
+      framingIssue = error.message;
+      raw = null;
+    }
+  }
+  if (!raw) {
+    throw new OutreachFramingError(
+      `The model could not produce an organization-first draft after one automatic rewrite. ${framingIssue}`.trim(),
+    );
+  }
 
   const message = (raw.message ?? "").trim();
-  if (!message) throw new Error("The AI returned an empty message.");
 
   return {
     channel: input.channel,

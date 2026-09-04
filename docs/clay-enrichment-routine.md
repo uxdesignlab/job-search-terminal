@@ -155,12 +155,12 @@ Rules of thumb:
 - **Comfortable allowance** — turning automatic lookup on is reasonable
 - **Tight allowance** — leave it off and use **Find email** on the one or two people you
   actually intend to contact: 12.8 credits instead of 64
-- Searches are capped at five results and never auto-paginate
+- One people-search click runs three targeted searches capped at five results total (2 + 2 + 1) and never auto-paginates
 - Connection testing uses Clay's identity endpoint and consumes nothing
 
 ---
 
-## Why not Clay's MCP integration?
+## Why Job Search Terminal uses the API instead of Clay MCP
 
 It would avoid building a routine, since Clay's MCP server exposes its own find-and-enrich
 tools. It was evaluated on 2026-08-18 and not adopted: Clay charges the same credits over
@@ -168,5 +168,7 @@ MCP as over the API — *"there is no surcharge for arriving over MCP"* — whil
 OAuth 2.0 with PKCE, Dynamic Client Registration and hourly token refresh. Same cost, far
 more machinery.
 
-Worth revisiting only if building the routine proves to be a real barrier. Not as a way to
-save credits.
+The Clay connection shown in Job Search Terminal is therefore the scoped API-key connection,
+not the Clay MCP session in ChatGPT. Contact search still uses a three-part search plan —
+hiring leaders, nearby team leaders and a recruiter — but requests no more than five results
+in total and does not send the full job description or private career material to Clay.

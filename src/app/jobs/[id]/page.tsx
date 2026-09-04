@@ -17,6 +17,7 @@ import {
   getEvaluationByJobId,
   getEmailImportEvidence,
   getGeneratedDocumentById,
+  getCompanyContactMetadata,
   getJobById,
   getResolvedJobGapResponses,
   getResumes,
@@ -34,6 +35,11 @@ import {
   getOutreachDrafts,
   getOutreachMessagesForJob,
 } from "@/lib/db/queries";
+import { resolveCompanyIdentifier } from "@/lib/contacts/company-domain";
+import {
+  reportsToTitleFromDescription,
+  titleKeywordsForPeopleSearch,
+} from "@/lib/contacts/search-details";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import type { ResumeBuilderSection, ResumeBuilderVersionStatus } from "@/lib/db/types";
 import { coerceResumeBaseToLane } from "@/lib/evaluation/resume-lane-picker";
@@ -83,6 +89,16 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const application = getApplicationByJobId(id);
   const contacts = getJobContacts(id);
   const clayConnected = getIntegration("clay")?.connectionStatus === "connected";
+  const savedCompanyContactMetadata = getCompanyContactMetadata(job.company);
+  const companyResolution = resolveCompanyIdentifier({
+    job,
+    profileDomain: savedCompanyContactMetadata?.domain,
+    profileLinkedIn: savedCompanyContactMetadata?.linkedinUrl,
+  });
+  const peopleSearchRoleKeywords = titleKeywordsForPeopleSearch(job.title, job.roleArchetype);
+  const peopleSearchReportsToTitle = reportsToTitleFromDescription(
+    job.rawDescription || job.parsedDescription,
+  );
   const outreachDrafts = getOutreachDrafts(id);
   const outreachMessages = getOutreachMessagesForJob(id);
   const stage = {
@@ -509,11 +525,16 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
         {tab === "outreach" && (
           <OutreachTab
             clayConnected={clayConnected}
+            companyIdentifier={companyResolution.identifier}
+            companyName={job.company}
             contacts={contacts}
             id={id}
+            jobTitle={job.title}
             outreachDrafts={outreachDrafts}
             outreachError={outreachError}
             outreachMessages={outreachMessages}
+            reportsToTitle={peopleSearchReportsToTitle}
+            roleKeywords={peopleSearchRoleKeywords}
           />
         )}
 

@@ -93,8 +93,8 @@ export function OutreachClient({ jobId, saved }: Props) {
       open={modalOpen}
       phase={status === "loading" ? "running" : "done"}
       title="Generating outreach messages"
-      message="Writing LinkedIn messages for recruiter, hiring manager, and peer…"
-      subtitle="Each message is kept under 300 characters for LinkedIn."
+      message="Reading the role and writing organization-first LinkedIn messages…"
+      subtitle="Each message explains how you can help the team and stays under 300 characters."
       modelLine={modelLine || undefined}
       error={status === "error" ? (error || "Generation failed") : null}
       onClose={closeModal}
@@ -107,7 +107,7 @@ export function OutreachClient({ jobId, saved }: Props) {
         <CardHeader>
           <CardTitle>Generate outreach messages</CardTitle>
           <CardDescription>
-            AI writes three under-300-character LinkedIn messages — one each for a recruiter, the hiring manager, and a peer on the team.
+            AI writes three organization-first, under-300-character LinkedIn messages — one each for a recruiter, the hiring manager, and a peer on the team.
             {lastDate && <span className="ml-2 text-xs text-muted">Last generated {lastDate}</span>}
           </CardDescription>
         </CardHeader>

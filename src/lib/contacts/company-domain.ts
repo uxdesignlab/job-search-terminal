@@ -37,6 +37,40 @@ export function domainFromUrl(url: string): string {
   }
 }
 
+/**
+ * Turn what a person types into the identifier Clay expects.
+ *
+ * Employer websites are reduced to a domain so pasted paths do not make the
+ * same company look different. LinkedIn company pages stay as URLs because
+ * they are a supported fallback when the employer's website is unknown.
+ */
+export function normalizeCompanyIdentifier(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    if (host === "linkedin.com" && /^\/company\/[^/]+/i.test(parsed.pathname)) {
+      const slug = parsed.pathname.split("/").filter(Boolean)[1];
+      return slug ? `https://www.linkedin.com/company/${slug}` : "";
+    }
+    return host.includes(".") && isEmployerHost(host) ? host : "";
+  } catch {
+    return "";
+  }
+}
+
+export function isLinkedInCompanyIdentifier(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname.toLowerCase().replace(/^www\./, "") === "linkedin.com"
+      && /^\/company\/[^/]+/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
 export type CompanyResolution = {
   /** Domain or LinkedIn URL Clay can pin the employer down with. */
   identifier: string;
