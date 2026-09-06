@@ -15,6 +15,41 @@ the numbers mean and when they change.
 
 ---
 
+## 0.13.1 — 2026-09-06 — Whole regions you can actually pick
+
+**Fixed**
+
+- Remote regions now offers regions. Type `Europe`, `EU`, `APAC`, `Latin
+  America`, or any of the other fifteen and they appear at the top of the
+  suggestions under a **Regions** heading, each with a line saying what it
+  covers. Picking one accepts remote roles from every country in it. The app had
+  understood these all along and the hint text told you to type one — but the
+  only suggestions on offer came from OpenStreetMap, which answers `EU` with a
+  French commune and `APAC` with a town in Uganda, and the **Add typed location**
+  button you were pointed at sat underneath the dropdown showing them.
+- **Add typed location** moved next to the box it belongs to, so a full set of
+  map suggestions can no longer cover it.
+- Pressing Enter in either location box adds what you typed. It used to do
+  nothing.
+- A typed shorthand is saved under its full name — `eu` becomes `European
+  Union`, `LATAM` becomes `Latin America` — so the list says what it covers.
+- Regions already on your list are no longer suggested again, however you first
+  spelled them. A list holding `EU` no longer offers you `European Union` as if
+  it were a different place.
+- `Americas` and `Latin America` now cover every Caribbean country, not the
+  largest eight. A remote role in Antigua, Dominica, or the Caymans was being
+  ruled out by a setting that said it covered the Caribbean.
+
+**Changed**
+
+- The hint under Remote regions no longer recites all fifteen region names. The
+  picker shows them, along with what each one covers, which the hint never did.
+
+Nothing needs re-scanning. Your saved locations are untouched; the change is in
+what the picker offers you next time you edit them.
+
+---
+
 ## 0.13.0 — 2026-09-03 — Every position at one company
 
 **Added**

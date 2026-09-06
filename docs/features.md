@@ -343,8 +343,9 @@ The wizard itself has 6 panels — 4 required steps, 1 optional step, and a clos
    scope. Each list is shown only when the arrangement that needs it is selected.
 
    Both lists use `PreferredLocationsInput` — the same picker as Profile → Preferences,
-   with autocomplete against `/api/locations/search` (OpenStreetMap Nominatim) and
-   "Add typed location" for region groups. That matters beyond convenience: filtering
+   with autocomplete against `/api/locations/search` (OpenStreetMap Nominatim), a
+   **Regions** section offering the supra-national groups the geocoder cannot resolve,
+   and "Add typed location" for anything neither list offers. That matters beyond convenience: filtering
    compares against exact stored values, so free-text boxes would have let onboarding
    save a spelling the scanner then failed to match. The component was already
    parameterized for both lists on Profile, so onboarding passes its own `inputId`,
@@ -1813,9 +1814,30 @@ Resumes tab shows an upload banner when no extracted resumes exist.
 - **Region groups expand to their member countries.** Rather than listing 27
   nations, put a group in Remote regions and every member country matches:
   `European Union` (or `EU`), `Europe`, `EMEA`, `North America`, `South America`,
-  `Latin America` (`LATAM`), `Americas`, `APAC`, `Asia`, `Oceania`, `Africa`,
-  `Middle East`, `Nordics`, `Scandinavia`, `Benelux`. Nominatim does not suggest
-  these, so type one and use **Add typed location**.
+  `Latin America` (`LATAM`), `Americas`, `APAC` (`Asia Pacific`), `Asia`,
+  `Oceania`, `Africa`, `Middle East`, `Nordics`, `Scandinavia`, `Benelux`.
+  - **The picker offers them directly.** Typing part of a region name shows the
+    matching groups in a **Regions** section above the geocoder's results, each
+    labelled with what it covers ("The 27 member states. Does not include the UK,
+    Switzerland or Norway."), and Nominatim's own suggestions follow under
+    **Places**. This is not cosmetic: Nominatim has never heard of these groups
+    and answers `EU` with the French commune of Eu, `APAC` with Apac in Uganda,
+    and `EMEA` with a village in Indonesia. Before the Regions section existed,
+    the only route in was typing the name and finding **Add typed location** —
+    a button the geocoder's own five suggestions could cover outright.
+  - Selecting a group writes the catalogue's spelling, and a typed alias is
+    rewritten to it: `eu` is saved as `European Union`, `LATAM` as
+    `Latin America`. The matcher accepted the aliases already, but a chip reading
+    `eu` told the user nothing about what it covered.
+  - Groups already on the list are not offered again, matched by group key rather
+    than label text. A profile predating the Regions section can hold a group
+    under any alias — the old hint told users to type `EU`, `LATAM`, or
+    `Asia Pacific` — and comparing labels would have offered the same region back
+    and saved two chips meaning one thing.
+  - `CARIBBEAN_CODES` covers every Caribbean state and territory CLDR names, not
+    the largest eight. `Americas` and `Latin America` both advertise Caribbean
+    coverage, so a short list silently rejected remote roles in Antigua,
+    Dominica, or the Cayman Islands.
   - `European Union` and `Europe` are **deliberately different sets.** EU is the
     27 member states; Europe additionally covers the UK, Switzerland, Norway and
     Ukraine. A posting requiring EU work authorization genuinely excludes the UK
@@ -1825,6 +1847,20 @@ Resumes tab shows an upload banner when no extracted resumes exist.
   - Groups also expand on the on-site list, so `Europe` there matches an office
     in Berlin. `Georgia` is excluded from that expansion — it names both a
     country and a US state, and would otherwise make Atlanta match `Europe`.
+  - The **Regions** suggestions are nevertheless offered on the remote list only
+    (`suggestRegionGroups`). The on-site list asks where you would physically
+    commute, and volunteering `EMEA` as a commute target would be noise. Someone
+    who really would relocate anywhere in Europe can still type it and press
+    Enter — the matcher expands it exactly the same way.
+- **Picker interaction.** Suggestions are grouped: **Regions** (resolved locally
+  and instantly from the catalogue) above **Places** (the debounced Nominatim
+  lookup). `Enter` adds what is typed — previously it did nothing at all, since
+  the field sits inside the preferences form and the keypress was spent on
+  implicit submission. **Add typed location** now sits beside the input rather
+  than below the hint paragraph: the suggestion dropdown is absolutely positioned
+  and covered that button outright whenever Nominatim returned a full five rows,
+  which was exactly the case for the region names the hint told users to type
+  there. The dropdown is capped at `max-h-80` and scrolls.
 - Both lists use an OpenStreetMap Nominatim lookup that supports city,
   state/region, and country selections. You can save precise locations such as
   `Nashville, Tennessee, United States`, broader targets such as
@@ -2552,15 +2588,46 @@ postings are actually written:
   two cannot drift.
 
   The place-name vocabulary comes from `Intl.DisplayNames`, which supplies ~264
-  ISO 3166 region names from the runtime's own CLDR data, plus a short list of
-  supra-national regions ISO omits (`europe`, `emea`, `apac`, `latam`, …). This
-  avoids hand-maintaining a world list that would rot. Sampled against a live
-  Himalayas feed it recognised all 139 distinct restriction values while
-  correctly ignoring non-geographic text.
+  ISO 3166 region names from the runtime's own CLDR data, plus the supra-national
+  regions ISO omits (`europe`, `emea`, `apac`, `latam`, …). This avoids
+  hand-maintaining a world list that would rot. Sampled against a live Himalayas
+  feed it recognised all 139 distinct restriction values while correctly ignoring
+  non-geographic text.
 
-Covered by `src/lib/__tests__/preference-fit.test.ts` and
+**One catalogue behind the matcher and the picker.** The supra-national groups —
+their labels, aliases, member ISO codes, and the one-line "covers" text shown in
+the picker — live in `src/lib/profile/region-groups.ts`. `preference-fit.ts`
+derives `REGION_MEMBER_CODES`, the group half of `LOCATION_ALIAS_GROUPS`, and the
+supra-national additions to `WORLD_REGION_NAMES` from it; `PreferredLocationsInput`
+builds its **Regions** suggestions from the same list. They used to be separate,
+with the group names additionally hard-coded a third time into the hint text on
+both Profile → Preferences and the onboarding wizard — so a group added to the
+matcher was offered nowhere, and a group named in a hint might not exist. Adding
+one entry to the catalogue now reaches all three.
+
+The module's public surface:
+
+| Export | Purpose |
+|---|---|
+| `REGION_GROUPS` | The catalogue itself, in matcher-significant order |
+| `REGION_GROUP_ALIASES` | Group key → aliases, spread into `LOCATION_ALIAS_GROUPS` |
+| `REGION_GROUP_MEMBER_CODES` | Group key → member ISO 3166-1 alpha-2 codes |
+| `REGION_GROUP_ALIAS_LIST` | Every alias, for the `WORLD_REGION_NAMES` vocabulary |
+| `matchRegionGroups(query, limit?)` | Groups to suggest for a partial query |
+| `regionGroupForLabel(value)` | The group a stored value names, or `null` |
+
+`matchRegionGroups` matches substrings, not prefixes, so `america` reaches North,
+South, and Latin America rather than only `Americas`; exact and prefix matches
+still sort first, so `eu` leads with `European Union`. Order within the catalogue
+is load-bearing — `supranationalGroupFor` resolves a posting's region to the
+*first* matching group.
+
+Covered by `src/lib/__tests__/preference-fit.test.ts`,
+`src/lib/__tests__/region-groups.test.ts`, and
 `src/lib/__tests__/title-filter.test.ts`, which use verbatim location strings and
-job titles from real postings as fixtures.
+job titles from real postings as fixtures. The region-group suite additionally
+asserts that every catalogue label round-trips through the matcher, so a label
+that drifted out of its own alias list cannot ship silently accepting nothing.
 
 **Configuration:**
 - Built-in sources: enable/disable per company in Settings → Job Sources.

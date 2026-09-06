@@ -658,15 +658,14 @@ export default async function ProfilePage({
                   emptyLabel="No remote regions set — remote roles from anywhere are accepted."
                   hint={
                     "Countries whose remote roles you can take. Leave empty to accept remote roles from anywhere. " +
-                    "Groups expand to their member countries — type one and use “Add typed location”: " +
-                    "European Union (or EU), Europe, EMEA, North America, South America, Latin America, Americas, " +
-                    "APAC, Asia, Oceania, Africa, Middle East, Nordics, Scandinavia, Benelux. " +
-                    "EU covers the 27 member states; Europe also covers the UK, Switzerland and Norway."
+                    "Type a region such as Europe, EU, or APAC and pick it from the Regions group — it expands to " +
+                    "every member country."
                   }
                   inputId="remote-location-search"
                   label="Remote regions"
                   name="remoteLocations"
                   placeholder="Start typing a country or region (for example United States, Canada, or Europe)"
+                  suggestRegionGroups
                 />
                 <Textarea
                   defaultValue={profile.desiredIndustries.join("\n")}

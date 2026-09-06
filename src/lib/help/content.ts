@@ -509,7 +509,7 @@ export const helpPages: HelpPage[] = [
     shortTitle: "Job search",
     description: "How the app finds jobs, how to add ones it missed, and how to keep the list manageable once it fills up.",
     category: "Jobs",
-    readTime: "13 min",
+    readTime: "15 min",
     icon: "search",
     image: {
       src: "/images/job-search-terminal/job-search-terminal-jobs-table.png",
@@ -517,10 +517,50 @@ export const helpPages: HelpPage[] = [
     },
     highlights: [
       "A scan searches using the job titles and locations you set in your profile. If it finds nothing, that is usually the place to look first.",
+      "Remote regions accepts a whole region. Type Europe, EU, or APAC instead of naming countries one at a time.",
       "Nothing runs on its own unless you switch on automatic scans. You press the button.",
-      "Once you have a few hundred jobs, save a filter you use often so you are not rebuilding it daily.",
     ],
     sections: [
+      {
+        id: "where-you-will-work",
+        title: "Say where you will work",
+        intro:
+          "Open Account → Profile → Preferences. Two location boxes sit under Work arrangement, and they answer different questions. Getting them confused is the most common reason a scan comes back nearly empty.",
+        bullets: [
+          "On-site / hybrid locations is where you would physically travel to. Put the cities, states, or countries you would commute to here. Only hybrid and on-site jobs are checked against it.",
+          "Remote regions is which countries you can work from remotely. A job posted as Germany (Remote) is only kept if Germany is covered by something in this box.",
+          "Leaving Remote regions empty means remote work from anywhere is fine. Empty is the widest setting, not the narrowest.",
+          "A job that just says Remote, with no country named, is never ruled out. The app does not guess at a country the posting did not state.",
+        ],
+        callout: {
+          title: "Europe and European Union are not the same choice",
+          body: "European Union covers the 27 member states. Europe covers those plus the UK, Switzerland, Norway, and the rest of the continent. A posting that says EU work authorization required genuinely excludes the UK, so the app keeps the two apart rather than treating them as one. Pick the one that matches where you can actually work.",
+        },
+      },
+      {
+        id: "picking-a-region",
+        title: "Accept a whole region instead of listing countries",
+        intro:
+          "You do not have to name all 27 EU countries one at a time. Remote regions understands regions, and one of them stands for every country inside it.",
+        steps: [
+          {
+            title: "Type the region name",
+            body: "In Remote regions, type Europe, EU, APAC, Latin America, Nordics, or any other region. Around fifteen are recognised, including EMEA, North America, South America, Americas, Asia, Africa, Oceania, Middle East, Scandinavia, and Benelux.",
+          },
+          {
+            title: "Pick it from under the Regions heading",
+            body: "Matching regions appear at the top of the suggestion list under a Regions heading, each with a line saying what it covers. Pick one and it stands for every country in it — choosing European Union accepts a job posted in Germany, Spain, or Poland without you listing any of them.",
+          },
+          {
+            title: "Do not pick from Places by mistake",
+            body: "Suggestions under the Places heading are ordinary map lookups from OpenStreetMap, which has never heard of these regions. Typing EU offers a small town in France down there, and APAC offers a town in Uganda. Those are real places, not regions. Use Places when you genuinely mean one specific city, state, or country.",
+          },
+          {
+            title: "Add something neither list offers",
+            body: "Press Add typed location beside the box, or press Enter. Whatever you typed is added as it stands.",
+          },
+        ],
+      },
       {
         id: "dashboard-scan",
         title: "Run a scan",
@@ -1179,6 +1219,17 @@ export const helpPages: HelpPage[] = [
           "Review your work arrangement and locations.",
           "Disable noisy sources.",
           "Evaluate a few examples before changing too many settings at once.",
+        ],
+      },
+      {
+        id: "remote-regions",
+        title: "Remote jobs across a whole region are not showing up",
+        bullets: [
+          "Open Account → Profile → Preferences and look at Remote regions. If it lists only single countries, jobs posted elsewhere in the region are being ruled out.",
+          "Type the region name — Europe, EU, EMEA, APAC, Latin America, Nordics, and a dozen more are recognised — and pick it from the Regions heading at the top of the suggestions. Do not pick from the Places heading: those are ordinary map lookups, and typing EU there offers a small town in France.",
+          "Check you picked the region you meant. European Union stops at the 27 member states; Europe also covers the UK, Switzerland, and Norway.",
+          "If you want remote jobs from anywhere, empty the box entirely. An empty Remote regions accepts everything.",
+          "Changing this affects the next scan. Jobs already ruled out by the old setting are not brought back.",
         ],
       },
       {
