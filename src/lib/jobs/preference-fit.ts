@@ -1,4 +1,9 @@
 import type { UserProfileRecord } from "../db/types";
+import {
+  REGION_GROUP_ALIASES,
+  REGION_GROUP_ALIAS_LIST,
+  REGION_GROUP_MEMBER_CODES,
+} from "../profile/region-groups";
 
 export type JobPreferenceProfile = Pick<
   UserProfileRecord,
@@ -247,44 +252,15 @@ function regionDisplayName(code: string): string | null {
 }
 
 /**
- * ISO 3166-1 alpha-2 members of each supra-national region, so selecting
- * "Europe" accepts a role posted as "Germany (Remote)". Codes rather than names
- * because the names are resolved through the same `Intl.DisplayNames` data that
- * `WORLD_REGION_NAMES` uses — the two vocabularies therefore always agree.
+ * The supra-national regions and their ISO 3166-1 alpha-2 members, so selecting
+ * "Europe" accepts a role posted as "Germany (Remote)".
+ *
+ * Codes rather than names because the names are resolved through the same
+ * `Intl.DisplayNames` data that `WORLD_REGION_NAMES` uses — the two vocabularies
+ * therefore always agree. The catalogue itself lives in `profile/region-groups`
+ * so the location picker offers exactly the groups this matcher understands.
  */
-const EU_CODES = "AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE";
-/** Geographic Europe: the EU plus the non-member states, incl. transcontinental ones. */
-const EUROPE_CODES = `${EU_CODES} AL AD AM BA BY CH FO GE GI GG IS IM JE XK LI MC MD ME MK NO RS RU SM UA GB VA`;
-const MIDDLE_EAST_CODES = "AE BH CY IL IQ IR JO KW LB OM PS QA SA SY TR YE";
-const AFRICA_CODES =
-  "DZ AO BJ BW BF BI CM CV CF TD KM CD CG CI DJ EG GQ ER SZ ET GA GM GH GN GW KE LS LR LY MG MW ML " +
-  "MR MU MA MZ NA NE NG RW ST SN SC SL SO ZA SS SD TZ TG TN UG ZM ZW";
-const ASIA_CODES =
-  "AF AM AZ BH BD BT BN KH CN CY GE IN ID IR IQ IL JP JO KZ KW KG LA LB MY MV MN MM NP KP OM PK PS " +
-  "PH QA SA SG KR LK SY TW TJ TH TL TR TM AE UZ VN YE";
-const OCEANIA_CODES = "AU FJ KI MH FM NR NZ PW PG WS SB TO TV VU";
-const NORTH_AMERICA_CODES = "US CA MX";
-const CENTRAL_AMERICA_CODES = "BZ CR SV GT HN NI PA";
-const CARIBBEAN_CODES = "CU DO HT JM TT BS BB PR";
-const SOUTH_AMERICA_CODES = "AR BO BR CL CO EC GY PY PE SR UY VE";
-
-const REGION_MEMBER_CODES: Record<string, string> = {
-  "european union": EU_CODES,
-  europe: EUROPE_CODES,
-  emea: `${EUROPE_CODES} ${MIDDLE_EAST_CODES} ${AFRICA_CODES}`,
-  asia: ASIA_CODES,
-  apac: `${ASIA_CODES} ${OCEANIA_CODES}`,
-  africa: AFRICA_CODES,
-  "middle east": MIDDLE_EAST_CODES,
-  oceania: OCEANIA_CODES,
-  "north america": NORTH_AMERICA_CODES,
-  "south america": SOUTH_AMERICA_CODES,
-  "latin america": `MX ${CENTRAL_AMERICA_CODES} ${CARIBBEAN_CODES} ${SOUTH_AMERICA_CODES}`,
-  americas: `${NORTH_AMERICA_CODES} ${CENTRAL_AMERICA_CODES} ${CARIBBEAN_CODES} ${SOUTH_AMERICA_CODES}`,
-  nordics: "DK FI IS NO SE",
-  scandinavia: "DK NO SE",
-  benelux: "BE NL LU"
-};
+const REGION_MEMBER_CODES: Record<string, string> = REGION_GROUP_MEMBER_CODES;
 
 /** Region key → the normalized display names of its member countries. */
 const REGION_MEMBERS: Record<string, ReadonlySet<string>> = Object.fromEntries(
@@ -300,29 +276,14 @@ const REGION_MEMBERS: Record<string, ReadonlySet<string>> = Object.fromEntries(
 );
 
 /**
- * `europe` and `european union` are deliberately separate groups. A posting that
- * says "EU work authorization required" genuinely excludes the UK, Switzerland
- * and Norway, so folding them together would accept roles the user cannot take.
+ * The plain countries, then every supra-national group from the shared
+ * catalogue. Order matters — `supranationalGroupFor` returns the first match.
  */
 const LOCATION_ALIAS_GROUPS: Record<string, string[]> = {
   "united states": ["united states", "united states of america", "usa", "u s a", "us", "u s", "america", ...US_STATE_ALIASES],
   "united kingdom": ["united kingdom", "uk", "u k", "great britain", "britain", "england", "scotland", "wales", "northern ireland"],
   canada: ["canada", "ontario", "british columbia", "quebec", "alberta"],
-  "european union": ["european union", "eu"],
-  europe: ["europe"],
-  emea: ["emea"],
-  asia: ["asia"],
-  apac: ["apac", "asia pacific"],
-  africa: ["africa"],
-  "middle east": ["middle east"],
-  oceania: ["oceania"],
-  "north america": ["north america"],
-  "south america": ["south america"],
-  "latin america": ["latin america", "latam"],
-  americas: ["americas"],
-  nordics: ["nordics", "nordic"],
-  scandinavia: ["scandinavia"],
-  benelux: ["benelux"]
+  ...REGION_GROUP_ALIASES
 };
 
 /** Country names an accepted group covers; a plain country covers only itself. */
@@ -398,12 +359,9 @@ const WORLD_REGION_NAMES: ReadonlySet<string> = (() => {
       if (name) names.add(name);
     }
   }
-  // Supra-national regions ISO does not cover but postings routinely use.
-  for (const extra of [
-    "europe", "european union", "eu", "emea", "apac", "latam", "north america",
-    "south america", "latin america", "americas", "asia", "africa", "middle east",
-    "oceania", "nordics", "scandinavia", "benelux", "uk",
-  ]) {
+  // Supra-national regions ISO does not cover but postings routinely use. Taken
+  // from the shared catalogue so a group added there is recognised here too.
+  for (const extra of [...REGION_GROUP_ALIAS_LIST, "uk"]) {
     names.add(extra);
   }
   return names;

@@ -38,8 +38,9 @@ components. The help registry stores serializable icon names, and
 - Getting started and the daily workflow
 - AI provider setup for OpenAI, Anthropic, Google Gemini, and Ollama
 - Resume lanes, resume upload, ATS-friendly resume structure, and PDF guidance
-- Job search, scan sources, manual job entry, filters, saved presets, and
-  focusing the list on every position at one company
+- Job search, work-arrangement locations and remote regions (including picking a
+  whole region such as Europe or APAC), scan sources, manual job entry, filters,
+  saved presets, and focusing the list on every position at one company
 - Browser-board scanner setup, result scrolling/paging behavior, imports,
   duplicates, limits, and safety notes
 - Job evaluation, tailored resume generation, application answers, research,
@@ -50,7 +51,8 @@ components. The help registry stores serializable icon names, and
 - Interview preparation with STAR stories and voice practice
 - Privacy, local data, AI-provider data flow, local Ollama behavior, the footer
   version stamp and daily update check, backups, and safety boundaries
-- Troubleshooting for setup, AI, resume/PDF, scan quality, and browser-board imports
+- Troubleshooting for setup, AI, resume/PDF, scan quality, remote regions that
+  rule out too much, and browser-board imports
 
 ## Research References
 
