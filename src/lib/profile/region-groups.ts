@@ -42,7 +42,13 @@ const ASIA_CODES =
 const OCEANIA_CODES = "AU FJ KI MH FM NR NZ PW PG WS SB TO TV VU";
 const NORTH_AMERICA_CODES = "US CA MX";
 const CENTRAL_AMERICA_CODES = "BZ CR SV GT HN NI PA";
-const CARIBBEAN_CODES = "CU DO HT JM TT BS BB PR";
+/**
+ * Every Caribbean state and territory CLDR names, not the handful of largest.
+ * `Americas` and `Latin America` both advertise that they cover the Caribbean,
+ * and a short list quietly discards a role restricted to Dominica or Antigua.
+ */
+const CARIBBEAN_CODES =
+  "AG AI AW BB BQ BS CU CW DM DO GD GP HT JM KN KY LC MF MQ MS PR SX TC TT VC VG VI";
 const SOUTH_AMERICA_CODES = "AR BO BR CL CO EC GY PY PE SR UY VE";
 
 /**

@@ -33,7 +33,12 @@ the numbers mean and when they change.
   nothing.
 - A typed shorthand is saved under its full name — `eu` becomes `European
   Union`, `LATAM` becomes `Latin America` — so the list says what it covers.
-- Regions already on your list are no longer suggested again.
+- Regions already on your list are no longer suggested again, however you first
+  spelled them. A list holding `EU` no longer offers you `European Union` as if
+  it were a different place.
+- `Americas` and `Latin America` now cover every Caribbean country, not the
+  largest eight. A remote role in Antigua, Dominica, or the Caymans was being
+  ruled out by a setting that said it covered the Caribbean.
 
 **Changed**
 

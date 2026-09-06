@@ -73,16 +73,31 @@ export function PreferredLocationsInput({
   }, [locations, query]);
 
   /**
+   * Which groups the list already holds, by group key rather than by label.
+   *
+   * A saved list can name a group in any of its spellings — the old hint told
+   * people to type "EU", "LATAM", or "Asia Pacific" — so comparing label text
+   * would miss those and offer the same region again, leaving two chips that
+   * mean one thing.
+   */
+  const selectedGroupKeys = useMemo(() => {
+    if (!suggestRegionGroups) return new Set<string>();
+    return new Set(
+      locations
+        .map((location) => regionGroupForLabel(location)?.key)
+        .filter((key): key is string => Boolean(key))
+    );
+  }, [locations, suggestRegionGroups]);
+
+  /**
    * Region groups resolve locally and instantly. The geocoder cannot help here —
    * it answers "EU" with a French commune and "APAC" with a town in Uganda — so
    * these have to be offered from our own catalogue, ahead of its suggestions.
    */
   const groupMatches = useMemo<RegionGroup[]>(() => {
     if (!suggestRegionGroups) return [];
-    return matchRegionGroups(query).filter(
-      (group) => !locations.some((location) => location.toLowerCase() === group.label.toLowerCase())
-    );
-  }, [locations, query, suggestRegionGroups]);
+    return matchRegionGroups(query).filter((group) => !selectedGroupKeys.has(group.key));
+  }, [query, selectedGroupKeys, suggestRegionGroups]);
 
   const hiddenValue = useMemo(() => locations.join("\n"), [locations]);
   const showSuggestions = groupMatches.length > 0 || results.length > 0 || loading;
@@ -91,12 +106,16 @@ export function PreferredLocationsInput({
    * Adds a location, rewriting a typed region alias to the catalogue's spelling.
    * The matcher accepts "eu" as readily as "European Union", but a chip reading
    * "eu" tells the user nothing about what it covers.
+   *
+   * A group the list already holds under a different spelling is dropped rather
+   * than added beside it — "EU" and "European Union" are one region, not two.
    */
   function addLocation(location: string) {
     const typed = location.trim();
     const group = suggestRegionGroups ? regionGroupForLabel(typed) : null;
     const value = group?.label ?? typed;
     if (!value || locations.includes(value)) return;
+    if (group && selectedGroupKeys.has(group.key)) return;
     setLocations((current) => [...current, value]);
     setQuery("");
     setResults([]);

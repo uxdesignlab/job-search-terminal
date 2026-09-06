@@ -1829,7 +1829,15 @@ Resumes tab shows an upload banner when no extracted resumes exist.
     rewritten to it: `eu` is saved as `European Union`, `LATAM` as
     `Latin America`. The matcher accepted the aliases already, but a chip reading
     `eu` told the user nothing about what it covered.
-  - Groups already on the list are not offered again.
+  - Groups already on the list are not offered again, matched by group key rather
+    than label text. A profile predating the Regions section can hold a group
+    under any alias — the old hint told users to type `EU`, `LATAM`, or
+    `Asia Pacific` — and comparing labels would have offered the same region back
+    and saved two chips meaning one thing.
+  - `CARIBBEAN_CODES` covers every Caribbean state and territory CLDR names, not
+    the largest eight. `Americas` and `Latin America` both advertise Caribbean
+    coverage, so a short list silently rejected remote roles in Antigua,
+    Dominica, or the Cayman Islands.
   - `European Union` and `Europe` are **deliberately different sets.** EU is the
     27 member states; Europe additionally covers the UK, Switzerland, Norway and
     Ukraine. A posting requiring EU work authorization genuinely excludes the UK

@@ -84,6 +84,23 @@ describe("every catalogue label is usable as a saved preference", () => {
     expect(accepts(["European Union"], "Remote - Japan")).toBe(false);
   });
 
+  it("accepts a Caribbean posting under Americas and Latin America", () => {
+    // Both groups advertise that they cover the Caribbean, so the membership has
+    // to be the whole Caribbean rather than its largest few islands.
+    //
+    // Each case is paired with a group that excludes it. Without that pair the
+    // assertions would pass vacuously: an unrecognised region name counts as
+    // unrestricted, so a misspelled island is accepted by every group alike.
+    expect(accepts(["Americas"], "Antigua and Barbuda (Remote)")).toBe(true);
+    expect(accepts(["Europe"], "Antigua and Barbuda (Remote)")).toBe(false);
+
+    expect(accepts(["Latin America"], "Remote - Dominica")).toBe(true);
+    expect(accepts(["Europe"], "Remote - Dominica")).toBe(false);
+
+    expect(accepts(["Americas"], "Cayman Islands (Remote)")).toBe(true);
+    expect(accepts(["Europe"], "Cayman Islands (Remote)")).toBe(false);
+  });
+
   it("keeps Europe and the European Union apart", () => {
     expect(accepts(["Europe"], "United Kingdom (Remote)")).toBe(true);
     expect(accepts(["European Union"], "United Kingdom (Remote)")).toBe(false);
@@ -92,5 +109,27 @@ describe("every catalogue label is usable as a saved preference", () => {
   it("accepts the alias the picker rewrites, exactly as the label does", () => {
     expect(accepts(["APAC"], "Remote - Singapore")).toBe(true);
     expect(accepts(["Latin America"], "Brazil (Remote)")).toBe(true);
+  });
+});
+
+describe("a group already on the list, under any spelling", () => {
+  // Profiles predate the picker's Regions section: the old hint told people to
+  // type "EU", "LATAM", or "Asia Pacific" and press Add typed location, so a
+  // saved list can name a group by any of its aliases.
+  const alreadyHolds = (saved: string, typed: string) => {
+    const keys = new Set(
+      [saved].map((value) => regionGroupForLabel(value)?.key).filter(Boolean)
+    );
+    return matchRegionGroups(typed).filter((group) => !keys.has(group.key));
+  };
+
+  it("is not offered again when saved under an alias", () => {
+    expect(alreadyHolds("EU", "eu").map((group) => group.label)).not.toContain("European Union");
+    expect(alreadyHolds("LATAM", "latin").map((group) => group.label)).not.toContain("Latin America");
+    expect(alreadyHolds("Asia Pacific", "apac").map((group) => group.label)).not.toContain("APAC");
+  });
+
+  it("still offers the neighbouring group the list does not hold", () => {
+    expect(alreadyHolds("EU", "eu").map((group) => group.label)).toContain("Europe");
   });
 });
