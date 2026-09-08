@@ -15,6 +15,25 @@ the numbers mean and when they change.
 
 ---
 
+## 0.13.2 — 2026-09-08 — A lighter Jobs page
+
+**Fixed**
+
+- The Jobs page no longer sends every job's full posting description and
+  evaluation to your browser just to draw a table that shows neither. With 600
+  jobs saved the page was a 9.9 MB download; it is now 1.5 MB, and Jobs and
+  Archived both become clickable sooner. This is also what was causing the red
+  "Hydration failed" box: at 9.9 MB it appeared on roughly half of page loads,
+  and after the change it did not come back across eighteen loads in a row.
+
+**Changed**
+
+- On a phone, the Jobs page now lists the 50 strongest matches rather than every
+  saved job, with a line underneath saying how many there are in total. Sorting
+  and filtering were never available on that list — they live in the table you
+  get on a wider screen — and rendering all 600 cards was half the weight of the
+  page for everyone, including the people who never saw them.
+
 ## 0.13.1 — 2026-09-06 — Whole regions you can actually pick
 
 **Fixed**

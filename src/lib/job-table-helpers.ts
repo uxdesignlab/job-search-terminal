@@ -3,7 +3,32 @@ import { OUTSIDE_PREFERENCES_LABEL, UNKNOWN_LOCATION_LABEL } from "@/lib/jobs/pr
 import { sourceLabelFromJobSource } from "@/lib/scanner/browser-board-sources";
 import type { AtsProvider } from "@/lib/scanner/source-discovery";
 
-export type MainJobTableRecord = JobRecord & {
+/**
+ * The columns the jobs table actually reads — deliberately a `Pick`, not the whole
+ * `JobRecord`. These rows are props of a client component, so every field listed here
+ * is serialized into the page's inline RSC payload once per job. Spreading the full
+ * record put both descriptions and every evaluation array on the wire for each row,
+ * which is how `/jobs` grew to a ~10 MB document at 600 jobs. Add a field only when a
+ * column needs it.
+ */
+export type MainJobTableRecord = Pick<
+  JobRecord,
+  | "id"
+  | "company"
+  | "title"
+  | "url"
+  | "sourceUrl"
+  | "source"
+  | "location"
+  | "datePosted"
+  | "firstSeenDate"
+  | "fitScore"
+  | "status"
+  | "recommendation"
+  | "livenessStatus"
+  | "postingResolutionStatus"
+  | "isDuplicate"
+> & {
   preferenceLabel?: string;
   removalProtected?: boolean;
   /**
@@ -165,7 +190,17 @@ export function getMainJobColOptions(jobs: MainJobTableRecord[], col: MainJobsSo
 
 export type ArchivedJobsSortCol = "title" | "company" | "score" | "archiveStatus" | "posted" | "reason";
 
-export function getArchivedJobColValue(job: JobRecord, col: ArchivedJobsSortCol): string {
+/**
+ * The archived table's columns, narrowed for the same reason as `MainJobTableRecord`:
+ * these rows are client-component props, so anything listed here is serialized into the
+ * page once per archived job.
+ */
+export type ArchivedJobTableRecord = Pick<
+  JobRecord,
+  "id" | "title" | "company" | "fitScore" | "livenessStatus" | "datePosted" | "firstSeenDate" | "status"
+>;
+
+export function getArchivedJobColValue(job: ArchivedJobTableRecord, col: ArchivedJobsSortCol): string {
   switch (col) {
     case "title":
       return job.title;
@@ -182,7 +217,7 @@ export function getArchivedJobColValue(job: JobRecord, col: ArchivedJobsSortCol)
   }
 }
 
-export function getArchivedJobColOptions(jobs: JobRecord[], col: ArchivedJobsSortCol): string[] {
+export function getArchivedJobColOptions(jobs: ArchivedJobTableRecord[], col: ArchivedJobsSortCol): string[] {
   if (col === "score") return [...JOB_FIT_BUCKETS];
   if (col === "posted") return ["Has date", "No date"];
   if (col === "archiveStatus") return ["Expired", "Manually archived"];

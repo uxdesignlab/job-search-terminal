@@ -527,8 +527,25 @@ status, posting maintenance, and bulk tools.
   `router.replace("/jobs")`. Opening any column filter menu also clears the focus,
   since a filter that did nothing would look broken. The focus is never persisted
   to the saved table state. The mobile card list applies the same filter
-  server-side in `src/app/jobs/page.tsx`; the desktop table receives the full job
-  list plus a `companyFocus` prop.
+  server-side in `src/app/jobs/page.tsx`; the desktop table receives every row
+  plus a `companyFocus` prop.
+- **Narrow-screen card list** — the card list under `lg:hidden` renders at most
+  `MOBILE_CARD_LIMIT` (50) cards. `getJobs()` orders by fit score, so those are
+  the 50 strongest matches; below them a line names the count and points at the
+  desktop table, which is where sorting and filtering live. The cap exists
+  because the cards are markup the desktop layout *hides* rather than skips — an
+  uncapped list put all 600 jobs into every page load a second time.
+- **Page weight** — the desktop table is a client component, so its rows are
+  serialized into the page once each. `src/app/jobs/page.tsx` therefore projects
+  each job down to `MainJobTableRecord` (see
+  [data model](data-model.md#jobs)) before handing it over, rather than passing
+  whole records. Job descriptions and evaluation arrays are not part of the table
+  and stay on the server. Together with the card cap this took `/jobs` from a
+  9.9 MB document at 600 jobs to 1.5 MB. The size mattered beyond load time: at
+  9.9 MB React reported a recoverable hydration error on roughly half of page
+  loads (it discards the server HTML and re-renders the whole tree in the
+  browser); at 1.5 MB it did not recur across 18 consecutive loads. `/archived`
+  uses the same projection via `ArchivedJobTableRecord`.
 - **Preference column** — shows `Match` when a job still fits the current
   profile preferences and constraints, or `Out of scope` when saved preferences
   have changed and the job no longer fits. This is a derived display/filter

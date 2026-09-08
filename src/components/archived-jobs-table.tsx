@@ -15,9 +15,9 @@ import {
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatPostedDate } from "@/lib/dates";
-import type { JobRecord } from "@/lib/db/types";
 import {
   type ArchivedJobsSortCol,
+  type ArchivedJobTableRecord,
   getArchivedJobColOptions,
   getArchivedJobColValue,
 } from "@/lib/job-table-helpers";
@@ -36,7 +36,7 @@ const COL_DEFS: Array<{ col: ArchivedJobsSortCol; label: string }> = [
 ];
 
 type Props = {
-  jobs: JobRecord[];
+  jobs: ArchivedJobTableRecord[];
   unarchiveAction: (formData: FormData) => Promise<void>;
   deleteArchivedAction: (formData: FormData) => Promise<void>;
 };

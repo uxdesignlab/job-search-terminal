@@ -6,6 +6,7 @@ import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
 import { getArchivedJobs, unarchiveJob, deleteJob, purgeAllArchivedJobs } from "@/lib/db/queries";
+import type { ArchivedJobTableRecord } from "@/lib/job-table-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,19 @@ export default function ArchivedPage() {
     revalidatePath("/jobs");
     redirect("/archived");
   }
+
+  // Narrowed for the table, which is a client component: whole records would put every
+  // archived job's descriptions and evaluation arrays into the page's inline RSC payload.
+  const tableJobs: ArchivedJobTableRecord[] = jobs.map((job) => ({
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    fitScore: job.fitScore,
+    livenessStatus: job.livenessStatus,
+    datePosted: job.datePosted,
+    firstSeenDate: job.firstSeenDate,
+    status: job.status,
+  }));
 
   return (
     <Shell activeItem="Archived">
@@ -111,7 +125,7 @@ export default function ArchivedPage() {
 
             <ArchivedJobsTable
               deleteArchivedAction={deleteArchivedAction}
-              jobs={jobs}
+              jobs={tableJobs}
               unarchiveAction={unarchiveAction}
             />
           </>
