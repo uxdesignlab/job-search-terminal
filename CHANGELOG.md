@@ -15,6 +15,26 @@ the numbers mean and when they change.
 
 ---
 
+## 0.13.3 — 2026-09-08 — Fetch description actually fetches
+
+**Fixed**
+
+- **Fetch description** works on jobs found through a company's Greenhouse board.
+  Greenhouse hands back the employer's own careers link rather than a job-board one,
+  and the app could not tell which board to ask, so it quietly did nothing. Of the
+  jobs saved from Greenhouse, most had no description at all — which also means they
+  were scored without one.
+- The button says what actually happened. It used to show **Saved ✓** whenever it
+  finished, whether or not anything had been saved, so a fetch that came back
+  empty-handed looked exactly like one that worked, while the card underneath went on
+  saying the description was missing. Now it names the problem: the posting is not on
+  a board the app can read, the board had no description for it (usually a job that
+  has been taken down), or the board could not be reached just now.
+- Fetched Greenhouse descriptions are readable text. They were being saved as a
+  jumble of angle brackets and code, and that is what the AI was reading when it
+  scored those jobs. Descriptions already saved are not repaired automatically —
+  **Troubleshooting** in Help has the two-minute fix for a job worth re-scoring.
+
 ## 0.13.2 — 2026-09-08 — A lighter Jobs page
 
 **Fixed**

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FetchDescriptionButton, type FetchDescriptionState } from "../fetch-description-button";
 import { EditJobModal } from "@/components/EditJobModal";
 import { GapAddressingPanel } from "@/components/gap-addressing-panel";
 import {
@@ -8,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
   LinkButton,
-  SubmitButton,
 } from "@/components/ui";
 import type { EvaluationRecord, JobRecord, ResolvedGapResponse } from "@/lib/db/types";
 import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
@@ -18,7 +18,7 @@ import type { TabHref } from "./types";
 type Props = {
   allGapItems: string[];
   evaluation: EvaluationRecord | undefined;
-  fetchDescriptionAction: () => Promise<void>;
+  fetchDescriptionAction: () => Promise<FetchDescriptionState>;
   gapResponseMap: Record<string, ResolvedGapResponse>;
   id: string;
   job: JobRecord;
@@ -168,11 +168,7 @@ export function OverviewTab({
                   : "Resolve the posting URL first, then fetch or paste the job description."}
               </p>
             </div>
-            {resolvedPosting ? (
-              <form action={fetchDescriptionAction}>
-                <SubmitButton label="Fetch description" pendingLabel="Fetching…" savedLabel="Saved ✓" variant="secondary" />
-              </form>
-            ) : null}
+            {resolvedPosting ? <FetchDescriptionButton action={fetchDescriptionAction} /> : null}
           </div>
         )}
       </Card>
