@@ -228,6 +228,26 @@ location, so no location judgement was made). Saving profile Preferences or
 Constraints revalidates the Jobs page so this column reflects the latest profile
 rules.
 
+**Row types for the job tables.** The full `JobRecord` (`src/lib/db/types.ts`)
+mirrors every column above, descriptions included, and server components may use
+it freely. The two job tables are client components, though, so whatever is handed
+to them is serialized into the page's inline RSC payload once per row. Both
+therefore take a narrowed row type from
+[`src/lib/job-table-helpers.ts`](../src/lib/job-table-helpers.ts) rather than the
+whole record:
+
+| Type | Used by | Fields |
+|---|---|---|
+| `MainJobTableRecord` | `BatchEvaluateForm` on `/jobs` | `id`, `company`, `title`, `url`, `sourceUrl`, `source`, `location`, `datePosted`, `firstSeenDate`, `fitScore`, `status`, `recommendation`, `livenessStatus`, `postingResolutionStatus`, `isDuplicate`, plus the server-derived `preferenceLabel`, `removalProtected`, and `sourceLabel` |
+| `ArchivedJobTableRecord` | `ArchivedJobsTable` on `/archived` | `id`, `title`, `company`, `fitScore`, `livenessStatus`, `datePosted`, `firstSeenDate`, `status` |
+
+Adding a column to either table means adding its field to the matching type and
+to the projection in `src/app/jobs/page.tsx` or `src/app/archived/page.tsx`. Do
+not widen either type back to `JobRecord`: `raw_description`, `parsed_description`
+and the four evaluation JSON arrays account for roughly 4 MB of text across 600
+jobs, which the browser would have to download and parse on every visit before the
+page could become interactive.
+
 ### job_email_import_evidence
 
 Minimal provenance for jobs imported from dropped email alerts.

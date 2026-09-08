@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, getUserProfile, insertScannedJobs, recordScanRun } from "../db/queries";
+import { getCustomScanSources, getJobDedupKeys, getScanSourceOverrides, getTitleFilters, getUserProfile, insertScannedJobs, recordScanRun, type CustomScanSource } from "../db/queries";
 import type { FreshnessWindowHours, ScannedJobInput, ScanRunRecord, ScanTrigger } from "../db/types";
 import { buildJobPreferenceFilter, type JobPreferenceProfile } from "../jobs/preference-fit";
 import { buildTitleFilter as buildSharedTitleFilter } from "../jobs/title-filter";
@@ -23,7 +23,7 @@ const ATS_JOB_LIST_FETCH_MS = 60_000;
 /** After a timeout/abort, retry once (transient saturation or slow CDN). */
 const ATS_JOB_LIST_FETCH_RETRIES = 1;
 
-type PortalCompany = {
+export type PortalCompany = {
   name: string;
   careers_url?: string;
   api?: string;
@@ -118,14 +118,8 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   const sourceOverrides = persist ? getScanSourceOverrides() : {};
   const customSources = persist ? getCustomScanSources() : [];
 
-  // Merge YAML companies with custom DB sources (custom sources with matching name override YAML)
-  const yamlNames = new Set(companies.map((c) => c.name));
-  const mergedCompanies = [
-    ...companies,
-    ...customSources
-      .filter((c) => !yamlNames.has(c.name))
-      .map((c) => ({ name: c.name, careers_url: c.careersUrl, api: c.api, enabled: c.enabled }))
-  ];
+  // Custom DB sources with a matching name override their YAML entry.
+  const mergedCompanies = mergeTrackedCompanies(companies, customSources);
 
   const enabledCompanies = mergedCompanies.filter((company) => {
     if (Object.hasOwn(sourceOverrides, company.name)) return sourceOverrides[company.name];
@@ -316,13 +310,7 @@ export function isScanSourceEnabled(name: string, configPath?: string): boolean 
   const companies = config.tracked_companies ?? [];
   const sourceOverrides = getScanSourceOverrides();
   const customSources = getCustomScanSources();
-  const yamlNames = new Set(companies.map((c) => c.name));
-  const mergedCompanies = [
-    ...companies,
-    ...customSources
-      .filter((c) => !yamlNames.has(c.name))
-      .map((c) => ({ name: c.name, careers_url: c.careersUrl, api: c.api, enabled: c.enabled }))
-  ];
+  const mergedCompanies = mergeTrackedCompanies(companies, customSources);
   const company = mergedCompanies.find((c) => c.name === name);
   if (company) {
     if (Object.hasOwn(sourceOverrides, name)) return sourceOverrides[name];
@@ -330,6 +318,25 @@ export function isScanSourceEnabled(name: string, configPath?: string): boolean 
   }
   if (Object.hasOwn(sourceOverrides, name)) return sourceOverrides[name];
   return true;
+}
+
+/**
+ * The scan sources as the scanner sees them: the YAML `tracked_companies` plus the
+ * custom sources stored in the app database, where a custom source of the same name
+ * replaces the YAML entry. Exported because the description fetcher needs the same
+ * view to recover a Greenhouse board token from a company name.
+ */
+export function mergeTrackedCompanies(
+  yamlCompanies: PortalCompany[],
+  customSources: CustomScanSource[],
+): PortalCompany[] {
+  const yamlNames = new Set(yamlCompanies.map((c) => c.name));
+  return [
+    ...yamlCompanies,
+    ...customSources
+      .filter((c) => !yamlNames.has(c.name))
+      .map((c) => ({ name: c.name, careers_url: c.careersUrl, api: c.api, enabled: c.enabled }))
+  ];
 }
 
 export function detectApi(company: PortalCompany): DetectedApi | null {

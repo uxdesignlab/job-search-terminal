@@ -845,6 +845,10 @@ export const helpPages: HelpPage[] = [
             body: "The top of the page collects what is known so far: the company and title, where the job came from, how old the posting is, pay if it was stated, what the role requires, and — once you have scored it — how well you match and anything that looked off.",
           },
           {
+            title: "Check the description is saved",
+            body: "Scroll to the bottom of Overview. If it says Job description not saved, press Fetch description — the app reads it from the job board and keeps a copy. The score is only as good as the text it reads, so a job with no description scores badly for the wrong reason. If the button reports that it could not get the description, open the posting yourself, copy the text, and paste it into Edit job details.",
+          },
+          {
             title: "Run AI analysis",
             body: "Open the Analysis tab and press the button to score the job. The reasoning appears as it is written rather than all at once at the end, so you can follow how it reached its answer instead of being handed a number to trust.",
           },
@@ -1253,6 +1257,18 @@ export const helpPages: HelpPage[] = [
           "Add at least one Role focus. Use functions such as user experience or product design, separated by commas. The app fills this from the job title when it can.",
           "Review Who Clay will look for before searching. The three groups should make sense for the position, and the result counts should add up to five.",
           "If Clay rejects the search after the checklist is ready, check the red message above the People card. It tells you whether the key, allowance, rate limit, or Clay service needs attention.",
+        ],
+      },
+      {
+        id: "job-description",
+        title: "Fetch description does not save a description",
+        bullets: [
+          "The button tells you what happened. Read the red line that appears under it — the wording points at which of the three problems below you have.",
+          "\"This posting is not on a job board the app can read\" — the app can read descriptions from Greenhouse, Ashby, and Lever, and no others. For anything else, open the posting yourself, copy the description, and paste it into Overview → Edit job details.",
+          "\"The job board answered, but had no description for this posting\" — this nearly always means the posting has been taken down. Open the link and check. If the job is gone, archive it.",
+          "\"Could not reach the job board just now\" — a temporary network problem. Wait a moment and press the button again.",
+          "Older versions of the app showed Saved ✓ no matter what happened, so a fetch that got nothing looked exactly like one that worked. If a job has been sitting with no description for a while, press Fetch description again — it may well work now.",
+          "If a saved description reads as a jumble of angle brackets and code instead of sentences, it was saved by one of those older versions. Open Overview → Edit job details, empty the description box, save, then press Fetch description for a clean copy. Re-run the evaluation afterwards, because the old score was read from the jumble.",
         ],
       },
       {

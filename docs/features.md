@@ -527,8 +527,25 @@ status, posting maintenance, and bulk tools.
   `router.replace("/jobs")`. Opening any column filter menu also clears the focus,
   since a filter that did nothing would look broken. The focus is never persisted
   to the saved table state. The mobile card list applies the same filter
-  server-side in `src/app/jobs/page.tsx`; the desktop table receives the full job
-  list plus a `companyFocus` prop.
+  server-side in `src/app/jobs/page.tsx`; the desktop table receives every row
+  plus a `companyFocus` prop.
+- **Narrow-screen card list** — the card list under `lg:hidden` renders at most
+  `MOBILE_CARD_LIMIT` (50) cards. `getJobs()` orders by fit score, so those are
+  the 50 strongest matches; below them a line names the count and points at the
+  desktop table, which is where sorting and filtering live. The cap exists
+  because the cards are markup the desktop layout *hides* rather than skips — an
+  uncapped list put all 600 jobs into every page load a second time.
+- **Page weight** — the desktop table is a client component, so its rows are
+  serialized into the page once each. `src/app/jobs/page.tsx` therefore projects
+  each job down to `MainJobTableRecord` (see
+  [data model](data-model.md#jobs)) before handing it over, rather than passing
+  whole records. Job descriptions and evaluation arrays are not part of the table
+  and stay on the server. Together with the card cap this took `/jobs` from a
+  9.9 MB document at 600 jobs to 1.5 MB. The size mattered beyond load time: at
+  9.9 MB React reported a recoverable hydration error on roughly half of page
+  loads (it discards the server HTML and re-renders the whole tree in the
+  browser); at 1.5 MB it did not recur across 18 consecutive loads. `/archived`
+  uses the same projection via `ArchivedJobTableRecord`.
 - **Preference column** — shows `Match` when a job still fits the current
   profile preferences and constraints, or `Out of scope` when saved preferences
   have changed and the job no longer fits. This is a derived display/filter
@@ -663,7 +680,46 @@ excluded so the count always equals what the focused list shows.
   lists; the grid is now two columns (requirement match, gaps and red flags). Any
   resume-evidence line the evaluation recorded still shows in the box, unless it just
   repeats the lane name.
-- **Job description** — collapsed panel showing the saved description text.
+- **Job description** — collapsed panel showing the saved description text. When
+  nothing is saved and the posting URL is resolved, a **Fetch description** button
+  reads it from the board (`src/lib/scanner/jd-fetcher.ts`). The button reports what
+  the attempt actually did, and says so in place rather than claiming a save:
+
+  | Outcome | What the user sees |
+  |---|---|
+  | `fetched` | the card becomes the collapsed description panel |
+  | `unsupported` | *This posting is not on a job board the app can read. Paste the description under Edit job details.* |
+  | `empty` | *The job board answered, but had no description for this posting.* — usually a posting that has since been taken down |
+  | `unreachable` | *Could not reach the job board just now. Try again in a moment.* |
+
+  It previously used the shared `SubmitButton`, which shows `Saved ✓` whenever a form
+  action finishes. A fetch that returned nothing therefore looked identical to a
+  successful one, while the card underneath went on saying the description was
+  missing. `FetchDescriptionButton`
+  (`src/app/jobs/[id]/fetch-description-button.tsx`) uses `useActionState` so the
+  server action's outcome reaches the screen.
+
+  **Boards the fetcher reads.** Greenhouse, Ashby and Lever, chosen from the job's
+  `source` or the host in its URL. Everything else is `unsupported`.
+
+  - **Greenhouse** needs a board token and a numeric posting id. Jobs found through
+    the board API are stored under the employer's own careers URL, because that is the
+    `absolute_url` Greenhouse returns — `samsara.com/company/careers/roles/7839138?gh_jid=7839138`
+    names no board, so the fetcher looked for a token in the URL, found none, and gave
+    up silently. It now reads the id from `gh_jid` (or a numeric path segment) and
+    recovers the token from the scan source the job's company was found through, via
+    `mergeTrackedCompanies` in `careerops-scanner.ts`. Board-hosted
+    `job-boards.greenhouse.io/{token}/jobs/{id}` URLs still resolve from the URL alone.
+  - **Ashby** scrapes the posting page for its `application/ld+json` block; a page
+    without one — typically a posting since taken down — is `empty`, not an error.
+  - **Lever** reads `descriptionPlain` from the public postings API.
+
+  **Greenhouse markup.** Greenhouse returns `content` entity-escaped: `&lt;p&gt;…`
+  rather than `<p>…`. `htmlToText` stripped tags first and decoded afterwards, so the
+  tags only existed after the strip had run and were saved as literal text. It now
+  decodes an escaped payload before stripping. Descriptions saved before this change
+  are not rewritten — re-fetching one means clearing it under **Edit job details**
+  first.
 - **Edit job details** — collapsed form to overwrite position, company, job posting
   URL, and job description without creating a duplicate record. Useful when LinkedIn
   or other scanner sources capture only partial metadata. All four fields are

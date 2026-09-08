@@ -25,7 +25,7 @@ export function formatDisplayDate(value: string | null | undefined) {
   }).format(date);
 }
 
-export function formatPostedDate(job: JobRecord) {
+export function formatPostedDate(job: Pick<JobRecord, "datePosted" | "firstSeenDate">) {
   if (job.datePosted) {
     return formatDisplayDate(job.datePosted);
   }

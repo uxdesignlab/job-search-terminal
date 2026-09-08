@@ -12,11 +12,21 @@ import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
 import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
-import { getJobSourceLabel } from "@/lib/job-table-helpers";
+import { getJobSourceLabel, type MainJobTableRecord } from "@/lib/job-table-helpers";
 
 import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * How many cards the narrow-screen list renders. The cards are markup the desktop
+ * layout hides rather than skips, so an uncapped list put every job into the page
+ * twice — at 600 jobs that was half the document, and a page that large is slow
+ * enough to hydrate that React sometimes gives up and re-renders it from scratch.
+ * `getJobs()` orders by fit score, so the cap keeps the strongest matches; the
+ * desktop table remains the place to sort and filter the whole list.
+ */
+const MOBILE_CARD_LIMIT = 50;
 
 type Props = {
   searchParams: Promise<{ company?: string }>;
@@ -51,6 +61,33 @@ export default async function JobsPage({ searchParams }: Props) {
   // The mobile card list has no column filters of its own, so the focus is applied
   // here rather than inside the desktop table component.
   const mobileJobs = companyFocus ? jobs.filter((job) => job.company === companyFocus) : jobs;
+  const visibleMobileJobs = mobileJobs.slice(0, MOBILE_CARD_LIMIT);
+
+  // The desktop table is a client component, so whatever is handed to it is serialized
+  // into the page's inline RSC payload once per job. Narrow the rows to the columns it
+  // renders: passing whole records shipped both descriptions and every evaluation array
+  // for all ~600 jobs, a ~10 MB document the browser had to parse before it could
+  // hydrate. See `MainJobTableRecord` for the field list.
+  const tableJobs: MainJobTableRecord[] = jobs.map((job) => ({
+    id: job.id,
+    company: job.company,
+    title: job.title,
+    url: job.url,
+    sourceUrl: job.sourceUrl,
+    source: job.source,
+    location: job.location,
+    datePosted: job.datePosted,
+    firstSeenDate: job.firstSeenDate,
+    fitScore: job.fitScore,
+    status: job.status,
+    recommendation: job.recommendation,
+    livenessStatus: job.livenessStatus,
+    postingResolutionStatus: job.postingResolutionStatus,
+    isDuplicate: job.isDuplicate,
+    preferenceLabel: job.preferenceLabel,
+    removalProtected: job.removalProtected,
+    sourceLabel: job.sourceLabel,
+  }));
 
   return (
     <Shell activeItem="Jobs">
@@ -104,7 +141,7 @@ export default async function JobsPage({ searchParams }: Props) {
               </Link>
             </div>
           ) : null}
-          {mobileJobs.map((job) => (
+          {visibleMobileJobs.map((job) => (
             <div className="rounded-panel border border-border bg-panel p-4" key={job.id}>
               <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
                 {job.title}
@@ -145,12 +182,18 @@ export default async function JobsPage({ searchParams }: Props) {
               </div>
             </div>
           ))}
+          {mobileJobs.length > visibleMobileJobs.length ? (
+            <p className="px-1 text-xs leading-5 text-muted">
+              Showing the {visibleMobileJobs.length} strongest matches of {mobileJobs.length}. The full
+              list, with sorting and filters, is on the table this page shows on a wider screen.
+            </p>
+          ) : null}
         </div>
 
         {/* Desktop table with column filters + batch actions */}
         {jobs.length > 0 ? (
           <div className="hidden lg:block">
-            <BatchEvaluateForm companyFocus={companyFocus} jobs={jobs} />
+            <BatchEvaluateForm companyFocus={companyFocus} jobs={tableJobs} />
           </div>
         ) : null}
       </div>

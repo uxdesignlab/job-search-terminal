@@ -53,6 +53,7 @@ import { ApplyTab } from "./tabs/apply-tab";
 import { EvaluationTab } from "./tabs/evaluation-tab";
 import { OutreachTab } from "./tabs/outreach-tab";
 import { OverviewTab } from "./tabs/overview-tab";
+import type { FetchDescriptionState } from "./fetch-description-button";
 import { ResumeTab } from "./tabs/resume-tab";
 import { TABS, type Tab } from "./tabs/types";
 
@@ -220,16 +221,18 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
     revalidatePath(`/jobs/${id}`);
   }
 
-  async function fetchDescriptionAction() {
+  async function fetchDescriptionAction(): Promise<FetchDescriptionState> {
     "use server";
-    const { fetchJobDescription } = await import("@/lib/scanner/jd-fetcher");
+    const { fetchJobDescriptionOutcome } = await import("@/lib/scanner/jd-fetcher");
     const { saveJobDescription } = await import("@/lib/db/queries");
     const current = getJobById(id);
-    if (current && !current.rawDescription && hasResolvedPosting(current)) {
-      const desc = await fetchJobDescription(current);
-      if (desc) saveJobDescription(id, desc);
-    }
+    if (!current || !hasResolvedPosting(current)) return { status: "unsupported" };
+    if (current.rawDescription) return { status: "fetched" };
+
+    const outcome = await fetchJobDescriptionOutcome(current);
+    if (outcome.status === "fetched") saveJobDescription(id, outcome.text);
     revalidatePath(`/jobs/${id}`);
+    return { status: outcome.status };
   }
 
   async function checkLivenessAction() {
