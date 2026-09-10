@@ -17,6 +17,12 @@ export type ScanJobResultSummary = {
   freshCount?: number;
   unknownDateCount?: number;
   staleFilteredCount?: number;
+  /**
+   * Postings dropped for being outside the user's commute or remote-region
+   * preferences. Reported separately from `filteredCount` because "we found 47
+   * and kept none" reads as a broken scan until you can see why.
+   */
+  preferenceFilteredCount?: number;
   /** Subset of `newJobsCount` that re-posts a role the user had already closed out. */
   repostCount?: number;
 };

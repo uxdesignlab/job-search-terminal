@@ -247,14 +247,22 @@ export default async function SettingsPage({
     const currentSettings = getAISettings();
     const profile = getUserProfile();
     const { runAggregatorScan } = await import("@/lib/scanner/aggregator-scanner");
-    const result = await runAggregatorScan({
-      adzunaAppId: currentSettings.adzunaAppId,
-      adzunaApiKey: currentSettings.adzunaApiKey,
-      titles: profile.targetRoles,
-      locations: profile.preferredLocations,
-      remotePreference: profile.remotePreference,
-      freshnessWindowHours: getScanSchedule().freshnessWindowHours,
-    });
+    // Without the title filters this button has no search terms at all — they
+    // are where the Adzuna queries now come from, not the target roles.
+    const result = await runAggregatorScan(
+      {
+        adzunaAppId: currentSettings.adzunaAppId,
+        adzunaApiKey: currentSettings.adzunaApiKey,
+        titles: profile.targetRoles,
+        locations: profile.preferredLocations,
+        remotePreference: profile.remotePreference,
+        titleFilters: getTitleFilters(),
+        freshnessWindowHours: getScanSchedule().freshnessWindowHours,
+      },
+      (msg) => {
+        console.info(`[adzuna] ${msg}`);
+      },
+    );
     revalidatePath("/jobs");
     revalidatePath("/dashboard");
     return result;

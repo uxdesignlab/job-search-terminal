@@ -52,7 +52,8 @@ components. The help registry stores serializable icon names, and
 - Privacy, local data, AI-provider data flow, local Ollama behavior, the footer
   version stamp and daily update check, backups, and safety boundaries
 - Troubleshooting for setup, AI, resume/PDF, scan quality, remote regions that
-  rule out too much, and browser-board imports
+  rule out too much, an Adzuna lane that never finds anything, and browser-board
+  imports
 
 ## Research References
 

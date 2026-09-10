@@ -91,18 +91,30 @@ export async function runJobDiscoveryScan(input: {
       ? runSource(
           "adzuna",
           "Adzuna",
-          "Searching saved roles and locations on Adzuna",
+          "Searching Adzuna for your title keywords",
           () =>
-            runAggregatorScan({
-              adzunaAppId: settings.adzunaAppId,
-              adzunaApiKey: settings.adzunaApiKey,
-              titles: profile.targetRoles,
-              locations: profile.preferredLocations,
-              remotePreference: profile.remotePreference,
-              titleFilters,
-              freshnessWindowHours,
-            }),
-          (result) => `Checked Adzuna — ${result.totalFound} ${result.totalFound === 1 ? "listing" : "listings"} found`,
+            runAggregatorScan(
+              {
+                adzunaAppId: settings.adzunaAppId,
+                adzunaApiKey: settings.adzunaApiKey,
+                titles: profile.targetRoles,
+                locations: profile.preferredLocations,
+                remotePreference: profile.remotePreference,
+                titleFilters,
+                freshnessWindowHours,
+              },
+              // Adzuna fans out over several queries and can take a while to say
+              // nothing. Surfacing each one names the terms actually searched,
+              // so a zero is legible instead of merely disappointing.
+              (detail) =>
+                reportProgress({ sourceId: "adzuna", sourceLabel: "Adzuna", status: "running", detail }),
+            ),
+          (result) => {
+            const found = `${result.totalFound} ${result.totalFound === 1 ? "listing" : "listings"} found`;
+            const outOfScope =
+              result.preferenceFiltered > 0 ? `, ${result.preferenceFiltered} outside your locations` : "";
+            return `Checked Adzuna — ${found}${outOfScope}`;
+          },
         )
       : null,
     runSource(
@@ -174,5 +186,6 @@ export async function runJobDiscoveryScan(input: {
     freshCount: (careerOps.freshCount ?? careerOps.newJobsCount) + (adzuna?.fresh ?? 0) + dice.fresh + himalayas.fresh,
     unknownDateCount: (careerOps.unknownDateCount ?? 0) + (adzuna?.unknownDate ?? 0) + dice.unknownDate + himalayas.unknownDate,
     staleFilteredCount: (careerOps.staleFilteredCount ?? 0) + (adzuna?.staleFiltered ?? 0) + dice.staleFiltered + himalayas.staleFiltered,
+    preferenceFilteredCount: adzuna?.preferenceFiltered ?? 0,
   };
 }
