@@ -2852,7 +2852,65 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 
 **What it covers:** Adzuna aggregates from multiple sources and covers roles that may not appear in direct ATS portals or browser-board searches. It is best used alongside browser-board and CareerOps ATS scans.
 
-**Limits:** Up to 5 target roles × 3 locations per scan, 50 results per query, and the selected fresh-posting window (24 hours, 72 hours by default, or 7 days). Adzuna's coverage varies by country (default: `us`).
+**What it searches with:** the **positive title-filter keywords**
+(`getTitleFilters().positive`), not the profile's target roles. Adzuna's
+`title_only` parameter ANDs every word of the query against the job title, so a
+target role written the way a person says it — "VP of User Experience and Web
+Management" — matches no posting anywhere. This is not hypothetical: the lane
+returned zero for three weeks in August–September 2026 because every configured
+role was a phrase of that shape. Short keywords ("product design", "ux") are the
+right input, and precision is not lost by querying broadly because
+`buildTitleFilter` re-applies the same positives and negatives to every result
+immediately afterwards. `buildAdzunaSearchTerms` derives the list: it prefers the
+positives, falls back to `targetRoles` when there is no positive filter at all,
+drops a keyword that only stems to one already kept (Adzuna stems, so
+`product design` and `product designer` return an identical result set), and caps
+the list at `ADZUNA_MAX_SEARCH_TERMS`.
+
+**Two lanes per term.** `buildAdzunaLanes` returns the `where` values a term is
+searched under:
+
+- `remote-only` → `[""]` — nationwide only. This branch previously sent
+  `where: "remote"`, which Adzuna geocodes to nowhere and answers with zero
+  results, so the one preference that most needed a nationwide search was the one
+  guaranteed to find nothing.
+- everything else → `[<first preferred location>, ""]` — the commute location and
+  a nationwide pass.
+
+The nationwide lane exists because **Adzuna publishes no remote signal at all**:
+there is no flag on a result, and `location.display_name` is always a geographic
+path, never "Remote". Searching without a `where` and letting
+`buildJobPreferenceFilter` judge what comes back is the only route to a role open
+across a whole country. It is safe to import from because that filter already
+rejects out-of-state on-site postings while accepting a country-wide
+`location: "US"` via `countryWideLocationGroup`.
+
+**No `distance` parameter is sent**, deliberately. Widening the radius looks like
+a fix — `distance=500` turns 2 Tennessee results into 32 — but the extra 30 are
+in Michigan and Ohio. `where=Tennessee` already resolves the state correctly; the
+state is not mis-geocoded, the market is simply thin. A wider radius only fills
+the 50-result page with jobs the preference filter then discards, spending quota
+to import nothing.
+
+**Limits:** `ADZUNA_MAX_SEARCH_TERMS` (4) × 2 lanes = **8 queries per scan**, 50
+results per query, and the selected fresh-posting window (24 hours, 72 hours by
+default, or 7 days). The term cap is set by the free tier, not by taste: 2,000
+queries a month against roughly 210 scans (~7 a day) leaves a ceiling near 9.5
+queries per scan, and 8 fits with room for a busy day. Raising the cap silently
+overruns the tier, and Adzuna answers an exhausted quota with a `Retry-After`
+measured in hours that ends the sweep. Adzuna's coverage varies by country
+(default: `us`).
+
+**Telemetry:** the `onProgress` callback is passed at all three call sites, so
+each query, its result count, and the lane it ran under are visible in the
+discovery progress modal and in the server log for the two Settings/API entry
+points. A scan that imports nothing still writes a `scan_runs` row
+(`recordEmptyAdzunaScanRun`) — both empty paths return before the importer, which
+is where that row is normally written, so a lane returning zero previously left
+no trace anywhere and "Adzuna found nothing" was indistinguishable from "Adzuna
+never ran". `AggregatorScanResult.preferenceFiltered` carries the importer's
+location-filter count out to `ScanJobResultSummary.preferenceFilteredCount`,
+shown on the scan summary as an *N outside your locations* badge.
 
 **Reliability:** Adzuna searches retry transient gateway failures (429, 502,
 503, 504) up to 3 times with exponential backoff, so a brief blip on Adzuna's

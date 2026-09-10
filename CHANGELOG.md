@@ -15,6 +15,51 @@ the numbers mean and when they change.
 
 ---
 
+## 0.14.0 — 2026-09-10 — Adzuna searches for words that exist
+
+**Fixed**
+
+- **Adzuna finds jobs again.** It had returned nothing at all since 17 August. The
+  app was searching it with your full job titles, and Adzuna wants every word you
+  give it to appear in the job title — so "VP of User Experience and Web
+  Management" matched no posting anywhere in the country, and neither did any of
+  the others. It now searches using the title keywords from Account → Settings →
+  Preferences → Title filters, which are short enough to match. If you have no
+  keywords set, it falls back to your target roles as before; adding a few short
+  ones is worth doing.
+- **A scan that finds nothing now says so.** When Adzuna came back empty the app
+  recorded nothing at all — no history entry, no error — so a source that had gone
+  dead looked exactly like one that simply had no new jobs that day. That is why
+  three weeks passed before anyone noticed. Empty scans are now written to your
+  scan history like any other.
+- **Scan with Adzuna** in Settings → Sources was skipping your title filters
+  entirely, so it imported jobs the Dashboard scan would have ruled out.
+
+**Added**
+
+- Adzuna now also searches the whole country, not only your on-site location.
+  Adzuna never labels a job as remote, so a role open from anywhere was
+  unreachable — the app searches nationwide and lets your Remote regions setting
+  decide what to keep. Expect a modest gain rather than a flood: your own location
+  and how many places are hiring still set the ceiling.
+- The scan progress window names each Adzuna keyword as it searches and how many
+  jobs came back, so a keyword that finds nothing is visible while it happens.
+- The scan summary shows **N outside your locations** when jobs were found and
+  then ruled out by your location preferences — previously that number was
+  counted and thrown away, leaving "47 found, 0 imported, no errors" with no
+  explanation.
+- A new troubleshooting entry, **Adzuna never finds anything**, in Help →
+  Troubleshooting.
+
+**Changed**
+
+- An Adzuna scan now makes 8 searches: your first four title keywords, each run
+  once against your location and once nationwide. The previous shape was up to
+  five roles across three locations. The cap keeps a free Adzuna key inside its
+  2,000 searches a month.
+
+---
+
 ## 0.13.3 — 2026-09-08 — Fetch description actually fetches
 
 **Fixed**

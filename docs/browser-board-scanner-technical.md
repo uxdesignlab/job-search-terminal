@@ -85,6 +85,56 @@ in `scan_runs.scan_type`. Adzuna scan summaries use the importer-returned
 inserted job IDs for their new-listing preview, so ignored duplicate rows do
 not displace jobs that were actually added.
 
+#### Query construction
+
+```ts
+const params = new URLSearchParams({
+  app_id: appId,
+  app_key: apiKey,
+  title_only: term,          // ANDs every word against the job title
+  results_per_page: "50",
+  sort_by: "date",
+  max_days_old: String(Math.ceil(freshnessWindowHours / 24)),
+});
+if (where) params.set("where", where);   // omitted entirely on the nationwide lane
+const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params}`;
+```
+
+`term` comes from `buildAdzunaSearchTerms(titleFilters, targetRoles)` and `where`
+from `buildAdzunaLanes(locations, isRemoteOnly)`; both are exported for testing.
+
+```ts
+outer: for (const term of terms) {
+  for (const where of lanes) {
+    const results = await searchAdzuna(appId, apiKey, term, where, country, freshnessWindowHours);
+```
+
+Three properties are easy to lose and each has already cost the lane its results:
+
+1. **The terms are title-filter keywords, not target roles.** `title_only` is a
+   strict AND, so a full job title matches nothing. See `docs/features.md` →
+   *Adzuna Job Aggregator* for the measurements.
+2. **The nationwide lane (`where` omitted) is not optional.** Adzuna exposes no
+   remote flag — not a field, and never in `location.display_name` — so a role
+   open across a country is unreachable with a `where` set. `remote-only`
+   previously sent `where: "remote"`, which returns zero.
+3. **No `distance` is sent.** A wider radius imports out-of-state roles the
+   preference filter then discards.
+
+`ADZUNA_MAX_SEARCH_TERMS` (4) × 2 lanes bounds a scan at 8 queries. The cap is
+derived from the free tier — 2,000 queries/month against ~210 scans — not chosen
+for tidiness.
+
+#### Recording a scan that imported nothing
+
+`recordScanRun` is normally called by `importBrowserBoardJobs`, which both empty
+paths (`jobs.length === 0` and `filteredJobs.length === 0`) return before
+reaching. `recordEmptyAdzunaScanRun` writes the row in those cases so history can
+distinguish "found nothing" from "never ran" — without it, a dead lane leaves no
+trace at all, which is exactly how this one went unnoticed for three weeks. It
+swallows its own errors: a scan must not fail because a diagnostic row could not
+be written.
+
 ### Transient-failure handling (Adzuna and Common Crawl)
 
 Retry mechanics shared by the scanner fetches live in
@@ -155,9 +205,9 @@ type, never by substring: the messages are user-facing prose and must stay free
 to change without altering control flow.
 
 **Circuit breaker.** `ADZUNA_MAX_CONSECUTIVE_FAILURES` (3) abandons the sweep
-once three consecutive title/location queries fail, mirroring
+once three consecutive term/lane queries fail, mirroring
 `CC_MAX_CONSECUTIVE_FAILURES`. A successful query resets the streak. Without
-it, a full outage would burn the retry budget on all 15 queries to learn the
+it, a full outage would burn the retry budget on all 8 queries to learn the
 same thing. The abort is reported as a scan error
 (`Adzuna stopped responding — gave up after N consecutive failed searches`)
 rather than passing silently.
@@ -165,8 +215,18 @@ rather than passing silently.
 The Adzuna scanner applies the same `title_filters` (positive/negative keyword
 lists from `getTitleFilters()`) as the Career Ops scanner before writing the
 import file. Jobs whose titles don't pass the filter are skipped and counted in
-`metadata.totalJobsSkipped`. The route (`src/app/api/aggregator/scan/route.ts`)
-reads and passes these filters via `AggregatorScanOptions.titleFilters`.
+`metadata.totalJobsSkipped`. All three call sites now pass them via
+`AggregatorScanOptions.titleFilters` — the route
+(`src/app/api/aggregator/scan/route.ts`), the discovery pipeline
+(`src/lib/scanner/job-discovery.ts`), and the Settings button
+(`src/app/settings/page.tsx`, which previously omitted them). Omitting them is no
+longer merely a missing filter: the positives are where the search terms come
+from, so a call site without them silently falls back to target roles.
+
+`metadata.searchCriteria` in the archived import file records the terms and lanes
+actually sent (`"Nationwide"` for the empty lane), not the raw profile — the
+archive is the ground truth when a scan is later found to have imported nothing,
+and the profile may have changed by the time anyone looks.
 
 Dice uses a free, no-auth MCP server (`https://mcp.dice.com/mcp`) rather than
 browser automation. The in-app **Scan with Dice** button (Settings → Sources →

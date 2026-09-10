@@ -3,6 +3,7 @@ import { classifyScanErrorMessage } from "@/lib/scan-error-category";
 
 const mocks = vi.hoisted(() => ({
   safeFetch: vi.fn(),
+  recordScanRun: vi.fn(),
   getBrowserBoardImportDirectory: vi.fn(() => "/tmp/jst-adzuna-test"),
   importBrowserBoardJobs: vi.fn(async () => ({
     success: true,
@@ -19,20 +20,25 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 vi.mock("@/lib/safe-fetch", () => ({ safeFetch: mocks.safeFetch }));
+vi.mock("@/lib/db/queries", () => ({ recordScanRun: mocks.recordScanRun }));
 vi.mock("@/lib/scanner/browser-board-importer", () => ({
   getBrowserBoardImportDirectory: mocks.getBrowserBoardImportDirectory,
   importBrowserBoardJobs: mocks.importBrowserBoardJobs,
 }));
 
-import { runAggregatorScan } from "@/lib/scanner/aggregator-scanner";
+import { buildAdzunaLanes, buildAdzunaSearchTerms, runAggregatorScan } from "@/lib/scanner/aggregator-scanner";
 
 const CREDENTIALS = { adzunaAppId: "app-id", adzunaApiKey: "api-key" };
 
-/** One title x one location = one query, unless a test asks for more. */
+/**
+ * One term and no commute location = one nationwide query, unless a test asks
+ * for more. A profile *with* a location searches two lanes per term, so tests
+ * that count requests say so explicitly.
+ */
 const scanOpts = (overrides: Record<string, unknown> = {}) => ({
   ...CREDENTIALS,
   titles: ["Product Designer"],
-  locations: ["Berlin"],
+  locations: [],
   remotePreference: "all",
   ...overrides,
 });
@@ -57,6 +63,7 @@ const job = (id: string) => ({
 
 beforeEach(() => {
   mocks.safeFetch.mockReset();
+  mocks.recordScanRun.mockClear();
   mocks.importBrowserBoardJobs.mockClear();
   vi.useFakeTimers();
 });
@@ -168,11 +175,173 @@ describe("Adzuna circuit breaker", () => {
       .mockResolvedValueOnce(ok([job("a")]))
       .mockResolvedValue(fail(500));
     const result = await settle(
-      runAggregatorScan(scanOpts({ titles: ["A", "B", "C", "D", "E"], locations: ["X"] })),
+      runAggregatorScan(scanOpts({ titles: ["A", "B"], locations: ["X"] })),
     );
-    // Two failures, a success that clears the streak, then two more failures —
-    // five queries in all, so the breaker never trips.
-    expect(mocks.safeFetch).toHaveBeenCalledTimes(5);
+    // Two terms x two lanes: fail, fail, a success that clears the streak, then
+    // one more failure — four queries, so the breaker never trips.
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(4);
     expect(result.errors.every((e) => !e.includes("stopped responding"))).toBe(true);
+  });
+});
+
+describe("Adzuna search terms", () => {
+  it("searches the positive title keywords, not the target roles", () => {
+    // The bug this whole lane died of: `title_only` ANDs every word, so a role
+    // phrased the way a person says it matches nothing anywhere.
+    expect(
+      buildAdzunaSearchTerms(
+        { positive: ["product design", "ux"], negative: [] },
+        ["VP of User Experience and Web Management"],
+      ),
+    ).toEqual(["product design", "ux"]);
+  });
+
+  it("falls back to the target roles when no positive filter is set", () => {
+    expect(buildAdzunaSearchTerms({ positive: [], negative: ["intern"] }, ["Product Designer"])).toEqual([
+      "Product Designer",
+    ]);
+    expect(buildAdzunaSearchTerms(undefined, ["Product Designer"])).toEqual(["Product Designer"]);
+  });
+
+  it("drops a keyword that only stems to one already kept", () => {
+    // Adzuna stems: these two return the identical result set, and the budget is
+    // metered, so paying for both buys nothing.
+    expect(
+      buildAdzunaSearchTerms({ positive: ["product design", "product designer"], negative: [] }, []),
+    ).toEqual(["product design"]);
+    // Order-independent: the longer form first still collapses to one query.
+    expect(
+      buildAdzunaSearchTerms({ positive: ["product designer", "product design"], negative: [] }, []),
+    ).toEqual(["product designer"]);
+  });
+
+  it("keeps distinct keywords that merely share a subject", () => {
+    expect(buildAdzunaSearchTerms({ positive: ["ux", "user experience"], negative: [] }, [])).toEqual([
+      "ux",
+      "user experience",
+    ]);
+  });
+
+  it("caps the term list to stay inside the free tier", () => {
+    expect(
+      buildAdzunaSearchTerms({ positive: ["a", "b", "c", "d", "e", "f"], negative: [] }, []),
+    ).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("says there is nothing to search for rather than querying blind", async () => {
+    const result = await settle(runAggregatorScan(scanOpts({ titles: [], titleFilters: { positive: [], negative: [] } })));
+    expect(result.status).toBe("error");
+    expect(result.errors[0]).toContain("Nothing to search for");
+    expect(mocks.safeFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("Adzuna search lanes", () => {
+  const urls = () => mocks.safeFetch.mock.calls.map((call: unknown[]) => new URL(call[0] as string));
+
+  it("searches the commute location and nationwide", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([]));
+    await settle(runAggregatorScan(scanOpts({ titles: ["Product Designer"], locations: ["Berlin"] })));
+    const wheres = urls().map((url) => url.searchParams.get("where"));
+    // Nationwide is the only way to reach a role open across a whole country:
+    // Adzuna publishes no remote flag at all.
+    expect(wheres).toEqual(["Berlin", null]);
+  });
+
+  it("searches only nationwide for a remote-only profile, and never where=remote", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([]));
+    await settle(runAggregatorScan(scanOpts({ locations: ["Berlin"], remotePreference: "remote-only" })));
+    // Regression: `where=remote` geocodes to nowhere, so the one preference that
+    // most needs a nationwide search was the one guaranteed to find nothing.
+    expect(urls().map((url) => url.searchParams.get("where"))).toEqual([null]);
+  });
+
+  it("never sends a distance parameter", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([]));
+    await settle(runAggregatorScan(scanOpts({ locations: ["Tennessee, United States"] })));
+    // Widening the radius imports out-of-state roles the preference filter then
+    // discards — it spends the page and the quota to import nothing.
+    expect(urls().every((url) => url.searchParams.get("distance") === null)).toBe(true);
+  });
+
+  it("stays within the per-scan query budget", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([]));
+    await settle(
+      runAggregatorScan(
+        scanOpts({
+          locations: ["Berlin", "Munich", "Hamburg"],
+          titleFilters: { positive: ["a", "b", "c", "d", "e", "f"], negative: [] },
+        }),
+      ),
+    );
+    // 4 terms x 2 lanes. The free tier is 2,000 queries a month against roughly
+    // 210 scans, so this ceiling is what keeps the lane inside it.
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(8);
+  });
+
+  it("builds lanes directly from a profile", () => {
+    expect(buildAdzunaLanes(["Berlin"], false)).toEqual(["Berlin", ""]);
+    expect(buildAdzunaLanes(["Berlin"], true)).toEqual([""]);
+    expect(buildAdzunaLanes([], false)).toEqual([""]);
+    expect(buildAdzunaLanes(["  "], false)).toEqual([""]);
+  });
+});
+
+describe("Adzuna scans that import nothing", () => {
+  it("records a scan run when the API returns nothing", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([]));
+    await settle(runAggregatorScan(scanOpts()));
+    // Without this row, "Adzuna found nothing" and "Adzuna never ran" look
+    // identical in history — which is how this lane went dark unnoticed.
+    expect(mocks.recordScanRun).toHaveBeenCalledTimes(1);
+    expect(mocks.recordScanRun.mock.calls[0][0]).toMatchObject({
+      scanType: "adzuna-api-scan",
+      totalJobsFound: 0,
+      newJobsCount: 0,
+    });
+  });
+
+  it("records a scan run when the title filter removes everything", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([job("a")]));
+    await settle(
+      runAggregatorScan(scanOpts({ titleFilters: { positive: ["product"], negative: ["designer"] } })),
+    );
+    expect(mocks.recordScanRun).toHaveBeenCalledTimes(1);
+    expect(mocks.recordScanRun.mock.calls[0][0]).toMatchObject({
+      scanType: "adzuna-api-scan",
+      totalJobsFound: 1,
+      filteredCount: 1,
+      newJobsCount: 0,
+    });
+  });
+
+  it("leaves the run to the importer when jobs survive the filters", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([job("a")]));
+    await settle(runAggregatorScan(scanOpts()));
+    // The importer writes the row on this path; two rows for one scan would
+    // double-count the history.
+    expect(mocks.recordScanRun).not.toHaveBeenCalled();
+    expect(mocks.importBrowserBoardJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the preference-filtered count out of the importer", async () => {
+    mocks.safeFetch.mockResolvedValue(ok([job("a")]));
+    mocks.importBrowserBoardJobs.mockResolvedValueOnce({
+      success: true,
+      imported: 0,
+      duplicates: 0,
+      fresh: 0,
+      unknownDate: 0,
+      staleFiltered: 0,
+      preferenceFiltered: 7,
+      errors: [],
+      summary: "",
+      jobIds: [],
+      importedJobs: [],
+    });
+    const result = await settle(runAggregatorScan(scanOpts()));
+    // "Found 7, imported 0, no errors" reads as a broken scan until this number
+    // is visible.
+    expect(result.preferenceFiltered).toBe(7);
   });
 });

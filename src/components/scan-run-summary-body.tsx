@@ -269,6 +269,9 @@ export function ScanRunSummaryBody({
         {summary.filteredCount > 0 && (
           <Badge tone="neutral">{summary.filteredCount} filtered by profile rules</Badge>
         )}
+        {(summary.preferenceFilteredCount ?? 0) > 0 && (
+          <Badge tone="neutral">{summary.preferenceFilteredCount} outside your locations</Badge>
+        )}
         {summary.duplicateCount > 0 && <Badge tone="neutral">{summary.duplicateCount} duplicates skipped</Badge>}
         {(summary.repostCount ?? 0) > 0 && (
           <Badge tone="neutral">

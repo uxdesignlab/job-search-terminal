@@ -8,15 +8,20 @@ export async function POST() {
     const profile = getUserProfile();
     const titleFilters = getTitleFilters();
     const schedule = getScanSchedule();
-    const result = await runAggregatorScan({
-      adzunaAppId: settings.adzunaAppId,
-      adzunaApiKey: settings.adzunaApiKey,
-      titles: profile.targetRoles,
-      locations: profile.preferredLocations,
-      remotePreference: profile.remotePreference,
-      titleFilters,
-      freshnessWindowHours: schedule.freshnessWindowHours,
-    });
+    const result = await runAggregatorScan(
+      {
+        adzunaAppId: settings.adzunaAppId,
+        adzunaApiKey: settings.adzunaApiKey,
+        titles: profile.targetRoles,
+        locations: profile.preferredLocations,
+        remotePreference: profile.remotePreference,
+        titleFilters,
+        freshnessWindowHours: schedule.freshnessWindowHours,
+      },
+      (msg) => {
+        console.info(`[adzuna] ${msg}`);
+      },
+    );
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

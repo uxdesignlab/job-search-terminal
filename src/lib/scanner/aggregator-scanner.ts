@@ -5,6 +5,8 @@ import { fetchWithRetry, type BackoffConfig } from "./transient-retry";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
 import type { FreshnessWindowHours } from "@/lib/db/types";
 import { buildTitleFilter } from "@/lib/jobs/title-filter";
+import { recordScanRun } from "@/lib/db/queries";
+import { browserBoardSourceToScanType } from "./browser-board-sources";
 
 export type AggregatorScanOptions = {
   adzunaAppId: string;
@@ -24,6 +26,14 @@ export type AggregatorScanResult = {
   fresh: number;
   unknownDate: number;
   staleFiltered: number;
+  /**
+   * Dropped by the location/remote-region filter inside the importer.
+   *
+   * Carried out of the scanner because the importer already counts it and the
+   * mapping used to throw it away: a scan that found 47 roles and imported none
+   * reported "47 listings found" with no errors and no explanation.
+   */
+  preferenceFiltered: number;
   totalFound: number;
   errors: string[];
   jobs: Array<{ title: string; url: string; company: string }>;
@@ -79,6 +89,18 @@ const ADZUNA_BACKOFF: BackoffConfig = {
  * working through the remaining title/location pairs only multiplies the wait.
  */
 const ADZUNA_MAX_CONSECUTIVE_FAILURES = 3;
+
+/**
+ * Distinct search terms per scan.
+ *
+ * Adzuna's free tier allows 2,000 queries a month. A full discovery scan runs
+ * around seven times a day — roughly 210 runs a month — and each term costs one
+ * query per lane, so four terms across two lanes is about 1,680 queries: inside
+ * the tier with room for a busy day. Raising this quietly overruns the quota,
+ * and Adzuna answers an exhausted quota with a `Retry-After` measured in hours,
+ * which ends the sweep for every remaining query.
+ */
+const ADZUNA_MAX_SEARCH_TERMS = 4;
 
 /**
  * Adzuna told us how long its backpressure lasts.
@@ -188,22 +210,123 @@ function formatSalary(min?: number, max?: number): string {
   return `up to $${Math.round(max! / 1000)}k/yr`;
 }
 
+/**
+ * The terms this scan will search Adzuna with.
+ *
+ * Deliberately *not* the target roles. `title_only` ANDs every word against the
+ * job title, so a role written the way a person says it — "VP of User Experience
+ * and Web Management" — matches no posting anywhere, and the lane returned zero
+ * for weeks because every configured role was a phrase of that shape. The
+ * positive title-filter keywords are the right shape instead: short, generic,
+ * and already curated. Querying broadly costs no precision, because
+ * `buildTitleFilter` re-applies those same keywords — and the negatives — to
+ * every result a moment later.
+ */
+export function buildAdzunaSearchTerms(
+  titleFilters: { positive: string[]; negative: string[] } | undefined,
+  targetRoles: string[],
+): string[] {
+  const clean = (values: string[]) => values.map((value) => value.trim()).filter(Boolean);
+  const positives = clean(titleFilters?.positive ?? []);
+  // Fall back to the target roles only when there is no positive filter at all.
+  // A poor query still beats no scan, and it keeps a profile that has never
+  // opened Title filters working exactly as it did before.
+  const source = positives.length > 0 ? positives : clean(targetRoles);
+
+  const kept: string[] = [];
+  for (const term of source) {
+    // Adzuna stems, so `title_only=product design` and `title_only=product
+    // designer` return the identical result set. Keeping both spends a query
+    // from a metered budget to learn the same thing twice.
+    const lower = term.toLowerCase();
+    const redundant = kept.some((existing) => {
+      const other = existing.toLowerCase();
+      return lower.startsWith(other) || other.startsWith(lower);
+    });
+    if (redundant) continue;
+    kept.push(term);
+    if (kept.length === ADZUNA_MAX_SEARCH_TERMS) break;
+  }
+  return kept;
+}
+
+/**
+ * The `where` values each term is searched under. An empty string means no
+ * `where` parameter at all — a nationwide search.
+ *
+ * Two lanes, because Adzuna publishes no remote signal of any kind: there is no
+ * flag on a result, and `location.display_name` is always a geographic path,
+ * never "Remote". The only way to reach a role open across the whole country is
+ * to search without a location and let the importer's preference filter judge
+ * what comes back.
+ *
+ * The remote-only branch used to pass `where: "remote"`. Adzuna geocodes that to
+ * nowhere and returns nothing at all, so the one preference that most needs the
+ * nationwide search was the one guaranteed to find nothing.
+ */
+export function buildAdzunaLanes(locations: string[], isRemoteOnly: boolean): string[] {
+  if (isRemoteOnly) return [""];
+  const commute = locations.map((location) => location.trim()).find(Boolean);
+  return commute ? [commute, ""] : [""];
+}
+
+/**
+ * Record a run that imported nothing.
+ *
+ * Both empty paths return before the importer, and the importer is where the
+ * `scan_runs` row is written — so a lane returning zero left no trace anywhere,
+ * and "Adzuna found nothing" was indistinguishable from "Adzuna never ran". That
+ * is why this lane could go dark for three weeks unnoticed.
+ */
+function recordEmptyAdzunaScanRun(args: {
+  startedAt: string;
+  totalFound: number;
+  filteredCount: number;
+  errors: string[];
+  freshnessWindowHours: FreshnessWindowHours;
+}): void {
+  try {
+    recordScanRun({
+      id: randomUUID(),
+      status: args.errors.length > 0 ? "completed_with_errors" : "completed",
+      startedAt: args.startedAt,
+      completedAt: new Date().toISOString(),
+      companiesScanned: 0,
+      skippedCompanies: 0,
+      totalJobsFound: args.totalFound,
+      filteredCount: args.filteredCount,
+      duplicateCount: 0,
+      newJobsCount: 0,
+      errors: args.errors.map((error) => ({ company: "Adzuna", error })),
+      scanType: browserBoardSourceToScanType("adzuna"),
+      freshnessWindowHours: args.freshnessWindowHours,
+      freshCount: 0,
+      unknownDateCount: 0,
+      staleFilteredCount: 0,
+    });
+  } catch {
+    // History is a diagnostic, not the product. A scan must not fail because we
+    // could not write a row saying it found nothing.
+  }
+}
+
 export async function runAggregatorScan(
   opts: AggregatorScanOptions,
   onProgress?: (msg: string) => void,
 ): Promise<AggregatorScanResult> {
   if (!opts.adzunaAppId || !opts.adzunaApiKey) {
-    return { status: "no-credentials", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors: ["Adzuna App ID and API Key are required — configure them in Settings → AI Provider"], jobs: [] };
+    return { status: "no-credentials", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound: 0, errors: ["Adzuna App ID and API Key are required — configure them in Settings → AI Provider"], jobs: [] };
   }
-  if (opts.titles.length === 0) {
-    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors: ["No target roles configured — add them in Profile"], jobs: [] };
+  const terms = buildAdzunaSearchTerms(opts.titleFilters, opts.titles);
+  if (terms.length === 0) {
+    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound: 0, errors: ["Nothing to search for — add title keywords under Settings → Preferences → Title filters, or target roles in Profile"], jobs: [] };
   }
 
   const country = opts.country ?? "us";
   const freshnessWindowHours = opts.freshnessWindowHours ?? 72;
   const scanTimestamp = new Date().toISOString();
   const isRemoteOnly = opts.remotePreference === "remote-only";
-  const locations = opts.locations.length > 0 ? opts.locations : [""];
+  const lanes = buildAdzunaLanes(opts.locations, isRemoteOnly);
 
   const jobs: Array<{
     id: string;
@@ -221,12 +344,12 @@ export async function runAggregatorScan(
   const seen = new Set<string>();
   let consecutiveFailures = 0;
 
-  outer: for (const title of opts.titles.slice(0, 5)) {
-    for (const location of locations.slice(0, 3)) {
-      const where = isRemoteOnly ? "remote" : location;
-      onProgress?.(`Searching Adzuna: "${title}"${where ? ` in "${where}"` : ""}…`);
+  outer: for (const term of terms) {
+    for (const where of lanes) {
+      const laneLabel = where ? `in "${where}"` : "nationwide";
+      onProgress?.(`Searching Adzuna: "${term}" ${laneLabel}…`);
       try {
-        const results = await searchAdzuna(opts.adzunaAppId, opts.adzunaApiKey, title, where, country, freshnessWindowHours);
+        const results = await searchAdzuna(opts.adzunaAppId, opts.adzunaApiKey, term, where, country, freshnessWindowHours);
         for (const job of results) {
           const adzunaId = String(job.id);
           if (seen.has(adzunaId)) continue;
@@ -249,14 +372,14 @@ export async function runAggregatorScan(
             salaryNotes: formatSalary(job.salary_min, job.salary_max),
           });
         }
-        onProgress?.(`Found ${results.length} jobs for "${title}"${where ? ` / "${where}"` : ""}`);
+        onProgress?.(`Found ${results.length} jobs for "${term}" ${laneLabel}`);
         consecutiveFailures = 0;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(msg);
         onProgress?.(`Warning: ${msg}`);
         if (err instanceof AdzunaCredentialsError) {
-          return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors, jobs: [] };
+          return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound: 0, errors, jobs: [] };
         }
         if (err instanceof AdzunaBackpressureError) {
           // Adzuna has already told us how long the wait is. Every remaining
@@ -280,7 +403,9 @@ export async function runAggregatorScan(
   }
 
   if (jobs.length === 0) {
-    return { status: "ok", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound: 0, errors, jobs: [] };
+    onProgress?.("Adzuna returned no matching listings");
+    recordEmptyAdzunaScanRun({ startedAt: scanTimestamp, totalFound: 0, filteredCount: 0, errors, freshnessWindowHours });
+    return { status: "ok", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound: 0, errors, jobs: [] };
   }
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
@@ -291,7 +416,9 @@ export async function runAggregatorScan(
   if (skipped > 0) onProgress?.(`Filtered out ${skipped} jobs that didn't match title filters`);
 
   if (filteredJobs.length === 0) {
-    return { status: "ok", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound, errors, jobs: [] };
+    onProgress?.(`All ${totalFound} Adzuna listings were removed by your title filters`);
+    recordEmptyAdzunaScanRun({ startedAt: scanTimestamp, totalFound, filteredCount: skipped, errors, freshnessWindowHours });
+    return { status: "ok", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound, errors, jobs: [] };
   }
 
   const ts = new Date().toISOString().replace(/:/g, "-").replace(/\..+/, "Z");
@@ -310,8 +437,11 @@ export async function runAggregatorScan(
       totalJobsValid: filteredJobs.length,
       totalJobsSkipped: skipped,
       searchCriteria: {
-        titles: opts.titles,
-        locations: opts.locations,
+        // The terms and lanes actually sent, not the raw profile. The archived
+        // file is the ground truth when a scan is later found to have imported
+        // nothing, and the profile may have changed by the time anyone looks.
+        titles: terms,
+        locations: lanes.map((lane) => lane || "Nationwide"),
         remotePreference: opts.remotePreference,
       },
       generatedBy: "Adzuna Aggregator Scanner v1.0",
@@ -349,12 +479,13 @@ export async function runAggregatorScan(
       fresh: importResult.fresh,
       unknownDate: importResult.unknownDate,
       staleFiltered: importResult.staleFiltered,
+      preferenceFiltered: importResult.preferenceFiltered,
       totalFound: jobs.length,
       errors: [...errors, ...importResult.errors],
       jobs: importResult.importedJobs.map((job) => ({ title: job.title, url: job.url, company: job.company })),
     };
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
-    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, totalFound, errors, jobs: preview };
+    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound, errors, jobs: preview };
   }
 }

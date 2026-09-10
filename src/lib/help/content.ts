@@ -135,7 +135,7 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Adzuna — more job listings",
-            body: "Adzuna gathers postings from across the web. Sign up at developer.adzuna.com for a free App ID and API Key, worth 2,000 searches a month. Paste both into Account → Settings → AI Provider → Discovery & Aggregators. From then on every scan includes Adzuna automatically — there is nothing else to press.",
+            body: "Adzuna gathers postings from across the web. Sign up at developer.adzuna.com for a free App ID and API Key, worth 2,000 searches a month. Paste both into Account → Settings → AI Provider → Discovery & Aggregators. From then on every scan includes Adzuna automatically — there is nothing else to press. It searches using the title keywords you set under Account → Settings → Preferences → Title filters, so it helps to have a few short ones there, like product design or ux.",
           },
           {
             title: "Brave Search — find more companies to watch",
@@ -328,7 +328,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Adzuna App ID and API Key",
-            body: "Adzuna gathers job postings from across the web. Once its keys are in, the app searches it using the job titles and locations from your profile — no browser, no login, nothing to click. Sign up at developer.adzuna.com for a free App ID and API Key worth 2,000 searches a month.",
+            body: "Adzuna gathers job postings from across the web. Once its keys are in, every scan searches it — no browser, no login, nothing to click. It searches the title keywords from Account → Settings → Preferences → Title filters, not your full job titles. Adzuna wants every word you give it to appear in the job title, so a short keyword like product design finds plenty and a whole title like Head of Product Design & Strategy finds nothing. Sign up at developer.adzuna.com for a free App ID and API Key worth 2,000 searches a month.",
           },
           {
             title: "Add the keys",
@@ -656,12 +656,12 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Scan",
-            body: "Go to Account → Settings → Sources. A Job aggregators card appears at the bottom. Click Scan with Adzuna — the scanner runs against your saved target roles and preferred locations and shows the import count inline when done.",
+            body: "Go to Account → Settings → Sources. A Job aggregators card appears at the bottom. Click Scan with Adzuna — it searches your title keywords and shows the import count inline when done.",
           },
         ],
         callout: {
           title: "What Adzuna covers",
-          body: "Adzuna aggregates from many sources and reaches jobs that may not appear in direct ATS portals or browser-board searches. Use it alongside other scan methods for broader coverage. It uses your selected fresh-posting window: 24 hours, 72 hours by default, or 7 days, with up to 50 results per title/location pair.",
+          body: "Adzuna reaches jobs that may not show up in company job pages or browser-board searches. Each scan takes your first four title keywords and searches each one twice: once in your first on-site location, and once across the whole country. The nationwide pass matters because Adzuna never labels a job as remote, so searching the country and letting your Remote regions decide is the only way to reach a role open from anywhere. That is eight searches per scan, which keeps a free key inside its 2,000 a month. It reads up to 50 jobs per search, within your fresh-posting window: 24 hours, 72 hours by default, or 7 days.",
         },
       },
       {
@@ -1223,6 +1223,17 @@ export const helpPages: HelpPage[] = [
           "Review your work arrangement and locations.",
           "Disable noisy sources.",
           "Evaluate a few examples before changing too many settings at once.",
+        ],
+      },
+      {
+        id: "adzuna-empty",
+        title: "Adzuna never finds anything",
+        bullets: [
+          "Open Account → Settings → Preferences → Title filters and read your include keywords. Adzuna is searched with these, and it expects every word you give it to appear in the job title. Short and general works — product design, ux, accessibility. A whole job title like Head of Product Design & Strategy matches nothing anywhere.",
+          "Only the first four include keywords are searched, to stay inside the free key's monthly allowance. Put the ones that matter most at the top of the list.",
+          "Watch the progress window during a scan. It names each keyword as it searches and says how many jobs came back, so you can see which keyword is the dead one.",
+          "If the counts look healthy but nothing reaches Jobs, look for outside your locations in the scan summary. Those jobs were found and then ruled out by your on-site locations and Remote regions.",
+          "If you have no include keywords at all, Adzuna falls back to your target roles from Account → Profile. Those are usually full job titles, which is exactly what Adzuna cannot match — add a few short keywords instead.",
         ],
       },
       {
