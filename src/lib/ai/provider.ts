@@ -15,6 +15,12 @@ export type AIProviderConfig = {
    * Each adapter maps it to what its models accept, and ignores it where nothing does.
    */
   reasoning?: "low";
+  /**
+   * The run this request belongs to. An adapter that queues requests checks it before
+   * starting one, so a request whose run already finished, timed out, or was cancelled
+   * never starts; an adapter that can abort an in-flight request does.
+   */
+  signal?: AbortSignal;
   /** Base URL for local providers (e.g. Ollama). Ignored by cloud providers. */
   baseUrl?: string;
 };

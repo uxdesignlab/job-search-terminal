@@ -152,6 +152,14 @@ export function suggestCompensationResponse(input: {
       ? `Your saved target: ${input.savedTarget}. Market context researched ${new Date().toISOString().slice(0, 10)}.`
       : "See researched market context — no target saved in your profile.";
   }
+  // Still running is not the same as unavailable. This text is saved while the lookup
+  // may finish seconds later, and saying "unavailable" would be a verdict on a search
+  // that had not ended. It is replaced when the lookup lands.
+  if (input.research.status === "not_run") {
+    return input.savedTarget
+      ? `Your saved target: ${input.savedTarget}. No posted range, and market research had not finished when this was prepared.`
+      : "No posted range, no saved target, and market research had not finished when this was prepared.";
+  }
   return input.savedTarget
     ? `Your saved target: ${input.savedTarget}. No posted range and live market research was unavailable.`
     : "No posted range, no saved target, and live market research was unavailable.";

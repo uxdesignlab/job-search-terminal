@@ -1733,6 +1733,45 @@ export function getApplicationPreparation(jobId: string): ApplicationPreparation
   return row ? mapApplicationPreparation(row) : undefined;
 }
 
+/**
+ * Fill in the compensation of a saved preparation, and nothing else.
+ *
+ * A compensation lookup can finish after its preparation was saved — and after a newer
+ * preparation for the same job replaced it. Re-saving the whole record from the older
+ * run put back its requirements, keywords and evidence map over the newer ones. This
+ * touches only the compensation columns, and only while the row still describes the
+ * same posting and evidence and is still waiting for research. Returns whether it wrote.
+ */
+export function updateApplicationPreparationCompensation(
+  jobId: string,
+  expected: { jdHash: string; evidenceHash: string },
+  fields: Pick<ApplicationPreparationInput, "marketCompensation" | "compensationSources" | "compensationResearchStatus" | "researchProvider" | "suggestedCompensationResponse">
+): boolean {
+  const result = getDatabase()
+    .prepare(
+      `update application_preparation set
+        market_compensation_json = @marketCompensationJson,
+        compensation_sources_json = @compensationSourcesJson,
+        compensation_research_status = @compensationResearchStatus,
+        research_provider = @researchProvider,
+        suggested_compensation_response = @suggestedCompensationResponse,
+        updated_at = current_timestamp
+      where job_id = @jobId and jd_hash = @jdHash and evidence_hash = @evidenceHash
+        and compensation_research_status = 'not_run'`
+    )
+    .run({
+      jobId,
+      jdHash: expected.jdHash,
+      evidenceHash: expected.evidenceHash,
+      marketCompensationJson: JSON.stringify(fields.marketCompensation ?? {}),
+      compensationSourcesJson: JSON.stringify(fields.compensationSources),
+      compensationResearchStatus: fields.compensationResearchStatus,
+      researchProvider: fields.researchProvider,
+      suggestedCompensationResponse: fields.suggestedCompensationResponse,
+    });
+  return result.changes > 0;
+}
+
 export function saveApplicationPreparation(input: ApplicationPreparationInput) {
   const database = getDatabase();
   database

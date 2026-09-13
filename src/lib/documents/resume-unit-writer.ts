@@ -354,7 +354,7 @@ async function callModel(ctx: UnitWriterContext, input: UnitInput, run: UnitRunO
       provider.generateJSON<unknown>(
         messagesFor(ctx, input, repair),
         outputShapeFor(input),
-        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS, reasoning: "low", temperature: 0.3 }
+        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS, reasoning: "low", temperature: 0.3, signal: runSignal }
       ), 3, 1500, runSignal),
     totalGenerationDeadlineMs(chain.providerNames ?? [provider.name]),
     run.signal

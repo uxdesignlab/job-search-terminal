@@ -958,6 +958,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Paste the actual question from the application form.",
           "Review every generated answer before using it.",
+          "A salary question uses the range from the posting if it has one. If it does not, the app looks up the market range for the role while it makes your resume, without making you wait for it. Draft answers straight after a resume and the salary answer may say market research had not finished — it uses your saved target from your profile instead. Draft the answers again a minute later to include the research.",
           "Keep answers truthful and consistent with your resume.",
           "Do not let the app or an assistant submit the application for you.",
         ],
