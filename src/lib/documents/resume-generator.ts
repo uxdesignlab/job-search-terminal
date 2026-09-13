@@ -251,15 +251,22 @@ export async function buildTailoredDraft(jobId: string, options: BuildDraftOptio
       evidenceMap: getApplicationPreparation(job.id)?.evidenceMap ?? [],
     };
     const selected = (unit: ResumeUnit) => modeForSection(unitModeId(unit), resolvedSectionModes) === "update";
-    const writesSummary = selected({ kind: "summary" }) && Boolean(sourceDraft.summary.trim());
+    // Decided by the section being present and set to update, not by it having text: a
+    // lane built from the blank starter can leave the summary empty, and the unit writer
+    // can write one from the parts it has just produced. It still needs something to
+    // write from.
+    const hasBody = sourceDraft.experience.some((entry) => entry.bullets.length > 0) || sourceDraft.impactItems.length > 0;
+    const writesSummary = selected({ kind: "summary" }) && (Boolean(sourceDraft.summary.trim()) || hasBody);
     const placements = planKeywordPlacements(
       [...unitsForDraft(sourceDraft, selected), ...(writesSummary ? [{ unit: { kind: "summary" } as ResumeUnit, lines: [sourceDraft.summary] }] : [])],
       context
     );
     const units = unitsForDraft(sourceDraft, selected).map((input) => ({ ...input, placeKeywords: placements.get(unitKey(input.unit)) }));
     const total = units.length + (writesSummary ? 1 : 0);
-    // A local server answers one request at a time; queueing more only makes each wait
-    // longer, and a request left waiting past Ollama's own limit is dropped.
+    // A local server answers one request at a time, so a run led by Ollama writes one
+    // part at a time. A run led by a cloud provider writes three — and if that provider
+    // fails and the parts fall through to Ollama, the Ollama adapter makes them take
+    // turns (`inTurnForServer`) rather than arriving together in Ollama's own queue.
     const concurrency = orderForCredits(writerChain, exhaustedProviders())[0] === "ollama" ? 1 : 3;
     let started = 0;
     const announce = (label: string, provider?: string, model?: string) =>

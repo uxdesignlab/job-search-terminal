@@ -123,6 +123,9 @@ function withLines(draft: ResumeTemplateInput, unit: ResumeUnit, lines: string[]
  * sections and a positional match would regenerate one job from another's bullets.
  */
 function laneLinesFor(lane: ResumeTemplateInput, current: ResumeTemplateInput, unit: ResumeUnit): string[] {
+  // A summary can be written from the rest of the draft even when the approved lane
+  // left it empty, so an empty one is a starting point rather than nothing to go on.
+  if (unit.kind === "summary") return [lane.summary ?? ""];
   if (unit.kind !== "role") return linesOf(lane, unit);
   const entry = current.experience[unit.index];
   if (!entry) return [];
@@ -170,7 +173,8 @@ export async function rewriteSection(input: {
 
   const current = input.draft;
   const startingLines = input.action === "improve" ? linesOf(current, unit) : laneLinesFor(laneDraft, current, unit);
-  if (startingLines.length === 0) {
+  const summaryHasBasis = unit.kind === "summary" && (current.experience.some((entry) => entry.bullets.length > 0) || current.impactItems.length > 0);
+  if (startingLines.length === 0 || (unit.kind === "summary" && !startingLines[0]?.trim() && !summaryHasBasis)) {
     throw new SectionRewriteError(
       input.action === "improve"
         ? "This section is empty, so there is nothing to improve."

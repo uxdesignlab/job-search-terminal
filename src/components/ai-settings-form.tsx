@@ -1166,7 +1166,10 @@ export function AISettingsForm({
           >
             <option value="">Same as provider priority</option>
             {providerOrder
-              .filter((id) => id === "ollama" || keyFor(id).trim().length > 0 || id === resumeWriter)
+              // Ollama only once it is switched on and answering: its base URL has a
+              // default, so without this it was offered — and saved — on installs with
+              // no local model at all.
+              .filter((id) => (id === "ollama" ? enabledProviders.has("ollama") && ollamaReachable !== false : keyFor(id).trim().length > 0) || id === resumeWriter)
               .map((id) => (
                 <option key={id} value={id}>
                   {PROVIDER_META[id].label}

@@ -15,6 +15,29 @@ the numbers mean and when they change.
 
 ---
 
+## 0.16.1 — 2026-09-13 — Fixes from review
+
+**Fixed**
+
+- **A slow salary search no longer holds up your resume.** 0.15.0 started the search at
+  the same time as reading the posting, but still waited for it to finish, and the search
+  has no time limit of its own. The app now waits a few seconds at most; the search
+  finishes on its own and is saved for your application answers.
+- **If a paid service fails partway through a resume and the app falls back to your local
+  model,** the remaining parts now take turns instead of all arriving at once, where your
+  local model could drop some of them and leave those sections untailored.
+- **A summary your approved resume left blank is now written** from the rest of the
+  resume, instead of the draft quietly having no summary. ↻ Regenerate also works on a
+  section whose box you have emptied.
+- **ATS & recruiter checks ignore sections you removed.** Text in a removed section could
+  make a check pass even though it would not appear on the exported resume.
+- **Resume writing uses offers your local model only once it is switched on and
+  answering.** On a setup with no local model it was offered anyway, and choosing it made
+  every resume try it first.
+- The help page now says that Awards and recognition has ✨ Improve only.
+
+---
+
 ## 0.16.0 — 2026-09-13 — Resumes a recruiter reads twice
 
 **Added**

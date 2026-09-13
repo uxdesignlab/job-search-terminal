@@ -228,8 +228,21 @@ export type PreparationResult = {
   notice?: string;
 };
 
+/**
+ * How long preparation waits for the compensation lookup before saving without it.
+ *
+ * Starting the lookup alongside the model call was not enough: it was still awaited, and
+ * the web search behind it has no timeout of its own, so a slow or hung search held the
+ * resume up for as long as it took. The resume never reads compensation. Past this wait
+ * the preparation is saved without it, and the lookup finishes on its own and fills the
+ * saved row in — for the application answers that do read it.
+ */
+export const COMPENSATION_WAIT_MS = 8_000;
+
 export type PreparationOptions = {
   force?: boolean;
+  /** Overrides {@link COMPENSATION_WAIT_MS}; for tests. */
+  compensationWaitMs?: number;
   /** The caller's cancellation. Nothing is saved once it fires. */
   signal?: AbortSignal;
   /** Told which provider is about to run, including each fall-through down the chain. */
@@ -335,8 +348,14 @@ export async function prepareApplication(jobId: string, options: PreparationOpti
     throw error;
   }
 
-  const research = await researchRun;
+  const settled = await Promise.race([
+    researchRun,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), options.compensationWaitMs ?? COMPENSATION_WAIT_MS)),
+  ]);
   if (options.signal?.aborted) throw new GenerationCancelledError();
+  // "not_run" while the lookup is still going: nothing has been researched yet, and a
+  // status that claimed "unavailable" would be a verdict on a search that has not ended.
+  const research = settled ?? { market: null, sources: [], status: "not_run" as const, provider: "", query: "" };
 
   const input: ApplicationPreparationInput = {
     id: `preparation-${jobId}`,
@@ -364,6 +383,25 @@ export async function prepareApplication(jobId: string, options: PreparationOpti
   };
 
   saveApplicationPreparation(input);
+  if (!settled) {
+    void researchRun
+      .then((late) => {
+        // Only onto the preparation this run saved. A newer one — regenerated because the
+        // posting or the evidence changed — owns its own compensation answer.
+        const stored = getApplicationPreparation(jobId);
+        if (!stored || stored.jdHash !== current.jdHash || stored.evidenceHash !== current.evidenceHash) return;
+        if (stored.compensationResearchStatus !== "not_run") return;
+        saveApplicationPreparation({
+          ...input,
+          marketCompensation: late.market,
+          compensationSources: late.sources,
+          compensationResearchStatus: late.status,
+          researchProvider: late.provider,
+          suggestedCompensationResponse: suggestCompensationResponse({ posted, research: late, savedTarget: profile.compensationNeeds ?? "" }),
+        });
+      })
+      .catch((error) => console.warn("[application-preparation] late compensation lookup failed:", error));
+  }
   const saved = getApplicationPreparation(jobId);
   if (!saved) throw new Error(`Application preparation could not be saved for job: ${jobId}`);
   return { preparation: saved, reused: false, notice: (provider as { notice?: string }).notice || undefined };

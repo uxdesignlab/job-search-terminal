@@ -230,6 +230,31 @@ function dateShape(value: string): string {
 }
 
 /**
+ * The draft as it will print: sections the user removed are emptied.
+ *
+ * The editor's Remove takes a section out of `sectionOrder` and leaves its content in
+ * place, and the renderer prints only what the order names. Checking every stored array
+ * let text that is not on the exported resume satisfy a check — removing the only
+ * section that said "service design" still reported the phrase as shown in context.
+ * The order mirrors `renderResumeHtml`'s default when the draft carries none.
+ */
+export function printedSections(draft: ResumeTemplateInput): ResumeTemplateInput {
+  const order = new Set(draft.sectionOrder ?? [
+    "summary", "impact", "experience", "skills", "recognition",
+    ...(draft.extraSections ?? []).map((section) => section.id ?? "").filter(Boolean),
+  ]);
+  return {
+    ...draft,
+    summary: order.has("summary") ? draft.summary : "",
+    impactItems: order.has("impact") ? draft.impactItems : [],
+    experience: order.has("experience") ? draft.experience : [],
+    skills: order.has("skills") ? draft.skills : [],
+    recognition: order.has("recognition") ? draft.recognition : [],
+    extraSections: (draft.extraSections ?? []).filter((section) => section.id !== undefined && order.has(section.id)),
+  };
+}
+
+/**
  * The whole-document report shown in the editor as "ATS & recruiter checks".
  *
  * `supportedKeywords` are the posting phrases the candidate's evidence backs. Only
@@ -237,11 +262,12 @@ function dateShape(value: string): string {
  * would be asking the user to add a false claim.
  */
 export function checkResume(
-  draft: ResumeTemplateInput,
+  fullDraft: ResumeTemplateInput,
   keywordSignals: JobKeywordSignal[],
   supportedKeywords: string[],
   targetTitle: string
 ): ResumeCheck[] {
+  const draft = printedSections(fullDraft);
   const checks: ResumeCheck[] = [];
   const supported = new Set(supportedKeywords.map((keyword) => keyword.toLowerCase()));
 

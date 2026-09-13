@@ -49,6 +49,26 @@ function ollamaReasoningFor(config?: Partial<AIProviderConfig>) {
   return config?.reasoning === "low" ? { reasoning_effort: "none" as const } : {};
 }
 
+/**
+ * One generation at a time per Ollama server, across the whole app.
+ *
+ * A local server commonly answers one request at a time and holds the rest in its own
+ * queue, where a request that waits past Ollama's limit comes back as a bare 500. The
+ * resume writer runs parts three at a time on a cloud provider; when that provider
+ * fails mid-run, each part's chain falls through to Ollama independently, and all three
+ * arrived at once. Waiting here instead keeps the wait inside the app's own deadline,
+ * which already covers a local model's pace, and out of a queue that drops requests.
+ */
+const serverQueues = new Map<string, Promise<unknown>>();
+
+export function inTurnForServer<T>(server: string, run: () => Promise<T>): Promise<T> {
+  const previous = serverQueues.get(server) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(run);
+  // A failed request must not block the ones behind it.
+  serverQueues.set(server, next.catch(() => undefined));
+  return next;
+}
+
 const JSON_SYSTEM_PREFIX = "Respond ONLY with a valid JSON object. No markdown fences, no prose before or after.\n\n";
 
 export class OllamaProvider implements AIProvider {
@@ -57,10 +77,12 @@ export class OllamaProvider implements AIProvider {
 
   private readonly client: OpenAI;
   private readonly config: AIProviderConfig;
+  private readonly server: string;
 
   constructor(config: AIProviderConfig) {
     this.config = config;
     const baseURL = (config.baseUrl ?? "http://localhost:11434") + "/v1";
+    this.server = baseURL;
     // Deliberately longer than the local generation deadline (10 minutes), so the
     // caller's deadline is always the one that decides. A local model is slow, not
     // broken: when the HTTP client gave up first, the chain read that as "Ollama
@@ -84,13 +106,13 @@ export class OllamaProvider implements AIProvider {
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     const maxTokens = config?.maxTokens ?? 4096;
     try {
-      const response = await this.client.chat.completions.create({
+      const response = await inTurnForServer(this.server, () => this.client.chat.completions.create({
         model: config?.model ?? this.model,
         max_tokens: maxTokens,
         temperature: config?.temperature,
         ...ollamaReasoningFor(config),
         messages: this.toMessages(messages)
-      });
+      }));
       const choice = response.choices[0];
       const text = choice?.message?.content ?? "";
 
@@ -124,7 +146,7 @@ export class OllamaProvider implements AIProvider {
       const messagesWithJsonHint = messages.map((m) =>
         m.role === "system" ? { ...m, content: JSON_SYSTEM_PREFIX + m.content } : m
       );
-      const response = await this.client.chat.completions.create({
+      const response = await inTurnForServer(this.server, () => this.client.chat.completions.create({
         model: config?.model ?? this.model,
         // Larger than the text default, matching Gemini: the structured shapes this
         // app asks for run past 4096 tokens, and a response truncated mid-object
@@ -135,7 +157,7 @@ export class OllamaProvider implements AIProvider {
         ...ollamaReasoningFor(config),
         response_format: { type: "json_object" },
         messages: this.toMessages(messagesWithJsonHint)
-      });
+      }));
       const choice = response.choices[0];
       const text = choice?.message?.content ?? "";
       const maxTokens = config?.maxTokens ?? 8192;

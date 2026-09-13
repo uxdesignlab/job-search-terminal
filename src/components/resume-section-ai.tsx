@@ -45,6 +45,7 @@ export function SectionAIControls({
   busy,
   busyAction,
   disabled,
+  regenerateDisabled = false,
   improveLabel = "✨ Improve",
   note,
   onNoteChange,
@@ -57,7 +58,13 @@ export function SectionAIControls({
 }: {
   busy: boolean;
   busyAction?: "improve" | "regenerate";
+  /** Disables ✨ Improve — there is nothing in the box to polish. */
   disabled?: boolean;
+  /**
+   * Regenerate starts from the approved resume, not the box, so an empty box is no
+   * reason to disable it. The server says so if the approved resume has nothing either.
+   */
+  regenerateDisabled?: boolean;
   improveLabel?: string;
   note: string;
   onNoteChange: (value: string) => void;
@@ -96,7 +103,7 @@ export function SectionAIControls({
             {onRegenerate && (
               <button
                 className="text-xs font-medium text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={disabled}
+                disabled={regenerateDisabled}
                 onClick={onRegenerate}
                 title="Write this section again from your approved resume"
                 type="button"
