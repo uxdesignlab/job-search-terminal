@@ -1499,7 +1499,10 @@ now stop and ask you to evaluate first.
     absent from the target, the posting, or the research. They previously never read the
     preparation, so research that landed after a resume could not reach an AI answer
     however often it was drafted again. The non-AI answers use the preparation's
-    `suggested_compensation_response`.
+    `suggested_compensation_response`. Both paths use the preparation only while its
+    `jd_hash` still matches the job (`computeJdHash`): editing a job's title, location or
+    salary notes leaves the row in place until the next resume, and its research and
+    answer describe the old role.
   - **Gap responses flow into answer generation**: all gap and red flag
     responses with `qualityStatus === "addressed"` are loaded and injected into
     the AI system prompt as verified evidence. The AI uses polished responses

@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   prompts: [] as string[],
   preparation: undefined as Record<string, unknown> | undefined,
+  title: "Design Director",
 }));
 
 vi.mock("@/lib/db/queries", () => ({
-  getJobById: () => ({ id: "job-a", title: "Design Director", company: "Acme", location: "Remote", remoteType: "remote", salaryNotes: "Not captured" }),
+  getJobById: () => ({ id: "job-a", title: state.title, company: "Acme", location: "Remote", remoteType: "remote", salaryNotes: "Not captured", rawDescription: "Lead design.", parsedDescription: "" }),
   getEvaluationByJobId: () => ({ summary: "Strong fit.", strengths: ["Design systems"], resumeEvidence: ["Led a design system"] }),
   getUserProfile: () => ({ name: "Sam Lee", currentSearchGoal: "Design leadership", strongestSkills: ["Design systems"], compensationNeeds: "$180k–$210k", workPreferences: ["Remote"] }),
   getStories: () => [],
@@ -32,15 +33,19 @@ vi.mock("@/lib/ai/factory", () => ({
 vi.mock("@/lib/evaluation/job-evaluator", () => ({ evaluateJob: () => undefined }));
 
 import { prepareApplicationAnswersWithAI } from "@/lib/applications/llm-answer-generator";
+import { computeJdHash } from "@/lib/application-preparation/hashing";
+
+const preparedFor = (title: string) => computeJdHash({ title, location: "Remote", salaryNotes: "Not captured", rawDescription: "Lead design.", parsedDescription: "" });
 
 beforeEach(() => {
   state.prompts = [];
   state.preparation = undefined;
+  state.title = "Design Director";
 });
 
 describe("AI application answers and compensation research", () => {
   it("include market research once it has finished", async () => {
-    state.preparation = { compensationResearchStatus: "completed", marketCompensation: { summary: "Directors of design in the US typically earn $190k–$240k." } };
+    state.preparation = { jdHash: preparedFor("Design Director"), compensationResearchStatus: "completed", marketCompensation: { summary: "Directors of design in the US typically earn $190k–$240k." } };
     await prepareApplicationAnswersWithAI("job-a");
     expect(state.prompts[0]).toContain("Market compensation context from live research");
     expect(state.prompts[0]).toContain("$190k–$240k");
@@ -52,5 +57,14 @@ describe("AI application answers and compensation research", () => {
     await prepareApplicationAnswersWithAI("job-a");
     expect(state.prompts[0]).not.toContain("Market compensation context");
     expect(state.prompts[0]).toContain("Compensation target: $180k–$210k");
+  });
+});
+
+describe("salary research for a job whose details changed", () => {
+  it("is left out once the title no longer matches what was researched", async () => {
+    state.preparation = { jdHash: preparedFor("Design Director"), compensationResearchStatus: "completed", marketCompensation: { summary: "Directors of design earn $190k–$240k." } };
+    state.title = "Senior Product Designer";
+    await prepareApplicationAnswersWithAI("job-a");
+    expect(state.prompts[0]).not.toContain("$190k–$240k");
   });
 });

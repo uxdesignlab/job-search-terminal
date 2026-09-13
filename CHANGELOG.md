@@ -24,6 +24,10 @@ the numbers mean and when they change.
   with no posted range, so drafting again later could not include it. It now does, once
   the research has finished, and it still leads with your own target and quotes no figure
   that is not in your target, the posting, or the research.
+- **Salary answers ignore research for a job you have since edited.** If you change a
+  job's title, location, or salary notes after making its resume, the saved research
+  describes the old role; application answers now leave it out until you make the resume
+  again.
 - **A local model that runs out of time during a fallback now stops.** When Ollama took
   too long and the app moved on to another service, Ollama kept working in the background
   and made anything else waiting for it wait longer.

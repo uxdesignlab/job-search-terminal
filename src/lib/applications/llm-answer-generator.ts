@@ -16,6 +16,7 @@ import {
 } from "../db/queries";
 import type { ApplicationAnswerDraftInput } from "../db/types";
 import { evaluateJob } from "../evaluation/job-evaluator";
+import { computeJdHash } from "../application-preparation/hashing";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 
 export async function prepareApplicationAnswersWithAI(jobId: string, customQuestions: string[] = []) {
@@ -48,8 +49,12 @@ export async function prepareApplicationAnswersWithAI(jobId: string, customQuest
   // research when it has finished. This path used to see only the saved target and the
   // posting's salary notes, so research that landed after a resume never reached an AI
   // answer however many times it was drafted again.
+  // Only when the preparation still describes this posting. Editing a job's title or
+  // location leaves the row in place until the next resume, and research into the old
+  // role is wrong guidance for the new one.
   const preparation = getApplicationPreparation(jobId);
-  const researched = preparation?.compensationResearchStatus === "completed" && preparation.marketCompensation?.summary
+  const current = preparation && preparation.jdHash === computeJdHash(job);
+  const researched = current && preparation.compensationResearchStatus === "completed" && preparation.marketCompensation?.summary
     ? preparation.marketCompensation.summary.slice(0, 600)
     : "";
   const compensationContext = researched

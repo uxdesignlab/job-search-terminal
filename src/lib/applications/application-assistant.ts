@@ -10,6 +10,7 @@ import {
 , getApplicationPreparation} from "../db/queries";
 import type { ApplicationAnswerDraftInput, EvaluationRecord, JobRecord, UserProfileRecord } from "../db/types";
 import { EvaluationRequiredError } from "../application-preparation";
+import { computeJdHash } from "../application-preparation/hashing";
 
 type AddressedGap = { gapText: string; response: string };
 
@@ -121,7 +122,10 @@ function aboutCandidate({ profile, evaluation }: AnswerContext) {
 function compensation({ job, profile }: AnswerContext) {
   // §33: the prepared answer already resolved posted range, live research and the
   // saved target in that order, with provenance. Prefer it over re-deriving here.
-  const prepared = getApplicationPreparation(job.id)?.suggestedCompensationResponse;
+  // Only a preparation that still describes this posting: after an edit to the title,
+  // location or salary notes, its answer is about a different role.
+  const preparation = getApplicationPreparation(job.id);
+  const prepared = preparation && preparation.jdHash === computeJdHash(job) ? preparation.suggestedCompensationResponse : "";
   if (prepared) return prepared;
 
   const salary = job.salaryNotes && !job.salaryNotes.toLowerCase().includes("not captured") ? job.salaryNotes : "the posted range was not captured in the current job record";
