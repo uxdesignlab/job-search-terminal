@@ -1058,7 +1058,11 @@ before the bullets it summarised.
   `AIProviderConfig.signal`, which `withChainDeadline` fires on success, timeout or
   cancel — and whether it has waited past the local deadline, and is skipped if either
   is true (`OllamaRequestSkippedError`). The same signal aborts an in-flight Ollama
-  request, so a stopped resume stops using the local model. The summary always runs
+  request, so a stopped resume stops using the local model. Inside a fallback chain,
+  `FallbackProvider.attempt` hands each try its own signal — linked to the run's signal
+  and the chain's cancellation, and aborted when that try fails or its per-provider
+  deadline passes — so a local model that times out stops when the chain moves on to the
+  next provider, rather than running until the whole run ends. The summary always runs
   last, from `summaryContextFor` the parts as they were just written, so it describes the
   resume being sent.
 - **Shared prefix.** Every call's system prompt (`buildUnitSystemPrompt`) and candidate/
@@ -1488,6 +1492,14 @@ now stop and ask you to evaluate first.
   - After answers return, the question inputs reset to a single empty row and
     the drafts list refreshes in place — no page reload is required to submit
     another batch of questions.
+  - **Compensation.** AI answers (`prepareApplicationAnswersWithAI`) receive the saved
+    target, the posting's salary notes, and — once Application Preparation's live market
+    research has finished (`compensation_research_status = completed`) — up to 600
+    characters of its summary, with a rule to lead with the target and state no figure
+    absent from the target, the posting, or the research. They previously never read the
+    preparation, so research that landed after a resume could not reach an AI answer
+    however often it was drafted again. The non-AI answers use the preparation's
+    `suggested_compensation_response`.
   - **Gap responses flow into answer generation**: all gap and red flag
     responses with `qualityStatus === "addressed"` are loaded and injected into
     the AI system prompt as verified evidence. The AI uses polished responses

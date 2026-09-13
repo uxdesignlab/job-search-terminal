@@ -150,7 +150,11 @@ export class FallbackProvider implements AIProvider {
    * Cloud providers are not retried here; `withRetry` already covers the whole
    * chain, and retrying a paid call twice in a row is how a rate limit becomes two.
    */
-  private async attempt<T>(provider: AIProvider, run: () => Promise<T>): Promise<T> {
+  private async attempt<T>(
+    provider: AIProvider,
+    run: (signal: AbortSignal) => Promise<T>,
+    outer?: AbortSignal
+  ): Promise<T> {
     const budget = this.deadlineFor(provider.name);
     const tries = provider.name === "ollama" ? 2 : 1;
     const startedAt = Date.now();
@@ -166,11 +170,26 @@ export class FallbackProvider implements AIProvider {
       // exact failure the sum was introduced to prevent.
       const remaining = budget - (Date.now() - startedAt);
       if (remaining <= 0) break;
+      // Scoped to this one try. When the provider's deadline passes and the chain
+      // moves on, `withDeadline` stops waiting but the request keeps running — on a
+      // local model that held the machine, and every queued request behind it, until
+      // the whole run ended. Aborting here tells an adapter that can stop (Ollama) to
+      // stop now. The run's own signal and the user's cancellation still reach it too.
+      const tryAbort = new AbortController();
+      const forward = () => tryAbort.abort();
+      for (const signal of [outer, this.cancellation]) {
+        if (signal?.aborted) tryAbort.abort();
+        else signal?.addEventListener("abort", forward, { once: true });
+      }
       try {
-        return await withDeadline(run, remaining);
+        return await withDeadline(() => run(tryAbort.signal), remaining);
       } catch (error) {
+        tryAbort.abort();
         lastError = error;
         if (attempt === tries || !isMalformedJsonResponse(error)) throw error;
+      } finally {
+        outer?.removeEventListener("abort", forward);
+        this.cancellation?.removeEventListener("abort", forward);
       }
     }
     throw lastError;
@@ -210,7 +229,7 @@ export class FallbackProvider implements AIProvider {
         // which is the exact call this guard exists to prevent.
         await this.announceReady(provider);
         this.ensureNotCancelled();
-        const result = await this.attempt(provider, () => provider.generateText(messages, config));
+        const result = await this.attempt(provider, (signal) => provider.generateText(messages, { ...config, signal }), config?.signal);
         this.active = provider;
         return result;
       } catch (error) {
@@ -237,7 +256,7 @@ export class FallbackProvider implements AIProvider {
         // which is the exact call this guard exists to prevent.
         await this.announceReady(provider);
         this.ensureNotCancelled();
-        const result = await this.attempt(provider, () => provider.generateJSON<T>(messages, hint, config));
+        const result = await this.attempt(provider, (signal) => provider.generateJSON<T>(messages, hint, { ...config, signal }), config?.signal);
         this.active = provider;
         return result;
       } catch (error) {

@@ -4,6 +4,7 @@ import { getActiveProvider } from "../ai/factory";
 import { withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import {
+  getApplicationPreparation,
   getApplicationAnswerDrafts,
   getEvaluationByJobId,
   getJobById,
@@ -43,6 +44,18 @@ export async function prepareApplicationAnswersWithAI(jobId: string, customQuest
     ? `\n\n${formatStyleForPrompt(writingStyle.toneProfile)}`
     : "";
 
+  // The compensation Application Preparation resolved: the posted range, and live market
+  // research when it has finished. This path used to see only the saved target and the
+  // posting's salary notes, so research that landed after a resume never reached an AI
+  // answer however many times it was drafted again.
+  const preparation = getApplicationPreparation(jobId);
+  const researched = preparation?.compensationResearchStatus === "completed" && preparation.marketCompensation?.summary
+    ? preparation.marketCompensation.summary.slice(0, 600)
+    : "";
+  const compensationContext = researched
+    ? `\n\nMarket compensation context from live research for this role (use only to frame the candidate's target; do not quote a figure that is not in this text, the posting, or the target):\n${researched}`
+    : "";
+
   const gapContext = gapResponses.length > 0
     ? `\n\nAddressed gaps and red flags (use these to strengthen answers where relevant — treat as verified evidence the candidate can speak to):\n${gapResponses.map((r) => `- Gap: "${r.gapText}"\n  Response: ${r.polishedResponse || r.rawResponse}`).join("\n")}`
     : "";
@@ -58,6 +71,7 @@ Rules:
 - Each answer should feel like it came from a thoughtful human who has done their research
 - Keep answers 2–5 sentences; under 150 words
 - Draw only from the candidate context provided — never fabricate credentials
+- For compensation, lead with the candidate's saved target. Mention a posted range or market context only as it is given below, and never state a number that is not in the target, the posting, or the provided research
 
 Candidate: ${profile.name}
 Goal: ${profile.currentSearchGoal}
@@ -66,7 +80,7 @@ Compensation target: ${profile.compensationNeeds || "flexible"}
 Work preferences: ${profile.workPreferences.join(", ")}
 Role evaluation: ${evaluation.summary}
 Top strengths for this role: ${evaluation.strengths.slice(0, 4).join("; ")}
-Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${storyContext}${gapContext}${styleContext}`;
+Resume evidence: ${evaluation.resumeEvidence.slice(0, 3).join("; ")}${compensationContext}${storyContext}${gapContext}${styleContext}`;
 
   const commonQuestions = [
     "Why are you interested in this role?",

@@ -15,6 +15,21 @@ the numbers mean and when they change.
 
 ---
 
+## 0.16.3 — 2026-09-13 — Salary research reaches AI answers
+
+**Fixed**
+
+- **AI-drafted application answers now use the salary research.** When a paid AI
+  service writes your answers, it never saw the market research the app does for a job
+  with no posted range, so drafting again later could not include it. It now does, once
+  the research has finished, and it still leads with your own target and quotes no figure
+  that is not in your target, the posting, or the research.
+- **A local model that runs out of time during a fallback now stops.** When Ollama took
+  too long and the app moved on to another service, Ollama kept working in the background
+  and made anything else waiting for it wait longer.
+
+---
+
 ## 0.16.2 — 2026-09-13 — Tidying up after a stop
 
 **Fixed**
