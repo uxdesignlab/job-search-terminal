@@ -1,15 +1,18 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getAISettings, getEvaluationByJobId, getGeneratedDocumentById, getJobById, getJobGapResponses, getProfileSupplements, getResumeBuilderVersion, getResumes, getSkills, getUserProfile, saveGeneratedDocument, updateDocumentDraft, updateDocumentPdf,
+import { getAISettings, getApplicationPreparation, getEvaluationByJobId, getGeneratedDocumentById, getJobById, getJobGapResponses, getProfileSupplements, getResumeBuilderVersion, getResumes, getSkills, getUserProfile, saveGeneratedDocument, updateDocumentDraft, updateDocumentPdf,
   getEffectiveKeywordSignals
 } from "../db/queries";
-import type { EvaluationRecord, GeneratedDocumentInput, JobKeywordSignal, JobRecord, ResumeBuilderSection, ResumeBuilderVersionRecord, ResumeRecord, ResumeSectionMode, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
+import type { EvaluationRecord, GeneratedDocumentInput, GenerationStageTiming, JobKeywordSignal, JobRecord, ResumeBuilderSection, ResumeBuilderVersionRecord, ResumeRecord, ResumeSectionMode, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
 import { EvaluationRequiredError, prepareApplication } from "../application-preparation";
+import { resolveWritingCandidates } from "../ai/factory";
+import { GenerationCancelledError } from "../ai/retry";
+import { aiErrorMessage } from "../ai/error-response";
 import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
 import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
 import { keywordCoverageFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
-import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceAuditIssue } from "./evidence-audit";
+import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceAudit, type EvidenceAuditIssue } from "./evidence-audit";
 import { describeRestores, restoreLostKeywords, type KeywordRestore } from "./keyword-preservation";
 import { analyzeTailoringEffect, describeUnchanged } from "./tailoring-effect";
 
@@ -30,33 +33,129 @@ export class UnsupportedResumeClaimsError extends Error {
   }
 }
 
+export type ResumeGenerationStage = GenerationStageTiming["stage"];
+
+/**
+ * One step of a generation, reported as it happens.
+ *
+ * A resume used to be a single blocking request behind a spinner that promised
+ * "15–30 seconds" while a local model spent five minutes on it. Nothing here can
+ * report a percentage honestly — each stage is one long call — so what it reports is
+ * which stage is running, on which model, and how long it has taken.
+ */
+export type ResumeStageUpdate = {
+  stage: ResumeGenerationStage;
+  status: "started" | "done";
+  provider?: string;
+  model?: string;
+  /** "reused" when a still-valid preparation was served instead of generated. */
+  detail?: string;
+  /** Something the user should know about how this stage ran, e.g. a credits fallback. */
+  notice?: string;
+  elapsedMs: number;
+};
+
+export type BuildDraftOptions = {
+  resumeId?: string | null;
+  sectionModes?: ResumeSectionModeInput[];
+  onStage?: (update: ResumeStageUpdate) => void;
+  /** The user stopped waiting. Nothing is saved once it fires. */
+  signal?: AbortSignal;
+};
+
+export type TailoredDraftBuild = {
+  job: JobRecord;
+  profile: UserProfileRecord;
+  baseResume: ResumeRecord;
+  draft: ResumeTemplateInput;
+  keywordCoverage: number;
+  tailoringPlan: string[];
+  tailoringStatus: string;
+  evidenceAudit: EvidenceAudit;
+  fallbackReason: string;
+  /** Credits fallbacks and similar, joined for display. Empty when there is nothing to say. */
+  notice: string;
+  generationMs: number;
+  providerUsed: string;
+  modelUsed: string;
+  stages: GenerationStageTiming[];
+};
+
+type PreparationOutcome = {
+  /** Why preparation could not run; empty when it ran or was reused. */
+  fallback: string;
+  reused: boolean;
+  notice: string;
+  provider: string;
+  model: string;
+};
+
 /**
  * Run Application Preparation, treating failure as a degraded state rather than
  * a blocked one. Returns the reason when it could not run, so callers can
  * surface it the way AI-tailoring fallbacks already are.
+ *
+ * Cancellation is not a failure and is not degraded: it propagates, so a run the user
+ * stopped goes no further.
  */
-async function prepareApplicationOrDegrade(jobId: string): Promise<string> {
+async function prepareApplicationOrDegrade(
+  jobId: string,
+  signal: AbortSignal | undefined,
+  onProvider: (provider: string, model: string) => void
+): Promise<PreparationOutcome> {
   try {
-    await prepareApplication(jobId);
-    return "";
+    const result = await prepareApplication(jobId, { signal, onProvider });
+    return {
+      fallback: "",
+      reused: result.reused,
+      notice: result.notice ?? "",
+      provider: result.preparation.providerUsed,
+      model: result.preparation.modelUsed,
+    };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    if (error instanceof GenerationCancelledError || signal?.aborted) throw new GenerationCancelledError();
+    const reason = aiErrorMessage(error);
     console.warn(`[resume] application preparation unavailable for ${jobId}; continuing with stored keywords:`, reason);
-    return reason;
+    return { fallback: reason, reused: false, notice: "", provider: "", model: "" };
   }
 }
 
-export async function generateTailoredResume(jobId: string, sectionModes: ResumeSectionModeInput[] = []): Promise<GeneratedResumeResult> {
+/**
+ * The whole tailoring pipeline up to — not including — saving: preparation, the AI
+ * rewrite, the evidence guard, keyword preservation and coverage.
+ *
+ * `generateTailoredResume` and `generateResumeDraft` each carried their own copy of
+ * this, line for line, which is how a fix could land in one and not the other. Both
+ * now call this and differ only in what they save.
+ */
+export async function buildTailoredDraft(jobId: string, options: BuildDraftOptions = {}): Promise<TailoredDraftBuild> {
+  const { signal, onStage } = options;
+  const startedAt = Date.now();
+  const stages: GenerationStageTiming[] = [];
+  const notices: string[] = [];
+  const elapsed = () => Date.now() - startedAt;
+  const ensureNotCancelled = () => {
+    if (signal?.aborted) throw new GenerationCancelledError();
+  };
+
   const job = getJobById(jobId);
-  if (!job) {
-    throw new Error(`Job not found: ${jobId}`);
-  }
+  if (!job) throw new Error(`Job not found: ${jobId}`);
 
   // §5.2, §22: no hidden evaluation. Resume generation used to quietly run one
   // when it was missing, which made an expensive AI call with no user action
   // behind it and hid the dependency. The caller is told to evaluate first.
   const evaluation = getEvaluationByJobId(jobId);
   if (!evaluation) throw new EvaluationRequiredError(jobId);
+
+  const profile = getUserProfile();
+  const resumes = getResumes();
+  const skills = getSkills();
+  const baseResume = options.resumeId
+    ? (resumes.find((r) => r.id === options.resumeId) ?? selectBaseResume(evaluation, resumes))
+    : selectBaseResume(evaluation, resumes);
+  // Checked before any AI work: an unapproved lane cannot be generated from, and
+  // finding that out after a two-minute preparation wasted the wait.
+  const approvedVersion = getApprovedResumeVersion(baseResume);
 
   // §32: preparation is generated on demand and reused while its hashes hold, so
   // editing a draft does not pay for it again — but answering a gap anywhere in
@@ -67,25 +166,46 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   // a hard error on the other. Without preparation the effective-keyword resolver
   // falls back to whatever the evaluation stored, which is exactly the behaviour
   // that existed before this stage.
-  const preparationFallback = await prepareApplicationOrDegrade(jobId);
-  const profile = getUserProfile();
-  const resumes = getResumes();
-  const skills = getSkills();
-  const baseResume = selectBaseResume(evaluation, resumes);
+  const preparingStartedAt = Date.now();
+  onStage?.({ stage: "preparing", status: "started", elapsedMs: elapsed() });
+  const preparation = await prepareApplicationOrDegrade(jobId, signal, (provider, model) =>
+    onStage?.({ stage: "preparing", status: "started", provider, model, elapsedMs: elapsed() })
+  );
+  ensureNotCancelled();
+  if (preparation.notice) notices.push(preparation.notice);
+  stages.push({
+    stage: "preparing",
+    ms: Date.now() - preparingStartedAt,
+    detail: preparation.reused ? "reused" : preparation.fallback ? "unavailable" : "generated",
+    ...(preparation.provider ? { provider: preparation.provider, model: preparation.model } : {}),
+  });
+  onStage?.({
+    stage: "preparing",
+    status: "done",
+    detail: preparation.reused ? "reused" : preparation.fallback ? "unavailable" : "generated",
+    notice: preparation.notice || undefined,
+    elapsedMs: elapsed(),
+  });
+
   const sourceResumeText = await loadSourceResumeText(baseResume);
-  const approvedVersion = getApprovedResumeVersion(baseResume);
-  const resolvedSectionModes = resolveSectionModes(approvedVersion.sections, sectionModes);
+  const resolvedSectionModes = resolveSectionModes(approvedVersion.sections, options.sectionModes ?? []);
   const sourceDraft = buildTailoredContent(job, evaluation, profile, skills, approvedVersion, resolvedSectionModes);
   const keywordSignals = getEffectiveKeywordSignals(job.id);
+  const requirements = getApplicationPreparation(job.id)?.requirements ?? [];
 
   const aiSettings = getAISettings();
-  const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
+  // Any provider the writer chain can reach, local included. This used to test for
+  // the three cloud keys only, so a user running Ollama alone never had a resume
+  // tailored at all and was told nothing about why.
+  const hasAIProvider = resolveWritingCandidates(aiSettings).length > 0;
   let aiTailoring: TailoredResumeSections | null = null;
+  let providerUsed = "";
+  let modelUsed = "";
   // Seeded from preparation so a degraded run is reported even when AI tailoring
   // itself succeeds — otherwise the resume looks fully tailored while quietly
   // missing this job's extracted keywords.
-  let fallbackReason = preparationFallback
-    ? `Application preparation unavailable (${preparationFallback}); tailored from stored keywords.`
+  let fallbackReason = preparation.fallback
+    ? `Application preparation unavailable (${preparation.fallback}); tailored from stored keywords.`
     : "";
   const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
   const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
@@ -93,11 +213,12 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   // Build evidence before the AI call so we can classify keywords into confirmed vs candidate.
   const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements, otherActiveLanes(resumes, baseResume));
 
-  if (hasAIKey) {
+  if (hasAIProvider) {
+    const writingStartedAt = Date.now();
+    onStage?.({ stage: "writing", status: "started", elapsedMs: elapsed() });
     try {
-      const keywordInputs = keywordSignals;
       const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
-        evidenceTextForDraft(sourceDraft), keywordInputs
+        evidenceTextForDraft(sourceDraft), keywordSignals
       );
       // Keywords whose words are already in the full evidence corpus → safe to use verbatim.
       const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
@@ -108,13 +229,42 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
       const protectedKws = keywordSignals
         .map((signal) => signal.keyword)
         .filter((keyword) => !notExactSet.has(keyword.toLowerCase()));
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals, protectedKws);
+      const tailored = await tailorResumeWithAI(
+        job, evaluation, profile, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills,
+        notExactInDraft, confirmedKws, keywordSignals, protectedKws, requirements,
+        {
+          signal,
+          onProvider: (provider, model) =>
+            onStage?.({ stage: "writing", status: "started", provider, model, elapsedMs: elapsed() }),
+        }
+      );
+      aiTailoring = tailored.sections;
+      providerUsed = tailored.providerUsed;
+      modelUsed = tailored.modelUsed;
+      if (tailored.notice) notices.push(tailored.notice);
     } catch (error) {
-      const aiReason = error instanceof Error ? error.message : String(error);
+      if (error instanceof GenerationCancelledError || signal?.aborted) throw new GenerationCancelledError();
+      const aiReason = aiErrorMessage(error);
       fallbackReason = fallbackReason ? `${fallbackReason} ${aiReason}` : aiReason;
     }
+    stages.push({
+      stage: "writing",
+      ms: Date.now() - writingStartedAt,
+      ...(providerUsed ? { provider: providerUsed, model: modelUsed } : { detail: "failed" }),
+    });
+    onStage?.({
+      stage: "writing",
+      status: "done",
+      provider: providerUsed || undefined,
+      model: modelUsed || undefined,
+      notice: notices[notices.length - 1],
+      elapsedMs: elapsed(),
+    });
   }
+  ensureNotCancelled();
 
+  const checkingStartedAt = Date.now();
+  onStage?.({ stage: "checking", status: "started", elapsedMs: elapsed() });
   const confirmedKwsForInjection = keywordSignals
     .filter((signal) => signal.priority !== "preferred" && signal.category !== "title")
     .map((signal) => signal.keyword)
@@ -138,7 +288,34 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   // already matched. Runs after the evidence guard so it only ever puts back
   // approved source wording.
   const preserved = restoreLostKeywords(sourceDraft, reverted.draft, keywordSignals);
-  const content = injectMissingConfirmedKeywordsIntoSkills(preserved.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
+  const draft = injectMissingConfirmedKeywordsIntoSkills(preserved.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
+  const keywordCoverage = keywordCoverageFor(draft, keywordSignals);
+  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals, preserved.restored);
+  stages.push({ stage: "checking", ms: Date.now() - checkingStartedAt });
+  onStage?.({ stage: "checking", status: "done", elapsedMs: elapsed() });
+
+  return {
+    job,
+    profile,
+    baseResume,
+    draft,
+    keywordCoverage,
+    tailoringPlan,
+    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
+    evidenceAudit: { ...reverted.audit, restored: preserved.restored, unchanged: effect.notable },
+    fallbackReason,
+    notice: [...new Set(notices)].join(" "),
+    generationMs: elapsed(),
+    providerUsed,
+    modelUsed,
+    stages,
+  };
+}
+
+export async function generateTailoredResume(jobId: string, sectionModes: ResumeSectionModeInput[] = []): Promise<GeneratedResumeResult> {
+  const built = await buildTailoredDraft(jobId, { sectionModes });
+  const { job, profile, baseResume, draft: content, keywordCoverage } = built;
+  const savingStartedAt = Date.now();
   const html = renderResumeHtml(content);
   const date = new Date().toISOString().slice(0, 10);
   const slug = slugify(`${profile.name}-${job.company}-${job.title}`);
@@ -151,8 +328,7 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     pdfPath,
     format: paperFormatFor(job)
   });
-  const keywordCoverage = keywordCoverageFor(content, keywordSignals);
-  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals, preserved.restored);
+  const stages = [...built.stages, { stage: "saving" as const, ms: Date.now() - savingStartedAt }];
   const document: GeneratedDocumentInput = {
     id,
     jobId: job.id,
@@ -166,12 +342,16 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
     status: "Ready",
     tailoringSummary: `Generated from ${baseResume.name}. ${keywordCoverage}% of evaluation keywords appear in the tailored resume.`,
     keywordCoverage,
-    tailoringPlan,
+    tailoringPlan: built.tailoringPlan,
     draftJson: JSON.stringify(content),
     baseResumeId: baseResume.id,
-    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
-    evidenceAuditJson: JSON.stringify({ ...reverted.audit, restored: preserved.restored, unchanged: effect.notable }),
-    fallbackReason
+    tailoringStatus: built.tailoringStatus,
+    evidenceAuditJson: JSON.stringify(built.evidenceAudit),
+    fallbackReason: built.fallbackReason,
+    generationMs: built.generationMs + (Date.now() - savingStartedAt),
+    providerUsed: built.providerUsed,
+    modelUsed: built.modelUsed,
+    generationStages: stages,
   };
 
   saveGeneratedDocument(document);
@@ -183,106 +363,35 @@ export async function generateTailoredResume(jobId: string, sectionModes: Resume
   };
 }
 
-export async function generateResumeDraft(jobId: string, resumeId?: string | null, sectionModes: ResumeSectionModeInput[] = []): Promise<{
+export type ResumeDraftResult = {
   documentId: string;
   draft: ResumeTemplateInput;
   tailoringStatus: string;
-  evidenceAudit: ReturnType<typeof auditDraftAgainstEvidence>;
+  evidenceAudit: EvidenceAudit;
   fallbackReason: string;
-}> {
-  const job = getJobById(jobId);
-  if (!job) throw new Error(`Job not found: ${jobId}`);
+  notice: string;
+  generationMs: number;
+  providerUsed: string;
+  modelUsed: string;
+};
 
-  const evaluation = getEvaluationByJobId(jobId);
-  if (!evaluation) throw new EvaluationRequiredError(jobId);
+export async function generateResumeDraft(
+  jobId: string,
+  resumeId?: string | null,
+  sectionModes: ResumeSectionModeInput[] = [],
+  run: Pick<BuildDraftOptions, "onStage" | "signal"> = {}
+): Promise<ResumeDraftResult> {
+  const built = await buildTailoredDraft(jobId, { resumeId, sectionModes, ...run });
+  // The last point a cancel can take effect. Past here the draft is written, and a
+  // user who stopped waiting must not find one saved behind their back.
+  if (run.signal?.aborted) throw new GenerationCancelledError();
 
-  // §32: preparation is generated on demand and reused while its hashes hold, so
-  // editing a draft does not pay for it again — but answering a gap anywhere in
-  // the global evidence bank invalidates it.
-  //
-  // Failure degrades rather than aborting, matching how AI tailoring below is
-  // handled: the same provider outage must not produce a resume on one path and
-  // a hard error on the other. Without preparation the effective-keyword resolver
-  // falls back to whatever the evaluation stored, which is exactly the behaviour
-  // that existed before this stage.
-  const preparationFallback = await prepareApplicationOrDegrade(jobId);
-
-  const profile = getUserProfile();
-  const resumes = getResumes();
-  const skills = getSkills();
-
-  const baseResume = resumeId
-    ? (resumes.find((r) => r.id === resumeId) ?? selectBaseResume(evaluation, resumes))
-    : selectBaseResume(evaluation, resumes);
-
-  const sourceResumeText = await loadSourceResumeText(baseResume);
-  const approvedVersion = getApprovedResumeVersion(baseResume);
-  const resolvedSectionModes = resolveSectionModes(approvedVersion.sections, sectionModes);
-  const sourceDraft = buildTailoredContent(job, evaluation, profile, skills, approvedVersion, resolvedSectionModes);
-  const keywordSignals = getEffectiveKeywordSignals(job.id);
-
-  const aiSettings = getAISettings();
-  const hasAIKey = aiSettings.anthropicApiKey || aiSettings.geminiApiKey || aiSettings.openaiApiKey;
-  let aiTailoring: TailoredResumeSections | null = null;
-  // Seeded from preparation so a degraded run is reported even when AI tailoring
-  // itself succeeds — otherwise the resume looks fully tailored while quietly
-  // missing this job's extracted keywords.
-  let fallbackReason = preparationFallback
-    ? `Application preparation unavailable (${preparationFallback}); tailored from stored keywords.`
-    : "";
-  const gapResponses = getJobGapResponses(jobId).filter((r) => r.qualityStatus === "addressed");
-  const supplements = getProfileSupplements().filter((s) => s.qualityStatus === "addressed");
-
-  const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements, otherActiveLanes(resumes, baseResume));
-
-  if (hasAIKey) {
-    try {
-      const keywordInputs = keywordSignals;
-      const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
-        evidenceTextForDraft(sourceDraft), keywordInputs
-      );
-      const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
-      const notExactInDraft = [...partialInDraft, ...missingFromDraft];
-      // The other half of the same measurement: phrases the source draft already
-      // matches exactly, which the rewrite must not paraphrase away.
-      const notExactSet = new Set(notExactInDraft.map((keyword) => keyword.toLowerCase()));
-      const protectedKws = keywordSignals
-        .map((signal) => signal.keyword)
-        .filter((keyword) => !notExactSet.has(keyword.toLowerCase()));
-      aiTailoring = await tailorResumeWithAI(job, evaluation, profile, sourceResumeText, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills, notExactInDraft, confirmedKws, keywordSignals, protectedKws);
-    } catch (error) {
-      const aiReason = error instanceof Error ? error.message : String(error);
-      fallbackReason = fallbackReason ? `${fallbackReason} ${aiReason}` : aiReason;
-    }
-  }
-
-  const confirmedKwsForInjection = keywordSignals
-    .filter((signal) => signal.priority !== "preferred" && signal.category !== "title")
-    .map((signal) => signal.keyword)
-    .filter((keyword) => isKeywordInText(evidenceText, keyword));
-  const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
-  // Measured on the model's own output: the evidence guard and the preservation
-  // pass below both restore source wording deliberately, and counting their work
-  // as the model doing nothing would make this report meaningless.
-  const effect = aiTailoring
-    ? analyzeTailoringEffect(sourceDraft, applied, resolvedSectionModes)
-    : { measured: [], notable: [], noOp: false };
-  // A model that ran and rewrote nothing produced source content, and the draft
-  // says so in the same words a provider failure does.
-  if (effect.noOp) {
-    const noOpReason = describeUnchanged(effect.measured);
-    fallbackReason = fallbackReason ? `${fallbackReason} ${noOpReason}` : noOpReason;
-  }
-
-  const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
-  // §ATS: see generateTailoredResume — tailoring must not cost the resume a
-  // phrase it already matched.
-  const preserved = restoreLostKeywords(sourceDraft, reverted.draft, keywordSignals);
-  const draft = injectMissingConfirmedKeywordsIntoSkills(preserved.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
-  const keywordCoverage = keywordCoverageFor(draft, keywordSignals);
-  const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals, preserved.restored);
+  const { job, baseResume, draft, keywordCoverage } = built;
+  const savingStartedAt = Date.now();
+  run.onStage?.({ stage: "saving", status: "started", elapsedMs: built.generationMs });
   const date = new Date().toISOString().slice(0, 10);
   const documentId = `document-${job.id}`;
+  const generationMs = built.generationMs + (Date.now() - savingStartedAt);
 
   saveGeneratedDocument({
     id: documentId,
@@ -297,20 +406,29 @@ export async function generateResumeDraft(jobId: string, resumeId?: string | nul
     status: "Draft",
     tailoringSummary: `Generated from ${baseResume.name}. ${keywordCoverage}% keyword coverage.`,
     keywordCoverage,
-    tailoringPlan,
+    tailoringPlan: built.tailoringPlan,
     draftJson: JSON.stringify(draft),
     baseResumeId: baseResume.id,
-    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
-    evidenceAuditJson: JSON.stringify({ ...reverted.audit, restored: preserved.restored, unchanged: effect.notable }),
-    fallbackReason,
+    tailoringStatus: built.tailoringStatus,
+    evidenceAuditJson: JSON.stringify(built.evidenceAudit),
+    fallbackReason: built.fallbackReason,
+    generationMs,
+    providerUsed: built.providerUsed,
+    modelUsed: built.modelUsed,
+    generationStages: [...built.stages, { stage: "saving", ms: Date.now() - savingStartedAt }],
   });
+  run.onStage?.({ stage: "saving", status: "done", elapsedMs: generationMs });
 
   return {
     documentId,
     draft,
-    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
-    evidenceAudit: { ...reverted.audit, restored: preserved.restored, unchanged: effect.notable },
-    fallbackReason,
+    tailoringStatus: built.tailoringStatus,
+    evidenceAudit: built.evidenceAudit,
+    fallbackReason: built.fallbackReason,
+    notice: built.notice,
+    generationMs,
+    providerUsed: built.providerUsed,
+    modelUsed: built.modelUsed,
   };
 }
 

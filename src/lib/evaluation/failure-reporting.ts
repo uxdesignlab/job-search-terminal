@@ -1,5 +1,6 @@
 import { findChainFailure } from "../ai/fallback-provider";
 import type { EvaluationFailurePhase, EvaluationPhase } from "./evaluation-phases";
+import { aiErrorMessage, isAICreditsExhausted } from "../ai/error-response";
 
 /**
  * How an evaluation failure is described to the person who clicked Evaluate (§18.5).
@@ -35,6 +36,10 @@ export const PHASE_FAILURE_ATTRIBUTION: Record<EvaluationPhase, EvaluationFailur
 };
 
 export function toUserMessage(error: unknown): string {
+  // Before the chain summary: when every provider is out of credits the fix is one
+  // specific action, and a list of per-provider failures buries it.
+  if (isAICreditsExhausted(error)) return aiErrorMessage(error);
+
   // A chain failure is reported as itself. Collapsing it into "quota exceeded"
   // named the last provider's problem as if it were the only one, which reads as
   // nonsense to someone whose first provider is a local model with no quota.

@@ -1,4 +1,5 @@
 import { generateKeywordResumeProposals, type KeywordProposalExperience } from "@/lib/documents/keyword-resume-proposals";
+import { aiErrorResponse } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,6 @@ export async function POST(req: Request) {
       }),
     });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+    return aiErrorResponse(error, 400);
   }
 }

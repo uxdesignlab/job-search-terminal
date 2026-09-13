@@ -2,6 +2,14 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
 import { GEMINI_FALLBACK_MODELS, geminiSentinelFamily, resolveLatestGeminiModel } from "./gemini-models";
 import { parseJsonResponse } from "./json-response";
+import { ProviderCreditsExhaustedError, isGeminiCreditsError } from "./credit-status";
+
+/** A spent daily quota or empty prepaid balance is not a rate limit; say which it is. */
+function asCreditsError(error: unknown): unknown {
+  return isGeminiCreditsError(error)
+    ? new ProviderCreditsExhaustedError("gemini", error instanceof Error ? error.message : String(error))
+    : error;
+}
 
 export class GeminiProvider implements AIProvider {
   readonly name = "gemini";
@@ -67,7 +75,7 @@ export class GeminiProvider implements AIProvider {
         maxOutputTokens: config?.maxTokens ?? 4096,
         temperature: config?.temperature
       }
-    });
+    }).catch((error: unknown) => { throw asCreditsError(error); });
 
     return result.response.text();
   }
@@ -87,7 +95,7 @@ export class GeminiProvider implements AIProvider {
         maxOutputTokens: config?.maxTokens ?? 8192,
         temperature: config?.temperature
       }
-    });
+    }).catch((error: unknown) => { throw asCreditsError(error); });
 
     const candidate = result.response.candidates?.[0];
     const finishReason = candidate?.finishReason as string | undefined;
@@ -118,7 +126,7 @@ export class GeminiProvider implements AIProvider {
         maxOutputTokens: config?.maxTokens ?? 4096,
         temperature: config?.temperature
       }
-    });
+    }).catch((error: unknown) => { throw asCreditsError(error); });
 
     for await (const chunk of result.stream) {
       const text = chunk.text();
@@ -138,11 +146,12 @@ export class GeminiProvider implements AIProvider {
       await model.generateContent({ contents: [{ role: "user", parts: [{ text: "hi" }] }] });
       return { ok: true, latencyMs: Date.now() - start, model: resolved };
     } catch (error) {
+      const mapped = asCreditsError(error);
       return {
         ok: false,
         latencyMs: Date.now() - start,
         model: resolved,
-        error: error instanceof Error ? error.message : String(error)
+        error: mapped instanceof Error ? mapped.message : String(mapped)
       };
     }
   }

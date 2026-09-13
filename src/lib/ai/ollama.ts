@@ -36,6 +36,19 @@ function humanizeOllamaError(error: unknown, model?: string): Error {
   return new Error(error instanceof Error ? error.message : String(error));
 }
 
+/**
+ * Switch a thinking model's reasoning off.
+ *
+ * Measured on gemma4:12b rewriting one resume bullet: 770 completion tokens and 27s
+ * with thinking left on, 17 tokens and 1s with it off. A local model thinks at the
+ * speed of the machine it runs on, so for a writing task whose instructions already
+ * say exactly what to do, the hidden pass was most of the wait. Models that cannot
+ * think ignore the field.
+ */
+function ollamaReasoningFor(config?: Partial<AIProviderConfig>) {
+  return config?.reasoning === "low" ? { reasoning_effort: "none" as const } : {};
+}
+
 const JSON_SYSTEM_PREFIX = "Respond ONLY with a valid JSON object. No markdown fences, no prose before or after.\n\n";
 
 export class OllamaProvider implements AIProvider {
@@ -75,6 +88,7 @@ export class OllamaProvider implements AIProvider {
         model: config?.model ?? this.model,
         max_tokens: maxTokens,
         temperature: config?.temperature,
+        ...ollamaReasoningFor(config),
         messages: this.toMessages(messages)
       });
       const choice = response.choices[0];
@@ -118,6 +132,7 @@ export class OllamaProvider implements AIProvider {
         // rather than out of room. Local generation has no per-token cost.
         max_tokens: config?.maxTokens ?? 8192,
         temperature: config?.temperature,
+        ...ollamaReasoningFor(config),
         response_format: { type: "json_object" },
         messages: this.toMessages(messagesWithJsonHint)
       });

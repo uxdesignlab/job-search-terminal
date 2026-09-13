@@ -206,6 +206,48 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "resume-writer",
+        title: "Choose which service writes your resumes",
+        intro:
+          "Scoring a job and writing a resume are different jobs. A free local model is fine for the first. For the resume — the document an employer actually reads — a paid service usually writes better and much faster. You can use one for each.",
+        steps: [
+          {
+            title: "Open the setting",
+            body: "Go to Account → Settings → AI Provider. Under the provider list, find Resume writing uses.",
+          },
+          {
+            title: "Pick a service",
+            body: "Same as provider priority uses the list above, exactly as before. Pick a service by name to have it write resumes while everything else keeps using the list. Only services you have set up appear.",
+          },
+          {
+            title: "Save",
+            body: "Press Save settings. The next resume you generate, and every ✨ Improve, uses the service you picked.",
+          },
+        ],
+        bullets: [
+          "It covers three things: reading the job posting for its requirements and keywords, writing the resume sections, and ✨ Improve.",
+          "If the service you picked fails or runs out of credits, the app works down your provider list instead, so a resume still gets written.",
+          "On a local model a resume can take two or three minutes. On a paid service it is usually under a minute.",
+        ],
+        callout: {
+          title: "This changes what leaves your computer",
+          body: "If you pick a paid service here, your resume text, your gap answers, and the job posting are sent to that service each time you generate or improve a resume — even if Ollama does everything else. Leave it on Same as provider priority, with Ollama at the top of the list, to keep resume writing on your own computer.",
+        },
+      },
+      {
+        id: "credits",
+        title: "When a service runs out of credits",
+        intro:
+          "Paid services stop answering when your prepaid balance runs out, or when a free allowance is used up for the day. Waiting does not fix this — only adding credits does.",
+        bullets: [
+          "The app notices, and a yellow bar appears across the top of every page naming the service that is out of credits and the one being used instead.",
+          "While that bar shows, the app skips the empty service and uses the next one in your list, including Ollama if you have it switched on. Anything AI writes in that time tells you which service did the work.",
+          "If nothing else is available, the bar turns red and says No AI provider has credits left. AI buttons will show an out-of-credits message until you fix it.",
+          "To fix it, add credits on the service's own website. Then open Account → Settings → AI Provider and press Test connection. When the test passes, the bar goes away.",
+          "Saving a different API key for that service also clears the bar, because a new key may belong to an account with credits.",
+        ],
+      },
+      {
         id: "get-openai-key",
         title: "Create an OpenAI API key",
         steps: [
@@ -346,7 +388,7 @@ export const helpPages: HelpPage[] = [
       { label: "Brave Search API (free tier)", href: "https://brave.com/search/api" },
       { label: "Ollama — download and model library", href: "https://ollama.com" },
     ],
-    related: ["getting-started", "job-search", "troubleshooting"],
+    related: ["getting-started", "evaluate-tailor", "troubleshooting"],
   },
   {
     slug: "resume-lanes",
@@ -883,12 +925,16 @@ export const helpPages: HelpPage[] = [
             body: "Tailoring uses approved resume content plus gap answers and profile supplements that have enough concrete detail. Draft gap answers marked Needs detail are not used until completed.",
           },
           {
+            title: "Watch it work",
+            body: "After you press Generate, the window lists four steps and ticks them off: Reading the posting, Writing the tailored sections, Checking claims and keywords, and Saving the draft. It names the AI service doing each step and shows how long it has been running. If this job's posting was already read, the first step says Used this job's saved posting analysis and takes no time. Press Stop to give up; stopping saves nothing, and your previous draft stays as it was.",
+          },
+          {
             title: "Review job keyword alignment",
-            body: "Alignment is the app's weighted text check, not a score from the employer's ATS. Must-have language counts more than preferred wording. Add only evidence-supported phrases; for a missing requirement, select the roles where you used it, add context, and review the proposed bullet before accepting it.",
+            body: "Alignment is the app's weighted text check, not a score from the employer's ATS. Must-have language counts more than preferred wording. Years of experience and work arrangements like Remote or Hybrid are left out, because they are not words a resume should repeat. Add only evidence-supported phrases; for a missing requirement, select the roles where you used it, add context, and review the proposed bullet before accepting it.",
           },
           {
             title: "Edit the draft",
-            body: "Open the resume editor to refine summary, bullets, skills, and emphasis before exporting. The app checks metrics and substantive claims against the approved resume lane plus confirmed gap answers and supplements.",
+            body: "Open the resume editor to refine summary, bullets, skills, and emphasis before exporting. Under the title, a line such as Generated in 58s with OpenAI tells you how long the draft took and which service wrote it. The app checks metrics and substantive claims against the approved resume lane plus confirmed gap answers and supplements.",
           },
           {
             title: "Export PDF",
@@ -928,7 +974,7 @@ export const helpPages: HelpPage[] = [
         ],
       },
     ],
-    related: ["resume-lanes", "applications", "interview-prep"],
+    related: ["resume-lanes", "ai-providers", "applications"],
   },
   {
     slug: "applications",
@@ -1103,13 +1149,15 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "If Ollama is doing the work, nothing leaves at all — the AI is running on your own machine.",
           "OpenAI, Anthropic, and Google Gemini receive what is needed for each request. Read the data policy of whichever one you pick; they differ, and they change.",
+          "Resume writing can go to a different service from everything else. If Account → Settings → AI Provider → Resume writing uses names a paid service, your resume text, gap answers, and the job posting go to that service whenever you generate or improve a resume.",
+          "If your first service runs out of credits, the app moves on to the next one in your list. A bar at the top of the page tells you when that is happening, so you are never surprised about which service received your text.",
           "If a document is genuinely sensitive, do not run a cloud AI feature on it. Use Ollama for that one, or handle it yourself.",
           "If you think anyone else has seen your key, delete it on the service\'s website and make a new one.",
           "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends one code identifying a version that is already published on GitHub — nothing about you, your jobs, or your resumes, and nothing you have written yourself.",
         ],
         callout: {
           title: "Fully private with Ollama",
-          body: "Put Ollama at the top of your list in Settings → AI Provider and keep it running, and every AI request — job descriptions, resume content, application answers — is handled on your own computer. Nothing at all leaves the machine.",
+          body: "Put Ollama at the top of your list in Settings → AI Provider, leave Resume writing uses on Same as provider priority, and keep Ollama running. Every AI request — job descriptions, resume content, application answers — is then handled on your own computer. For nothing to leave even when Ollama stops, switch off the other services in the list: the app only falls back to services that are switched on.",
         },
       },
       {
@@ -1189,6 +1237,29 @@ export const helpPages: HelpPage[] = [
           "For OpenAI, Anthropic, or Gemini: check the key is still saved, then check the service\'s own website for an unpaid bill or a spending limit you have hit. A key that worked yesterday usually stopped for one of those two reasons.",
           "For Ollama: check it is actually running, and that the model you picked is still installed. Type ollama list in a terminal to see what you have.",
           "If you set up more than one service, remember the app works down the list. If the top one is failing, the next one takes over — so features may still work while the service you expected is broken.",
+          "A yellow or red bar across the top of the page means a service is out of credits. See An AI service is out of credits below.",
+        ],
+      },
+      {
+        id: "credits",
+        title: "An AI service is out of credits",
+        bullets: [
+          "A yellow bar naming a service means it has run out of credits and the app is using the next service in your list. Things keep working, but a different service is doing the work.",
+          "A red bar saying No AI provider has credits left means there is nothing else to fall back to. AI buttons show an out-of-credits message until you fix it.",
+          "Add credits on the service's own website. A free Gemini allowance that ran out for the day comes back the next day without you doing anything.",
+          "Then open Account → Settings → AI Provider and press Test connection for that service. When it passes, the bar disappears.",
+          "To keep working while you sort out billing, switch on Ollama in the same settings. It is free and never runs out.",
+        ],
+      },
+      {
+        id: "resume-slow",
+        title: "Making a resume takes several minutes",
+        bullets: [
+          "Look at the generation window. It names the service doing the work. If it says your local model, the time is being spent on your own computer, and two or three minutes is normal.",
+          "For faster resumes, open Account → Settings → AI Provider and set Resume writing uses to a paid service. Scoring and everything else can stay on Ollama. This sends your resume and the posting to that service — see Choose which service writes your resumes.",
+          "The first resume for a job takes longest because the app reads the posting first. Generating again for the same job reuses that reading, and the first step says Used this job's saved posting analysis.",
+          "If you do not want to wait, press Stop. Nothing is saved and your previous draft is untouched.",
+          "If it is slow on Ollama and your computer is also busy, close other heavy programs, or choose a smaller model. A model too big for your memory can be many times slower.",
         ],
       },
       {

@@ -8,6 +8,13 @@ export type AIProviderConfig = {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * How much the model may think before answering. "low" asks for as little as the
+   * provider allows — none at all on a local model — for writing tasks where hidden
+   * reasoning costs minutes and adds nothing the instructions do not already say.
+   * Each adapter maps it to what its models accept, and ignores it where nothing does.
+   */
+  reasoning?: "low";
   /** Base URL for local providers (e.g. Ollama). Ignored by cloud providers. */
   baseUrl?: string;
 };

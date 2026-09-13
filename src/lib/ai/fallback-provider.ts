@@ -3,6 +3,7 @@ import { summarizeProviderError } from "./provider-error-summary";
 import { AllProvidersFailedError, type ProviderAttempt } from "./chain-failure";
 import { generationDeadlineMs } from "./deadlines";
 import { GenerationCancelledError, GenerationTimeoutError, isMalformedJsonResponse, withDeadline } from "./retry";
+import { creditFallbackNotice, isCreditsExhaustedError } from "./credit-status";
 
 export { AllProvidersFailedError, findChainFailure, type ProviderAttempt } from "./chain-failure";
 
@@ -12,8 +13,11 @@ export { AllProvidersFailedError, findChainFailure, type ProviderAttempt } from 
  * request) would fail identically on every provider, so it is NOT included —
  * failing over on it just burns extra API calls.
  */
-function shouldFailover(error: unknown): boolean {
+export function shouldFailover(error: unknown): boolean {
   if (error && typeof error === "object" && "retryAfterMs" in error) return true;
+  // The clearest case of all: this provider cannot answer until the user pays it, and
+  // the next one in the chain — often a free local model — can.
+  if (isCreditsExhaustedError(error)) return true;
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return (
     msg.includes("rate limit") ||
@@ -36,7 +40,12 @@ function shouldFailover(error: unknown): boolean {
     // trying the next one: the local model the user put first is slow, and the
     // cloud fallback they configured behind it exists for exactly this.
     msg.includes("was abandoned") ||
-    msg.includes("connect to ollama")
+    msg.includes("connect to ollama") ||
+    // Ollama answers a request that waited out its own five-minute queue with a bare
+    // 500. The adapter reports it as a server error, which matched nothing above, so
+    // the chain stopped on a local model that was merely busy and the cloud fallback
+    // behind it never ran.
+    msg.includes("ollama server error")
   );
 }
 
@@ -95,6 +104,17 @@ export class FallbackProvider implements AIProvider {
 
   /** One line per provider tried, in the order they were tried. */
   private attempts: ProviderAttempt[] = [];
+  /** Providers passed over on the most recent call because they were out of credits. */
+  private skippedForCredits: string[] = [];
+
+  /**
+   * What the user should be told about how the last call was served — today, only that
+   * it ran somewhere other than the head of the chain because the head was out of
+   * credits. Empty when there is nothing to say.
+   */
+  get notice(): string {
+    return creditFallbackNotice(this.skippedForCredits, this.active);
+  }
   private cancellation?: AbortSignal;
 
   /**
@@ -157,6 +177,7 @@ export class FallbackProvider implements AIProvider {
   }
 
   private record(provider: AIProvider, error: unknown) {
+    if (isCreditsExhaustedError(error)) this.skippedForCredits.push(provider.name);
     this.attempts.push({
       provider: provider.name,
       model: provider.effectiveModel,
@@ -179,6 +200,7 @@ export class FallbackProvider implements AIProvider {
 
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     this.attempts = [];
+    this.skippedForCredits = [];
     let lastError: unknown;
     for (const provider of this.providers) {
       this.ensureNotCancelled();
@@ -205,6 +227,7 @@ export class FallbackProvider implements AIProvider {
 
   async generateJSON<T>(messages: AIMessage[], hint: string, config?: Partial<AIProviderConfig>): Promise<T> {
     this.attempts = [];
+    this.skippedForCredits = [];
     let lastError: unknown;
     for (const provider of this.providers) {
       this.ensureNotCancelled();
@@ -231,6 +254,7 @@ export class FallbackProvider implements AIProvider {
 
   async *stream(messages: AIMessage[], config?: Partial<AIProviderConfig>): AsyncIterable<StreamChunk> {
     this.attempts = [];
+    this.skippedForCredits = [];
     let lastError: unknown;
     for (const provider of this.providers) {
       this.ensureNotCancelled();

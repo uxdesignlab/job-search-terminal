@@ -1498,5 +1498,33 @@ export const migrations = [
       create index if not exists idx_source_check_runs_started
         on source_check_runs(started_at desc);
     `
+  },
+  {
+    id: "0068_resume_writer_and_generation_timing",
+    sql: `
+      -- The provider that writes resumes, independently of the chain every other AI
+      -- feature uses. A local model is a fine choice for scoring a posting and a poor
+      -- one for writing the document an employer reads, and one order could not say
+      -- both. An empty string means "follow the provider order".
+      alter table ai_settings add column resume_writer_provider text not null default '';
+
+      -- How long a resume took and what wrote it. Nothing recorded either, so a
+      -- five-minute generation looked exactly like a thirty-second one after the fact
+      -- and there was no way to tell which stage had spent the time.
+      alter table generated_documents add column generation_ms integer not null default 0;
+      alter table generated_documents add column provider_used text not null default '';
+      alter table generated_documents add column model_used text not null default '';
+      alter table generated_documents add column generation_stages_json text not null default '[]';
+
+      -- A provider that has run out of paid credits. Remembered so the chain stops
+      -- leading with it, and so every page can say so instead of each AI action
+      -- failing on its own with a message that read like a passing rate limit.
+      create table if not exists ai_provider_status (
+        provider text primary key,
+        status text not null,
+        message text not null default '',
+        detected_at text not null default current_timestamp
+      );
+    `
   }
 ];

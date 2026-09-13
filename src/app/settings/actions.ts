@@ -23,6 +23,8 @@ export async function saveAISettingsAction(formData: FormData) {
   const submittedBraveKey = (formData.get("braveSearchApiKey") as string) ?? "";
   const adzunaAppId = (formData.get("adzunaAppId") as string) ?? "";
   const submittedAdzunaKey = (formData.get("adzunaApiKey") as string) ?? "";
+  // Absent from a form that does not render the choice (onboarding): keep what is stored.
+  const submittedWriter = formData.get("resumeWriterProvider") as string | null;
 
   function parseProviderList(field: string): AIProviderName[] | null {
     try {
@@ -68,6 +70,9 @@ export async function saveAISettingsAction(formData: FormData) {
     braveSearchApiKey,
     adzunaAppId,
     adzunaApiKey,
+    ...(submittedWriter === null
+      ? {}
+      : { resumeWriterProvider: ALL_PROVIDERS.includes(submittedWriter as AIProviderName) ? submittedWriter as AIProviderName : "" }),
   });
 
   revalidatePath("/settings");

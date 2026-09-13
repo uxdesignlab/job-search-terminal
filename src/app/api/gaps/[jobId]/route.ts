@@ -1,4 +1,5 @@
 import { GAP_EVIDENCE_TAG, gapEvidenceId } from "@/lib/gaps/evidence-id";
+import { aiErrorMessage } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 
@@ -102,7 +103,7 @@ export async function POST(
     });
   } catch (err) {
     return Response.json(
-      { error: `Failed to save gap response: ${err instanceof Error ? err.message : String(err)}` },
+      { error: `Failed to save gap response: ${aiErrorMessage(err)}` },
       { status: 500 }
     );
   }

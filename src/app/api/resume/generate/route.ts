@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { generateResumeDraft } from "@/lib/documents/resume-generator";
 import { EvaluationRequiredError } from "@/lib/application-preparation";
 import type { ResumeSectionModeInput } from "@/lib/db/types";
+import { aiErrorResponse } from "@/lib/ai/error-response";
 
 export async function POST(req: Request) {
   try {
@@ -24,6 +25,6 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return aiErrorResponse(err);
   }
 }

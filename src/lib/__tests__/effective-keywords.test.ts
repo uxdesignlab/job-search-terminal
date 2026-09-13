@@ -73,3 +73,21 @@ describe("effective keyword resolution (§25.1)", () => {
     expect(resolveEffectiveKeywordSignals({ preparation: null, evaluation: null, job })).toEqual([]);
   });
 });
+
+describe("stored signals saved under older rules", () => {
+  it("are filtered on the way out, so a reused preparation stops steering on non-keywords", () => {
+    const resolved = resolveEffectiveKeywordSignals({
+      preparation: {
+        keywordSignals: [
+          { ...signal("Director of Product Design"), category: "title" },
+          signal("6+ years of experience"),
+          signal("Remote"),
+          signal("design systems"),
+        ],
+      },
+      evaluation: null,
+      job,
+    });
+    expect(toKeywordPhrases(resolved)).toEqual(["Director of Product Design", "design systems"]);
+  });
+});

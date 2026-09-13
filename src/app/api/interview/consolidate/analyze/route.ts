@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getEvaluationSuggestionDigests, saveConsolidationRun } from "@/lib/db/queries";
 import { buildConsolidationPayload } from "@/lib/interview/consolidation";
+import { aiErrorResponse } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -16,6 +17,6 @@ export async function POST() {
     saveConsolidationRun(runId, payload, "review");
     return Response.json({ runId, payload });
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return aiErrorResponse(err);
   }
 }

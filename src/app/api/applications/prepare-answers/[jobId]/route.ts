@@ -3,6 +3,7 @@ import { prepareApplicationAnswers } from "@/lib/applications/application-assist
 import { EvaluationRequiredError } from "@/lib/application-preparation";
 import { prepareApplicationAnswersWithAI } from "@/lib/applications/llm-answer-generator";
 import { getAISettings } from "@/lib/db/queries";
+import { aiErrorResponse } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +39,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ jobId: 
         { status: 409 }
       );
     }
-    return Response.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+    return aiErrorResponse(err);
   }
 }

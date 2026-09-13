@@ -23,6 +23,8 @@ type ProviderTestState = {
 
 type Props = {
   settings: AISettingsRecord;
+  /** Providers the app has recorded as out of credits, shown beside each one. */
+  creditStatuses?: Array<{ provider: AIProviderName; detectedAt: string }>;
   onSaved?: () => void;
   submitLabel?: string;
   compact?: boolean;
@@ -230,6 +232,7 @@ function SortableProviderRow({
 }
 
 export function AISettingsForm({
+  creditStatuses = [],
   compact = false,
   onSaved,
   settings,
@@ -254,6 +257,10 @@ export function AISettingsForm({
   // option resolves to right now.
   const [liveModels, setLiveModels] = useState<Partial<Record<LiveModelProvider, string[]>>>({});
   const [resolvedAuto, setResolvedAuto] = useState<Partial<Record<LiveModelProvider, Record<string, string>>>>({});
+
+  // The provider that writes resumes; "" follows the priority order.
+  const [resumeWriter, setResumeWriter] = useState<AIProviderName | "">(settings.resumeWriterProvider ?? "");
+  const exhaustedSince = new Map(creditStatuses.map((status) => [status.provider, status.detectedAt]));
 
   // Ollama
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollamaBaseUrl || "http://localhost:11434");
@@ -510,6 +517,12 @@ export function AISettingsForm({
   /** What this enabled provider is still missing, in the user's terms. */
   function providerStatus(p: AIProviderName): string | undefined {
     if (!enabledProviders.has(p)) return undefined;
+    // Ahead of "Verified": a key can be valid and still have nothing left to spend.
+    // A passing Test connection clears this on the server and on the next render.
+    if (exhaustedSince.has(p) && testStates[p].status !== "ok") {
+      const since = exhaustedSince.get(p)?.slice(0, 10);
+      return since ? `Out of credits since ${since}` : "Out of credits";
+    }
     if (p === "ollama") {
       if (ollamaReachable === null) return "Checking…";
       if (!ollamaReachable) return "Not running";
@@ -692,6 +705,8 @@ export function AISettingsForm({
     fd.set("braveSearchApiKey", braveSearchApiKey);
     fd.set("adzunaAppId", adzunaAppId);
     fd.set("adzunaApiKey", adzunaApiKey);
+    // Only the full Settings form offers the choice; onboarding leaves it as stored.
+    if (!compact) fd.set("resumeWriterProvider", resumeWriter);
     startTransition(async () => {
       await saveAISettingsAction(fd);
       setProviderOrder(order);
@@ -1133,6 +1148,39 @@ export function AISettingsForm({
           </SortableContext>
         </DndContext>
       </div>
+
+      {/* ── Resume writer ─────────────────────────────────────────
+          Separate from the order above so a user can keep scans and evaluation on a
+          free local model and still have the document an employer reads written by a
+          stronger one. Offered only for providers that could run a request. */}
+      {!compact && (
+        <div className="grid gap-2">
+          <label className="text-sm font-medium text-ink" htmlFor="resume-writer-provider">
+            Resume writing uses
+          </label>
+          <select
+            className="w-full max-w-sm rounded-control border border-border bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+            id="resume-writer-provider"
+            onChange={(event) => setResumeWriter(event.target.value as AIProviderName | "")}
+            value={resumeWriter}
+          >
+            <option value="">Same as provider priority</option>
+            {providerOrder
+              .filter((id) => id === "ollama" || keyFor(id).trim().length > 0 || id === resumeWriter)
+              .map((id) => (
+                <option key={id} value={id}>
+                  {PROVIDER_META[id].label}
+                </option>
+              ))}
+          </select>
+          <p className="text-xs leading-5 text-muted">
+            Used for tailored resumes: reading the posting, writing sections, and ✨ Improve. When you
+            generate or improve a resume, your resume text, your evidence answers, and the job posting
+            are sent to this provider. If it fails or runs out of credits, the providers above are tried
+            in order. A local model keeps everything on your computer but can take several minutes.
+          </p>
+        </div>
+      )}
 
       {/* ── Ollama config (shown when enabled) ───────────────── */}
       {enabledProviders.has("ollama") && ollamaConfig}

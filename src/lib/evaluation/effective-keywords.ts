@@ -1,5 +1,16 @@
 import type { ApplicationPreparationRecord, EvaluationRecord, JobKeywordSignal, JobRecord } from "../db/types";
-import { legacyKeywordSignals } from "./keyword-signals";
+import { isNonKeywordPhrase, legacyKeywordSignals } from "./keyword-signals";
+import { normalizeKeywordText } from "../text/normalize-keyword";
+
+/**
+ * Stored signals were validated by the rules in force when they were saved, and a
+ * preparation is reused for as long as its hashes hold — which can be the life of the
+ * job. Filtering again on the way out is what lets a tightened rule reach those rows
+ * without paying for a new generation. The exact title is never dropped.
+ */
+function withoutNonKeywords(signals: JobKeywordSignal[]): JobKeywordSignal[] {
+  return signals.filter((signal) => signal.category === "title" || !isNonKeywordPhrase(normalizeKeywordText(signal.keyword)));
+}
 
 /**
  * The one place that answers "which keywords describe this job?" (PRD v0.2.1 §25).
@@ -23,13 +34,14 @@ export function resolveEffectiveKeywordSignals(input: {
   evaluation?: Pick<EvaluationRecord, "keywordSignals" | "keywords"> | null;
   job: Pick<JobRecord, "title" | "rawDescription" | "parsedDescription">;
 }): JobKeywordSignal[] {
-  const prepared = input.preparation?.keywordSignals ?? [];
+  const prepared = withoutNonKeywords(input.preparation?.keywordSignals ?? []);
   if (prepared.length > 0) return prepared;
 
   const evaluation = input.evaluation;
   if (!evaluation) return [];
 
-  if (evaluation.keywordSignals.length > 0) return evaluation.keywordSignals;
+  const evaluated = withoutNonKeywords(evaluation.keywordSignals);
+  if (evaluated.length > 0) return evaluated;
 
   // Normalization always appends the exact job title as a critical keyword, which
   // is right when there are keywords to normalize and wrong when there are none:

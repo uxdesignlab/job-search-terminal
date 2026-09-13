@@ -760,6 +760,20 @@ export type GeneratedDocumentRecord = {
   tailoringStatus: string;
   evidenceAuditJson: string;
   fallbackReason: string;
+  generationMs: number;
+  providerUsed: string;
+  modelUsed: string;
+  generationStages: GenerationStageTiming[];
+};
+
+/** One stage of a resume generation and how long it took, for provenance and diagnosis. */
+export type GenerationStageTiming = {
+  stage: "preparing" | "writing" | "checking" | "saving";
+  ms: number;
+  /** "reused" when a still-valid preparation was served instead of generated. */
+  detail?: string;
+  provider?: string;
+  model?: string;
 };
 
 export type GeneratedDocumentInput = {
@@ -781,6 +795,10 @@ export type GeneratedDocumentInput = {
   tailoringStatus?: string;
   evidenceAuditJson?: string;
   fallbackReason?: string;
+  generationMs?: number;
+  providerUsed?: string;
+  modelUsed?: string;
+  generationStages?: GenerationStageTiming[];
 };
 
 export type ScanScheduleRecord = {
@@ -930,7 +948,17 @@ export type AISettingsRecord = {
   braveSearchApiKey: string;
   adzunaAppId: string;
   adzunaApiKey: string;
+  /** The provider that writes resumes, tried before the rest of the chain. "" follows the provider order. */
+  resumeWriterProvider: AIProviderName | "";
   updatedAt: string;
+};
+
+/** A provider remembered as out of paid credits until it next succeeds or its key changes. */
+export type AIProviderStatusRecord = {
+  provider: AIProviderName;
+  status: "credits_exhausted";
+  message: string;
+  detectedAt: string;
 };
 
 export type AISettingsUpdateInput = {
@@ -954,6 +982,7 @@ export type AISettingsUpdateInput = {
   braveSearchApiKey?: string;
   adzunaAppId?: string;
   adzunaApiKey?: string;
+  resumeWriterProvider?: AIProviderName | "";
 };
 
 export type AIPromptId =

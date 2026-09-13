@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { keywordCoverageFor, keywordStrengthDetailsForText } from "../documents/keyword-coverage";
-import { legacyKeywordSignals, normalizeKeywordSignals } from "../evaluation/keyword-signals";
+import { isNonKeywordPhrase, legacyKeywordSignals, normalizeKeywordSignals } from "../evaluation/keyword-signals";
 
 const workAndCoPosting = `
 What You Will Do
@@ -89,5 +89,38 @@ describe("job keyword signals", () => {
     }]);
 
     expect(score).toBe(0);
+  });
+});
+
+describe("phrases that are not resume keywords", () => {
+  const posting = `
+Requirements
+6+ years of experience in product design.
+Experience with Agile and design systems.
+This role is Remote.
+`;
+
+  it("drops tenure requirements and work arrangements the model extracts verbatim", () => {
+    // Seen in practice: "6+ years of experience" returned as a critical credential and
+    // "Remote" as a domain keyword. The rewrite was told to work both into the resume.
+    const signals = normalizeKeywordSignals([
+      { keyword: "6+ years of experience", priority: "critical", category: "credential", source: "required_qualification" },
+      { keyword: "Remote", priority: "preferred", category: "domain", source: "description" },
+      { keyword: "Agile", priority: "critical", category: "methodology", source: "required_qualification" },
+      { keyword: "design systems", priority: "required", category: "technical", source: "description" },
+    ], { title: "Design Manager", description: posting });
+
+    // The exact title is always added; the two non-keywords are gone.
+    expect(signals.map((signal) => signal.keyword)).toEqual(["Design Manager", "Agile", "design systems"]);
+  });
+
+  it("recognises the common shapes of each", () => {
+    expect(isNonKeywordPhrase("6+ years of experience")).toBe(true);
+    expect(isNonKeywordPhrase("5 7 years")).toBe(true);
+    expect(isNonKeywordPhrase("years of professional experience")).toBe(true);
+    expect(isNonKeywordPhrase("hybrid")).toBe(true);
+    expect(isNonKeywordPhrase("on site")).toBe(true);
+    expect(isNonKeywordPhrase("40+ designers")).toBe(false);
+    expect(isNonKeywordPhrase("remote research")).toBe(false);
   });
 });

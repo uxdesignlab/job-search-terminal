@@ -1,5 +1,6 @@
 import { getActiveProvider } from "@/lib/ai/factory";
 import type { AIMessage } from "@/lib/ai/provider";
+import { aiErrorResponse } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 
@@ -68,9 +69,6 @@ Parse this into a JSON object with these fields:
 
     return Response.json({ story });
   } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+    return aiErrorResponse(err);
   }
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getWritingStyle, linkQuestionStory, savePracticeAttempt, saveStory, saveWritingStyle } from "@/lib/db/queries";
 import type { StoryKind, StoryQualityStatus } from "@/lib/db/types";
+import { aiErrorResponse } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 
@@ -110,9 +111,6 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true });
   } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+    return aiErrorResponse(err);
   }
 }
