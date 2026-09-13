@@ -1,6 +1,6 @@
-import { getActiveProvider } from "../ai/factory";
+import { getWritingProvider } from "../ai/factory";
 import { CLOUD_GENERATION_TIMEOUT_MS, STRUCTURED_OUTPUT_MAX_TOKENS, totalGenerationDeadlineMs } from "../ai/deadlines";
-import { withRetry, withChainDeadline, GenerationTimeoutError } from "../ai/retry";
+import { withRetry, withChainDeadline, GenerationCancelledError, GenerationTimeoutError } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
 import {
   getApplicationPreparation,
@@ -224,6 +224,16 @@ export function normalizeEvidenceMap(
 export type PreparationResult = {
   preparation: ApplicationPreparationRecord;
   reused: boolean;
+  /** Set when the run was served by a later provider because earlier ones were out of credits. */
+  notice?: string;
+};
+
+export type PreparationOptions = {
+  force?: boolean;
+  /** The caller's cancellation. Nothing is saved once it fires. */
+  signal?: AbortSignal;
+  /** Told which provider is about to run, including each fall-through down the chain. */
+  onProvider?: (provider: string, model: string) => void;
 };
 
 /**
@@ -233,7 +243,7 @@ export type PreparationResult = {
  * pay for this again, but answering a gap anywhere in the global bank must
  * invalidate it.
  */
-export async function prepareApplication(jobId: string, options: { force?: boolean } = {}): Promise<PreparationResult> {
+export async function prepareApplication(jobId: string, options: PreparationOptions = {}): Promise<PreparationResult> {
   const job = getJobById(jobId);
   if (!job) throw new Error(`Job not found: ${jobId}`);
 
@@ -267,10 +277,25 @@ export async function prepareApplication(jobId: string, options: { force?: boole
   const evidence = usableEvidence();
   const validIds = new Set(evidence.map((item) => item.id));
 
-  const provider = getActiveProvider();
+  // Preparation exists only to write the application, so it runs on the writer the
+  // user chose for that — the keywords it extracts steer every line of the resume.
+  const provider = getWritingProvider();
+  (provider as { observe?: (listener: (attempt: { provider: string; model: string }) => void) => void })
+    .observe?.((attempt) => options.onProvider?.(attempt.provider, attempt.model));
+  if (!(provider as { observe?: unknown }).observe) options.onProvider?.(provider.name, provider.effectiveModel);
   // Keyword extraction needs a fuller view of the posting than evaluation did, to
   // find verbatim phrases and validate them against the body.
   const userPrompt = buildPreparationPrompt(buildJobContext(job, 12000), evidence);
+
+  // At most one live lookup, and only when the posting states nothing (§28). Started
+  // alongside the generation rather than after it: the two share no inputs, and a
+  // resume used to wait on a salary search it never reads.
+  const posted = parsePostedCompensation(job);
+  const researchRun = posted
+    ? Promise.resolve({ market: null, sources: [], status: "not_run" as const, provider: "", query: "" })
+    : researchMarketCompensation(job).catch(() => (
+      { market: null, sources: [], status: "unavailable" as const, provider: "", query: "" }
+    ));
 
   let requirements: ApplicationRequirement[] = [];
   let keywordSignals: JobKeywordSignal[] = [];
@@ -282,9 +307,13 @@ export async function prepareApplication(jobId: string, options: { force?: boole
       (runSignal) => withRetry(() => provider.generateJSON<Record<string, unknown>>(
         [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }] as AIMessage[],
         PREPARATION_SHAPE,
-        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS }
+        // Extraction against explicit rules, not open reasoning: a thinking pass on a
+        // local model spent most of this call's two minutes and changed nothing the
+        // validators below do not already enforce.
+        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS, reasoning: "low", temperature: 0.2 }
       ), 3, 1500, runSignal),
-      runDeadlineMs(provider as { name: string; providerNames?: string[] })
+      runDeadlineMs(provider as { name: string; providerNames?: string[] }),
+      options.signal
     );
 
     requirements = normalizeRequirements(raw?.requirements);
@@ -306,11 +335,8 @@ export async function prepareApplication(jobId: string, options: { force?: boole
     throw error;
   }
 
-  // At most one live lookup, and only when the posting states nothing (§28).
-  const posted = parsePostedCompensation(job);
-  const research = posted
-    ? { market: null, sources: [], status: "not_run" as const, provider: "", query: "" }
-    : await researchMarketCompensation(job);
+  const research = await researchRun;
+  if (options.signal?.aborted) throw new GenerationCancelledError();
 
   const input: ApplicationPreparationInput = {
     id: `preparation-${jobId}`,
@@ -340,5 +366,5 @@ export async function prepareApplication(jobId: string, options: { force?: boole
   saveApplicationPreparation(input);
   const saved = getApplicationPreparation(jobId);
   if (!saved) throw new Error(`Application preparation could not be saved for job: ${jobId}`);
-  return { preparation: saved, reused: false };
+  return { preparation: saved, reused: false, notice: (provider as { notice?: string }).notice || undefined };
 }

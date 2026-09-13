@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { ResumeBuilderSectionType } from "@/lib/db/types";
+import { aiErrorResponse } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "content required" }, { status: 400 });
     }
 
-    const { getActiveProvider } = await import("@/lib/ai/factory");
-    const provider = getActiveProvider();
+    const { getWritingProvider } = await import("@/lib/ai/factory");
+    // Resume copy, so it runs on the writer the user chose for resumes.
+    const provider = getWritingProvider();
     const prompt = buildPrompt(body.sectionType ?? "custom", body.content, body.jobKeywords ?? []);
 
     const improved = await provider.generateText(
@@ -55,8 +57,10 @@ export async function POST(req: Request) {
       // A section rewrite is short, but a reasoning model spends tokens thinking
       // before it writes any of it. At 1200 the thinking alone used the whole
       // budget and the rewrite came back empty, which the editor could only
-      // report as "AI improvement failed".
-      { maxTokens: 4096 }
+      // report as "AI improvement failed". Asking for as little thinking as the
+      // model allows is the larger fix: a local model took 1m43s on a 225-token
+      // prompt, nearly all of it reasoning the rewrite did not need.
+      { maxTokens: 4096, reasoning: "low", temperature: 0.4 }
     );
 
     const text = improved.trim();
@@ -69,9 +73,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ improved: text });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+    return aiErrorResponse(err);
   }
 }

@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getAISettings } from "@/lib/db/queries";
 import { AppVersion } from "@/components/app-version";
+import { AICreditsBanner } from "@/components/ai-credits-banner";
 
 type ShellProps = {
   children: ReactNode;
@@ -144,6 +145,7 @@ export function Shell({ children, activeItem = "Dashboard" }: ShellProps) {
           </nav>
         </div>
       </header>
+      <AICreditsBanner />
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
 
       <footer className="border-t border-border bg-panel mt-16">

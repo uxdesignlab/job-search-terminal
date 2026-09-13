@@ -75,6 +75,7 @@ and initializes an empty local profile if the database is empty.
 | `0065_latest_claude_gemini_models` | Moves installs still holding the app's own old default Claude/Gemini models (`claude-sonnet-4-6`, `gemini-2.5-flash`, `gemini-2.0-flash`) onto the auto-resolving `latest-sonnet` / `latest-flash` sentinels, keeping the same tier. Explicitly pinned models are left alone, and the `ai_settings` column defaults change to the sentinels for fresh installs |
 | `0066_provider_enabled_set` | Adds `ai_settings.provider_enabled_json`, splitting which providers are switched on from the order they are tried in. `provider_order_json` had carried both, so disabling a provider erased its rank and an empty list was indistinguishable from "never configured". Existing rows get an empty string and keep the old meaning until their next save |
 | `0067_source_check_runs` | Adds the `source_check_runs` table so whole-list validation results persist instead of dying with the page and the Sources table can restore its Live column |
+| `0068_resume_writer_and_generation_timing` | Adds `ai_settings.resume_writer_provider` (the provider that writes resumes, independently of the main chain; `''` follows the chain), `generated_documents.generation_ms` / `provider_used` / `model_used` / `generation_stages_json` (how long a resume took, per stage, and what wrote it), and the `ai_provider_status` table recording providers that have run out of paid credits. All defaulted; existing documents read as 0 ms with no provider, which the editor treats as "not recorded" |
 
 ---
 
@@ -324,7 +325,7 @@ AI-generated evaluation output for a job, stored separately from `jobs`.
 | `sections_json` | Full evaluation section breakdown |
 | `legitimacy_label` | Job legitimacy signal |
 | `keywords_json` | 12–18 high-signal keyword phrases extracted verbatim from the posting (Block E, `runBlockE` in `src/lib/evaluation/llm-evaluator.ts`), weight-sorted (critical → required → preferred). Equal to `keyword_signals_json.map(s => s.keyword)` for AI evaluations. Used for resume-tailoring keyword coverage and as the job-side matching haystack in `story_job_links` auto-matching (see `story_bank` above). Block F stories are **no longer auto-inserted** as `evaluation_suggestion` rows — they are reviewed per question on the job page (`getMatchingStoriesForJob`); existing suggestion rows persist until the consolidation wizard folds them into core stories |
-| `keyword_signals_json` | Array of `JobKeywordSignal` (migration `0056`): each has `keyword`, `priority` (`critical` \| `required` \| `preferred`), `category` (`title` \| `technical` \| `soft` \| `domain` \| `tool` \| `methodology` \| `credential`), `source` (`job_title` \| `basic_qualification` \| `required_qualification` \| `preferred_qualification` \| `responsibility` \| `description`), and `rationale`. Produced by `normalizeKeywordSignals` in `src/lib/evaluation/keyword-signals.ts`, which drops phrases not present in the posting, invented title variants, low-signal/marketing wording, and phrases over six words, then weight-sorts and caps at 18. Drives priority-weighted "job keyword alignment" (weights 5/3/1, related wording earns half credit) in the resume draft editor and the tailoring prompt. Empty (`[]`) for pre-`0056` rows, for `fast-v2` rows (which delegate keywords to Application Preparation), and for the rule-based rows the old evaluation fallback saved; consumers fall back to `legacyKeywordSignals` reconstructed from `keywords_json`, and to `application_preparation.keyword_signals_json` first of all (`resolveEffectiveKeywordSignals`) |
+| `keyword_signals_json` | Array of `JobKeywordSignal` (migration `0056`): each has `keyword`, `priority` (`critical` \| `required` \| `preferred`), `category` (`title` \| `technical` \| `soft` \| `domain` \| `tool` \| `methodology` \| `credential`), `source` (`job_title` \| `basic_qualification` \| `required_qualification` \| `preferred_qualification` \| `responsibility` \| `description`), and `rationale`. Produced by `normalizeKeywordSignals` in `src/lib/evaluation/keyword-signals.ts`, which drops phrases not present in the posting, invented title variants, low-signal/marketing wording, tenure requirements and work arrangements ("6+ years of experience", "Remote", "Hybrid" — `isNonKeywordPhrase`), and phrases over six words, then weight-sorts and caps at 18. `resolveEffectiveKeywordSignals` applies the tenure/arrangement filter again on read (never to the `title` signal), so rows stored under the older rules stop steering tailoring without a new generation. Drives priority-weighted "job keyword alignment" (weights 5/3/1, related wording earns half credit) in the resume draft editor and the tailoring prompt. Empty (`[]`) for pre-`0056` rows, for `fast-v2` rows (which delegate keywords to Application Preparation), and for the rule-based rows the old evaluation fallback saved; consumers fall back to `legacyKeywordSignals` reconstructed from `keywords_json`, and to `application_preparation.keyword_signals_json` first of all (`resolveEffectiveKeywordSignals`) |
 | `user_correction_json` | User-applied corrections to evaluation |
 | `provider_used` | AI provider that ran the evaluation. When the fallback chain is active, this reflects the provider that actually served the last block, not necessarily the configured active provider. |
 | `model_used` | Model ID used (matches `provider_used`) |
@@ -417,6 +418,10 @@ Tailored resumes and cover letters generated by AI.
 | `tailoring_status` | Evidence-audit result or source-only fallback marker |
 | `evidence_audit_json` | Unsupported-claim audit details, plus a `reverted` array naming each section whose AI rewrite was replaced with source wording and the claims that caused it, a `restored` array naming each line kept at its source wording to preserve a job phrase the rewrite would have dropped, and an `unchanged` array counting selected sections the model handed back as written |
 | `fallback_reason` | AI-tailoring fallback reason, when present |
+| `generation_ms` | Wall-clock time the generation took, including preparation (migration `0068`). `0` for documents made before it was recorded |
+| `provider_used` | Provider that wrote the tailored sections (`openai`, `anthropic`, `gemini`, `ollama`), or `''` when AI tailoring did not run |
+| `model_used` | Concrete model id that wrote them — a `latest-*` sentinel is resolved before it is stored |
+| `generation_stages_json` | Array of `GenerationStageTiming`: `{ stage: "preparing" \| "writing" \| "checking" \| "saving", ms, detail?, provider?, model? }`. `detail` is `reused`, `generated`, or `unavailable` for preparation and `failed` for a writing stage that produced nothing |
 | `created_at` | ISO timestamp |
 
 ### applications
@@ -565,7 +570,30 @@ Singleton row holding AI provider configuration.
 | `brave_search_api_key` | Optional Brave Search API key for search-based ATS source discovery |
 | `adzuna_app_id` | Optional Adzuna App ID for the job aggregator scanner |
 | `adzuna_api_key` | Optional Adzuna API key for the job aggregator scanner |
+| `resume_writer_provider` | `AIProviderName` that writes resumes, or `''` to follow the provider order (migration `0068`). `resolveWritingCandidates` puts it first and keeps the enabled chain behind it as fallbacks. It needs only a credential, not a place in the enabled chain — keeping scans local while a cloud model writes resumes is the reason it exists. Used by Application Preparation, resume tailoring, and ✨ Improve. Written only by the full Settings form; onboarding leaves it unchanged |
 | `updated_at` | ISO timestamp |
+
+### ai_provider_status
+
+Providers the app has seen run out of paid credits (migration `0068`). One row per
+provider at most; no row means the provider is not known to be out of credits.
+
+| Column | Purpose |
+|---|---|
+| `provider` | `AIProviderName`, primary key |
+| `status` | `credits_exhausted` — the only status today |
+| `message` | The user-facing error that set it, truncated to 500 characters |
+| `detected_at` | When exhaustion was first recorded; not moved by later failures |
+
+Set by `trackCredits` (`src/lib/ai/credit-status.ts`) whenever an adapter raises
+`ProviderCreditsExhaustedError`, and by **Test connection** when the stored account fails
+for lack of credits. Cleared by that provider's next successful call, by a passing Test
+connection of the stored key, and by `saveAISettings` whenever the provider's key (or
+Ollama's base URL) changes. Read by the factory, which moves exhausted providers to the
+back of every chain, by the `AICreditsBanner` in the app shell, and by the AI Provider
+settings form.
+
+Types: `AIProviderStatusRecord` (`provider`, `status`, `message`, `detectedAt`).
 
 ### ai_prompt_overrides
 

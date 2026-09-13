@@ -125,6 +125,39 @@ export function webSearchToolType(modelId: string): string {
   return minimum !== undefined && parsed.rank >= minimum ? WEB_SEARCH_TOOL_CURRENT : WEB_SEARCH_TOOL_BASIC;
 }
 
+/**
+ * Sampling parameters were removed from Opus 4.7 onward, from Sonnet 5, and from every
+ * Fable and Mythos release: sending `temperature` to one of them is a 400, not a no-op.
+ * Only the older families still accept it, so it is sent only where it is known to be.
+ */
+export function anthropicAcceptsSampling(modelId: string): boolean {
+  const parsed = parseClaudeModelId(modelId);
+  if (!parsed) return false;
+  if (parsed.family === "opus") return parsed.rank < 4007;
+  if (parsed.family === "sonnet" || parsed.family === "haiku") return parsed.rank < 5000;
+  return false;
+}
+
+/** Families whose releases from this rank onward take `output_config.effort`. */
+const EFFORT_FROM: Record<string, number> = {
+  opus: 4005,
+  sonnet: 4006,
+  fable: 5000,
+  mythos: 5000,
+};
+
+/**
+ * Whether `output_config.effort` is accepted. It is the one control over how much a
+ * current Claude model thinks — Opus 5 and Sonnet 5 think by default — and it errors on
+ * Haiku 4.5 and Sonnet 4.5, so it has to be chosen per resolved model.
+ */
+export function anthropicAcceptsEffort(modelId: string): boolean {
+  const parsed = parseClaudeModelId(modelId);
+  if (!parsed) return false;
+  const minimum = EFFORT_FROM[parsed.family];
+  return minimum !== undefined && parsed.rank >= minimum;
+}
+
 type CacheEntry = { model: string; expiresAt: number };
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const cache = new Map<string, CacheEntry>();

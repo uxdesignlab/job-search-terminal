@@ -22,6 +22,7 @@ import {
   getIntegration,
   getSuppressionCount,
   recordSourceCheckRun,
+  getAIProviderStatuses,
 } from "@/lib/db/queries";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
@@ -137,6 +138,7 @@ export default async function SettingsPage({
     braveSearchApiKey: maskApiKey(settings.braveSearchApiKey),
     adzunaApiKey: maskApiKey(settings.adzunaApiKey),
   };
+  const creditStatuses = getAIProviderStatuses().map(({ provider, detectedAt }) => ({ provider, detectedAt }));
   const scanConfig = loadScanConfig();
   const yamlCompanies = scanConfig.tracked_companies ?? [];
   syncCompanyProfilesFromYaml(yamlCompanies);
@@ -469,7 +471,7 @@ export default async function SettingsPage({
                 API keys are stored locally in your SQLite database and never sent anywhere except the selected provider.
               </CardDescription>
             </CardHeader>
-            <AISettingsForm settings={maskedSettings} />
+            <AISettingsForm creditStatuses={creditStatuses} settings={maskedSettings} />
             {/* Second route back into the guided flow, for a user who dismissed it and
                 would rather be walked through setup than assemble it tab by tab. */}
             {settings.onboardingDismissed && (

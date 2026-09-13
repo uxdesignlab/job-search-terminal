@@ -1,4 +1,5 @@
 import { researchCompanyStreaming } from "@/lib/research/llm-researcher";
+import { aiErrorMessage } from "@/lib/ai/error-response";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ jobId: 
         });
         send({ axis: "complete", done: true });
       } catch (err) {
-        send({ axis: "error", error: err instanceof Error ? err.message : String(err), done: true });
+        send({ axis: "error", error: aiErrorMessage(err), done: true });
       } finally {
         controller.close();
       }

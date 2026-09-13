@@ -1,8 +1,14 @@
 import OpenAI from "openai";
 import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, StreamChunk } from "./provider";
 import { OPENAI_FALLBACK_MODEL, isLatestSentinel, resolveLatestOpenAIModel } from "./openai-models";
+import { ProviderCreditsExhaustedError, isOpenAICreditsError } from "./credit-status";
 
 function humanizeOpenAIError(error: unknown): Error {
+  // Checked before the rate-limit branch: an empty account also arrives as a 429, and
+  // telling someone with no credits to "wait a moment" sends them waiting for nothing.
+  if (error instanceof OpenAI.APIError && isOpenAICreditsError(error)) {
+    return new ProviderCreditsExhaustedError("openai", error.message);
+  }
   if (error instanceof OpenAI.AuthenticationError) {
     return new Error("OpenAI API key is invalid or expired. Go to Settings → AI Provider to update it.");
   }
@@ -35,6 +41,23 @@ function humanizeOpenAIError(error: unknown): Error {
     return new Error("Request aborted — likely a network timeout. Check your connection and retry.");
   }
   return new Error(error instanceof Error ? error.message : String(error));
+}
+
+/** GPT-5 and the o-series reason before answering, and take no sampling parameters. */
+export function isOpenAIReasoningModel(model: string): boolean {
+  return /^(gpt-5|o\d)/i.test(model.trim());
+}
+
+/**
+ * A reasoning model rejects `temperature` and accepts `reasoning_effort`; an older chat
+ * model is the other way round. Sending the wrong one is a 400 on a request that would
+ * otherwise have worked.
+ */
+function openAITuningFor(model: string, config?: Partial<AIProviderConfig>) {
+  if (isOpenAIReasoningModel(model)) {
+    return config?.reasoning === "low" ? { reasoning_effort: "low" as const } : {};
+  }
+  return config?.temperature !== undefined ? { temperature: config.temperature } : {};
 }
 
 export class OpenAIProvider implements AIProvider {
@@ -83,10 +106,11 @@ export class OpenAIProvider implements AIProvider {
 
   async generateText(messages: AIMessage[], config?: Partial<AIProviderConfig>): Promise<string> {
     try {
+      const model = await this.resolveModel(config?.model);
       const response = await this.client.chat.completions.create({
-        model: await this.resolveModel(config?.model),
+        model,
         max_completion_tokens: config?.maxTokens ?? 4096,
-        temperature: config?.temperature,
+        ...openAITuningFor(model, config),
         messages: this.toOpenAIMessages(messages)
       });
       return response.choices[0]?.message?.content ?? "";
@@ -97,10 +121,11 @@ export class OpenAIProvider implements AIProvider {
 
   async generateJSON<T>(messages: AIMessage[], _hint: string, config?: Partial<AIProviderConfig>): Promise<T> {
     try {
+      const model = await this.resolveModel(config?.model);
       const response = await this.client.chat.completions.create({
-        model: await this.resolveModel(config?.model),
+        model,
         max_completion_tokens: config?.maxTokens ?? 4096,
-        temperature: config?.temperature,
+        ...openAITuningFor(model, config),
         response_format: { type: "json_object" },
         messages: this.toOpenAIMessages(messages)
       });

@@ -1,8 +1,9 @@
-import { getActiveProvider } from "../ai/factory";
+import { getWritingProvider } from "../ai/factory";
+import { STRUCTURED_OUTPUT_MAX_TOKENS, totalGenerationDeadlineMs } from "../ai/deadlines";
 import { getAIPromptText, renderPromptTemplate } from "../ai/prompt-registry";
-import { withRetry } from "../ai/retry";
+import { withChainDeadline, withRetry } from "../ai/retry";
 import type { AIMessage } from "../ai/provider";
-import type { EvaluationRecord, JobKeywordSignal, JobRecord, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
+import type { ApplicationRequirement, EvaluationRecord, JobKeywordSignal, JobRecord, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
 import { getWritingStyle } from "../db/queries";
 import { keywordMatchTier } from "./keyword-coverage";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
@@ -25,8 +26,28 @@ type SupplementContext = {
   content: string;
 };
 
-const MAX_RESUME_PROMPT_CHARS = 5000;
-const MAX_JD_TAILORING_CHARS = 10000;
+/**
+ * The posting is context for the requirements and keywords, which preparation has
+ * already extracted from its full text — so the raw copy can be shorter than the one
+ * preparation read. Past this the model is mostly re-reading benefits and EEO copy.
+ */
+const MAX_JD_TAILORING_CHARS = 6000;
+const MAX_REQUIREMENTS = 20;
+
+export type TailoringRunOptions = {
+  /** The caller's cancellation. */
+  signal?: AbortSignal;
+  /** Told which provider is about to run, including each fall-through down the chain. */
+  onProvider?: (provider: string, model: string) => void;
+};
+
+export type TailoringResult = {
+  sections: TailoredResumeSections;
+  providerUsed: string;
+  modelUsed: string;
+  /** Set when a later provider served the call because earlier ones were out of credits. */
+  notice: string;
+};
 
 function buildGapContext(
   gapResponses?: GapResponseContext[],
@@ -79,7 +100,56 @@ function buildSkillsPreferenceBlock(skills: SkillRecord[]): string {
 function buildJobDescriptionBlock(job: JobRecord): string {
   const description = (job.rawDescription || job.parsedDescription || "").trim();
   if (!description) return "";
-  return `\n\n## Job Description (Reference for Keyword Context)\n${description.slice(0, MAX_JD_TAILORING_CHARS)}${description.length > MAX_JD_TAILORING_CHARS ? "\n[Truncated — use keywords as the primary signal for requirements beyond this excerpt.]" : ""}`;
+  return `\n\n## Job Description (Reference for Keyword Context)\n${description.slice(0, MAX_JD_TAILORING_CHARS)}${description.length > MAX_JD_TAILORING_CHARS ? "\n[Truncated — the requirements and keywords above were extracted from the full posting.]" : ""}`;
+}
+
+/** The posting's requirements as preparation read them, one line each. */
+export function buildRequirementsBlock(requirements: ApplicationRequirement[]): string {
+  if (requirements.length === 0) return "";
+  const lines = requirements
+    .slice(0, MAX_REQUIREMENTS)
+    .map((requirement) => `- ${requirement.text} [${requirement.type.replace("_", " ")}; evidence: ${requirement.evidenceStatus}]`);
+  return `\n\n## What This Posting Requires\n${lines.join("\n")}`;
+}
+
+/**
+ * The parts of the approved resume this call is not rewriting, as evidence only.
+ *
+ * This replaced a 5,000-character excerpt of the source PDF, which repeated the
+ * selected sections the prompt already carried in full — and, being cut at a
+ * character count, dropped exactly the later sections (skills, education) that are
+ * the evidence the rewrite could not otherwise see.
+ */
+export function buildBackgroundBlock(sourceDraft: ResumeTemplateInput, selected: {
+  summary?: string;
+  impactItems?: string[];
+  experience?: unknown;
+  extraSections: Array<{ title: string }>;
+}): string {
+  const selectedExtra = new Set(selected.extraSections.map((section) => section.title));
+  const parts: string[] = [];
+  if (sourceDraft.headline) parts.push(`Headline: ${sourceDraft.headline}`);
+  if (selected.summary === undefined && sourceDraft.summary) parts.push(`Summary: ${sourceDraft.summary}`);
+  if (selected.impactItems === undefined && sourceDraft.impactItems.length > 0) {
+    parts.push(`${sourceDraft.impactHeading}:\n${sourceDraft.impactItems.map((item) => `- ${item}`).join("\n")}`);
+  }
+  if (selected.experience === undefined && sourceDraft.experience.length > 0) {
+    parts.push(`Experience:\n${sourceDraft.experience.map((entry) =>
+      `${entry.title}, ${entry.organization} (${entry.dateRange})\n${entry.bullets.map((bullet) => `- ${bullet}`).join("\n")}`
+    ).join("\n")}`);
+  }
+  if (sourceDraft.skills.length > 0) parts.push(`Skills:\n${sourceDraft.skills.map((item) => `- ${item}`).join("\n")}`);
+  if (sourceDraft.recognition.length > 0) parts.push(`Recognition:\n${sourceDraft.recognition.map((item) => `- ${item}`).join("\n")}`);
+  for (const section of sourceDraft.extraSections ?? []) {
+    if (selectedExtra.has(section.title) || section.items.length === 0) continue;
+    parts.push(`${section.title}:\n${section.items.map((item) => `- ${item}`).join("\n")}`);
+  }
+  if (sourceDraft.education.length > 0) {
+    parts.push(`Education:\n${sourceDraft.education.map((entry) => `- ${[entry.degree, entry.school, entry.focus].filter(Boolean).join(", ")}`).join("\n")}`);
+  }
+  return parts.length > 0
+    ? `## Candidate Background (not being rewritten — evidence only)\n${parts.join("\n\n")}`
+    : "";
 }
 
 function buildStyleContextBlock(): string {
@@ -190,7 +260,6 @@ export async function tailorResumeWithAI(
   job: JobRecord,
   evaluation: EvaluationRecord,
   profile: UserProfileRecord,
-  sourceResumeText: string,
   sourceDraft: ResumeTemplateInput,
   sectionModes: ResumeSectionModeInput[],
   gapResponses?: GapResponseContext[],
@@ -199,9 +268,11 @@ export async function tailorResumeWithAI(
   missingKeywords?: string[],
   confirmedKeywords?: string[],
   keywordSignals: JobKeywordSignal[] = [],
-  protectedKeywords: string[] = []
-): Promise<TailoredResumeSections> {
-  const provider = getActiveProvider();
+  protectedKeywords: string[] = [],
+  requirements: ApplicationRequirement[] = [],
+  run: TailoringRunOptions = {}
+): Promise<TailoringResult> {
+  const provider = getWritingProvider();
   // Resolved by the caller through the shared resolver (§25). Re-deriving the
   // chain here is how the tailorer and the generator drifted apart.
   const sortedKeywords = keywordSignals;
@@ -216,6 +287,7 @@ export async function tailorResumeWithAI(
   const styleContextBlock = buildStyleContextBlock();
   const skillsPreferenceBlock = skills ? buildSkillsPreferenceBlock(skills) : "";
   const jobDescriptionBlock = buildJobDescriptionBlock(job);
+  const requirementsBlock = buildRequirementsBlock(requirements);
   const gapContext = buildGapContext(gapResponses, supplements);
   const modeById = new Map(sectionModes.map((mode) => [mode.sectionId, mode.mode]));
   const userTuningPrompt = renderPromptTemplate(getAIPromptText("resume_tailoring"), {
@@ -230,6 +302,7 @@ export async function tailorResumeWithAI(
     experience: modeById.get("experience") === "update" ? sourceDraft.experience : undefined,
     extraSections: (sourceDraft.extraSections ?? []).filter((section) => modeById.get(section.id ?? `custom-${section.title}`) === "update")
   };
+  const backgroundBlock = buildBackgroundBlock(sourceDraft, selectedSections);
 
   // Scoped to the sections the model can actually see. A phrase that matches only
   // in a section left on "keep" is not something this call can preserve, and
@@ -240,14 +313,9 @@ export async function tailorResumeWithAI(
   );
   const protectedKeywordsBlock = buildProtectedKeywordsBlock(protectedInSelection);
 
-  const resumeExcerpt =
-    sourceResumeText.length > MAX_RESUME_PROMPT_CHARS
-      ? `${sourceResumeText.slice(0, MAX_RESUME_PROMPT_CHARS)}\n\n[Resume excerpt truncated; only use claims supported by the text above.]`
-      : sourceResumeText;
-
   const messages: AIMessage[] = [
-	    {
-	      role: "system",
+    {
+      role: "system",
       content: `You are a professional resume writer specializing in truthful, ATS-aware resume tailoring.
 
 PRIMARY TASK:
@@ -293,26 +361,28 @@ ATS KEYWORD PLACEMENT STRATEGY (apply only when evidence supports it):
 
 USER TUNING PROMPT:
 ${userTuningPrompt}${styleContextBlock}${skillsPreferenceBlock}`
-	    },
-	    {
-	      role: "user",
+    },
+    {
+      // Ordered from what changes least to what changes most — the candidate's own
+      // background, then this posting, then the text to rewrite — so a regeneration
+      // of the same job, and a local model's prefix cache, reuse as much as possible.
+      role: "user",
       content: `Rewrite the selected resume sections for this candidate applying to the role below.
 
+${backgroundBlock}${gapContext}
+
 ## Target Role
-	Title: ${job.title}
-	Company: ${job.company}
-	Archetype: ${archetype}
+Title: ${job.title}
+Company: ${job.company}
+Archetype: ${archetype}${requirementsBlock}${jobDescriptionBlock}
 
 ${keywordStrategyBlock}${protectedKeywordsBlock}${keywordLines ? `\n\nATS keywords to consider (use only if supported):\n${keywordLines}${missingKeywordsBlock}` : ""}
 
 Candidate strengths to consider (use only if supported):
-${strengthLines}
-
-## Candidate Source Resume
-${resumeExcerpt}${gapContext}${jobGapsBlock}${jobDescriptionBlock}
+${strengthLines}${jobGapsBlock}
 
 ## Selected Sections To Rewrite
-${JSON.stringify(selectedSections, null, 2)}
+${JSON.stringify(selectedSections)}
 
 ## Output Requirements
 Return valid JSON only.
@@ -324,15 +394,37 @@ JSON shape:
   "experience": [{ "index": 0, "bullets": ["same number of bullets as that input entry"] }],
   "extraSections": [{ "title": "same title as input", "items": ["same number of items as input"] }]
 }`
-	    }
-		  ];
+    }
+  ];
 
-  const result = await withRetry(() =>
-    provider.generateJSON<TailoredResumeSections>(
-      messages,
-      '{"summary":"string","impactItems":[],"experience":[],"extraSections":[]}'
-    )
+  const chain = provider as {
+    abortOn?: (signal: AbortSignal) => void;
+    observe?: (listener: (attempt: { provider: string; model: string }) => void) => void;
+    providerNames?: string[];
+    notice?: string;
+  };
+  chain.observe?.((attempt) => run.onProvider?.(attempt.provider, attempt.model));
+  if (!chain.observe) run.onProvider?.(provider.name, provider.effectiveModel);
+
+  // Bounded like preparation and evaluation. This call had no deadline and no output
+  // budget: a reasoning model cut the JSON off at the 4,096-token default, and the
+  // retry loop then ran the whole chain again, up to three times.
+  const result = await withChainDeadline(
+    chain,
+    (runSignal) => withRetry(() =>
+      provider.generateJSON<TailoredResumeSections>(
+        messages,
+        '{"summary":"string","impactItems":[],"experience":[],"extraSections":[]}',
+        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS, reasoning: "low", temperature: 0.3 }
+      ), 3, 1500, runSignal),
+    totalGenerationDeadlineMs(chain.providerNames ?? [provider.name]),
+    run.signal
   );
 
-  return result;
+  return {
+    sections: result,
+    providerUsed: provider.name,
+    modelUsed: provider.effectiveModel,
+    notice: chain.notice ?? "",
+  };
 }

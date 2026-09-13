@@ -3,10 +3,31 @@ import type { AIMessage, AIProvider, AIProviderConfig, ConnectionTestResult, Str
 import { parseJsonResponse } from "./json-response";
 import {
   ANTHROPIC_FALLBACK_MODELS,
+  anthropicAcceptsEffort,
+  anthropicAcceptsSampling,
   anthropicSentinelFamily,
   resolveLatestAnthropicModel,
   webSearchToolType,
 } from "./anthropic-models";
+import { ProviderCreditsExhaustedError, isAnthropicCreditsError } from "./credit-status";
+
+/** Anthropic reports an empty balance as a 400, which would otherwise read as a bad request. */
+function asCreditsError(error: unknown): unknown {
+  return isAnthropicCreditsError(error)
+    ? new ProviderCreditsExhaustedError("anthropic", error instanceof Error ? error.message : String(error))
+    : error;
+}
+
+/**
+ * Per-request tuning, sent only where the resolved model accepts it — a current Claude
+ * model rejects `temperature` outright, and `effort` errors on the older ones.
+ */
+function tuningFor(model: string, config?: Partial<AIProviderConfig>) {
+  return {
+    ...(config?.temperature !== undefined && anthropicAcceptsSampling(model) ? { temperature: config.temperature } : {}),
+    ...(config?.reasoning === "low" && anthropicAcceptsEffort(model) ? { output_config: { effort: "low" as const } } : {}),
+  };
+}
 
 export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic";
@@ -55,6 +76,7 @@ export class AnthropicProvider implements AIProvider {
     const response = await this.client.messages.create({
       model,
       max_tokens: config?.maxTokens ?? 4096,
+      ...tuningFor(model, config),
       system: systemMessages.length > 0
         ? [
             {
@@ -68,7 +90,7 @@ export class AnthropicProvider implements AIProvider {
         role: m.role as "user" | "assistant",
         content: m.content
       }))
-    });
+    }).catch((error: unknown) => { throw asCreditsError(error); });
 
     const block = response.content[0];
     return block.type === "text" ? block.text : "";
@@ -98,6 +120,7 @@ export class AnthropicProvider implements AIProvider {
     const stream = this.client.messages.stream({
       model,
       max_tokens: config?.maxTokens ?? 4096,
+      ...tuningFor(model, config),
       system: systemMessages.length > 0
         ? [
             {
@@ -113,10 +136,14 @@ export class AnthropicProvider implements AIProvider {
       }))
     });
 
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        yield { text: event.delta.text, done: false };
+    try {
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          yield { text: event.delta.text, done: false };
+        }
       }
+    } catch (error) {
+      throw asCreditsError(error);
     }
 
     yield { text: "", done: true };
@@ -139,11 +166,12 @@ export class AnthropicProvider implements AIProvider {
         model: response.model
       };
     } catch (error) {
+      const mapped = asCreditsError(error);
       return {
         ok: false,
         latencyMs: Date.now() - start,
         model: resolved,
-        error: error instanceof Error ? error.message : String(error)
+        error: mapped instanceof Error ? mapped.message : String(mapped)
       };
     }
   }

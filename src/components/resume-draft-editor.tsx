@@ -153,7 +153,27 @@ type Props = {
   fallbackReason: string;
   revertNotice?: string;
   unchangedNotice?: string;
+  /** Provenance: how long the draft took and what wrote it. Zero and empty for drafts made before this was recorded. */
+  generationMs?: number;
+  providerUsed?: string;
+  modelUsed?: string;
 };
+
+const PROVIDER_NAMES: Record<string, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  gemini: "Google Gemini",
+  ollama: "local model",
+};
+
+function describeGeneration(generationMs: number, providerUsed: string, modelUsed: string): string {
+  if (!generationMs) return "";
+  const seconds = Math.round(generationMs / 1000);
+  const duration = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s` : `${seconds}s`;
+  if (!providerUsed) return `Generated in ${duration}`;
+  const provider = PROVIDER_NAMES[providerUsed] ?? providerUsed;
+  return `Generated in ${duration} with ${provider}${modelUsed ? ` (${modelUsed})` : ""}`;
+}
 
 function extractStateText(state: EditorState): string {
   return [
@@ -242,7 +262,7 @@ const inputCls = "w-full rounded-control border border-border bg-surface px-3 py
 const textareaCls = `${inputCls} resize-y leading-5`;
 const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted";
 
-export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, keywordSignals, supportedKeywords, tailoringStatus, fallbackReason, revertNotice = "", unchangedNotice = "" }: Props) {
+export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, keywordSignals, supportedKeywords, tailoringStatus, fallbackReason, revertNotice = "", unchangedNotice = "", generationMs = 0, providerUsed = "", modelUsed = "" }: Props) {
   const router = useRouter();
   const [state, setState] = useState<EditorState>(() => draftToState(initialDraft));
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => {
@@ -817,6 +837,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
           <p className="text-xs text-muted">Edit resume draft</p>
           <h1 className="text-lg font-semibold text-ink">{documentTitle}</h1>
           <p className="mt-0.5 text-xs text-muted">
+            {generationMs > 0 ? <>{describeGeneration(generationMs, providerUsed, modelUsed)} · </> : null}
             Base: {baseResume} ·{" "}
             {/* No keywords is not zero alignment. "0%" reports a measurement that
                 never ran, and reads as "this resume matches nothing about the job". */}

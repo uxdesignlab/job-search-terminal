@@ -1005,9 +1005,75 @@ includes `Blocked` in the vocabulary.
 - Keyword coverage progress bar.
 - Download PDF button.
 
+**Generation progress and Stop.** The modal streams the generation from
+`POST /api/resume/generate/stream` (server-sent events) instead of waiting on one
+blocking request behind a spinner that promised "15–30 seconds" while a local model
+took five minutes. It lists four stages — *Reading the posting*, *Writing the tailored
+sections*, *Checking claims and keywords*, *Saving the draft* — ticks each off as the
+server reports it, names the provider and model running the current stage (including a
+fall-through down the chain), and shows elapsed time. It shows no percentage: each stage
+is one long call with nothing partial to report. A reused preparation reads *Used this
+job's saved posting analysis*. **Stop** aborts the request; the route's
+`AbortController` stops everything not yet started and, above all, the save — the
+existing draft is untouched (`generateResumeDraft` checks the signal immediately before
+writing). A request already running at a provider cannot be recalled and finishes there
+unused. A credits notice from either AI stage is shown in the modal, and an
+`ai_credits_exhausted` error refreshes the page so the credits banner appears at once.
+The plain `POST /api/resume/generate` route still exists and returns the same result
+without progress.
+
+**One pipeline.** `buildTailoredDraft(jobId, { resumeId, sectionModes, onStage, signal })`
+in `src/lib/documents/resume-generator.ts` runs preparation, the AI rewrite, the
+evidence guard, keyword preservation, and coverage, and returns the draft plus timing
+(`generationMs`, per-stage `stages`, `providerUsed`, `modelUsed`, `notice`).
+`generateTailoredResume` (HTML + PDF) and `generateResumeDraft` (editable draft) each
+carried their own line-for-line copy of this before; both now call it and differ only in
+what they save. The lane's approval is checked before any AI work, so an unapproved lane
+fails immediately rather than after preparation. AI tailoring now runs whenever the
+writer chain has any provider — the old check looked only for the three cloud keys, so a
+user running Ollama alone never had a resume tailored and was not told why.
+
+**Which provider writes.** Preparation, tailoring, and ✨ Improve all use
+`getWritingProvider()`: the provider chosen under Settings → AI Provider → **Resume
+writing uses**, then the rest of the enabled chain as fallbacks. With no writer chosen it
+is identical to `getActiveProvider()`.
+
+**Request tuning for writing calls.** Measured on the real provider chain before this
+change, one draft took 5m04s on a local `gemma4:12b`: 1m54s for preparation and 3m10s for
+tailoring, of which 1m49s was a hidden thinking pass before any JSON was written. Writing
+calls now pass `reasoning: "low"` and a low temperature through `AIProviderConfig`, and
+each adapter maps them to what its resolved model accepts:
+
+| Provider | `reasoning: "low"` | `temperature` |
+|---|---|---|
+| Ollama | `reasoning_effort: "none"` — thinking off (a one-bullet rewrite went from 770 tokens / 27s to 17 tokens / 1s) | sent |
+| OpenAI GPT-5 / o-series | `reasoning_effort: "low"` | not sent — reasoning models reject it |
+| OpenAI older chat models | not sent | sent |
+| Anthropic | `output_config.effort: "low"` on Opus 4.5+, Sonnet 4.6+, Fable, Mythos; not sent on Haiku 4.5 / Sonnet 4.5, where it errors | sent only to models that still accept sampling (Opus ≤ 4.6, Sonnet/Haiku 4.x); Opus 4.7+, Sonnet 5, and Fable reject it with a 400 |
+| Gemini | not sent — thinking controls differ across Gemini generations and a rejected parameter would fail the call | sent |
+
+After the change the same job generated in 2m22s on the same local model (preparation
+1m09s including model load, writing 1m12s); regenerating it reused the preparation and
+wrote in 46s. Tailoring is also bounded like preparation and evaluation now:
+`withChainDeadline` over the whole chain, cancellable, with `maxTokens:
+STRUCTURED_OUTPUT_MAX_TOKENS`. It previously had no deadline and no output budget, so a
+reasoning model could truncate its JSON at 4,096 tokens and `withRetry` would run the whole
+chain again, up to three times.
+
 **Tailored resume AI context:**
-- Source resume full text (up to 5,000 chars) — the AI must verify every keyword
-  and strength against this text before using it.
+- **Candidate background** (`buildBackgroundBlock`) — the approved lane's sections that
+  are *not* being rewritten (headline, skills, recognition, education, unselected custom
+  sections, and summary/impact/experience when they are on Keep), as evidence only. This
+  replaced a 5,000-character excerpt of the source PDF, which repeated the selected
+  sections already in the prompt and, being cut at a character count, dropped the later
+  sections first.
+- **What this posting requires** (`buildRequirementsBlock`) — up to 20 requirements from
+  Application Preparation, one line each with type and evidence status.
+- The job description, capped at 6,000 characters (was 10,000) — the requirements and
+  keywords were already extracted from the full posting.
+- The prompt is ordered from what changes least to what changes most — rules, the
+  candidate's background, this posting, then the sections to rewrite (as compact JSON) —
+  so a regeneration and a local model's prefix cache reuse as much as possible.
 - All validated keyword signals with their priority, category, source, and rationale.
 - **Missing keywords** — keywords absent from the pre-AI source draft are identified
   before the AI call and passed as a separate priority list so the AI knows exactly
@@ -1184,14 +1250,22 @@ structured AI call producing:
 - **Detailed requirements** from the posting, each marked supported, partial, or unknown
   against your evidence. Silence in your resume is `unknown`, never a mismatch.
 - **ATS keyword signals** — 12–18 high-signal phrases, validated against the posting so an
-  invented title variant or a phrase that never appears cannot survive.
+  invented title variant or a phrase that never appears cannot survive. Tenure
+  requirements ("6+ years of experience") and work arrangements ("Remote", "Hybrid") are
+  rejected too: a model extracting verbatim returned them as a critical credential and a
+  domain keyword, the rewrite was told to work them into the summary, and coverage counted
+  them as misses. The same filter runs when stored signals are read, so preparations
+  saved earlier are cleaned without a re-run.
 - **An evidence map** — which of your evidence supports each requirement and where it
   belongs on the resume. A mapping citing evidence that does not exist is discarded rather
   than passed through, because it would otherwise become a false claim on a document you
   send to an employer.
 - **Compensation context** — the posted range when the posting states one; otherwise at
   most one live search (Brave, or your provider's web search). When neither is available it
-  says so and falls back to your saved target rather than inventing a range.
+  says so and falls back to your saved target rather than inventing a range. The search
+  starts alongside the model call rather than after it — the two share no inputs, and
+  the resume used to wait on a salary search it never reads. If the model call fails, the
+  one search has already been made.
 
   Claude's server-side search tool comes in two variants, and the wrong one is rejected,
   so `AnthropicProvider.webSearch` picks it from the model that actually resolved:
@@ -1622,7 +1696,12 @@ approved-resume builder experience with identical section controls on every sect
   counter when the user has seen enough. The page header uses the same live matcher.
 - **Job-aware AI improvement** — ✨ Improve (and ✨ Improve bullets for experience)
   include the job keywords in the API call. The AI naturally incorporates missing
-  keywords into suggestions without forcing them.
+  keywords into suggestions without forcing them. It runs on the resume writer chain with
+  `reasoning: "low"`: a local thinking model took 1m43s on a 225-token summary rewrite,
+  nearly all of it reasoning.
+- **Provenance line** — the header reads *Generated in 2m 22s with local model
+  (gemma4:12b-mlx)* (or the cloud provider's name) from `generation_ms`, `provider_used`,
+  and `model_used`. Hidden for drafts made before those were recorded.
 - **Evidence guard** — AI-proposed headline, summary, impact, skill,
   recognition, experience, and extra-section claims are checked against **every
   active resume lane** plus confirmed gap answers and supplements. Unsupported
@@ -2035,6 +2114,37 @@ tab strip wraps (`flex-wrap`) rather than overflowing once the source tabs split
 the row:
 
 ### AI Providers
+- **Resume writing uses** — a select under the priority list: *Same as provider
+  priority* (default) or any provider that has a credential (Ollama always appears). The
+  chosen provider handles Application Preparation, resume tailoring, and ✨ Improve, with
+  the enabled chain behind it as fallbacks; everything else keeps using the priority
+  list. It exists so a user can score jobs on a free local model and still have the
+  resume — the document an employer reads — written by a stronger, faster one. The copy
+  under it states what is sent (resume text, evidence answers, the posting) and that a
+  local model can take several minutes. Stored in `ai_settings.resume_writer_provider`;
+  only this form writes it, so onboarding cannot clear it.
+- **Out of credits** — each provider SDK reports an empty account differently and none
+  names it: OpenAI sends a 429 with `code: "insufficient_quota"` (previously reported as
+  "rate limit reached — wait a moment"), Anthropic sends a 400 "credit balance is too
+  low" (previously not failover-worthy, so the chain stopped), and Gemini's daily quota
+  shares a 429 with its per-minute limit. The adapters now raise
+  `ProviderCreditsExhaustedError` for these (`isOpenAICreditsError`,
+  `isAnthropicCreditsError`, `isGeminiCreditsError` in `src/lib/ai/credit-status.ts`),
+  and a per-minute limit is still left to the retry policy. The chain fails over on it,
+  never retries it, and exposes `FallbackProvider.notice` — *"Anthropic is out of credits
+  — this used your local model (gemma4:12b-mlx) instead."* — which the resume stream shows
+  and evaluation already surfaces through its fall-through note. `trackCredits` wraps
+  every adapter (single providers too, which are not chains) and records the state in
+  `ai_provider_status`; `orderForCredits` moves exhausted providers to the back of every
+  chain so runs stop leading with a failed round-trip, without dropping them. The row
+  status reads *Out of credits since YYYY-MM-DD* until a Test connection passes. Every
+  page shows `AICreditsBanner` under the header while a provider in the writer chain is
+  exhausted: amber *"OpenAI is out of credits. AI features are using your local model
+  until you add credits."*, or red *"No AI provider has credits left…"* when nothing else
+  remains. AI API routes answer that last case through `aiErrorResponse` with HTTP 402
+  and `code: "ai_credits_exhausted"`, and `toUserMessage` gives the same one-sentence fix
+  instead of a per-provider list. AI features that already degrade to non-AI output on
+  failure still do; the banner is how those surface it.
 - **Provider priority list** — enable up to four providers and order them by priority. The first enabled provider in the list is used for every task; the rest act as automatic fallbacks. Reorder with the grip handle or the **↑ / ↓** buttons on each row. Each row shows a short status once enabled — *Key needed*, *Not verified*, *Verified*, or for Ollama *Reachable* / *Not running*.
 - **↑ / ↓ buttons sit beside the drag handle**, because priority was otherwise drag-only: dnd-kit's keyboard path existed but was announced only inside its hidden instruction text, and a touch user had no path at all.
 - **Order and membership are separate.** `provider_order_json` is the full ranked list of all four; `provider_enabled_json` is which of them are switched on. One column used to carry both, so switching a provider off erased its rank (it came back at the bottom in constant order on the next load), and emptying the list read as "never configured" — the factory then fell back to trying every provider holding a key, the opposite of what the UI showed. Onboarding refuses to save with nothing enabled — you cannot finish setup without a provider — but Settings allows it, because turning every provider off is a real thing to want (going offline, pausing spend). An empty set is then stored as an empty set, and the dashboard reports that no provider is configured instead of the app quietly carrying on with whichever keys happen to be stored.
@@ -2090,6 +2200,10 @@ the row:
   chain is retried only when *every* attempt failed for a retryable reason. A failure
   that would repeat on every provider (a malformed request) is still thrown as itself
   without walking the chain.
+  An Ollama request that waits out Ollama's own five-minute queue comes back as a bare
+  HTTP 500 (`Ollama server error (500)`); `shouldFailover` now matches it, so a busy local
+  model hands over to the cloud provider behind it instead of stopping the chain and
+  leaving the resume untailored.
 - **Output budgets are set where the shape is known**, not left to each provider's
   default of 4096 — see *Output budget* under Application Preparation. Ollama's own
   `generateJSON` default also moved to 8192 to match Gemini's, so a direct call cannot

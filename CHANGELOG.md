@@ -15,6 +15,59 @@ the numbers mean and when they change.
 
 ---
 
+## 0.15.0 — 2026-09-13 — Resumes in minutes, not five
+
+**Added**
+
+- **Choose which AI service writes your resumes.** Account → Settings → AI Provider
+  now has **Resume writing uses**. Keep scoring jobs on a free local model and have a
+  paid service write the resume, which is usually much faster and better. Left on
+  *Same as provider priority*, nothing changes. Picking a paid service sends your
+  resume text, gap answers, and the job posting to it whenever you generate or improve
+  a resume.
+- **You can watch a resume being made, and stop it.** The generate window lists each
+  step as it happens — reading the posting, writing, checking claims, saving — names the
+  AI service doing it, and shows how long it has been running. **Stop** gives up without
+  saving anything, and your previous draft stays as it was.
+- **The draft says what made it.** The editor header reads, for example, *Generated in
+  58s with OpenAI (gpt-5.6)*.
+- **When a paid service runs out of credits, the app says so and keeps working.** A bar
+  across the top of every page names the service and which one is being used instead. The
+  app skips the empty service and moves on to the next one in your list, including Ollama.
+  If nothing is left, the bar turns red and AI actions explain exactly what to do. A
+  passing **Test connection** clears it.
+
+**Changed**
+
+- **Resumes are much faster on a local model.** The app now switches off the model's
+  hidden "thinking" for resume work, which was most of the wait. The same resume that took
+  5 minutes 4 seconds took 2 minutes 22 seconds on the same computer, and 46 seconds to
+  regenerate. ✨ Improve speeds up the same way.
+- The salary search that runs while a posting is read no longer holds up the resume.
+- The AI is given the parts of your resume it is not rewriting, and the posting's
+  requirements in a short list, instead of a cut-off copy of your PDF. The later
+  sections of the PDF — often skills and education — were being cut first.
+- Years of experience ("6+ years of experience") and work arrangements ("Remote",
+  "Hybrid") are no longer treated as resume keywords. They were steering the rewrite and
+  counting against your keyword alignment. Existing jobs are cleaned up automatically, so
+  your alignment percentage on some drafts may change.
+
+**Fixed**
+
+- If you use only Ollama, resumes are now actually tailored. The app checked for a paid
+  service's key before tailoring, so an Ollama-only setup always got your resume back
+  unchanged.
+- An empty OpenAI account was reported as "rate limit reached — wait a moment", advice
+  that could never work. An empty Anthropic account stopped the app from trying your next
+  service at all.
+- When a busy local model gave up after five minutes, the app now tries your next
+  service instead of quietly returning an untailored resume.
+
+The first start after updating adds a few new columns and a table to your database. It
+runs on its own and nothing needs re-running.
+
+---
+
 ## 0.14.0 — 2026-09-10 — Adzuna searches for words that exist
 
 **Fixed**

@@ -26,6 +26,28 @@ const LOW_SIGNAL_PHRASES = new Set([
   "conceptual thinking",
 ]);
 
+/**
+ * Phrases a posting states that are not skills anyone searches a resume for.
+ *
+ * A tenure requirement ("6+ years of experience") and a work arrangement ("Remote",
+ * "Hybrid") are real parts of a posting, and a model extracting its language verbatim
+ * will keep returning them — once as a *critical* credential. As keywords they did
+ * harm twice: the rewrite was told to work "6+ years of experience" into the summary,
+ * and coverage counted a phrase no resume should contain as a miss. Tenure is judged
+ * by evaluation and location by the location filters; neither belongs here.
+ *
+ * Takes normalized text (see `normalizeKeywordText`), so "6+ years" arrives as "6+ years".
+ */
+const TENURE_PHRASE = /^(?:\d+\s*\+?|\d+\s+\d+|\d+\s*to\s*\d+)\s*(?:plus\s+)?(?:years?|yrs?)\b|\byears? of (?:\w+ )?experience\b/;
+const WORK_ARRANGEMENT_PHRASES = new Set([
+  "remote", "fully remote", "remote first", "remote friendly", "hybrid", "on site", "onsite", "in office",
+  "in person", "work from home", "wfh", "remote or hybrid", "hybrid remote", "remote us", "us remote",
+]);
+
+export function isNonKeywordPhrase(normalized: string): boolean {
+  return TENURE_PHRASE.test(normalized) || WORK_ARRANGEMENT_PHRASES.has(normalized);
+}
+
 export function keywordSignalWeight(priority: JobKeywordSignal["priority"]): number {
   if (priority === "critical") return 5;
   if (priority === "required") return 3;
@@ -178,6 +200,7 @@ function sourceLabel(source: JobKeywordSignal["source"]): string {
 
 function isUsefulPhrase(normalized: string, category: unknown): boolean {
   if (LOW_SIGNAL_PHRASES.has(normalized)) return false;
+  if (isNonKeywordPhrase(normalized)) return false;
   const terms = normalized.split(" ").filter(Boolean);
   if (terms.length > 6) return false;
   if (terms.length === 1 && !["tool", "credential"].includes(String(category)) && normalized.length < 5) return false;

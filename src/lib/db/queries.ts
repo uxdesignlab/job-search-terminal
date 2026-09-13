@@ -46,6 +46,7 @@ import type {
   HardBlocker,
   RequirementSummary,
   AIProviderName,
+  AIProviderStatusRecord,
   AIPromptId,
   AIPromptOverrideRecord,
   AISettingsRecord,
@@ -65,6 +66,7 @@ import type {
   FunnelStage,
   GeneratedDocumentInput,
   GeneratedDocumentRecord,
+  GenerationStageTiming,
   JobEvaluationResultInput,
   JobKeywordSignal,
   JobRecord,
@@ -291,6 +293,10 @@ type GeneratedDocumentRow = {
   tailoringStatus: string;
   evidenceAuditJson: string;
   fallbackReason: string;
+  generationMs: number | null;
+  providerUsed: string | null;
+  modelUsed: string | null;
+  generationStagesJson: string | null;
 };
 
 type ApplicationAnswerDraftRow = {
@@ -1187,7 +1193,11 @@ export function getGeneratedDocuments(): GeneratedDocumentRecord[] {
         generated_documents.base_resume_id as baseResumeId,
         generated_documents.tailoring_status as tailoringStatus,
         generated_documents.evidence_audit_json as evidenceAuditJson,
-        generated_documents.fallback_reason as fallbackReason
+        generated_documents.fallback_reason as fallbackReason,
+        generated_documents.generation_ms as generationMs,
+        generated_documents.provider_used as providerUsed,
+        generated_documents.model_used as modelUsed,
+        generated_documents.generation_stages_json as generationStagesJson
       from generated_documents
       left join jobs on jobs.id = generated_documents.job_id
       order by generated_documents.created_at desc`
@@ -1220,7 +1230,11 @@ export function getGeneratedDocumentById(id: string): GeneratedDocumentRecord | 
         generated_documents.base_resume_id as baseResumeId,
         generated_documents.tailoring_status as tailoringStatus,
         generated_documents.evidence_audit_json as evidenceAuditJson,
-        generated_documents.fallback_reason as fallbackReason
+        generated_documents.fallback_reason as fallbackReason,
+        generated_documents.generation_ms as generationMs,
+        generated_documents.provider_used as providerUsed,
+        generated_documents.model_used as modelUsed,
+        generated_documents.generation_stages_json as generationStagesJson
       from generated_documents
       left join jobs on jobs.id = generated_documents.job_id
       where generated_documents.id = ?`
@@ -2420,7 +2434,11 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
         base_resume_id,
         tailoring_status,
         evidence_audit_json,
-        fallback_reason
+        fallback_reason,
+        generation_ms,
+        provider_used,
+        model_used,
+        generation_stages_json
       ) values (
         @id,
         @jobId,
@@ -2439,7 +2457,11 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
         @baseResumeId,
         @tailoringStatus,
         @evidenceAuditJson,
-        @fallbackReason
+        @fallbackReason,
+        @generationMs,
+        @providerUsed,
+        @modelUsed,
+        @generationStagesJson
       )`
     )
     .run({
@@ -2448,7 +2470,11 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
       baseResumeId: input.baseResumeId ?? "",
       tailoringStatus: input.tailoringStatus ?? "source-only",
       evidenceAuditJson: input.evidenceAuditJson ?? "{}",
-      fallbackReason: input.fallbackReason ?? ""
+      fallbackReason: input.fallbackReason ?? "",
+      generationMs: Math.round(input.generationMs ?? 0),
+      providerUsed: input.providerUsed ?? "",
+      modelUsed: input.modelUsed ?? "",
+      generationStagesJson: JSON.stringify(input.generationStages ?? [])
     });
 
   getDatabase()
@@ -3290,7 +3316,11 @@ function mapGeneratedDocument(row: GeneratedDocumentRow): GeneratedDocumentRecor
     baseResumeId: row.baseResumeId || "",
     tailoringStatus: row.tailoringStatus || "source-only",
     evidenceAuditJson: row.evidenceAuditJson || "{}",
-    fallbackReason: row.fallbackReason || ""
+    fallbackReason: row.fallbackReason || "",
+    generationMs: row.generationMs ?? 0,
+    providerUsed: row.providerUsed ?? "",
+    modelUsed: row.modelUsed ?? "",
+    generationStages: parseJson<GenerationStageTiming[]>(row.generationStagesJson || "[]")
   };
 }
 
@@ -3369,6 +3399,7 @@ type AISettingsRow = {
   brave_search_api_key: string;
   adzuna_app_id: string;
   adzuna_api_key: string;
+  resume_writer_provider: string;
   updated_at: string;
 };
 
@@ -3394,6 +3425,7 @@ export function getAISettings(): AISettingsRecord {
       braveSearchApiKey: "",
       adzunaAppId: "",
       adzunaApiKey: "",
+      resumeWriterProvider: "",
       updatedAt: new Date().toISOString()
     };
   }
@@ -3432,6 +3464,7 @@ export function getAISettings(): AISettingsRecord {
     braveSearchApiKey: row.brave_search_api_key ?? "",
     adzunaAppId: row.adzuna_app_id ?? "",
     adzunaApiKey: row.adzuna_api_key ?? "",
+    resumeWriterProvider: (row.resume_writer_provider ?? "") as AIProviderName | "",
     updatedAt: row.updated_at
   };
 }
@@ -3466,6 +3499,7 @@ export function saveAISettings(input: Partial<AISettingsUpdateInput>) {
     braveSearchApiKey: input.braveSearchApiKey ?? existing.braveSearchApiKey,
     adzunaAppId: input.adzunaAppId ?? existing.adzunaAppId,
     adzunaApiKey: input.adzunaApiKey ?? existing.adzunaApiKey,
+    resumeWriterProvider: input.resumeWriterProvider ?? existing.resumeWriterProvider,
   };
   getDatabase()
     .prepare(
@@ -3487,6 +3521,7 @@ export function saveAISettings(input: Partial<AISettingsUpdateInput>) {
         brave_search_api_key = @braveSearchApiKey,
         adzuna_app_id = @adzunaAppId,
         adzuna_api_key = @adzunaApiKey,
+        resume_writer_provider = @resumeWriterProvider,
         updated_at = current_timestamp
       where id = 'singleton'`
     )
@@ -3496,7 +3531,57 @@ export function saveAISettings(input: Partial<AISettingsUpdateInput>) {
       providerEnabledJson: merged.providerEnabledJson === null ? "" : JSON.stringify(merged.providerEnabledJson),
       onboardingDismissed: merged.onboardingDismissed ? 1 : 0,
       onboardingPreferencesConfirmed: merged.onboardingPreferencesConfirmed ? 1 : 0,
+      resumeWriterProvider: merged.resumeWriterProvider ?? "",
     });
+
+  // A new key or server is a new account as far as credits go: the exhausted flag
+  // described the old one, and leaving it would keep a freshly topped-up provider at
+  // the back of the chain behind a banner that is no longer true.
+  const credentialChanged: Array<[AIProviderName, string, string]> = [
+    ["openai", existing.openaiApiKey, merged.openaiApiKey],
+    ["anthropic", existing.anthropicApiKey, merged.anthropicApiKey],
+    ["gemini", existing.geminiApiKey, merged.geminiApiKey],
+    ["ollama", existing.ollamaBaseUrl, merged.ollamaBaseUrl],
+  ];
+  for (const [provider, before, after] of credentialChanged) {
+    if (before !== after) clearAIProviderStatus(provider);
+  }
+}
+
+// ─── AI Provider Status ──────────────────────────────────────────────────────
+
+type AIProviderStatusRow = {
+  provider: string;
+  status: string;
+  message: string;
+  detected_at: string;
+};
+
+/** Providers currently remembered as out of paid credits. */
+export function getAIProviderStatuses(): AIProviderStatusRecord[] {
+  const rows = getDatabase()
+    .prepare("select provider, status, message, detected_at from ai_provider_status order by detected_at")
+    .all() as AIProviderStatusRow[];
+  return rows.map((row) => ({
+    provider: row.provider as AIProviderName,
+    status: row.status as AIProviderStatusRecord["status"],
+    message: row.message,
+    detectedAt: row.detected_at,
+  }));
+}
+
+export function markAIProviderCreditsExhausted(provider: AIProviderName, message: string) {
+  getDatabase()
+    .prepare(
+      `insert into ai_provider_status (provider, status, message, detected_at)
+       values (@provider, 'credits_exhausted', @message, current_timestamp)
+       on conflict(provider) do update set status = excluded.status, message = excluded.message`
+    )
+    .run({ provider, message: message.slice(0, 500) });
+}
+
+export function clearAIProviderStatus(provider: AIProviderName) {
+  getDatabase().prepare("delete from ai_provider_status where provider = ?").run(provider);
 }
 
 /** Deliberately leaves `onboarding_dismissed` alone. It used to clear the flag here,

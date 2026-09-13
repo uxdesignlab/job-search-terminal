@@ -80,6 +80,9 @@ export default async function EditResumePage({ params }: EditPageProps) {
         fallbackReason={doc.fallbackReason}
         revertNotice={revertNotice}
         unchangedNotice={unchangedNotice}
+        generationMs={doc.generationMs}
+        providerUsed={doc.providerUsed}
+        modelUsed={doc.modelUsed}
       />
     </Shell>
   );
