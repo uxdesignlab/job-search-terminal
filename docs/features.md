@@ -1049,7 +1049,11 @@ before the bullets it summarised.
 - **Order and concurrency.** Roles (newest first), then key achievements, skills, and
   custom sections, three in flight on a cloud provider and one at a time when the writer
   chain leads with Ollama (`runUnits`) — a local server answers one request at a time,
-  and a request left waiting past Ollama's own limit is dropped. The summary always runs
+  and a request left waiting past Ollama's own limit is dropped. When a cloud-led run
+  falls through to Ollama mid-run, the three parts' chains reach it independently, so the
+  Ollama adapter serialises its own generations per server (`inTurnForServer` in
+  `src/lib/ai/ollama.ts`): the wait happens inside the app's per-provider deadline instead
+  of in Ollama's queue, which drops requests. The summary always runs
   last, from `summaryContextFor` the parts as they were just written, so it describes the
   resume being sent.
 - **Shared prefix.** Every call's system prompt (`buildUnitSystemPrompt`) and candidate/
@@ -1091,6 +1095,12 @@ before the bullets it summarised.
 - **One repair, bounded.** Each part is checked by `lintPart` (see *Resume checks*). A
   part that breaks a rule is sent back once with the specific problems listed; the answer
   with fewer problems wins, and any that remain are reported, not retried.
+- **An empty summary is still written.** Whether the summary is written depends on the
+  section being present and set to update, and on the draft having bullets or key
+  achievements to write it from — not on the approved lane having summary text. A lane
+  built from the blank starter can leave it empty; it previously came out with no
+  summary at all. ↻ Regenerate on such a summary works the same way, and ↻ Regenerate is
+  enabled even when the editor box is empty, since it starts from the approved lane.
 - **Failures stay local.** A part that fails keeps its approved wording and is recorded
   in `evidenceAuditJson.unitFailures`; the editor names it (*Not tailored, kept as in your
   approved resume: Design Lead, Northwind (…)*). Only when every part fails does the draft
@@ -1118,7 +1128,9 @@ too, so it stays free of Node APIs.
   not stuffing — ten uses of "accessibility" in ~900 words measured about 1%); an email address and a phone number; experience and skills under headings an
   applicant system recognises; one date format across jobs; and the per-part writing
   rules. Stored at generation in `evidenceAuditJson.checks`, and recomputed live in the
-  editor as the user types.
+  editor as the user types. It checks only sections that will print (`printedSections`):
+  the editor's Remove takes a section out of `sectionOrder` and keeps its content, so
+  reading every stored array let removed text satisfy a check.
 
 **Skills keywords join their category.** When a confirmed, skills-safe keyword is still
 missing after tailoring and the skills list is written as `Category: a, b` lines, the
@@ -1357,8 +1369,13 @@ structured AI call producing:
   most one live search (Brave, or your provider's web search). When neither is available it
   says so and falls back to your saved target rather than inventing a range. The search
   starts alongside the model call rather than after it — the two share no inputs, and
-  the resume used to wait on a salary search it never reads. If the model call fails, the
-  one search has already been made.
+  the resume used to wait on a salary search it never reads. Preparation waits for it at
+  most `COMPENSATION_WAIT_MS` (8s) after the model answers: the search has no timeout of
+  its own, so awaiting it still let a slow or hung search hold the resume up. Past the
+  wait the preparation is saved with `compensation_research_status = not_run`, and the
+  lookup finishes in the background and fills in the saved row — only if that row still
+  has the same JD and evidence hashes and is still `not_run`, so it never overwrites a
+  newer preparation. If the model call fails, the one search has already been made.
 
   Claude's server-side search tool comes in two variants, and the wrong one is rejected,
   so `AnthropicProvider.webSearch` picks it from the model that actually resolved:
@@ -2241,7 +2258,10 @@ the row:
   resume — the document an employer reads — written by a stronger, faster one. The copy
   under it states what is sent (resume text, evidence answers, the posting) and that a
   local model can take several minutes. Stored in `ai_settings.resume_writer_provider`;
-  only this form writes it, so onboarding cannot clear it.
+  only this form writes it, so onboarding cannot clear it. Ollama is offered only once it
+  is switched on in the priority list and not reported unreachable, and
+  `resolveWritingCandidates` ignores an Ollama writer that is not in the enabled chain —
+  its base URL always has a default, so it is not evidence a local model exists.
 - **Out of credits** — each provider SDK reports an empty account differently and none
   names it: OpenAI sends a 429 with `code: "insufficient_quota"` (previously reported as
   "rate limit reached — wait a moment"), Anthropic sends a 400 "credit balance is too

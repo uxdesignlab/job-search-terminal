@@ -5,6 +5,8 @@ const state = vi.hoisted(() => ({
   researchStarted: false,
   saved: 0,
   requestConfig: null as Record<string, unknown> | null,
+  researchDelayMs: 0,
+  lastSaved: null as Record<string, unknown> | null,
 }));
 
 vi.mock("@/lib/db/queries", () => ({
@@ -15,9 +17,10 @@ vi.mock("@/lib/db/queries", () => ({
   getRoleDirections: () => [],
   getResumes: () => [],
   getProfileSupplements: () => [],
-  getApplicationPreparation: () => (state.saved > 0 ? { id: "preparation-job-a", providerUsed: "openai", modelUsed: "gpt-5.6" } : undefined),
-  saveApplicationPreparation: () => {
+  getApplicationPreparation: () => (state.lastSaved ? { ...state.lastSaved, id: "preparation-job-a" } : undefined),
+  saveApplicationPreparation: (input: Record<string, unknown>) => {
     state.saved += 1;
+    state.lastSaved = input;
   },
 }));
 
@@ -30,7 +33,10 @@ vi.mock("@/lib/application-preparation/compensation", () => ({
   parsePostedCompensation: () => null,
   researchMarketCompensation: async () => {
     state.researchStarted = true;
-    return { market: null, sources: [], status: "unavailable", provider: "", query: "" };
+    if (state.researchDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.researchDelayMs));
+    return state.researchDelayMs > 0
+      ? { market: { summary: "Senior range from live research." }, sources: [], status: "completed", provider: "brave", query: "q" }
+      : { market: null, sources: [], status: "unavailable", provider: "", query: "" };
   },
   suggestCompensationResponse: () => "",
 }));
@@ -56,6 +62,8 @@ beforeEach(() => {
   state.researchStarted = false;
   state.saved = 0;
   state.requestConfig = null;
+  state.researchDelayMs = 0;
+  state.lastSaved = null;
 });
 
 describe("an application preparation run", () => {
@@ -76,5 +84,22 @@ describe("an application preparation run", () => {
     controller.abort();
     await expect(prepareApplication("job-a", { signal: controller.signal })).rejects.toBeInstanceOf(GenerationCancelledError);
     expect(state.saved).toBe(0);
+  });
+});
+
+describe("a compensation lookup slower than the model", () => {
+  it("does not hold the resume up, and fills the answer in when it lands", async () => {
+    // The search behind it has no timeout, so waiting on it made the resume wait too.
+    state.researchDelayMs = 60;
+    const started = Date.now();
+    const result = await prepareApplication("job-a", { compensationWaitMs: 5 });
+
+    expect(Date.now() - started).toBeLessThan(60);
+    expect(result.preparation).toMatchObject({ compensationResearchStatus: "not_run" });
+    expect(state.saved).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 90));
+    expect(state.saved).toBe(2);
+    expect(state.lastSaved).toMatchObject({ compensationResearchStatus: "completed", researchProvider: "brave" });
   });
 });

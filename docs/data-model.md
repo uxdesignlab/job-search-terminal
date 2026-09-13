@@ -1125,7 +1125,7 @@ resume. One row per job (`unique(job_id)`).
 | `evidence_map_json` | Requirement → evidence → suggested resume placement. Every entry must cite an evidence id that was supplied to the model, and its `evidence` text must be a **verbatim span of the item it cites** — entries citing an unknown id, none at all, or a claim that cannot be found in the cited item are dropped. A pointer that resolves does not make the text attached to it real: an invented line filed under a real resume id reads as sourced, and `person-outreach` copies this field into a message to a real person at the employer |
 | `posted_compensation_json` | Parsed from the posting only |
 | `market_compensation_json`, `compensation_sources_json` | Live research and its citations |
-| `compensation_research_status` | `not_run` / `completed` / `unavailable` / `failed` |
+| `compensation_research_status` | `not_run` / `completed` / `unavailable` / `failed`. `not_run` also covers a lookup still in progress: preparation saves without waiting more than `COMPENSATION_WAIT_MS` for it, and the lookup rewrites the compensation fields when it finishes, provided the row still has the same hashes and is still `not_run` |
 | `suggested_compensation_response` | The answer Apply offers, with its provenance stated |
 
 **Hash broadly, use claims narrowly.** `evidence_hash` covers the *global* evidence bank —

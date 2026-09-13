@@ -45,6 +45,13 @@ describe("the resume writer chain", () => {
     expect(resolveWritingCandidates(settings)).toEqual(["openai", "ollama"]);
   });
 
+  it("ignores Ollama as a writer unless it is switched on, since its address always has a default", () => {
+    const cloudOnly = { ...BASE, providerEnabledJson: ["openai"] as AISettingsRecord["providerEnabledJson"], openaiApiKey: "o", resumeWriterProvider: "ollama" as const };
+    expect(resolveWritingCandidates(cloudOnly)).toEqual(["openai"]);
+    const withLocal = { ...cloudOnly, providerEnabledJson: ["openai", "ollama"] as AISettingsRecord["providerEnabledJson"] };
+    expect(resolveWritingCandidates(withLocal)).toEqual(["ollama", "openai"]);
+  });
+
   it("ignores a writer that has no credential", () => {
     expect(resolveWritingCandidates({ ...BASE, resumeWriterProvider: "anthropic" })).toEqual(["ollama"]);
   });

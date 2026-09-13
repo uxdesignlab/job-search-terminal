@@ -246,7 +246,9 @@ export function buildUnitTask(ctx: UnitWriterContext, input: UnitInput): string 
   if (input.context) parts.push(input.context);
 
   if (input.unit.kind === "summary") {
-    parts.push(`Current summary:\n${input.lines[0] ?? "(none)"}`);
+    parts.push(input.lines[0]?.trim()
+      ? `Current summary:\n${input.lines[0]}`
+      : "There is no summary yet. Write one from what the resume says below.");
     const held = closestHeldTitle(ctx.evidenceDraft, ctx.job.title);
     if (held) {
       parts.push(`The posting's title is "${ctx.job.title}". The closest title the candidate has actually held is "${held.title}"${held.organization ? ` at ${held.organization}` : ""}. Open the summary with an honest professional identity that uses the posting's words for that field — never claim the posting's title itself unless the evidence shows it.`);

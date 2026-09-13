@@ -128,6 +128,24 @@ describe("the ATS and recruiter report", () => {
     expect(statusOf(checks, "keyword-repetition")).toBe("pass");
   });
 
+  it("ignores sections the user removed, because they are not on the exported resume", () => {
+    const withAgileBullet = {
+      ...draft,
+      impactItems: ["Ran Agile delivery for three product squads."],
+    };
+    const shown = checkResume(withAgileBullet, [signal("Agile", "critical", "methodology")], ["Agile"], "Design Manager");
+    expect(statusOf(shown, "keywords-in-body")).toBe("pass");
+
+    // Remove takes "impact" out of the order and leaves its content in place.
+    const removed = checkResume(
+      { ...withAgileBullet, sectionOrder: ["summary", "experience", "skills"] },
+      [signal("Agile", "critical", "methodology")],
+      ["Agile"],
+      "Design Manager"
+    );
+    expect(statusOf(removed, "keywords-in-body")).toBe("flag");
+  });
+
   it("flags keyword stuffing and a summary that never names the role", () => {
     const stuffed = { ...draft, summary: "Accessibility accessibility specialist focused on accessibility.", headline: "Accessibility" };
     const checks = checkResume(stuffed, [signal("accessibility")], ["accessibility"], "Design Manager");

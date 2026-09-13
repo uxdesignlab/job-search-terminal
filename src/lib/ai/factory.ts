@@ -122,6 +122,10 @@ export function resolveWritingCandidates(settings: AISettingsRecord): AIProvider
   const chain = resolveCandidates(settings);
   const writer = settings.resumeWriterProvider;
   if (!writer || !providerKey(settings, writer)) return chain;
+  // Ollama's "credential" is a base URL that always has a default, so it proves nothing
+  // about a local model being there. It writes resumes only when it is switched on in
+  // the provider list, where Settings has checked that it answers.
+  if (writer === "ollama" && !chain.includes("ollama")) return chain;
   return [writer, ...chain.filter((name) => name !== writer)];
 }
 

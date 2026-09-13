@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ answers: [] as unknown[], prompts: [] as string[] }));
+const state = vi.hoisted(() => ({ answers: [] as unknown[], prompts: [] as string[], laneSummary: "Design lead for accessible platforms." }));
 
 vi.mock("@/lib/db/queries", () => ({
   getGeneratedDocumentById: () => ({ id: "document-job-a", jobId: "job-a", baseResume: "Leadership", baseResumeId: "lane-1" }),
@@ -10,7 +10,7 @@ vi.mock("@/lib/db/queries", () => ({
   getResumeBuilderVersion: () => ({
     status: "approved",
     sections: [
-      { id: "summary", type: "summary", title: "Summary", text: "Design lead for accessible platforms." },
+      { id: "summary", type: "summary", title: "Summary", text: state.laneSummary },
       {
         id: "experience",
         type: "experience",
@@ -73,6 +73,7 @@ const editorDraft: ResumeTemplateInput = {
 beforeEach(() => {
   state.answers = [];
   state.prompts = [];
+  state.laneSummary = "Design lead for accessible platforms.";
 });
 
 describe("✨ Improve on one role", () => {
@@ -122,5 +123,27 @@ describe("↻ Regenerate on one role", () => {
     ] });
     const result = await rewriteSection({ documentId: "document-job-a", action: "regenerate", unit: "role:0", draft: editorDraft });
     expect(result.lines[0]).toBe("Led a team of 6 designers.");
+  });
+});
+
+describe("↻ Regenerate on a summary the approved resume left empty", () => {
+  it("writes one from the rest of the draft instead of refusing", async () => {
+    state.laneSummary = "";
+    state.answers.push({ summary: "Design lead who runs accessibility audits and leads a team of designers." });
+    const result = await rewriteSection({ documentId: "document-job-a", action: "regenerate", unit: "summary", draft: { ...editorDraft, summary: "" } });
+
+    expect(state.prompts[0]).toContain("There is no summary yet. Write one from what the resume says below.");
+    expect(state.prompts[0]).toContain("Ran accessibility audits for 30 releases.");
+    expect(result.lines).toEqual(["Design lead who runs accessibility audits and leads a team of designers."]);
+  });
+
+  it("still refuses when there is nothing anywhere to write from", async () => {
+    state.laneSummary = "";
+    await expect(rewriteSection({
+      documentId: "document-job-a",
+      action: "regenerate",
+      unit: "summary",
+      draft: { ...editorDraft, summary: "", experience: [] },
+    })).rejects.toThrow("nothing for this section");
   });
 });

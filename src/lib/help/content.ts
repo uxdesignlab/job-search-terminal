@@ -217,7 +217,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Pick a service",
-            body: "Same as provider priority uses the list above, exactly as before. Pick a service by name to have it write resumes while everything else keeps using the list. Only services you have set up appear.",
+            body: "Same as provider priority uses the list above, exactly as before. Pick a service by name to have it write resumes while everything else keeps using the list. Only services you have set up appear. Ollama appears once it is switched on in the list above and answering.",
           },
           {
             title: "Save",
@@ -942,7 +942,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Improve or regenerate one section",
-            body: "Every section the AI writes has two buttons. ✨ Improve polishes the text that is in the box now, including your own edits, and keeps what it says. ↻ Regenerate writes the section again from your approved resume, as if you had generated it fresh. Press Add instruction first to tell it what to change — for example shorter, or lead with the accessibility work. Nothing changes until you press Accept, and the suggestion tells you if it kept any of your earlier wording because the new wording claimed something your evidence does not show. Open Show what each line was written from to compare each new line with the one it came from. Changed your mind after accepting? Undo accept puts back what was there.",
+            body: "The summary, key achievements, skills, custom sections, and each job have two buttons. ✨ Improve polishes the text that is in the box now, including your own edits, and keeps what it says. ↻ Regenerate writes the section again from your approved resume, as if you had generated it fresh — it works even if you emptied the box, and can write a summary your approved resume left blank. Awards and recognition has ✨ Improve only: it tidies the wording, does not read the job posting, and does not take an instruction. Press Add instruction first to tell it what to change — for example shorter, or lead with the accessibility work. Nothing changes until you press Accept, and the suggestion tells you if it kept any of your earlier wording because the new wording claimed something your evidence does not show. Open Show what each line was written from to compare each new line with the one it came from. Changed your mind after accepting? Undo accept puts back what was there.",
           },
           {
             title: "Export PDF",
