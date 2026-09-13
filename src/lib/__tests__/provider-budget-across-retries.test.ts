@@ -5,7 +5,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MALFORMED = () => new Error("invalid json: Unexpected end of JSON input");
 
 /** Minimal provider shape the chain needs; only generateJSON is exercised here. */
-function fakeProvider(name: string, generateJSON: () => Promise<unknown>) {
+function fakeProvider(name: string, generateJSON: (...args: never[]) => Promise<unknown>) {
   return {
     name,
     effectiveModel: `${name}-model`,
@@ -177,5 +177,44 @@ describe("a run that ends stops the chain behind it", () => {
     await expect(
       withChainDeadline(chain, () => chain.generateJSON([], "{}"), 200)
     ).resolves.toEqual({ ok: true });
+  });
+});
+
+describe("a provider whose deadline passes inside a chain", () => {
+  it("is told to stop before the chain moves on, so a local model is not left running", async () => {
+    const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
+
+    let localSignal: AbortSignal | undefined;
+    const local = fakeProvider("ollama", () => new Promise(() => {}));
+    local.generateJSON.mockImplementation(((_messages: unknown, _hint: unknown, config?: { signal?: AbortSignal }) => {
+      localSignal = config?.signal;
+      return new Promise(() => {});
+    }) as never);
+    const cloud = fakeProvider("openai", async () => ({ ok: true }));
+
+    const chain = new FallbackProvider([local, cloud] as never, (name) => (name === "ollama" ? 30 : 1000));
+    const run = new AbortController();
+    await expect(chain.generateJSON([], "{}", { signal: run.signal })).resolves.toEqual({ ok: true });
+
+    // The whole run is still going, but the local attempt was aborted when it timed out.
+    expect(run.signal.aborted).toBe(false);
+    expect(localSignal?.aborted).toBe(true);
+  });
+
+  it("passes the run's cancellation through to the attempt", async () => {
+    const { FallbackProvider } = await import("@/lib/ai/fallback-provider");
+
+    let seen: AbortSignal | undefined;
+    const local = fakeProvider("ollama", () => new Promise(() => {}));
+    local.generateJSON.mockImplementation(((_messages: unknown, _hint: unknown, config?: { signal?: AbortSignal }) => {
+      seen = config?.signal;
+      return new Promise(() => {});
+    }) as never);
+    const chain = new FallbackProvider([local] as never, () => 10_000);
+    const run = new AbortController();
+    void chain.generateJSON([], "{}", { signal: run.signal }).catch(() => undefined);
+    await sleep(5);
+    run.abort();
+    expect(seen?.aborted).toBe(true);
   });
 });
