@@ -166,7 +166,7 @@ function normalizeRequirements(raw: unknown): ApplicationRequirement[] {
  * into an accept-anything — the exact opposite of its purpose, for precisely the
  * users whose evidence it would be quietly failing to read.
  */
-function normalizeForGrounding(value: string): string {
+export function normalizeForGrounding(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}%+]+/gu, " ").trim();
 }
 

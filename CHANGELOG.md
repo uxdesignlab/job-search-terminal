@@ -15,6 +15,66 @@ the numbers mean and when they change.
 
 ---
 
+## 0.16.0 — 2026-09-13 — Resumes a recruiter reads twice
+
+**Added**
+
+- **↻ Regenerate on any section.** Next to ✨ Improve on the summary, key
+  achievements, skills, custom sections, and each job, Regenerate writes that one part
+  again from your approved resume. You no longer have to regenerate the whole resume to
+  fix one job's bullets.
+- **Add instruction.** Tell Improve or Regenerate what to change — "shorter", "lead with
+  the accessibility work" — instead of asking again and hoping.
+- **See where each new line came from, and undo.** A suggestion can show each rewritten
+  line next to the line it was written from, and **Undo accept** puts back what was
+  there before.
+- **A warning before a full regenerate replaces your draft.** Generating again for a job
+  that already has a draft now says it will replace the draft and your edits, and points
+  you to regenerating just the section you want. The progress window also shows how long
+  the last draft for that job took.
+- **ATS & recruiter checks.** A list in the resume editor shows what a tracking system
+  or a recruiter is likely to stumble on: the role you are applying for not named near
+  the top, must-have words only in your skills list, a word repeated until it looks
+  stuffed, a missing email or phone number, section names those systems do not
+  recognise, mixed date formats, and hype, self-rating, first person, over-long bullets,
+  or bullets that all start the same way. It updates as you type, and it never asks for
+  a skill your evidence does not show.
+
+**Changed**
+
+- **Each part of your resume is written on its own.** Every job, your key
+  achievements, and your skills are written separately, and the summary is written last
+  from what they became — so it describes the resume you are sending. A part that fails
+  keeps your approved wording and is named in the editor; the rest of the resume is
+  still tailored. Before, one bad answer left the whole resume untailored.
+- **Bullets are ordered by relevance to the job.** The AI puts the lines that matter
+  most for this posting first. Nothing is dropped.
+- **The writing is held to a standard, not just asked for one.** Each part is checked
+  for hype, self-rating, first person, length, and repeated openings, and sent back once
+  to be fixed if it breaks a rule.
+- **Missing job language goes where it fits, once.** A must-have phrase your evidence
+  supports is placed in the one job or section it belongs to, instead of being worked into
+  every part — and in ordinary sentence case, never bolted onto the end of a sentence.
+- **Your summary leads with the closest title you have actually held** to the one being
+  hired for, in the posting's words, without claiming the posting's title itself.
+- **✨ Improve now reads the job posting and your evidence**, and its suggestions go
+  through the same claim checks as a generated resume. It keeps what you typed yourself.
+- A keyword added to a skills list written as *Category: skill, skill* now joins the
+  right category line, instead of appearing as a lone word underneath.
+- The progress window names each part as it is written.
+- On a paid service several parts are written at once. On a local model they are written
+  one after another, so a resume with many jobs takes longer locally than in 0.15.0 —
+  choose a paid service under **Resume writing uses** if speed matters more.
+
+**Fixed**
+
+- ✨ Improve could invent numbers. It asked for "measurable" bullets and "compelling"
+  summaries without seeing your evidence, and nothing checked what came back. In the
+  resume builder, where there is no job posting, Improve now keeps existing numbers and
+  adds none.
+
+---
+
 ## 0.15.0 — 2026-09-13 — Resumes in minutes, not five
 
 **Added**

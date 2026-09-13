@@ -90,6 +90,11 @@ const creditStore: CreditStatusStore = {
   },
 };
 
+/** Providers currently recorded as out of credits. */
+export function exhaustedProviders(): Set<string> {
+  return creditStore.exhausted();
+}
+
 /**
  * Providers known to be out of credits go to the back of the chain, not out of it.
  *

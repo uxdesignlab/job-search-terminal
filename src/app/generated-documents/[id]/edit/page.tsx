@@ -53,15 +53,23 @@ export default async function EditResumePage({ params }: EditPageProps) {
   // is the untouched lane default.
   let revertNotice = "";
   let unchangedNotice = "";
+  let unitFailureNotice = "";
   try {
     const audit = JSON.parse(doc.evidenceAuditJson) as EvidenceAudit;
     revertNotice = describeReverts(audit.reverted ?? []);
     // A model that ran and rewrote little is as invisible as a reverted section:
     // the draft stores a supported audit over source content and reads tailored.
     unchangedNotice = describeUnchanged(audit.unchanged ?? []);
+    // A part the writer could not produce keeps its approved wording while the rest of
+    // the draft is tailored, so it would otherwise pass for a tailored section.
+    const failures = audit.unitFailures ?? [];
+    unitFailureNotice = failures.length > 0
+      ? `Not tailored, kept as in your approved resume: ${failures.map((failure) => `${failure.label} (${failure.reason})`).join("; ")}.`
+      : "";
   } catch {
     revertNotice = "";
     unchangedNotice = "";
+    unitFailureNotice = "";
   }
 
   return (
@@ -80,6 +88,7 @@ export default async function EditResumePage({ params }: EditPageProps) {
         fallbackReason={doc.fallbackReason}
         revertNotice={revertNotice}
         unchangedNotice={unchangedNotice}
+        unitFailureNotice={unitFailureNotice}
         generationMs={doc.generationMs}
         providerUsed={doc.providerUsed}
         modelUsed={doc.modelUsed}
