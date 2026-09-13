@@ -1020,7 +1020,12 @@ writing). A request already running at a provider cannot be recalled and finishe
 unused. A credits notice from either AI stage is shown in the modal, and an
 `ai_credits_exhausted` error refreshes the page so the credits banner appears at once.
 The plain `POST /api/resume/generate` route still exists and returns the same result
-without progress.
+without progress. The elapsed clock sits outside the live region (`aria-live="off"`) so a
+screen reader announces stage changes, not every second. When the job already has a draft
+the modal warns that generating replaces it — edits included — and points to per-section
+↻ Regenerate; while running it shows how long the last draft for this job took and on
+which provider (`generation_ms` / `provider_used`), as an honest expectation rather than
+an estimate the app would have to invent.
 
 **One pipeline.** `buildTailoredDraft(jobId, { resumeId, sectionModes, onStage, signal })`
 in `src/lib/documents/resume-generator.ts` runs preparation, the AI rewrite, the
@@ -1032,6 +1037,95 @@ what they save. The lane's approval is checked before any AI work, so an unappro
 fails immediately rather than after preparation. AI tailoring now runs whenever the
 writer chain has any provider — the old check looked only for the three cloud keys, so a
 user running Ollama alone never had a resume tailored and was not told why.
+
+**One part at a time.** Tailoring writes each selected part in its own call through
+`writeUnit` (`src/lib/documents/resume-unit-writer.ts`): every job's bullets, the key
+achievements, the skills list, each custom section, and — last — the summary. It
+replaced a single call that returned every rewritten section as one JSON answer, which
+failed three ways at once: the later roles in a long answer were the weakest, one
+malformed answer lost the whole resume to source text, and the summary was written
+before the bullets it summarised.
+
+- **Order and concurrency.** Roles (newest first), then key achievements, skills, and
+  custom sections, three in flight on a cloud provider and one at a time when the writer
+  chain leads with Ollama (`runUnits`) — a local server answers one request at a time,
+  and a request left waiting past Ollama's own limit is dropped. The summary always runs
+  last, from `summaryContextFor` the parts as they were just written, so it describes the
+  resume being sent.
+- **Shared prefix.** Every call's system prompt (`buildUnitSystemPrompt`) and candidate/
+  posting context (`buildUnitSharedContext`) are byte-identical across parts and across
+  regenerations of a job; only `buildUnitTask` — the part, its evidence-map entries, the
+  job phrases it already carries, and any note — differs. A local model's prefix cache
+  and a cloud prompt cache pay for the long prefix once.
+- **Evidence map in use.** Preparation's evidence map (requirement → verbatim proof) was
+  computed and never read by tailoring. Each part's task now lists the entries whose
+  quoted evidence sits inside its own lines (`evidenceForLines`, using preparation's
+  `normalizeForGrounding`), as *What these lines prove for this posting*.
+- **Reorder by relevance, never drop.** A role, key achievements, skills, or custom
+  section comes back as `{ "lines": [{ "source": n, "text": "…" }] }` in the writer's
+  order. `validateUnitOutput` accepts it only when every source line appears exactly
+  once; a dropped, duplicated, or out-of-range line fails the part rather than being
+  patched, because a guessed mapping is how a bullet's facts land on the wrong line.
+  `applyUnitResults` then puts the *source* in the same order, so the evidence guard,
+  keyword preservation, and the unchanged-section measure — all positional — still
+  compare each line with the line it was written from. The keyword-count `rankItems`
+  order remains the fallback when no AI runs.
+- **Writing rubric instead of "rewrite everything".** The prompt's truth rules are
+  unchanged in substance; the old instruction that handing a line back unchanged was not
+  a rewrite is gone. In its place: start with a verb in the source's tense; what, how,
+  scale, and result as the evidence gives them; the posting's supported language early;
+  named specifics kept; at most 220 characters; no two bullets in a job opening with the
+  same verb; most relevant first; a strong relevant line may keep its wording. Summary: 2–4
+  sentences, at most 90 words, identity and scope first.
+- **Title alignment for the summary.** The summary task names the posting's title and
+  `closestHeldTitle` — the job the candidate actually held sharing at least two title
+  words with it — and asks for an honest professional identity in the posting's words,
+  never the posting's title itself. On a real run a 12B model otherwise opened every
+  summary with a generic "Product design leader", which fails the title check even when
+  the candidate held a title very close to the one being hired for.
+- **Job phrases in sentence case, never tacked on.** Keywords are shown to the writer in
+  a sentence's own case (`sentenceCase`: "Cross-Functional Collaboration" becomes
+  "cross-functional collaboration"; single words and acronyms keep theirs), and the rubric
+  forbids bolting a phrase onto a sentence end. Measured on a real summary, a model did
+  both anyway until the check below sent it back.
+- **One repair, bounded.** Each part is checked by `lintPart` (see *Resume checks*). A
+  part that breaks a rule is sent back once with the specific problems listed; the answer
+  with fewer problems wins, and any that remain are reported, not retried.
+- **Failures stay local.** A part that fails keeps its approved wording and is recorded
+  in `evidenceAuditJson.unitFailures`; the editor names it (*Not tailored, kept as in your
+  approved resume: Design Lead, Northwind (…)*). Only when every part fails does the draft
+  become `source-only`.
+- **Progress.** The writing stage reports each part as it starts — *Part 2 of 6: Design
+  Lead, Northwind* — with the provider and model.
+
+**Resume checks.** `src/lib/documents/resume-lint.ts` measures the rules that can be
+decided from text, which used to live only in the prompt. It is imported by the browser
+too, so it stays free of Node APIs.
+
+- `lintPart(kind, lines)` — per part: hype terms and self-rating openers (the same
+  `HYPE_TERMS` and `SELF_ASSESSMENT_OPENERS` lists the prompt quotes), first person (a
+  capital "I", or my/mine/we/our — not "US" or "ME", which resumes use as places), bullets
+  over 240 characters, a summary over 4 sentences or 90 words, two bullets in one job
+  opening with the same verb, duplicate and empty lines, and — given the job phrases the
+  part did not already carry — any such phrase tacked onto the end of a sentence with a
+  connective ("… using user-centered design."). Skills are checked only for duplicates
+  and empties.
+- `checkResume(draft, keywordSignals, supportedKeywords, targetTitle)` — the whole-draft
+  **ATS & recruiter checks** report: the target role's words in the headline or summary;
+  every must-have phrase the evidence supports shown in the summary or a bullet, not only
+  in Skills (unsupported phrases are never asked for); no job phrase both used more than
+  3 times and above 2.5% of the words (a core subject spread across a two-page resume is
+  not stuffing — ten uses of "accessibility" in ~900 words measured about 1%); an email address and a phone number; experience and skills under headings an
+  applicant system recognises; one date format across jobs; and the per-part writing
+  rules. Stored at generation in `evidenceAuditJson.checks`, and recomputed live in the
+  editor as the user types.
+
+**Skills keywords join their category.** When a confirmed, skills-safe keyword is still
+missing after tailoring and the skills list is written as `Category: a, b` lines, the
+keyword is appended to the matching category line — by category name first (tool →
+*Tools*/*Technologies*, methodology → *Methods*/*Process*, and so on), then by shared
+words, else the last line. It used to be appended as a bare new line, which printed a lone
+word under the categories. A plain list still gets a new line.
 
 **Which provider writes.** Preparation, tailoring, and ✨ Improve all use
 `getWritingProvider()`: the provider chosen under Settings → AI Provider → **Resume
@@ -1060,27 +1154,26 @@ STRUCTURED_OUTPUT_MAX_TOKENS`. It previously had no deadline and no output budge
 reasoning model could truncate its JSON at 4,096 tokens and `withRetry` would run the whole
 chain again, up to three times.
 
-**Tailored resume AI context:**
-- **Candidate background** (`buildBackgroundBlock`) — the approved lane's sections that
-  are *not* being rewritten (headline, skills, recognition, education, unselected custom
-  sections, and summary/impact/experience when they are on Keep), as evidence only. This
-  replaced a 5,000-character excerpt of the source PDF, which repeated the selected
-  sections already in the prompt and, being cut at a character count, dropped the later
-  sections first.
+**Tailored resume AI context** (shared by every part):
+- **The approved lane, whole, as evidence** (`buildBackgroundBlock` with the heading
+  *Candidate's Approved Resume (evidence)*) — every section, including the ones being
+  written, since each part is written separately. This replaced a 5,000-character excerpt
+  of the source PDF, which repeated the selected sections already in the prompt and,
+  being cut at a character count, dropped the later sections first.
 - **What this posting requires** (`buildRequirementsBlock`) — up to 20 requirements from
   Application Preparation, one line each with type and evidence status.
 - The job description, capped at 6,000 characters (was 10,000) — the requirements and
   keywords were already extracted from the full posting.
 - The prompt is ordered from what changes least to what changes most — rules, the
-  candidate's background, this posting, then the sections to rewrite (as compact JSON) —
-  so a regeneration and a local model's prefix cache reuse as much as possible.
+  candidate's evidence, this posting, then the one part being written — so a regeneration
+  and a local model's prefix cache reuse as much as possible.
 - All validated keyword signals with their priority, category, source, and rationale.
 - **Missing keywords** — keywords absent from the pre-AI source draft are identified
   before the AI call and passed as a separate priority list so the AI knows exactly
   which terms to weave in where the source resume provides supporting evidence.
-- **Protected keywords** — the job phrases the source draft already matches
-  exactly, listed as terms the rewrite must not paraphrase away. The mirror image
-  of the missing-keyword list, and enforced after the call by the keyword
+- **Protected keywords** — per part, the job phrases its lines already match exactly,
+  listed as phrases the rewrite must keep verbatim somewhere in that part. The mirror
+  image of the missing-keyword list, and enforced after the call by the keyword
   preservation pass.
 - **Job-specific gaps and red flags** — the evaluation's `gaps` (up to 5) and
   `redFlags` (up to 3) are included so the AI tailors content to address the
@@ -1631,7 +1724,11 @@ from-scratch resumes:
   append additional entries without leaving the section.
 - **✨ Improve with AI** — available on Summary, Key Achievements, Skills,
   Awards & Recognition, Experience bullets, and Custom sections. Sends the
-  section content to the active AI provider, which returns an improved version.
+  section content to the resume writer chain, which returns an improved version. There is
+  no posting in the builder, so this uses the plain `/api/resume-sections/improve` route
+  rather than the grounded draft-editor one; its prompts no longer ask for "measurable"
+  bullets or "compelling, keyword-rich" summaries, and tell the model to keep every
+  existing number and add none.
   The suggestion is shown inline with **Accept** and **Discard** buttons; the
   original is preserved until the user accepts. The request allows up to 4096
   output tokens, so local reasoning models have room to think before writing the
@@ -1670,13 +1767,37 @@ standard resume layout conventions.
 Full draft editor for a tailored resume before exporting to PDF. Matches the
 approved-resume builder experience with identical section controls on every section:
 - **Section title** — editable input that updates the heading printed in the PDF.
-- **✨ Improve** — AI rewrites the section content; user can accept or discard the
-  suggestion. Not shown on the Experience section (improvement is per-entry).
+- **✨ Improve** and **↻ Regenerate** — on Summary, Key Achievements, Skills, and custom
+  sections, and on each Experience entry (✨ Improve bullets / ↻ Regenerate). Both call
+  `POST /api/generated-documents/[id]/sections` with `{ action, unit, note?, draft }`,
+  which writes the one part through the same unit writer, evidence guard, keyword
+  preservation, and writing checks as generation (`rewriteSection` in
+  `src/lib/documents/section-rewrite.ts`). **Improve** starts from the text in the box,
+  including the user's edits, and keeps its substance; the user's own text counts as
+  evidence for that request, so only claims the model adds beyond it and the evidence
+  bank are reverted. **Regenerate** starts from the approved lane — a role is matched by
+  title and employer before position — and reverts to that. The suggestion panel shows
+  the lines, which were kept at earlier wording and the claim that caused it, job phrases
+  kept, remaining writing problems, any credits notice, and which model wrote it in how
+  long. Nothing changes until **Accept**; **Cancel** aborts the request. **Show what each line
+  was written from** pairs each new line with its starting line (the route returns
+  `sources` in output order). After accepting, **Undo accept** restores the replaced text
+  once. A screen-reader announcement ("Suggestion ready…") fires when a request finishes,
+  since the result appears away from the button that was pressed. **Add
+  instruction** reveals a short field ("shorter", "lead with the accessibility work")
+  sent with either action; the writer follows it within the truth rules. Awards &
+  Recognition keeps the plain ✨ Improve, since it is not a part the writer tailors.
+  Improve used to be a separate prompt that saw neither the posting nor the evidence,
+  asked for "measurable" bullets and "compelling, keyword-rich" summaries, and bypassed
+  the claim guard entirely.
+- **ATS & recruiter checks** — a collapsible list above the keyword panel, recomputed as
+  the user types (`checkResume`). It opens when anything is flagged and reads *All clear*
+  otherwise.
 - **↑ Move up / ↓ Move down** — reorders sections; order is reflected in the preview
   and the generated PDF.
 - **Remove** — hides a section from the PDF (data is not deleted).
-- Experience entries each have a **✨ Improve bullets** button with the same
-  accept/discard flow as the resume builder.
+- A notice names any part the writer could not produce at generation, kept at approved
+  wording, and suggests ↻ Regenerate on it.
 - Header (name, headline, contact) is always pinned at the top and is not
   moveable or removable.
 - Education is always shown last and is display-only (pulled from the base resume).
@@ -1694,11 +1815,9 @@ approved-resume builder experience with identical section controls on every sect
   debounce — pure JS computation).
   Starts expanded when coverage is below 70%. Collapses to just the `covered/total`
   counter when the user has seen enough. The page header uses the same live matcher.
-- **Job-aware AI improvement** — ✨ Improve (and ✨ Improve bullets for experience)
-  include the job keywords in the API call. The AI naturally incorporates missing
-  keywords into suggestions without forcing them. It runs on the resume writer chain with
-  `reasoning: "low"`: a local thinking model took 1m43s on a 225-token summary rewrite,
-  nearly all of it reasoning.
+- **Speed** — section requests run on the resume writer chain with `reasoning: "low"`:
+  a local thinking model took 1m43s on a 225-token summary rewrite, nearly all of it
+  reasoning.
 - **Provenance line** — the header reads *Generated in 2m 22s with local model
   (gemma4:12b-mlx)* (or the cloud provider's name) from `generation_ms`, `provider_used`,
   and `model_used`. Hidden for drafts made before those were recorded.

@@ -109,6 +109,7 @@ export function ResumeTab({
             <div className="flex flex-wrap gap-2">
               <ResumeGeneratorModal
                 hasExistingDocument={!!generatedDocument}
+                lastGeneration={generatedDocument?.generationMs ? { ms: generatedDocument.generationMs, provider: generatedDocument.providerUsed } : undefined}
                 jobId={id}
                 recommendedResume={resolvedRecommendedResume}
                 resumeVersions={resumeVersions}

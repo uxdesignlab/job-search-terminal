@@ -51,6 +51,8 @@ function initialStages(): Record<StageName, StageState> {
 
 type Props = {
   jobId: string;
+  /** How long the last draft for this job took and on what, for an honest expectation. */
+  lastGeneration?: { ms: number; provider: string };
   resumes: ResumeRecord[];
   recommendedResume: string;
   hasExistingDocument: boolean;
@@ -60,7 +62,7 @@ type Props = {
   }>;
 };
 
-export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExistingDocument, resumeVersions }: Props) {
+export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExistingDocument, resumeVersions, lastGeneration }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>(() => {
@@ -236,7 +238,11 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
                 <div aria-live="polite" className="grid gap-4 py-1" role="status">
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="text-sm font-medium text-ink">Building your tailored resume</p>
-                    <p className="text-xs tabular-nums text-muted">{formatElapsed(Math.max(0, now - startedAt))}</p>
+                    {/* Out of the live region: a clock that changes every second would be read
+                        aloud every second. The stages announce; the time is there to look at. */}
+                    <p aria-live="off" className="text-xs tabular-nums text-muted">
+                      <span className="sr-only">Elapsed </span>{formatElapsed(Math.max(0, now - startedAt))}
+                    </p>
                   </div>
                   <ol className="grid gap-2">
                     {STAGE_ORDER.map((stage) => {
@@ -254,6 +260,9 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
                           />
                           <span className={state.status === "pending" ? "text-muted" : "text-ink"}>
                             {stageLabel(stage, state)}
+                            {state.status === "running" && stage === "writing" && state.detail ? (
+                              <span className="block text-xs text-muted">{state.detail}</span>
+                            ) : null}
                             {state.status === "running" && who ? (
                               <span className="block text-xs text-muted">with {who}</span>
                             ) : null}
@@ -264,6 +273,12 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
                   </ol>
                   {notice ? (
                     <p className="rounded-lg border border-warning/35 bg-warning/10 p-3 text-xs text-warning">{notice}</p>
+                  ) : null}
+                  {lastGeneration && lastGeneration.ms > 0 ? (
+                    <p className="text-xs text-muted">
+                      The last draft for this job took {formatElapsed(lastGeneration.ms)}
+                      {lastGeneration.provider ? ` with ${PROVIDER_LABELS[lastGeneration.provider] ?? lastGeneration.provider}` : ""}.
+                    </p>
                   ) : null}
                   <p className="text-xs text-muted">
                     On a local model this can take a few minutes. A cloud model chosen under Settings → AI Provider → Resume writing is usually much faster.
@@ -317,6 +332,13 @@ export function ResumeGeneratorModal({ jobId, resumes, recommendedResume, hasExi
                       );
                     })}
 	                  </ul>
+
+	                  {hasExistingDocument && (
+	                    <p className="mt-4 rounded-lg border border-warning/35 bg-warning/10 p-3 text-xs text-ink">
+	                      This replaces the current draft for this job, including any edits you made to it. To change one
+	                      section instead, open the draft and use ↻ Regenerate on that section.
+	                    </p>
+	                  )}
 
 	                  {selectedVersion && selectedApproved ? (
 	                    <div className="mt-5 rounded-lg border border-border bg-surface p-3">

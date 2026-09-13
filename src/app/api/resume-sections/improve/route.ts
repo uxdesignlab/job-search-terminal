@@ -15,12 +15,15 @@ function keywordInstruction(jobKeywords: string[]): string {
 function buildPrompt(type: ResumeBuilderSectionType, content: string, jobKeywords: string[]): string {
   const kw = keywordInstruction(jobKeywords);
   switch (type) {
+    // The wording here used to ask for "compelling, keyword-rich" summaries and
+    // "measurable" achievement bullets. Asked for a measurement the source does not
+    // contain, a model supplies one — and this route has no evidence guard behind it.
     case "summary":
-      return `Improve this professional summary. Make it concise (3–4 sentences), compelling, and keyword-rich. Focus on the candidate's unique value proposition${kw}:\n\n${content}`;
+      return `Improve this professional summary. Keep it to 2–4 plain, specific sentences that state the candidate's professional identity, scope, and strongest evidence. No hype and no self-rating phrases such as "proven track record"${kw}:\n\n${content}`;
     case "experience":
       return `Improve these experience bullet points. Use strong action verbs, preserve only existing quantified achievements, and remove weak phrases like "responsible for" or "helped with". Keep one bullet per line${kw}:\n\n${content}`;
     case "impact":
-      return `Improve these key achievement bullets using the CAR (Challenge–Action–Result) framework. Each bullet should be measurable and specific. Keep one bullet per line${kw}:\n\n${content}`;
+      return `Improve these key achievement bullets. Lead each with a strong action verb and state the challenge, the action, and the result where the text already gives them. Keep every number that is already there and add none. Keep one bullet per line${kw}:\n\n${content}`;
     case "skills":
       return `Clean up and organize this skills list. Remove duplicates, fix formatting inconsistencies, and ensure each skill is on its own line${kw}:\n\n${content}`;
     case "recognition":
@@ -28,7 +31,7 @@ function buildPrompt(type: ResumeBuilderSectionType, content: string, jobKeyword
     case "education":
       return `Improve this education section entry. Ensure degree, institution, and any relevant honors or focus areas are clearly stated:\n\n${content}`;
     default:
-      return `Improve this resume section content. Make it more professional, concise, and impactful${kw}:\n\n${content}`;
+      return `Improve this resume section content. Make it clearer and more concise without adding anything new${kw}:\n\n${content}`;
   }
 }
 

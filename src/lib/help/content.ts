@@ -926,7 +926,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Watch it work",
-            body: "After you press Generate, the window lists four steps and ticks them off: Reading the posting, Writing the tailored sections, Checking claims and keywords, and Saving the draft. It names the AI service doing each step and shows how long it has been running. If this job's posting was already read, the first step says Used this job's saved posting analysis and takes no time. Press Stop to give up; stopping saves nothing, and your previous draft stays as it was.",
+            body: "After you press Generate, the window lists four steps and ticks them off: Reading the posting, Writing the tailored sections, Checking claims and keywords, and Saving the draft. It names the AI service doing each step and shows how long it has been running. While writing, it also says which part it is on — each job, your key achievements, and the summary are written one at a time, and the summary comes last so it matches the bullets above it. If this job's posting was already read, the first step says Used this job's saved posting analysis and takes no time. Press Stop to give up; stopping saves nothing, and your previous draft stays as it was. If this job already has a draft, the window warns you first: generating again replaces that draft, including your edits — to change one section, use ↻ Regenerate on it in the editor instead. It also tells you how long the last draft for this job took.",
           },
           {
             title: "Review job keyword alignment",
@@ -935,6 +935,14 @@ export const helpPages: HelpPage[] = [
           {
             title: "Edit the draft",
             body: "Open the resume editor to refine summary, bullets, skills, and emphasis before exporting. Under the title, a line such as Generated in 58s with OpenAI tells you how long the draft took and which service wrote it. The app checks metrics and substantive claims against the approved resume lane plus confirmed gap answers and supplements.",
+          },
+          {
+            title: "Read the ATS & recruiter checks",
+            body: "Above the keyword panel, ATS & recruiter checks lists what an applicant tracking system or a recruiter is likely to trip over: whether the role you are applying for is named near the top, whether the job's must-have words appear in your bullets and not only in your skills list, whether a word is repeated so often it looks stuffed, whether your email and phone number are there, whether your section names are ones those systems recognise, whether your dates use one format, and whether any line uses hype, rates yourself, says I, runs too long, or starts the same way as another. It updates as you type. It only asks for words your evidence backs up — it will never tell you to add a skill you have not shown.",
+          },
+          {
+            title: "Improve or regenerate one section",
+            body: "Every section the AI writes has two buttons. ✨ Improve polishes the text that is in the box now, including your own edits, and keeps what it says. ↻ Regenerate writes the section again from your approved resume, as if you had generated it fresh. Press Add instruction first to tell it what to change — for example shorter, or lead with the accessibility work. Nothing changes until you press Accept, and the suggestion tells you if it kept any of your earlier wording because the new wording claimed something your evidence does not show. Open Show what each line was written from to compare each new line with the one it came from. Changed your mind after accepting? Undo accept puts back what was there.",
           },
           {
             title: "Export PDF",
@@ -1252,11 +1260,23 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "resume-section",
+        title: "A section was not tailored, or a suggestion kept my old wording",
+        bullets: [
+          "If the editor says Not tailored, kept as in your approved resume and names a section, the AI could not write that one part. The rest of the resume was still tailored. Press ↻ Regenerate on that section to try again.",
+          "If a suggestion says it kept the earlier wording on some lines, the new wording claimed something — usually a number, a tool, or a job level — that is not in your resume, gap answers, or profile. That is the app protecting you. If the claim is true, add it to your Evidence Bank or a gap answer, then regenerate.",
+          "If a suggestion keeps some of your job's words exactly as they were, that is on purpose too: those words already matched the posting, and the rewrite would have lost them.",
+          "✨ Improve keeps figures you typed yourself. ↻ Regenerate starts again from your approved resume, so a number you added only in the editor will not survive it.",
+          "If the result is not what you wanted, press Add instruction, say what is wrong in a few words, and try again.",
+        ],
+      },
+      {
         id: "resume-slow",
         title: "Making a resume takes several minutes",
         bullets: [
           "Look at the generation window. It names the service doing the work. If it says your local model, the time is being spent on your own computer, and two or three minutes is normal.",
           "For faster resumes, open Account → Settings → AI Provider and set Resume writing uses to a paid service. Scoring and everything else can stay on Ollama. This sends your resume and the posting to that service — see Choose which service writes your resumes.",
+          "The app writes each job, your achievements, and your summary one at a time. On a paid service several are written at once; on your own computer they go one after another, so a resume with many jobs takes longer locally.",
           "The first resume for a job takes longest because the app reads the posting first. Generating again for the same job reuses that reading, and the first step says Used this job's saved posting analysis.",
           "If you do not want to wait, press Stop. Nothing is saved and your previous draft is untouched.",
           "If it is slow on Ollama and your computer is also busy, close other heavy programs, or choose a smaller model. A model too big for your memory can be many times slower.",

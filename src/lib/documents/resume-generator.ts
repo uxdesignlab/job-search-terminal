@@ -5,12 +5,27 @@ import { getAISettings, getApplicationPreparation, getEvaluationByJobId, getGene
 } from "../db/queries";
 import type { EvaluationRecord, GeneratedDocumentInput, GenerationStageTiming, JobKeywordSignal, JobRecord, ResumeBuilderSection, ResumeBuilderVersionRecord, ResumeRecord, ResumeSectionMode, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
 import { EvaluationRequiredError, prepareApplication } from "../application-preparation";
-import { resolveWritingCandidates } from "../ai/factory";
+import { exhaustedProviders, orderForCredits, resolveWritingCandidates } from "../ai/factory";
 import { GenerationCancelledError } from "../ai/retry";
 import { aiErrorMessage } from "../ai/error-response";
 import { renderHtmlToPdf } from "./pdf-renderer";
 import { renderResumeHtml, type ResumeTemplateInput } from "./resume-template";
-import { tailorResumeWithAI, type TailoredResumeSections } from "./llm-tailorer";
+import {
+  applyUnitResults,
+  planKeywordPlacements,
+  runUnits,
+  summaryContextFor,
+  unitKey,
+  unitsForDraft,
+  writeUnit,
+  type ResumeUnit,
+  type UnitFailure,
+  type UnitInput,
+  type UnitResult,
+  type UnitSuccess,
+  type UnitWriterContext,
+} from "./resume-unit-writer";
+import { checkResume } from "./resume-lint";
 import { keywordCoverageFor, keywordStrengthDetailsForText, isKeywordInText } from "./keyword-coverage";
 import { auditDraftAgainstEvidence, evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceAudit, type EvidenceAuditIssue } from "./evidence-audit";
 import { describeRestores, restoreLostKeywords, type KeywordRestore } from "./keyword-preservation";
@@ -69,6 +84,8 @@ export type TailoredDraftBuild = {
   baseResume: ResumeRecord;
   draft: ResumeTemplateInput;
   keywordCoverage: number;
+  /** Coverage of the approved lane before any AI ran — the fair baseline for `keywordCoverage`. */
+  sourceKeywordCoverage: number;
   tailoringPlan: string[];
   tailoringStatus: string;
   evidenceAudit: EvidenceAudit;
@@ -197,10 +214,8 @@ export async function buildTailoredDraft(jobId: string, options: BuildDraftOptio
   // Any provider the writer chain can reach, local included. This used to test for
   // the three cloud keys only, so a user running Ollama alone never had a resume
   // tailored at all and was told nothing about why.
-  const hasAIProvider = resolveWritingCandidates(aiSettings).length > 0;
-  let aiTailoring: TailoredResumeSections | null = null;
-  let providerUsed = "";
-  let modelUsed = "";
+  const writerChain = resolveWritingCandidates(aiSettings);
+  const hasAIProvider = writerChain.length > 0;
   // Seeded from preparation so a degraded run is reported even when AI tailoring
   // itself succeeds — otherwise the resume looks fully tailored while quietly
   // missing this job's extracted keywords.
@@ -213,50 +228,86 @@ export async function buildTailoredDraft(jobId: string, options: BuildDraftOptio
   // Build evidence before the AI call so we can classify keywords into confirmed vs candidate.
   const evidenceText = buildEvidenceText(sourceResumeText, sourceDraft, gapResponses, supplements, otherActiveLanes(resumes, baseResume));
 
+  let unitResults: UnitResult[] = [];
   if (hasAIProvider) {
     const writingStartedAt = Date.now();
     onStage?.({ stage: "writing", status: "started", elapsedMs: elapsed() });
-    try {
-      const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
-        evidenceTextForDraft(sourceDraft), keywordSignals
-      );
+    const { partial: partialInDraft, missing: missingFromDraft } = keywordStrengthDetailsForText(
+      evidenceTextForDraft(sourceDraft), keywordSignals
+    );
+    const context: UnitWriterContext = {
+      job,
+      evaluation,
+      profile,
+      skills,
+      evidenceDraft: sourceDraft,
+      gapResponses,
+      supplements,
+      keywordSignals,
       // Keywords whose words are already in the full evidence corpus → safe to use verbatim.
-      const confirmedKws = keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw));
-      const notExactInDraft = [...partialInDraft, ...missingFromDraft];
-      // The other half of the same measurement: phrases the source draft already
-      // matches exactly, which the rewrite must not paraphrase away.
-      const notExactSet = new Set(notExactInDraft.map((keyword) => keyword.toLowerCase()));
-      const protectedKws = keywordSignals
-        .map((signal) => signal.keyword)
-        .filter((keyword) => !notExactSet.has(keyword.toLowerCase()));
-      const tailored = await tailorResumeWithAI(
-        job, evaluation, profile, sourceDraft, resolvedSectionModes, gapResponses, supplements, skills,
-        notExactInDraft, confirmedKws, keywordSignals, protectedKws, requirements,
-        {
-          signal,
-          onProvider: (provider, model) =>
-            onStage?.({ stage: "writing", status: "started", provider, model, elapsedMs: elapsed() }),
-        }
-      );
-      aiTailoring = tailored.sections;
-      providerUsed = tailored.providerUsed;
-      modelUsed = tailored.modelUsed;
-      if (tailored.notice) notices.push(tailored.notice);
-    } catch (error) {
-      if (error instanceof GenerationCancelledError || signal?.aborted) throw new GenerationCancelledError();
-      const aiReason = aiErrorMessage(error);
-      fallbackReason = fallbackReason ? `${fallbackReason} ${aiReason}` : aiReason;
+      confirmedKeywords: keywordSignals.map((signal) => signal.keyword).filter((kw) => isKeywordInText(evidenceText, kw)),
+      missingKeywords: [...partialInDraft, ...missingFromDraft],
+      requirements,
+      evidenceMap: getApplicationPreparation(job.id)?.evidenceMap ?? [],
+    };
+    const selected = (unit: ResumeUnit) => modeForSection(unitModeId(unit), resolvedSectionModes) === "update";
+    const writesSummary = selected({ kind: "summary" }) && Boolean(sourceDraft.summary.trim());
+    const placements = planKeywordPlacements(
+      [...unitsForDraft(sourceDraft, selected), ...(writesSummary ? [{ unit: { kind: "summary" } as ResumeUnit, lines: [sourceDraft.summary] }] : [])],
+      context
+    );
+    const units = unitsForDraft(sourceDraft, selected).map((input) => ({ ...input, placeKeywords: placements.get(unitKey(input.unit)) }));
+    const total = units.length + (writesSummary ? 1 : 0);
+    // A local server answers one request at a time; queueing more only makes each wait
+    // longer, and a request left waiting past Ollama's own limit is dropped.
+    const concurrency = orderForCredits(writerChain, exhaustedProviders())[0] === "ollama" ? 1 : 3;
+    let started = 0;
+    const announce = (label: string, provider?: string, model?: string) =>
+      onStage?.({ stage: "writing", status: "started", detail: label, provider, model, elapsedMs: elapsed() });
+
+    const write = async (input: UnitInput) => {
+      const position = ++started;
+      const label = `Part ${position} of ${total}: ${input.label}`;
+      announce(label);
+      const result = await writeUnit(context, input, { signal, onProvider: (provider, model) => announce(label, provider, model) });
+      ensureNotCancelled();
+      return result;
+    };
+
+    unitResults = await runUnits(units, concurrency, write);
+    if (writesSummary) {
+      // Written last, from what the other parts became, so the summary describes the
+      // resume that is actually being sent rather than the one it was made from.
+      const soFar = applyUnitResults(sourceDraft, unitResults).applied;
+      unitResults.push(await write({
+        unit: { kind: "summary" },
+        label: "Professional summary",
+        lines: [sourceDraft.summary],
+        context: summaryContextFor(soFar),
+        mode: "tailor",
+        placeKeywords: placements.get("summary"),
+      }));
+    }
+
+    const succeeded = unitResults.filter((result): result is UnitSuccess => result.ok);
+    for (const result of succeeded) if (result.notice) notices.push(result.notice);
+    const last = succeeded[succeeded.length - 1];
+    const failed = unitResults.filter((result): result is UnitFailure => !result.ok);
+    if (unitResults.length > 0 && succeeded.length === 0) {
+      const reasons = [...new Set(failed.map((result) => result.reason))].join(" ");
+      fallbackReason = fallbackReason ? `${fallbackReason} ${reasons}` : reasons;
     }
     stages.push({
       stage: "writing",
       ms: Date.now() - writingStartedAt,
-      ...(providerUsed ? { provider: providerUsed, model: modelUsed } : { detail: "failed" }),
+      detail: `${succeeded.length} of ${unitResults.length} parts`,
+      ...(last ? { provider: last.providerUsed, model: last.modelUsed } : {}),
     });
     onStage?.({
       stage: "writing",
       status: "done",
-      provider: providerUsed || undefined,
-      model: modelUsed || undefined,
+      provider: last?.providerUsed,
+      model: last?.modelUsed,
       notice: notices[notices.length - 1],
       elapsedMs: elapsed(),
     });
@@ -269,12 +320,15 @@ export async function buildTailoredDraft(jobId: string, options: BuildDraftOptio
     .filter((signal) => signal.priority !== "preferred" && signal.category !== "title")
     .map((signal) => signal.keyword)
     .filter((keyword) => isKeywordInText(evidenceText, keyword));
-  const applied = applyAITailoring(sourceDraft, aiTailoring, resolvedSectionModes);
+  const aiRan = unitResults.some((result) => result.ok);
+  // Every comparison below is line by line, so each runs against the source in the
+  // order the writer chose — see applyUnitResults.
+  const { source: orderedSource, applied } = applyUnitResults(sourceDraft, unitResults);
   // Measured on the model's own output: the evidence guard and the preservation
   // pass below both restore source wording deliberately, and counting their work
   // as the model doing nothing would make this report meaningless.
-  const effect = aiTailoring
-    ? analyzeTailoringEffect(sourceDraft, applied, resolvedSectionModes)
+  const effect = aiRan
+    ? analyzeTailoringEffect(orderedSource, applied, resolvedSectionModes)
     : { measured: [], notable: [], noOp: false };
   // A model that ran and rewrote nothing produced source content, and the draft
   // says so in the same words a provider failure does.
@@ -283,33 +337,48 @@ export async function buildTailoredDraft(jobId: string, options: BuildDraftOptio
     fallbackReason = fallbackReason ? `${fallbackReason} ${noOpReason}` : noOpReason;
   }
 
-  const reverted = revertUnsupportedMetrics(sourceDraft, applied, evidenceText);
+  const reverted = revertUnsupportedMetrics(orderedSource, applied, evidenceText);
   // §ATS: a rewrite may add job language, never trade away language the source
   // already matched. Runs after the evidence guard so it only ever puts back
   // approved source wording.
-  const preserved = restoreLostKeywords(sourceDraft, reverted.draft, keywordSignals);
+  const preserved = restoreLostKeywords(orderedSource, reverted.draft, keywordSignals);
   const draft = injectMissingConfirmedKeywordsIntoSkills(preserved.draft, confirmedKwsForInjection, resolvedSectionModes, keywordSignals);
   const keywordCoverage = keywordCoverageFor(draft, keywordSignals);
   const tailoringPlan = buildTailoringPlan(evaluation, baseResume, keywordCoverage, keywordSignals, preserved.restored);
+  const checks = checkResume(draft, keywordSignals, confirmedKwsForInjection.concat(
+    keywordSignals.filter((signal) => signal.category === "title" && isKeywordInText(evidenceText, signal.keyword)).map((signal) => signal.keyword)
+  ), job.title);
+  const unitFailures = unitResults
+    .filter((result): result is UnitFailure => !result.ok)
+    .map((result) => ({ unit: unitKey(result.unit), label: result.label, reason: result.reason }));
   stages.push({ stage: "checking", ms: Date.now() - checkingStartedAt });
   onStage?.({ stage: "checking", status: "done", elapsedMs: elapsed() });
 
+  const lastWriter = [...unitResults].reverse().find((result): result is UnitSuccess => result.ok);
   return {
     job,
     profile,
     baseResume,
     draft,
     keywordCoverage,
+    sourceKeywordCoverage: keywordCoverageFor(sourceDraft, keywordSignals),
     tailoringPlan,
-    tailoringStatus: aiTailoring && !effect.noOp ? reverted.audit.status : "source-only",
-    evidenceAudit: { ...reverted.audit, restored: preserved.restored, unchanged: effect.notable },
+    tailoringStatus: aiRan && !effect.noOp ? reverted.audit.status : "source-only",
+    evidenceAudit: { ...reverted.audit, restored: preserved.restored, unchanged: effect.notable, checks, unitFailures },
     fallbackReason,
     notice: [...new Set(notices)].join(" "),
     generationMs: elapsed(),
-    providerUsed,
-    modelUsed,
+    providerUsed: lastWriter?.providerUsed ?? "",
+    modelUsed: lastWriter?.modelUsed ?? "",
     stages,
   };
+}
+
+/** The section-mode id a unit is governed by. */
+function unitModeId(unit: ResumeUnit): string {
+  if (unit.kind === "role") return "experience";
+  if (unit.kind === "extra") return unit.id;
+  return unit.kind;
 }
 
 export async function generateTailoredResume(jobId: string, sectionModes: ResumeSectionModeInput[] = []): Promise<GeneratedResumeResult> {
@@ -479,7 +548,7 @@ export async function createPdfForDocument(
   return { pdfUrl: render.pdfPath };
 }
 
-function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume" | "baseResumeId">, resumes: ResumeRecord[]) {
+export function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume" | "baseResumeId">, resumes: ResumeRecord[]) {
   return resumes.find((resume) => resume.id === doc.baseResumeId)
     ?? resumes.find((resume) => resume.name === doc.baseResume);
 }
@@ -487,7 +556,7 @@ function resolveDocumentResumeLane(doc: Pick<GeneratedDocumentInput, "baseResume
 // After AI tailoring, inject any confirmed keywords that are still not present as exact phrases
 // directly into the skills list. This handles cases where the AI placed the concept correctly
 // but used a slight paraphrase. Only injects short phrases (≤3 words) to avoid awkward skill entries.
-function injectMissingConfirmedKeywordsIntoSkills(
+export function injectMissingConfirmedKeywordsIntoSkills(
   draft: ResumeTemplateInput,
   confirmedKeywords: string[],
   sectionModes: ResumeSectionModeInput[],
@@ -512,10 +581,59 @@ function injectMissingConfirmedKeywordsIntoSkills(
     .map((kw) => originalCasing.get(kw.toLowerCase()) ?? kw)
     .filter((kw) => !existingSkillsLower.has(kw.toLowerCase()));
   if (newSkills.length === 0) return draft;
-  return { ...draft, skills: [...draft.skills, ...newSkills] };
+
+  if (!isCategorizedSkillList(draft.skills)) return { ...draft, skills: [...draft.skills, ...newSkills] };
+
+  // A list written as "Category: a, b, c" lines. Appending a bare "Agile" line to it
+  // printed a lone word under the categories, which reads as a mistake to a recruiter
+  // and as an orphan entry to a parser. Each keyword joins the line it belongs with.
+  const skills = [...draft.skills];
+  for (const keyword of newSkills) {
+    const signal = keywordSignals.find((entry) => entry.keyword.toLowerCase() === keyword.toLowerCase());
+    const index = bestSkillLineFor(keyword, signal?.category, skills);
+    skills[index] = `${skills[index].replace(/[.;,\s]+$/, "")}, ${keyword}`;
+  }
+  return { ...draft, skills };
 }
 
-function buildEvidenceText(
+const SKILL_CATEGORY_LINE = /^[^:]{2,48}:\s*\S/;
+
+function isCategorizedSkillList(skills: string[]): boolean {
+  if (skills.length === 0) return false;
+  return skills.filter((line) => SKILL_CATEGORY_LINE.test(line)).length / skills.length >= 0.5;
+}
+
+const CATEGORY_HINTS: Partial<Record<JobKeywordSignal["category"], RegExp>> = {
+  tool: /tool|technolog|software|platform|stack/i,
+  methodology: /method|process|practice|approach|framework|delivery|operations|research/i,
+  credential: /certif|credential|licen|training|education/i,
+  technical: /technical|engineering|systems|development|design/i,
+};
+
+function termsOf(value: string): Set<string> {
+  return new Set(value.toLowerCase().split(/[^a-z0-9+#]+/).filter((term) => term.length > 2));
+}
+
+/** The category line a keyword fits best: by category name first, then by shared words, else the last line. */
+function bestSkillLineFor(keyword: string, category: JobKeywordSignal["category"] | undefined, skills: string[]): number {
+  const candidates = skills
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => SKILL_CATEGORY_LINE.test(line));
+  const hint = category ? CATEGORY_HINTS[category] : undefined;
+  if (hint) {
+    const byName = candidates.find(({ line }) => hint.test(line.split(":")[0]));
+    if (byName) return byName.index;
+  }
+  const keywordTerms = termsOf(keyword);
+  let best = { index: candidates[candidates.length - 1]?.index ?? skills.length - 1, score: 0 };
+  for (const { line, index } of candidates) {
+    const score = [...termsOf(line)].filter((term) => keywordTerms.has(term)).length;
+    if (score > best.score) best = { index, score };
+  }
+  return best.index;
+}
+
+export function buildEvidenceText(
   sourceResumeText: string,
   sourceDraft: ResumeTemplateInput,
   gapResponses: Array<{ rawResponse: string; polishedResponse: string }>,
@@ -535,7 +653,7 @@ function buildEvidenceText(
   ].join("\n");
 }
 
-function otherActiveLanes(resumes: ResumeRecord[], baseResume: ResumeRecord): ResumeRecord[] {
+export function otherActiveLanes(resumes: ResumeRecord[], baseResume: ResumeRecord): ResumeRecord[] {
   return resumes.filter((resume) => resume.id !== baseResume.id && resume.activeStatus && resume.extractedText.trim());
 }
 
@@ -553,7 +671,7 @@ function selectBaseResume(evaluation: EvaluationRecord, resumes: ResumeRecord[])
   return fallback;
 }
 
-function getApprovedResumeVersion(resume: ResumeRecord): ResumeBuilderVersionRecord {
+export function getApprovedResumeVersion(resume: ResumeRecord): ResumeBuilderVersionRecord {
   const version = getResumeBuilderVersion(resume.id);
   if (!version || version.status !== "approved") {
     throw new Error(`Review and approve the "${resume.name}" resume builder version before generating a tailored resume.`);
@@ -561,7 +679,7 @@ function getApprovedResumeVersion(resume: ResumeRecord): ResumeBuilderVersionRec
   return version;
 }
 
-async function loadSourceResumeText(resume: ResumeRecord) {
+export async function loadSourceResumeText(resume: ResumeRecord) {
   const sourcePath = path.join(process.cwd(), resume.sourceFile);
 
   try {
@@ -669,7 +787,7 @@ function modeForSection(sectionId: string, sectionModes: ResumeSectionModeInput[
   return sectionModes.find((mode) => mode.sectionId === sectionId)?.mode ?? "keep";
 }
 
-function templateFromApprovedSections(
+export function templateFromApprovedSections(
   sections: ResumeBuilderSection[],
   profile: UserProfileRecord,
   job: JobRecord,
@@ -722,59 +840,6 @@ function templateFromApprovedSections(
   }
 
   return template;
-}
-
-function applyAITailoring(
-  source: ResumeTemplateInput,
-  tailoring: TailoredResumeSections | null,
-  sectionModes: ResumeSectionModeInput[]
-): ResumeTemplateInput {
-  if (!tailoring) return source;
-  const next: ResumeTemplateInput = {
-    ...source,
-    impactItems: [...source.impactItems],
-    experience: source.experience.map((entry) => ({ ...entry, bullets: [...entry.bullets] })),
-    extraSections: (source.extraSections ?? []).map((section) => ({ ...section, items: [...section.items] }))
-  };
-
-  if (modeForSection("summary", sectionModes) === "update" && typeof tailoring.summary === "string" && tailoring.summary.trim()) {
-    next.summary = tailoring.summary.trim();
-  }
-
-  if (
-    modeForSection("impact", sectionModes) === "update" &&
-    Array.isArray(tailoring.impactItems) &&
-    tailoring.impactItems.length === source.impactItems.length
-  ) {
-    next.impactItems = tailoring.impactItems.map((item) => String(item).trim()).filter(Boolean);
-    if (next.impactItems.length !== source.impactItems.length) next.impactItems = source.impactItems;
-  }
-
-  if (modeForSection("experience", sectionModes) === "update" && Array.isArray(tailoring.experience)) {
-    for (const entry of tailoring.experience) {
-      const sourceEntry = source.experience[entry.index];
-      if (!sourceEntry || !Array.isArray(entry.bullets) || entry.bullets.length !== sourceEntry.bullets.length) {
-        continue;
-      }
-      const bullets = entry.bullets.map((item) => String(item).trim()).filter(Boolean);
-      if (bullets.length === sourceEntry.bullets.length) {
-        next.experience[entry.index] = { ...next.experience[entry.index], bullets };
-      }
-    }
-  }
-
-  if (Array.isArray(tailoring.extraSections) && next.extraSections) {
-    next.extraSections = next.extraSections.map((section) => {
-      const modeId = section.id ?? `custom-${section.title}`;
-      if (modeForSection(modeId, sectionModes) !== "update") return section;
-      const rewritten = tailoring.extraSections?.find((item) => item.title === section.title);
-      if (!rewritten || !Array.isArray(rewritten.items) || rewritten.items.length !== section.items.length) return section;
-      const items = rewritten.items.map((item) => String(item).trim()).filter(Boolean);
-      return items.length === section.items.length ? { ...section, items } : section;
-    });
-  }
-
-  return next;
 }
 
 export function parseSourceResume(text: string, profile: Pick<UserProfileRecord, "name" | "location" | "portfolio">) {

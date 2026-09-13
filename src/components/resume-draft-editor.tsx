@@ -6,10 +6,17 @@ import { Button, LinkButton, Modal } from "@/components/ui";
 import { keywordStrengthDetailsForText } from "@/lib/documents/keyword-coverage";
 import type { JobKeywordSignal } from "@/lib/db/types";
 import { renderResumeHtml, type ResumeTemplateInput } from "@/lib/documents/resume-template";
+import { checkResume } from "@/lib/documents/resume-lint";
+import { ResumeChecksPanel, SectionAIControls, SectionSuggestionPanel, type SectionSuggestion } from "@/components/resume-section-ai";
 
 type SectionAIState = {
   status: "idle" | "loading" | "showing" | "error";
+  /** Recognition still uses the plain rewrite, which returns text only. */
   improved?: string;
+  action?: "improve" | "regenerate";
+  suggestion?: SectionSuggestion;
+  /** The text an accepted suggestion replaced, kept for one undo. */
+  undo?: string;
   error?: string;
 };
 
@@ -153,6 +160,8 @@ type Props = {
   fallbackReason: string;
   revertNotice?: string;
   unchangedNotice?: string;
+  /** Parts the writer could not produce at generation, named with the reason. */
+  unitFailureNotice?: string;
   /** Provenance: how long the draft took and what wrote it. Zero and empty for drafts made before this was recorded. */
   generationMs?: number;
   providerUsed?: string;
@@ -262,7 +271,7 @@ const inputCls = "w-full rounded-control border border-border bg-surface px-3 py
 const textareaCls = `${inputCls} resize-y leading-5`;
 const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted";
 
-export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, keywordSignals, supportedKeywords, tailoringStatus, fallbackReason, revertNotice = "", unchangedNotice = "", generationMs = 0, providerUsed = "", modelUsed = "" }: Props) {
+export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTitle, baseResume, keywordCoverage, keywords, keywordSignals, supportedKeywords, tailoringStatus, fallbackReason, revertNotice = "", unchangedNotice = "", unitFailureNotice = "", generationMs = 0, providerUsed = "", modelUsed = "" }: Props) {
   const router = useRouter();
   const [state, setState] = useState<EditorState>(() => draftToState(initialDraft));
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => {
@@ -274,6 +283,8 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
     return order;
   });
   const [sectionAI, setSectionAI] = useState<Record<string, SectionAIState>>({});
+  const [aiNotes, setAiNotes] = useState<Record<string, string>>({});
+  const aiRequests = useRef<Record<string, AbortController>>({});
   const [pdfStatus, setPdfStatus] = useState<"idle" | "generating" | "done" | "error">("idle");
   const [pdfError, setPdfError] = useState("");
   const [unsupportedClaims, setUnsupportedClaims] = useState<UnsupportedClaim[]>([]);
@@ -306,6 +317,10 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
   }, [state, keywords, keywordSignals, keywordCoverage]);
 
   const keywordTotal = kwStrength.total;
+  const resumeChecks = useMemo(
+    () => checkResume(stateToDraft(state, initialDraft, sectionOrder), keywordSignals, [...supportedKeywords, ...confirmedKeywords], initialDraft.title),
+    [state, initialDraft, sectionOrder, keywordSignals, supportedKeywords, confirmedKeywords],
+  );
   // All keywords not present as exact phrases or partial matches
   const missingKw = kwStrength.missing;
   const supportedKeywordSet = new Set([...supportedKeywords, ...confirmedKeywords].map((kw) => kw.toLowerCase()));
@@ -573,11 +588,72 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
     }
   }
 
+  /** The writer's name for a moveable section, or null for one it does not write (Recognition). */
+  function unitForSection(id: string): string | null {
+    if (id === "summary" || id === "impact" || id === "skills") return id;
+    if (id === "experience" || id === "recognition") return null;
+    return `extra:${id}`;
+  }
+
+  /**
+   * ✨ Improve or ↻ Regenerate one part through the same writer and claim checks as a
+   * full generation. Sends the current draft, so edits elsewhere are respected and a
+   * summary is written from the bullets as they now read.
+   */
+  async function runSectionAI(key: string, unit: string, action: "improve" | "regenerate") {
+    aiRequests.current[key]?.abort();
+    const controller = new AbortController();
+    aiRequests.current[key] = controller;
+    setSectionAI((prev) => ({ ...prev, [key]: { status: "loading", action } }));
+    try {
+      const res = await fetch(`/api/generated-documents/${documentId}/sections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, unit, note: aiNotes[key] ?? "", draft: stateToDraft(state, initialDraft, sectionOrder) }),
+        signal: controller.signal,
+      });
+      const data = (await res.json()) as Partial<SectionSuggestion> & { error?: string; code?: string };
+      if (!res.ok || !Array.isArray(data.lines)) {
+        if (data.code === "ai_credits_exhausted") router.refresh();
+        throw new Error(data.error ?? "The AI could not rewrite this section.");
+      }
+      setSectionAI((prev) => ({ ...prev, [key]: { status: "showing", action, suggestion: data as SectionSuggestion } }));
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setSectionAI((prev) => ({ ...prev, [key]: { status: "idle" } }));
+        return;
+      }
+      setSectionAI((prev) => ({ ...prev, [key]: { status: "error", error: err instanceof Error ? err.message : String(err) } }));
+    } finally {
+      if (aiRequests.current[key] === controller) delete aiRequests.current[key];
+    }
+  }
+
+  function cancelSectionAI(key: string) {
+    aiRequests.current[key]?.abort();
+  }
+
   function acceptAIImprovement(id: string) {
     const ai = sectionAI[id];
-    if (ai?.status !== "showing" || !ai.improved) return;
-    applySectionImprovement(id, ai.improved);
+    if (ai?.status !== "showing") return;
+    const text = ai.suggestion ? ai.suggestion.lines.join(id === "summary" ? " " : "\n") : ai.improved;
+    if (!text) return;
+    const previous = getSectionContent(id);
+    applySectionImprovement(id, text);
+    setSectionAI((prev) => ({ ...prev, [id]: { status: "idle", undo: previous } }));
+  }
+
+  function undoAIImprovement(id: string) {
+    const previous = sectionAI[id]?.undo;
+    if (previous === undefined) return;
+    applySectionImprovement(id, previous);
     setSectionAI((prev) => ({ ...prev, [id]: { status: "idle" } }));
+  }
+
+  function announcementFor(ai: SectionAIState | undefined): string {
+    if (ai?.status === "showing") return "Suggestion ready. Review it below, then accept or discard.";
+    if (ai?.status === "error") return `The AI could not rewrite this section. ${ai.error ?? ""}`;
+    return "";
   }
 
   // --- PDF creation ---
@@ -722,71 +798,45 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                   </div>
                 </div>
                 <div>
-                  <div className="mb-1.5 flex items-center justify-between">
+                  <div className="mb-1.5 grid gap-1.5">
                     <label className={labelCls} style={{ margin: 0 }}>Bullets (one per line)</label>
-                    <button
-                      className="text-xs font-medium text-accent hover:underline disabled:opacity-50"
-                      disabled={entryAI?.status === "loading" || (!exp.bulletsText.trim() && !exp.title.trim())}
-                      onClick={async () => {
-                        const content = `${exp.title} at ${exp.organization}\n${exp.bulletsText}`;
-                        setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "loading" } }));
-                        try {
-                          const res = await fetch("/api/resume-sections/improve", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ sectionType: "experience", content, jobKeywords: keywords }),
-                          });
-                          const data = (await res.json()) as { improved?: string; error?: string };
-                          if (!res.ok || !data.improved) throw new Error(data.error ?? "Failed");
-                          setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "showing", improved: data.improved } }));
-                        } catch (err) {
-                          setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "error", error: err instanceof Error ? err.message : "Failed" } }));
-                        }
-                      }}
-                      type="button"
-                    >
-                      {entryAI?.status === "loading" ? (
-                        <span className="flex items-center gap-1">
-                          <svg aria-hidden="true" className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-                          </svg>
-                          Improving…
-                        </span>
-                      ) : "✨ Improve bullets"}
-                    </button>
+                    <SectionAIControls
+                      busy={entryAI?.status === "loading"}
+                      busyAction={entryAI?.action}
+                      disabled={!exp.bulletsText.trim()}
+                      improveLabel="✨ Improve bullets"
+                      inputId={`${aiKey}-note`}
+                      note={aiNotes[aiKey] ?? ""}
+                      onCancel={() => cancelSectionAI(aiKey)}
+                      announcement={announcementFor(entryAI)}
+                      onImprove={() => runSectionAI(aiKey, `role:${idx}`, "improve")}
+                      onNoteChange={(value) => setAiNotes((prev) => ({ ...prev, [aiKey]: value }))}
+                      onRegenerate={() => runSectionAI(aiKey, `role:${idx}`, "regenerate")}
+                      onUndo={entryAI?.undo !== undefined ? () => {
+                        const previous = entryAI.undo!;
+                        setState((prev) => ({
+                          ...prev,
+                          experience: prev.experience.map((entry, i) => i === idx ? { ...entry, bulletsText: previous } : entry),
+                        }));
+                        setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle" } }));
+                      } : undefined}
+                    />
                   </div>
-                  {entryAI?.status === "showing" && entryAI.improved && (() => {
-                    const bulletLines = entryAI.improved
-                      .split("\n")
-                      .filter((line) => !line.startsWith(exp.title) && !line.startsWith(exp.organization))
-                      .filter(Boolean);
-                    return (
-                      <div className="mb-3 rounded-control border border-accent/40 bg-accent/5 p-3">
-                        <p className="mb-2 text-xs font-semibold text-accent">AI suggestion</p>
-                        <pre className="mb-2 whitespace-pre-wrap text-xs leading-5 text-ink">{bulletLines.join("\n")}</pre>
-                        <div className="flex gap-2">
-                          <button
-                            className="rounded-control border border-accent bg-accent px-3 py-1 text-xs font-semibold text-white hover:bg-[rgb(var(--color-accent-strong))]"
-                            onClick={() => {
-                              const val = bulletLines.join("\n");
-                              setState((prev) => ({
-                                ...prev,
-                                experience: prev.experience.map((entry, i) => i === idx ? { ...entry, bulletsText: val } : entry),
-                              }));
-                              setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle" } }));
-                            }}
-                            type="button"
-                          >Accept</button>
-                          <button
-                            className="rounded-control border border-border px-3 py-1 text-xs font-medium text-muted hover:text-ink"
-                            onClick={() => setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle" } }))}
-                            type="button"
-                          >Discard</button>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {entryAI?.status === "showing" && entryAI.suggestion && (
+                    <SectionSuggestionPanel
+                      onAccept={() => {
+                        const val = entryAI.suggestion!.lines.join("\n");
+                        const previous = exp.bulletsText;
+                        setState((prev) => ({
+                          ...prev,
+                          experience: prev.experience.map((entry, i) => i === idx ? { ...entry, bulletsText: val } : entry),
+                        }));
+                        setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle", undo: previous } }));
+                      }}
+                      onDiscard={() => setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle" } }))}
+                      suggestion={entryAI.suggestion}
+                    />
+                  )}
                   {entryAI?.status === "error" && (
                     <p className="mb-2 text-xs text-danger">{entryAI.error}</p>
                   )}
@@ -880,8 +930,14 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
         {/* Left: editor */}
         <div className="overflow-y-auto border-b border-border bg-panel p-5 lg:border-b-0 lg:border-r">
           <p className="mb-4 text-xs text-muted">
-            Edit any section below. Use ✨ Improve to refine content with AI — it will prioritize evidence-supported job language. The preview updates automatically.
+            Edit any section below. ✨ Improve polishes what is in a box; ↻ Regenerate writes the section again from your approved resume. Both use the job posting, check every claim against your evidence, and show you the result before anything changes. The preview updates automatically.
           </p>
+          <ResumeChecksPanel checks={resumeChecks} />
+          {unitFailureNotice && (
+            <p className="mb-4 rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-xs leading-5 text-muted">
+              {unitFailureNotice} Use ↻ Regenerate on that section to try again.
+            </p>
+          )}
           {tailoringStatus === "source-only" && (
             <p className="mb-4 rounded-control border border-warning/35 bg-warning/8 px-3 py-2 text-xs leading-5 text-muted">
               This draft uses approved source content only{fallbackReason ? ` because AI tailoring could not complete: ${fallbackReason}` : ""}.
@@ -1116,6 +1172,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
             {sectionOrder.map((id, index) => {
               const ai = sectionAI[id] ?? { status: "idle" };
               const canImprove = id !== "experience";
+              const unit = unitForSection(id);
               return (
                 <section className="rounded-panel border border-border bg-surface p-4" key={id}>
                   {/* Section title + controls */}
@@ -1130,25 +1187,6 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                       />
                     </div>
                     <div className="mt-6 flex flex-wrap items-center gap-2">
-                      {canImprove && (
-                        <button
-                          className="text-xs font-medium text-accent hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={ai.status === "loading" || !getSectionContent(id).trim()}
-                          onClick={() => improveSection(id)}
-                          title="Improve this section with AI"
-                          type="button"
-                        >
-                          {ai.status === "loading" ? (
-                            <span className="flex items-center gap-1">
-                              <svg aria-hidden="true" className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-                              </svg>
-                              Improving…
-                            </span>
-                          ) : "✨ Improve"}
-                        </button>
-                      )}
                       <button
                         className="text-xs text-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
                         disabled={index === 0}
@@ -1171,8 +1209,34 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                     </div>
                   </div>
 
-                  {/* AI improvement suggestion */}
-                  {ai.status === "showing" && ai.improved && (
+                  {canImprove && (
+                    <div className="mb-3">
+                      <SectionAIControls
+                        busy={ai.status === "loading"}
+                        busyAction={ai.action}
+                        disabled={!getSectionContent(id).trim()}
+                        inputId={`${id}-ai-note`}
+                        note={aiNotes[id] ?? ""}
+                        onCancel={() => cancelSectionAI(id)}
+                        announcement={announcementFor(ai)}
+                        onImprove={() => (unit ? runSectionAI(id, unit, "improve") : improveSection(id))}
+                        onUndo={ai.undo !== undefined ? () => undoAIImprovement(id) : undefined}
+                        onNoteChange={(value) => setAiNotes((prev) => ({ ...prev, [id]: value }))}
+                        onRegenerate={unit ? () => runSectionAI(id, unit, "regenerate") : undefined}
+                      />
+                    </div>
+                  )}
+
+                  {ai.status === "showing" && ai.suggestion && (
+                    <SectionSuggestionPanel
+                      onAccept={() => acceptAIImprovement(id)}
+                      onDiscard={() => setSectionAI((prev) => ({ ...prev, [id]: { status: "idle" } }))}
+                      suggestion={ai.suggestion}
+                    />
+                  )}
+
+                  {/* Plain rewrite suggestion (Recognition) */}
+                  {ai.status === "showing" && !ai.suggestion && ai.improved && (
                     <div className="mb-4 rounded-control border border-accent/40 bg-accent/5 p-3">
                       <p className="mb-2 text-xs font-semibold text-accent">AI suggestion — review and accept or discard</p>
                       <pre className="mb-3 whitespace-pre-wrap text-xs leading-5 text-ink">{ai.improved}</pre>

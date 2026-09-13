@@ -27,6 +27,11 @@ export type EvidenceAudit = {
   // Selected sections the model handed back as written. Same reason for the
   // structural declaration as `restored`.
   unchanged?: Array<{ path: string; label: string; unchanged: number; total: number }>;
+  // The "ATS & recruiter checks" report as it stood when the draft was generated.
+  // Declared structurally for the same reason as `restored`.
+  checks?: Array<{ id: string; label: string; status: "pass" | "flag"; detail: string }>;
+  // Parts the writer could not produce, kept at their source wording.
+  unitFailures?: Array<{ unit: string; label: string; reason: string }>;
 };
 
 const METRIC_PATTERN = /(?:[$£€]?\d[\d,.]*(?:%|\+)?)(?!\w)/g;
