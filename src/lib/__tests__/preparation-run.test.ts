@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   requestConfig: null as Record<string, unknown> | null,
   researchDelayMs: 0,
   lastSaved: null as Record<string, unknown> | null,
+  compensationUpdates: 0,
 }));
 
 vi.mock("@/lib/db/queries", () => ({
@@ -21,6 +22,11 @@ vi.mock("@/lib/db/queries", () => ({
   saveApplicationPreparation: (input: Record<string, unknown>) => {
     state.saved += 1;
     state.lastSaved = input;
+  },
+  updateApplicationPreparationCompensation: (_jobId: string, _expected: unknown, fields: Record<string, unknown>) => {
+    state.compensationUpdates += 1;
+    state.lastSaved = { ...state.lastSaved, ...fields };
+    return true;
   },
 }));
 
@@ -64,6 +70,7 @@ beforeEach(() => {
   state.requestConfig = null;
   state.researchDelayMs = 0;
   state.lastSaved = null;
+  state.compensationUpdates = 0;
 });
 
 describe("an application preparation run", () => {
@@ -99,7 +106,9 @@ describe("a compensation lookup slower than the model", () => {
     expect(state.saved).toBe(1);
 
     await new Promise((resolve) => setTimeout(resolve, 90));
-    expect(state.saved).toBe(2);
+    // The late result updates the compensation fields only — never a whole re-save.
+    expect(state.saved).toBe(1);
+    expect(state.compensationUpdates).toBe(1);
     expect(state.lastSaved).toMatchObject({ compensationResearchStatus: "completed", researchProvider: "brave" });
   });
 });

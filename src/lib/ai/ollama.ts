@@ -61,9 +61,38 @@ function ollamaReasoningFor(config?: Partial<AIProviderConfig>) {
  */
 const serverQueues = new Map<string, Promise<unknown>>();
 
-export function inTurnForServer<T>(server: string, run: () => Promise<T>): Promise<T> {
+/** Thrown instead of starting a queued request nobody is waiting for any more. */
+export class OllamaRequestSkippedError extends Error {
+  constructor(reason: string) {
+    super(`Ollama request skipped before it started: ${reason}.`);
+    this.name = "OllamaRequestSkippedError";
+  }
+}
+
+/**
+ * Run `run` once every earlier request to `server` has settled — unless, by then, the
+ * request is no longer wanted.
+ *
+ * A caller's deadline or cancellation abandons the promise it is waiting on, not the
+ * work queued behind this lock: a request left in line would otherwise start after its
+ * resume had already finished or been stopped, and hold the local model for minutes
+ * while later work waited behind it. So each queued request checks, as it reaches the
+ * front, whether its run's signal has fired or it has waited longer than any caller's
+ * local deadline.
+ */
+export function inTurnForServer<T>(
+  server: string,
+  run: () => Promise<T>,
+  options: { signal?: AbortSignal; maxWaitMs?: number } = {}
+): Promise<T> {
   const previous = serverQueues.get(server) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(run);
+  const queuedAt = Date.now();
+  const maxWaitMs = options.maxWaitMs ?? LOCAL_GENERATION_TIMEOUT_MS;
+  const next = previous.catch(() => undefined).then(() => {
+    if (options.signal?.aborted) throw new OllamaRequestSkippedError("the run it belonged to had already ended");
+    if (Date.now() - queuedAt > maxWaitMs) throw new OllamaRequestSkippedError(`it waited longer than ${Math.round(maxWaitMs / 1000)}s for its turn`);
+    return run();
+  });
   // A failed request must not block the ones behind it.
   serverQueues.set(server, next.catch(() => undefined));
   return next;
@@ -112,7 +141,7 @@ export class OllamaProvider implements AIProvider {
         temperature: config?.temperature,
         ...ollamaReasoningFor(config),
         messages: this.toMessages(messages)
-      }));
+      }, { signal: config?.signal }), { signal: config?.signal });
       const choice = response.choices[0];
       const text = choice?.message?.content ?? "";
 
@@ -137,6 +166,7 @@ export class OllamaProvider implements AIProvider {
       return text;
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Ollama returned no usable text")) throw error;
+      if (error instanceof OllamaRequestSkippedError) throw error;
       throw humanizeOllamaError(error, this.model);
     }
   }
@@ -157,7 +187,7 @@ export class OllamaProvider implements AIProvider {
         ...ollamaReasoningFor(config),
         response_format: { type: "json_object" },
         messages: this.toMessages(messagesWithJsonHint)
-      }));
+      }, { signal: config?.signal }), { signal: config?.signal });
       const choice = response.choices[0];
       const text = choice?.message?.content ?? "";
       const maxTokens = config?.maxTokens ?? 8192;
@@ -184,6 +214,7 @@ export class OllamaProvider implements AIProvider {
       return parseJsonResponse<T>(text, "Ollama");
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Ollama returned invalid JSON")) throw error;
+      if (error instanceof OllamaRequestSkippedError) throw error;
       throw humanizeOllamaError(error, this.model);
     }
   }

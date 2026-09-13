@@ -1053,7 +1053,12 @@ before the bullets it summarised.
   falls through to Ollama mid-run, the three parts' chains reach it independently, so the
   Ollama adapter serialises its own generations per server (`inTurnForServer` in
   `src/lib/ai/ollama.ts`): the wait happens inside the app's per-provider deadline instead
-  of in Ollama's queue, which drops requests. The summary always runs
+  of in Ollama's queue, which drops requests. A queued request checks, when its turn
+  comes, whether its run has already ended — writing calls pass the run's signal as
+  `AIProviderConfig.signal`, which `withChainDeadline` fires on success, timeout or
+  cancel — and whether it has waited past the local deadline, and is skipped if either
+  is true (`OllamaRequestSkippedError`). The same signal aborts an in-flight Ollama
+  request, so a stopped resume stops using the local model. The summary always runs
   last, from `summaryContextFor` the parts as they were just written, so it describes the
   resume being sent.
 - **Shared prefix.** Every call's system prompt (`buildUnitSystemPrompt`) and candidate/
@@ -1375,7 +1380,13 @@ structured AI call producing:
   wait the preparation is saved with `compensation_research_status = not_run`, and the
   lookup finishes in the background and fills in the saved row — only if that row still
   has the same JD and evidence hashes and is still `not_run`, so it never overwrites a
-  newer preparation. If the model call fails, the one search has already been made.
+  newer preparation. The late result is written by `updateApplicationPreparationCompensation`,
+  which updates the compensation columns only: re-saving the older run's whole record
+  put its requirements, keywords and evidence map back over a newer preparation for the
+  same job. While research is pending the saved salary answer says research *had not
+  finished* rather than that it was unavailable, and application answers drafted in that
+  window use the saved target. If the model call fails, the one search has already been
+  made.
 
   Claude's server-side search tool comes in two variants, and the wrong one is rejected,
   so `AnthropicProvider.webSearch` picks it from the model that actually resolved:
@@ -2251,7 +2262,8 @@ the row:
 
 ### AI Providers
 - **Resume writing uses** — a select under the priority list: *Same as provider
-  priority* (default) or any provider that has a credential (Ollama always appears). The
+  priority* (default) or any provider that has a credential (Ollama only once switched on
+  and answering — see below). The
   chosen provider handles Application Preparation, resume tailoring, and ✨ Improve, with
   the enabled chain behind it as fallbacks; everything else keeps using the priority
   list. It exists so a user can score jobs on a free local model and still have the

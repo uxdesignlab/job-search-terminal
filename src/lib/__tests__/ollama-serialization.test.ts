@@ -51,3 +51,34 @@ describe("requests to one Ollama server", () => {
     expect(peak).toBe(1);
   });
 });
+
+describe("a queued Ollama request nobody is waiting for", () => {
+  it("is skipped when its run has already ended", async () => {
+    let release: () => void = () => {};
+    const slow = inTurnForServer("http://localhost:11500/v1", () => new Promise<void>((resolve) => { release = resolve; }));
+    const run = new AbortController();
+    let started = false;
+    const queued = inTurnForServer("http://localhost:11500/v1", async () => { started = true; }, { signal: run.signal });
+
+    // The resume finished or was stopped while this request waited its turn.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    run.abort();
+    release();
+    await slow;
+    await expect(queued).rejects.toThrow("skipped before it started");
+    expect(started).toBe(false);
+  });
+
+  it("is skipped when it waited longer than any caller's deadline", async () => {
+    let release: () => void = () => {};
+    const slow = inTurnForServer("http://localhost:11501/v1", () => new Promise<void>((resolve) => { release = resolve; }));
+    let started = false;
+    const queued = inTurnForServer("http://localhost:11501/v1", async () => { started = true; }, { maxWaitMs: 5 });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    await slow;
+    await expect(queued).rejects.toThrow("waited longer than");
+    expect(started).toBe(false);
+  });
+});

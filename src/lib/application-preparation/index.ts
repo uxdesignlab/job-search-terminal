@@ -12,6 +12,7 @@ import {
   getSkills,
   getUserProfile,
   saveApplicationPreparation,
+  updateApplicationPreparationCompensation,
 } from "../db/queries";
 import type {
   ApplicationPreparationInput,
@@ -323,7 +324,7 @@ export async function prepareApplication(jobId: string, options: PreparationOpti
         // Extraction against explicit rules, not open reasoning: a thinking pass on a
         // local model spent most of this call's two minutes and changed nothing the
         // validators below do not already enforce.
-        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS, reasoning: "low", temperature: 0.2 }
+        { maxTokens: STRUCTURED_OUTPUT_MAX_TOKENS, reasoning: "low", temperature: 0.2, signal: runSignal }
       ), 3, 1500, runSignal),
       runDeadlineMs(provider as { name: string; providerNames?: string[] }),
       options.signal
@@ -386,13 +387,10 @@ export async function prepareApplication(jobId: string, options: PreparationOpti
   if (!settled) {
     void researchRun
       .then((late) => {
-        // Only onto the preparation this run saved. A newer one — regenerated because the
-        // posting or the evidence changed — owns its own compensation answer.
-        const stored = getApplicationPreparation(jobId);
-        if (!stored || stored.jdHash !== current.jdHash || stored.evidenceHash !== current.evidenceHash) return;
-        if (stored.compensationResearchStatus !== "not_run") return;
-        saveApplicationPreparation({
-          ...input,
+        // Compensation columns only, and only while the stored row is for the same
+        // posting and evidence and still waiting. Re-saving this run's whole record
+        // could overwrite a newer preparation's requirements and keywords.
+        updateApplicationPreparationCompensation(jobId, current, {
           marketCompensation: late.market,
           compensationSources: late.sources,
           compensationResearchStatus: late.status,

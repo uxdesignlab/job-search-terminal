@@ -15,6 +15,24 @@ the numbers mean and when they change.
 
 ---
 
+## 0.16.2 — 2026-09-13 — Tidying up after a stop
+
+**Fixed**
+
+- **Stopping a resume stops your local model too.** Parts waiting for their turn on
+  Ollama used to start anyway after the resume had finished or you pressed Stop, keeping
+  your computer busy and making the next job wait. They are now skipped, and a part
+  already running is cancelled.
+- **A late salary result no longer overwrites newer resume preparation.** If you made a
+  resume for the same job twice in quick succession — in two tabs, say — the first run's
+  salary search could finish last and put back that run's older requirements and
+  keywords. It now fills in only the salary details.
+- **The salary answer is honest while research is still running.** It used to say market
+  research was unavailable when it simply had not finished. It now says so, and Help
+  explains how to draft the answer again to include the research.
+
+---
+
 ## 0.16.1 — 2026-09-13 — Fixes from review
 
 **Fixed**
