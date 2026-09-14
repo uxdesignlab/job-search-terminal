@@ -32,6 +32,7 @@ import {
   planKeywordPlacements,
   runUnits,
   sentenceCase,
+  summaryContextFor,
   unitKey,
   unitsForDraft,
   validateUnitOutput,
@@ -267,6 +268,39 @@ describe("aligning the summary with the posting's title", () => {
     const task = buildUnitTask(withTitle, { unit: { kind: "summary" }, label: "Professional summary", lines: [draft.summary], mode: "tailor" });
     expect(task).toContain('closest title the candidate has actually held is "Director of User Experience" at Fabrikam');
     expect(task).toContain("never claim the posting's title itself");
+  });
+});
+
+describe("tailoring an approved summary", () => {
+  it("keeps the approved summary's structure and figures instead of rebuilding it from the resume", () => {
+    // The bug: told to "write the summary from" the rest of the resume, the writer put
+    // team sizes from the experience bullets back into a summary the candidate had
+    // deliberately written without them.
+    const task = buildUnitTask(context, {
+      unit: { kind: "summary" },
+      label: "Professional summary",
+      lines: [draft.summary],
+      context: summaryContextFor(draft),
+      mode: "tailor",
+    });
+    expect(task).toContain("the candidate's approved wording");
+    expect(task).toContain("add no number it does not state");
+    expect(task).toContain("for consistency only");
+    expect(task).not.toContain("write the summary from this");
+    expect(buildUnitSystemPrompt(context)).toContain("do not bring in a team size, count, percentage, or amount the current summary leaves out");
+  });
+
+  it("still writes a missing summary from the rest of the resume", () => {
+    const blank = { ...draft, summary: "" };
+    const task = buildUnitTask(context, {
+      unit: { kind: "summary" },
+      label: "Professional summary",
+      lines: [""],
+      context: summaryContextFor(blank),
+      mode: "tailor",
+    });
+    expect(task).toContain("write the summary from this");
+    expect(task).toContain("There is no summary yet");
   });
 });
 

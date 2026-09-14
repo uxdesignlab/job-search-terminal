@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveSectionModes } from "../documents/resume-generator";
-import type { ResumeBuilderSection } from "../db/types";
+import { resolveSectionModes, templateFromApprovedSections } from "../documents/resume-generator";
+import type { JobRecord, ResumeBuilderSection, UserProfileRecord } from "../db/types";
 
 const section = (id: string, type: ResumeBuilderSection["type"]): ResumeBuilderSection => ({
   id,
@@ -41,5 +41,17 @@ describe("resume section modes", () => {
 
     expect(modes.filter((mode) => mode.sectionId === "experience")).toHaveLength(1);
     expect(new Map(modes.map((mode) => [mode.sectionId, mode.mode])).get("experience")).toBe("update");
+  });
+
+  it("prints the summary under the heading the approved lane gives it", () => {
+    // Every generated resume said "Professional Summary" over an approved "Summary",
+    // which made a freshly generated resume look like an older version.
+    const profile = { name: "Sam Lee", location: "", portfolio: "" } as UserProfileRecord;
+    const job = { title: "Design Director" } as JobRecord;
+    const titled = templateFromApprovedSections([{ ...section("summary", "summary"), title: "Summary", text: "Leads design." }], profile, job, []);
+    expect(titled.summaryHeading).toBe("Summary");
+
+    const untitled = templateFromApprovedSections([{ ...section("summary", "summary"), title: "", text: "Leads design." }], profile, job, []);
+    expect(untitled.summaryHeading).toBe("Professional Summary");
   });
 });

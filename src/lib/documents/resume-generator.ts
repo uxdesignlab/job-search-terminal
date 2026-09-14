@@ -748,6 +748,7 @@ function buildTailoredContent(
     headline: source.headline,
     contactItems: source.contactItems,
     title: job.title,
+    summaryHeading: source.summaryHeading,
     summary: source.summary,
     impactHeading: source.impactHeading,
     impactItems: shouldRank("impact") ? rankItems(source.impactItems, rankingKeywords).slice(0, source.impactItems.length) : source.impactItems,
@@ -805,6 +806,7 @@ export function templateFromApprovedSections(
     headline: "",
     contactItems: [profile.location, profile.portfolio].filter(Boolean),
     title: job.title,
+    summaryHeading: "Professional Summary",
     summary: "",
     impactHeading: "Key Achievements",
     impactItems: [],
@@ -826,6 +828,9 @@ export function templateFromApprovedSections(
       template.headline = section.header.headline;
       template.contactItems = section.header.contactItems.length > 0 ? section.header.contactItems : template.contactItems;
     } else if (section.type === "summary") {
+      // The heading the user gave the section. Without it every generated resume
+      // printed "Professional Summary" over an approved "Summary".
+      template.summaryHeading = section.title || template.summaryHeading;
       template.summary = section.text ?? "";
     } else if (section.type === "impact") {
       template.impactHeading = section.title || template.impactHeading;
