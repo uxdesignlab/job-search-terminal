@@ -181,9 +181,11 @@ HOW TO WRITE A BULLET:
 - If a line is already specific and relevant to this posting, you may keep its wording.
 
 HOW TO WRITE A SUMMARY:
+- When a current summary is given, it is the candidate's own approved wording. Tailor it; do not replace it. Keep its sentences, their order, and what each one says, and change the words to bring in this posting's supported language.
+- A summary tailored that way keeps exactly the numbers it already states. The rest of the resume is there to keep the summary consistent, not to supply new figures: do not bring in a team size, count, percentage, or amount the current summary leaves out. The candidate chose what the summary shows.
 - ${MAX_SUMMARY_SENTENCES - 2} to ${MAX_SUMMARY_SENTENCES} sentences, at most ${MAX_SUMMARY_WORDS} words.
 - Open with the candidate's professional identity and scope, as the resume states them.
-- Follow with the proof that matches this posting's must-haves most closely.
+- With no current summary, follow with the proof that matches this posting's must-haves most closely.
 - Use each supported keyword at most once. Plain words over impressive ones.
 
 USER TUNING PROMPT:
@@ -246,8 +248,11 @@ export function buildUnitTask(ctx: UnitWriterContext, input: UnitInput): string 
   if (input.context) parts.push(input.context);
 
   if (input.unit.kind === "summary") {
+    // An approved summary is a set of choices — which identity, which scope, which
+    // figures. Told to "write the summary from" the rest of the resume, the writer
+    // rebuilt it from scratch and put back team sizes the candidate had removed.
     parts.push(input.lines[0]?.trim()
-      ? `Current summary:\n${input.lines[0]}`
+      ? `Current summary — the candidate's approved wording. Keep its sentences, their order, and every number in it; add no number it does not state:\n${input.lines[0]}`
       : "There is no summary yet. Write one from what the resume says below.");
     const held = closestHeldTitle(ctx.evidenceDraft, ctx.job.title);
     if (held) {
@@ -586,13 +591,19 @@ export function planKeywordPlacements(
   return placements;
 }
 
-/** What the rest of the resume says, for the summary to be written from. */
+/**
+ * What the rest of the resume says. With no summary yet the summary is written from it;
+ * with one, it is only there to keep the tailored summary consistent with the parts.
+ */
 export function summaryContextFor(draft: ResumeTemplateInput): string {
   const impact = draft.impactItems.length > 0 ? `${draft.impactHeading}:\n${draft.impactItems.map((item) => `- ${item}`).join("\n")}\n\n` : "";
   const roles = draft.experience
     .map((entry) => `${[entry.title, entry.organization].filter(Boolean).join(", ")}${entry.dateRange ? ` (${entry.dateRange})` : ""}\n${entry.bullets.map((bullet) => `- ${bullet}`).join("\n")}`)
     .join("\n");
-  return `What the tailored resume now says — write the summary from this:\n${draft.headline ? `Headline: ${draft.headline}\n` : ""}${impact}${roles}`;
+  const lead = draft.summary.trim()
+    ? "What the tailored resume now says — for consistency only. Do not copy its figures into the summary"
+    : "What the tailored resume now says — write the summary from this";
+  return `${lead}:\n${draft.headline ? `Headline: ${draft.headline}\n` : ""}${impact}${roles}`;
 }
 
 function copyDraft(draft: ResumeTemplateInput): ResumeTemplateInput {

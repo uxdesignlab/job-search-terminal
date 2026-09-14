@@ -15,6 +15,19 @@ the numbers mean and when they change.
 
 ---
 
+## 0.16.4 — 2026-09-14 — Summaries that stay yours
+
+**Fixed**
+
+- **A tailored summary stays close to the one you approved.** The AI rebuilt the
+  summary from the rest of your resume. So figures you had taken out, like team sizes
+  from your experience section, came back in. It is now told to keep your sentences and
+  their order, and to add no numbers your approved summary leaves out. This is an
+  instruction to the AI, not a hard check, so review the draft. Generate the resume again
+  to get the new summary.
+- **The summary heading matches your approved resume.** Generated resumes always printed
+  "Professional Summary", even when your approved resume called the section "Summary".
+
 ## 0.16.3 — 2026-09-13 — Salary research reaches AI answers
 
 **Fixed**

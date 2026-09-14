@@ -1104,6 +1104,22 @@ before the bullets it summarised.
 - **One repair, bounded.** Each part is checked by `lintPart` (see *Resume checks*). A
   part that breaks a rule is sent back once with the specific problems listed; the answer
   with fewer problems wins, and any that remain are reported, not retried.
+- **An approved summary is tailored, not rebuilt.** When the approved lane has summary
+  text, the summary task labels it as the candidate's approved wording and asks the
+  writer to keep its sentences, their order, and every number in it, and to add no number
+  it does not state. `summaryContextFor` labels the rest of the resume as *for consistency
+  only* in that case, and as the thing to *write the summary from* only when the summary
+  is empty. The system prompt's summary rubric says the same. Before this, the writer
+  was told to write the summary from the rest of the resume and rebuilt it from scratch.
+  That put team sizes from experience bullets back into a summary written without them.
+  The evidence guard could not catch it, because it accepts a summary figure stated
+  anywhere in the resume. This is a prompt instruction, not a deterministic check. It
+  applies to full generation and to ↻ Regenerate and ✨ Improve on the summary, which
+  share the same task.
+- **Summary heading follows the lane.** `templateFromApprovedSections` copies the summary
+  section's title into `summaryHeading` (falling back to "Professional Summary"), and
+  `buildTailoredContent` carries it into the draft. It was previously dropped, so every
+  generated resume printed "Professional Summary" whatever the lane called the section.
 - **An empty summary is still written.** Whether the summary is written depends on the
   section being present and set to update, and on the draft having bullets or key
   achievements to write it from — not on the approved lane having summary text. A lane

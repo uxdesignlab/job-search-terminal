@@ -214,7 +214,9 @@ export async function rewriteSection(input: {
     label: labelFor(current, unit),
     lines: startingLines,
     context: unit.kind === "summary"
-      ? summaryContextFor(current)
+      // Labelled by the summary this call starts from — the approved one on ↻ Regenerate,
+      // even when the editor box was emptied.
+      ? summaryContextFor({ ...current, summary: startingLines[0] ?? "" })
       : unit.kind === "role" && current.experience[unit.index]
         ? `Role: ${labelFor(current, unit)}${current.experience[unit.index].dateRange ? ` (${current.experience[unit.index].dateRange})` : ""}`
         : undefined,
