@@ -272,10 +272,9 @@ describe("aligning the summary with the posting's title", () => {
 });
 
 describe("tailoring an approved summary", () => {
-  it("keeps the approved summary's structure and figures instead of rebuilding it from the resume", () => {
-    // The bug: told to "write the summary from" the rest of the resume, the writer put
-    // team sizes from the experience bullets back into a summary the candidate had
-    // deliberately written without them.
+  it("tailors from the approved summary as its foundation instead of rebuilding it from the resume", () => {
+    // The bug: told to "write the summary from" the rest of the resume, the writer
+    // discarded the approved summary and wrote a different one from the bullets.
     const task = buildUnitTask(context, {
       unit: { kind: "summary" },
       label: "Professional summary",
@@ -283,11 +282,12 @@ describe("tailoring an approved summary", () => {
       context: summaryContextFor(draft),
       mode: "tailor",
     });
-    expect(task).toContain("the candidate's approved wording");
-    expect(task).toContain("add no number it does not state");
-    expect(task).toContain("for consistency only");
+    expect(task).toContain("Current summary — the foundation. Tailor it for this posting; do not replace it");
+    expect(task).toContain("not to rebuild the summary from");
     expect(task).not.toContain("write the summary from this");
-    expect(buildUnitSystemPrompt(context)).toContain("do not bring in a team size, count, percentage, or amount the current summary leaves out");
+    const rubric = buildUnitSystemPrompt(context);
+    expect(rubric).toContain("it is the foundation. Build on it; do not replace it");
+    expect(rubric).toContain("bring the posting's supported language and must-haves forward");
   });
 
   it("still writes a missing summary from the rest of the resume", () => {

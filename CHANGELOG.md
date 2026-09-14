@@ -15,6 +15,17 @@ the numbers mean and when they change.
 
 ---
 
+## 0.16.5 — 2026-09-14 — Summaries built on your approved version
+
+**Changed**
+
+- **The AI tailors your summary from the one you approved.** 0.16.4 told it mainly to
+  keep your numbers and add none. That was the wrong focus: the real problem was that it
+  threw your summary away and wrote a new one. Now your approved summary is the starting
+  point. The AI keeps who you are and what you lead with, and moves the focus and wording
+  toward the job, following the same resume writing rules as the rest of the resume.
+  Generate the resume again to get the new summary.
+
 ## 0.16.4 — 2026-09-14 — Summaries that stay yours
 
 **Fixed**

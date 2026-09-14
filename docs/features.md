@@ -1104,18 +1104,22 @@ before the bullets it summarised.
 - **One repair, bounded.** Each part is checked by `lintPart` (see *Resume checks*). A
   part that breaks a rule is sent back once with the specific problems listed; the answer
   with fewer problems wins, and any that remain are reported, not retried.
-- **An approved summary is tailored, not rebuilt.** When the approved lane has summary
-  text, the summary task labels it as the candidate's approved wording and asks the
-  writer to keep its sentences, their order, and every number in it, and to add no number
-  it does not state. `summaryContextFor` labels the rest of the resume as *for consistency
-  only* in that case, and as the thing to *write the summary from* only when the summary
-  is empty. The system prompt's summary rubric says the same. Before this, the writer
-  was told to write the summary from the rest of the resume and rebuilt it from scratch.
-  That put team sizes from experience bullets back into a summary written without them.
-  The evidence guard could not catch it, because it accepts a summary figure stated
-  anywhere in the resume. This is a prompt instruction, not a deterministic check. It
-  applies to full generation and to ↻ Regenerate and ✨ Improve on the summary, which
-  share the same task.
+- **An approved summary is the foundation.** The goal is a summary tailored for the
+  posting, built on the approved one and written to resume best practices. When the
+  approved lane has summary text, the summary task labels it *the foundation* and asks
+  the writer to tailor it rather than replace it. The system prompt's summary rubric
+  spells that out: keep its professional identity, main claims, and what it leads with;
+  bring the posting's supported language and must-haves forward, shift emphasis toward
+  what the job needs, and tighten the wording. The rest of the resume may back up a point
+  that serves the posting, but is not a reason to rebuild the summary.
+  `summaryContextFor` labels the resume *to keep the summary consistent with it, not to
+  rebuild the summary from* in that case. Only when the summary is empty is it the thing
+  to *write the summary from*. Before 0.16.4 the writer was told to write the summary
+  from the rest of the resume, discarded the approved one, and wrote a different summary
+  from the bullets. 0.16.4 framed the fix as keeping every number and adding none;
+  0.16.5 replaced that with the foundation framing, because the defect was the rebuild,
+  not the figures. There is deliberately no number check. Applies to full generation and
+  to ↻ Regenerate and ✨ Improve on the summary, which share the same task.
 - **Summary heading follows the lane.** `templateFromApprovedSections` copies the summary
   section's title into `summaryHeading` (falling back to "Professional Summary"), and
   `buildTailoredContent` carries it into the draft. It was previously dropped, so every
