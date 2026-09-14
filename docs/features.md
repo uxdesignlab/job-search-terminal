@@ -1118,7 +1118,7 @@ before the bullets it summarised.
   from the rest of the resume, discarded the approved one, and wrote a different summary
   from the bullets. 0.16.4 framed the fix as keeping every number and adding none;
   0.16.5 replaced that with the foundation framing, because the defect was the rebuild,
-  not the figures. There is deliberately no number check. Applies to full generation and
+  not the figures. There is deliberately no number check. Truth rule 2 (keep a source line's numbers, add none the evidence does not give for that line) defines its summary case, since a summary has no single source line: a figure must be stated in the approved resume or a confirmed gap answer for the same work, never combined, inflated, or moved. Without that, the foundation rubric's "back up a point" and the mandatory per-line rule contradicted each other, and the outcome depended on the model. Applies to full generation and
   to ↻ Regenerate and ✨ Improve on the summary, which share the same task.
 - **Summary heading follows the lane.** `templateFromApprovedSections` copies the summary
   section's title into `summaryHeading` (falling back to "Professional Summary"), and

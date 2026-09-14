@@ -288,6 +288,9 @@ describe("tailoring an approved summary", () => {
     const rubric = buildUnitSystemPrompt(context);
     expect(rubric).toContain("it is the foundation. Build on it; do not replace it");
     expect(rubric).toContain("bring the posting's supported language and must-haves forward");
+    // The per-line number rule has no "line" to mean for a summary; without this the
+    // foundation rubric and a mandatory truth rule contradicted each other.
+    expect(rubric).toContain("A summary has no single source line: a number in it must be stated in the approved resume or a confirmed gap answer for the same work it describes");
   });
 
   it("still writes a missing summary from the rest of the resume", () => {

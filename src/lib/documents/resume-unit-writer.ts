@@ -161,7 +161,7 @@ export function buildUnitSystemPrompt(ctx: Pick<UnitWriterContext, "job" | "eval
 
 TRUTH RULES — breaking any of these is a failure:
 1. Use only facts found in the candidate's approved resume, confirmed gap answers, and profile context below. Never invent or imply an achievement, number, tool, employer, title, industry, credential, degree, responsibility, date, or level of seniority.
-2. Keep every number that appears in a source line. Never add a number that the evidence does not give for that line.
+2. Keep every number that appears in a source line. Never add a number that the evidence does not give for that line. A summary has no single source line: a number in it must be stated in the approved resume or a confirmed gap answer for the same work it describes, never combined, inflated, or moved onto different work.
 3. Keep each line about the work it described. Do not move facts between jobs, projects, or time periods, and do not merge two lines into one.
 4. Return every source line exactly once. You may change the order and the wording. You may not drop lines or add new ones.
 5. Never put the target job title on a job the candidate held. Use the target title in the summary only if the evidence shows that field and level; otherwise use an honest nearby description.
