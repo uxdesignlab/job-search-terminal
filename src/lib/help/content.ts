@@ -918,7 +918,7 @@ export const helpPages: HelpPage[] = [
 	          },
           {
             title: "Choose section handling",
-            body: "For each approved section, choose whether to keep it unchanged, let AI update it, or hide it from this generated resume. When AI updates your summary, it starts from the summary you approved. It keeps your sentences in the same order and changes the wording to fit the job. It is told not to add numbers your summary leaves out, such as team sizes, even if they appear elsewhere in your resume. The AI usually follows this, but check the draft before you use it. If a number should appear in the summary, put it in your approved summary. The heading prints as you named it in your approved resume.",
+            body: "For each approved section, choose whether to keep it unchanged, let AI update it, or hide it from this generated resume. When AI updates your summary, it builds on the summary you approved instead of writing a new one. It keeps who you are and what you lead with, then shifts the focus and wording toward what this job asks for. It uses only what your resume and confirmed answers support. Check the draft before you use it: the AI can still drift from your wording. The heading prints as you named it in your approved resume.",
           },
           {
             title: "Use confirmed context only",
