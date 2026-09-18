@@ -17,7 +17,7 @@ const CLOSED = [
 ];
 const CHALLENGE = /verify (?:you are|you're) human|checking your browser|access denied|captcha|just a moment|sign in to (?:view|continue)|log in to (?:view|continue)/i;
 const APPLY = /apply (?:now|for this (?:job|role|position))|submit (?:your |an )?application/i;
-const BOARD_HOSTS = ["himalayas.app", "adzuna.com", "adzuna.co.uk", "adzuna.ca", "adzuna.com.au", "linkedin.com", "indeed.com", "glassdoor.com", "monster.com", "dice.com", "wellfound.com", "jobgether.com", "jooble.org", "jobrapido.com", "lensa.com", "talent.com", "ziprecruiter.com"];
+const BOARD_HOSTS = ["himalayas.app", "adzuna.com", "adzuna.co.uk", "adzuna.ca", "adzuna.com.au", "linkedin.com", "indeed.com", "glassdoor.com", "monster.com", "dice.com", "wellfound.com", "remoterocketship.com", "jobgether.com", "jooble.org", "jobrapido.com", "lensa.com", "talent.com", "ziprecruiter.com"];
 
 function hostIs(url: string, hosts: string[]) {
   try { const host = new URL(url).hostname.toLowerCase(); return hosts.some((h) => host === h || host.endsWith(`.${h}`)); } catch { return false; }

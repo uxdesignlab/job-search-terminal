@@ -21,6 +21,11 @@ describe("posting evidence", () => {
     mocks.safeFetch.mockResolvedValue(response(open, 200, board));
     expect((await checkJobLiveness(board, identity)).status).toBe("uncertain");
   });
+  it("does not treat a Remote Rocketship listing as employer proof", async () => {
+    const remoteRocketship = "https://www.remoterocketship.com/company/acme/jobs/design-director-united-states-remote";
+    mocks.safeFetch.mockResolvedValue(response(open, 200, remoteRocketship));
+    expect((await checkJobLiveness(remoteRocketship, identity)).status).toBe("uncertain");
+  });
   it.each(["https://careers.example.com/", "https://careers.example.com/jobs", "https://careers.example.com/login"])("treats general redirect %s as uncertain", async (url) => {
     mocks.safeFetch.mockResolvedValue(response(open, 200, url));
     expect((await checkJobLiveness(employer, identity)).status).toBe("uncertain");

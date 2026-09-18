@@ -23,6 +23,8 @@ the numbers mean and when they change.
   verification. Their automatic posting-link lookup was mistaken for a manual
   action and kept them protected. Saved reviews and other deliberate work still
   protect jobs. Nothing is archived automatically.
+- A Remote Rocketship listing alone no longer counts as proof that the employer
+  is still hiring for that role.
 
 ## 0.17.0 — 2026-09-18 — Clear old jobs with confidence
 
