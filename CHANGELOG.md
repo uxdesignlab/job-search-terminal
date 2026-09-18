@@ -15,6 +15,22 @@ the numbers mean and when they change.
 
 ---
 
+## 0.17.2 — 2026-09-18 — Politer posting checks
+
+**Changed**
+
+- Checking postings now spaces out its requests to each job site instead of
+  sending them as fast as the network allows. A long list takes several minutes
+  rather than seconds. The trade is deliberate: bursts are what get an app
+  mistaken for a bot and blocked. Stop still ends a run straight away, including
+  a request that is waiting its turn.
+
+**Fixed**
+
+- A Work at a Startup listing alone no longer counts as proof that the employer
+  is still hiring. The same now applies to We Work Remotely, RemoteOK, Remotive,
+  Built In and Otta.
+
 ## 0.17.1 — 2026-09-18 — Imported jobs can be reviewed for cleanup
 
 **Fixed**

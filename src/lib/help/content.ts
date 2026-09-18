@@ -568,7 +568,7 @@ export const helpPages: HelpPage[] = [
         title: "Clear old jobs without losing your work",
         intro: "Job list maintenance checks untouched jobs marked Found. Jobs you have edited, reviewed, applied to, or prepared work for are protected, even if you change their status back to Found. Opening a job alone does not protect it.",
         steps: [
-          { title: "Check the postings", body: "On Jobs, click Verify active postings. The count shows progress. Click Stop if you need to end the check; completed results stay available." },
+          { title: "Check the postings", body: "On Jobs, click Verify active postings. The count shows progress. A long list takes several minutes: the app deliberately spaces out its requests so it does not hammer any one job site. Click Stop if you need to end the check; completed results stay available." },
           { title: "Review the reasons", body: "Posting closed or unavailable means the check found evidence that the posting is gone or closed. 30+ days old · Could not verify means the job has been saved here for at least 30 days and the app cannot confirm it is open. That job may still be available." },
           { title: "Choose jobs to archive", body: "Search the candidates or use Cleanup reason and Sort by. Each row shows when it was saved, why it was listed, and when it was checked. Use Checked posting link to inspect the evidence page when a link is available." },
           { title: "Confirm the count", body: "Click Archive selected, then confirm the count. Jobs you have acted on since the check are kept. Nothing is archived just because you ran a check." },
@@ -1011,7 +1011,7 @@ export const helpPages: HelpPage[] = [
         ],
       },
     ],
-    related: ["resume-lanes", "ai-providers", "applications"],
+    related: ["resume-lanes", "applications", "interview-prep"],
   },
   {
     slug: "applications",
@@ -1263,6 +1263,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Could not verify can mean the site needs a login, blocks automated checks, times out, or only shows a general page. Open the checked posting link to inspect it yourself. A job is not marked closed just because its site could not be reached.",
           "If verification stops or loses its connection, completed results remain available. Run Verify active postings again to check the remaining jobs.",
+          "A check on a long list is slow on purpose. The app waits between requests to the same job site so it is not mistaken for a bot and blocked. Leave it running, or click Stop and run it again later.",
           "Cleanup keeps jobs with deliberate activity, statuses other than Found, or less than 24 hours in the app. Jobs with a missing or invalid saved date are also kept. If a job changes after preview, it is checked again and may be skipped.",
           "If you imported jobs from a private page before this update, run Verify active postings again. The app now treats the import's automatic link lookup as part of the scan, so untouched Found jobs can appear in the cleanup preview.",
           "If archiving fails, retry. An archive batch is saved together, so a database failure does not leave half the batch archived. Open Why jobs were kept to inspect skipped results.",

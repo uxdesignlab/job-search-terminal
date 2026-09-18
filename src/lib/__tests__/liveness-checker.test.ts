@@ -21,6 +21,23 @@ describe("posting evidence", () => {
     mocks.safeFetch.mockResolvedValue(response(open, 200, board));
     expect((await checkJobLiveness(board, identity)).status).toBe("uncertain");
   });
+  it("paces repeat requests to the same host", async () => {
+    process.env.JST_LIVENESS_HOST_GAP_MS = "40";
+    try {
+      mocks.safeFetch.mockResolvedValue(response(open));
+      const started = Date.now();
+      await checkJobLiveness(employer, identity);
+      await checkJobLiveness(employer, identity);
+      await checkJobLiveness(employer, identity);
+      // First goes straight through; the next two wait one gap each.
+      expect(Date.now() - started).toBeGreaterThanOrEqual(70);
+    } finally { process.env.JST_LIVENESS_HOST_GAP_MS = "0"; }
+  });
+  it("treats Work at a Startup as a job board", async () => {
+    const wass = "https://www.workatastartup.com/jobs/12345";
+    mocks.safeFetch.mockResolvedValue(response(open, 200, wass));
+    expect((await checkJobLiveness(wass, identity)).status).toBe("uncertain");
+  });
   it("does not treat a Remote Rocketship listing as employer proof", async () => {
     const remoteRocketship = "https://www.remoterocketship.com/company/acme/jobs/design-director-united-states-remote";
     mocks.safeFetch.mockResolvedValue(response(open, 200, remoteRocketship));

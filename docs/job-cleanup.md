@@ -23,21 +23,29 @@ six concurrent jobs, and a 12-second timeout per URL. A verdict settled by statu
 code or URL alone releases the response body without reading it, so the socket is
 freed for the next job rather than held until the stream is collected. The
 session-gated host list is read once per process; edits apply on restart.
+
+Requests are paced to one per host per second. A saved list is usually dominated
+by a handful of boards, so without pacing six workers would hit one host as fast
+as the network allowed. Workers still run concurrently across different hosts;
+only same-host requests queue, which is what makes a large run take minutes
+rather than seconds. The wait is taken before the 12-second timeout starts, so
+queuing never counts against a check, and Stop interrupts a waiting request as
+well as an in-flight one. `JST_LIVENESS_HOST_GAP_MS` overrides the gap in
+milliseconds; `0` disables pacing and is what the test suite sets.
 The checker does not log in, click Apply, use AI, or send profile/resume data.
 
 `POST /api/jobs/liveness` retains JSON responses by default. With
 `Accept: application/x-ndjson`, it emits `progress` and `result` events containing
 `CleanupSummary`, or an `error` event. Summary includes checked/total/protected,
-active/uncertain counts, candidates, and compatibility fields expiredUntouched,
-expiredProtected and outOfScope (the latter two are empty). Candidate records
+active/uncertain counts, and candidates. Candidate records
 include identity, source, saved date, cleanup reason, evidence URL/text, and check
 time. Stop aborts client and server fetches. Received completed results remain
 reviewable; cancelled and unchecked jobs are never added to that preview.
 
 `DELETE /api/jobs/liveness` accepts `{ ids: string[] }` and rechecks current saved
 evidence, status, age, archive state and activity inside one SQLite write
-transaction. It returns archivedIds, archived, skipped (IDs and reasons), plus
-legacy deleted/kept aliases. It never permanently deletes jobs. Failure rolls
+transaction. It returns archivedIds, archived and skipped (IDs and reasons).
+It never permanently deletes jobs. Failure rolls
 back the batch. Protected jobs changed since preview are skipped. Evidence and
 cleanup reason are retained; activity_log records the archive. Restoring is a
 deliberate action and permanently protects the job. Found archived records remain

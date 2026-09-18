@@ -17,7 +17,9 @@ const CLOSED = [
 ];
 const CHALLENGE = /verify (?:you are|you're) human|checking your browser|access denied|captcha|just a moment|sign in to (?:view|continue)|log in to (?:view|continue)/i;
 const APPLY = /apply (?:now|for this (?:job|role|position))|submit (?:your |an )?application/i;
-const BOARD_HOSTS = ["himalayas.app", "adzuna.com", "adzuna.co.uk", "adzuna.ca", "adzuna.com.au", "linkedin.com", "indeed.com", "glassdoor.com", "monster.com", "dice.com", "wellfound.com", "remoterocketship.com", "jobgether.com", "jooble.org", "jobrapido.com", "lensa.com", "talent.com", "ziprecruiter.com"];
+// A listing here is never proof the employer is still hiring, only that the board still shows it.
+// Every board the scanner imports from belongs in this list.
+const BOARD_HOSTS = ["himalayas.app", "adzuna.com", "adzuna.co.uk", "adzuna.ca", "adzuna.com.au", "linkedin.com", "indeed.com", "glassdoor.com", "monster.com", "dice.com", "wellfound.com", "workatastartup.com", "remoterocketship.com", "jobgether.com", "jooble.org", "jobrapido.com", "lensa.com", "talent.com", "ziprecruiter.com", "weworkremotely.com", "remoteok.com", "remotive.com", "builtin.com", "otta.com"];
 
 function hostIs(url: string, hosts: string[]) {
   try { const host = new URL(url).hostname.toLowerCase(); return hosts.some((h) => host === h || host.endsWith(`.${h}`)); } catch { return false; }
@@ -36,6 +38,41 @@ function sessionGatedHostList() {
   return sessionGatedHosts;
 }
 function sessionGated(url: string) { return hostIs(url, sessionGatedHostList()); }
+/**
+ * One request per host per second, so a run of several hundred jobs on the same board
+ * does not arrive as a burst. Six workers still run concurrently across different hosts.
+ * Reserving the slot before waiting is what serialises callers: each one claims the next
+ * gap and sleeps until it, so two jobs on one host can never take the same slot.
+ */
+const DEFAULT_HOST_GAP_MS = 1_000;
+const hostNextSlot = new Map<string, number>();
+/** `JST_LIVENESS_HOST_GAP_MS` overrides the gap; 0 disables pacing, which is what tests use. */
+function hostGapMs() {
+  const override = Number(process.env.JST_LIVENESS_HOST_GAP_MS);
+  return Number.isFinite(override) && override >= 0 ? override : DEFAULT_HOST_GAP_MS;
+}
+function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const stop = () => reject(signal?.reason ?? new DOMException("Stopped", "AbortError"));
+    if (signal?.aborted) return stop();
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+    function onAbort() { clearTimeout(timer); stop(); }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+async function awaitHostSlot(url: string, signal?: AbortSignal) {
+  const gap = hostGapMs();
+  if (gap <= 0) return;
+  let host: string;
+  try { host = new URL(url).hostname.toLowerCase(); } catch { return; }
+  const now = Date.now();
+  // Drop hosts whose gap has elapsed so a long run does not retain every host it touched.
+  if (hostNextSlot.size > 256) for (const [key, at] of hostNextSlot) if (at <= now) hostNextSlot.delete(key);
+  const slot = Math.max(now, hostNextSlot.get(host) ?? 0);
+  hostNextSlot.set(host, slot + gap);
+  if (slot > now) await sleep(slot - now, signal);
+}
+
 function text(html: string) {
   return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ")
@@ -77,6 +114,8 @@ export async function checkJobLiveness(url: string, identity?: PostingIdentity, 
     return { status, reason, checkedAt, evidenceUrl };
   };
   if (!url) return result("uncertain", "No posting link saved");
+  // Before the timeout clock starts: waiting for a host slot must not eat the 12 seconds.
+  await awaitHostSlot(url, signal);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {

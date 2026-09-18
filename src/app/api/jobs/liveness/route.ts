@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 async function verify(signal: AbortSignal, progress: (event: CleanupEvent) => void) {
   const all = getJobs();
   const jobs = all.filter((job) => !isJobProtectedFromAutomaticRemoval(job));
-  const summary: CleanupSummary = { checked: 0, total: jobs.length, protected: all.length - jobs.length, active: 0, uncertain: 0, candidates: [], expiredUntouched: [], expiredProtected: [], outOfScope: [] };
+  const summary: CleanupSummary = { checked: 0, total: jobs.length, protected: all.length - jobs.length, active: 0, uncertain: 0, candidates: [] };
   progress({ type: "progress", summary });
   let index = 0;
   await Promise.all(Array.from({ length: Math.min(6, jobs.length) }, async () => {
@@ -28,7 +28,6 @@ async function verify(signal: AbortSignal, progress: (event: CleanupEvent) => vo
             source: getJobSourceLabel(job), savedAt: current.createdAt ?? "", reason: result.reason,
             evidenceUrl: result.evidenceUrl ?? "", checkedAt: result.checkedAt, cleanupReason, protectedFromRemoval: false as const };
           summary.candidates.push(candidate);
-          if (cleanupReason === "closed") summary.expiredUntouched.push(candidate);
         }
         if (result.status === "active") summary.active++;
         if (result.status === "uncertain") summary.uncertain++;

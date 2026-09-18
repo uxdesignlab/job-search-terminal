@@ -502,7 +502,7 @@ export function archiveCleanupCandidates(ids: string[]) {
       logActivity("job", id, "Cleanup archived", { reason, checkedAt: job.livenessCheckedAt, evidenceUrl: job.livenessEvidenceUrl });
       archivedIds.push(id);
     }
-    return { archivedIds, archived: archivedIds.length, deleted: archivedIds.length, skipped, kept: skipped };
+    return { archivedIds, archived: archivedIds.length, skipped };
   }).immediate();
 }
 
@@ -5680,11 +5680,6 @@ export function saveJobLiveness(id: string, status: string, reason: string, evid
   logActivity("job", id, `Liveness check: ${status}`, { reason });
 }
 
-export function saveJobScopeStatus(id: string, scopeStatus: string) {
-  getDatabase()
-    .prepare("update jobs set scope_status = @scopeStatus where id = @id")
-    .run({ id, scopeStatus });
-}
 
 export function setJobReviewStatus(id: string, status: "none" | "pending_review") {
   getDatabase()

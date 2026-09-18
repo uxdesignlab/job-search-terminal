@@ -569,7 +569,10 @@ status, posting maintenance, and bulk tools.
   bulk archive of unavailable postings or jobs saved 30+ days ago whose availability
   cannot be verified. Progress is inline and cancellable; opening a job does not
   count as activity. Deliberate activity permanently protects a job, even after its
-  status returns to Found. Archive remains reversible. See [Job cleanup](job-cleanup.md).
+  status returns to Found. Archive remains reversible. Checks are paced to one
+  request per host per second, so a run over a list dominated by one board takes
+  minutes; Stop interrupts a queued request as well as an in-flight one.
+  See [Job cleanup](job-cleanup.md).
 - **Shift-click selection** — click a checkbox, then Shift-click another to select
   the inclusive displayed range. Shift+Space also works; ranges can be deselected.
   Filtering and sorting reset the anchor, and hidden rows never join the range.

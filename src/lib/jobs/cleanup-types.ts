@@ -6,7 +6,6 @@ export type CleanupCandidate = {
 };
 export type CleanupSummary = {
   checked: number; total: number; protected: number; active: number; uncertain: number;
-  candidates: CleanupCandidate[]; expiredUntouched: CleanupCandidate[];
-  expiredProtected: never[]; outOfScope: never[];
+  candidates: CleanupCandidate[];
 };
 export type CleanupEvent = { type: "progress" | "result"; summary: CleanupSummary } | { type: "error"; message: string };
