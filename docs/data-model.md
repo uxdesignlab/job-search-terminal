@@ -76,6 +76,7 @@ and initializes an empty local profile if the database is empty.
 | `0066_provider_enabled_set` | Adds `ai_settings.provider_enabled_json`, splitting which providers are switched on from the order they are tried in. `provider_order_json` had carried both, so disabling a provider erased its rank and an empty list was indistinguishable from "never configured". Existing rows get an empty string and keep the old meaning until their next save |
 | `0067_source_check_runs` | Adds the `source_check_runs` table so whole-list validation results persist instead of dying with the page and the Sources table can restore its Live column |
 | `0068_resume_writer_and_generation_timing` | Adds `ai_settings.resume_writer_provider` (the provider that writes resumes, independently of the main chain; `''` follows the chain), `generated_documents.generation_ms` / `provider_used` / `model_used` / `generation_stages_json` (how long a resume took, per stage, and what wrote it), and the `ai_provider_status` table recording providers that have run out of paid credits. All defaulted; existing documents read as 0 ms with no provider, which the editor treats as "not recorded" |
+| `0069_untouched_job_cleanup` | Adds `jobs.user_activity_at` (the durable marker that protects a job from cleanup), `jobs.liveness_reason` and `jobs.liveness_evidence_url` (what a posting check found and the page it read), and `jobs.cleanup_archive_reason` (why cleanup archived a job). All default to `''`, so existing jobs start unprotected and unverified; a backfill in the query layer, not in this migration, marks jobs with recorded user work. See [Untouched job cleanup](#untouched-job-cleanup-0069) |
 
 ---
 
@@ -214,7 +215,11 @@ Every job discovered by scanning or added manually.
 | `red_flags_json` | JSON array of red flags |
 | `liveness_status` | `active` / `expired` / `uncertain` |
 | `liveness_checked_at` | ISO timestamp of last liveness check |
-| `scope_status` | Maintenance label such as `out_of_scope` when a verified active posting no longer matches saved title filters |
+| `liveness_reason` | Plain-language sentence explaining the last check's verdict, shown in the cleanup preview (migration `0069`). Empty until a check runs; cleanup never treats a job as a candidate without one |
+| `liveness_evidence_url` | The URL actually read by the last check, after redirects (migration `0069`). Surfaced as the **Checked posting link** so the verdict can be inspected |
+| `user_activity_at` | Set the first time the user does something deliberate to a job — edit, status change, evaluation, application work, manual archive or restore (migration `0069`). Once set it is never cleared, so protection survives a status returning to `Found`. `''` means untouched. Viewing, scanning, importing and verifying do not set it |
+| `cleanup_archive_reason` | `closed` or `old_unverified` when cleanup archived the job, `''` for a manual archive (migration `0069`). Drives the archive-status badge on `/archived` |
+| `scope_status` | Legacy maintenance label (migration `0029`), formerly `out_of_scope` when a verified active posting no longer matched saved title filters. **No longer written** — the out-of-scope shortcut was removed with the 0.17.0 cleanup rewrite. Existing values are retained but unused |
 | `archived` | 0 = active, 1 = archived |
 | `review_status` | `none` (default) or `pending_review` — set to `pending_review` by the importer when a job's raw description is under 100 characters (low-confidence import); cleared to `none` when the user approves the job from the review queue banner |
 | `posting_resolution_status` | `resolved` (default) or `needs_resolution` for email leads that do not yet have a real posting URL |

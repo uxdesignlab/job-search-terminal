@@ -763,7 +763,7 @@ export const helpPages: HelpPage[] = [
       { label: "Adzuna developer API (free tier)", href: "https://developer.adzuna.com" },
       { label: "Brave Search API (free tier)", href: "https://brave.com/search/api" },
     ],
-    related: ["linkedin-scanner", "ai-providers", "evaluate-tailor"],
+    related: ["linkedin-scanner", "troubleshooting", "evaluate-tailor"],
   },
   {
     slug: "linkedin-scanner",
@@ -1426,7 +1426,7 @@ export const helpPages: HelpPage[] = [
         ],
       },
     ],
-    related: ["getting-started", "ai-providers", "linkedin-scanner"],
+    related: ["getting-started", "ai-providers", "job-search"],
   },
 ];
 

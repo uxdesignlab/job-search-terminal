@@ -1729,12 +1729,28 @@ Application funnel tracker with two view modes:
 
 ## Archived `/archived`
 
-Jobs that have been manually archived or skipped.
+Jobs hidden from the active pipeline after cleanup, a manual archive, or a skip.
 
 - Table of archived jobs with original score and archival date.
 - Column filters and saved filter presets on the archived jobs table.
-- Restore action: move a job back to active.
-- Delete action: permanently remove the job and all associated records.
+- **Status** column (`archiveStatus`) showing why the job left the pipeline, from
+  `cleanup_archive_reason` with `liveness_status` as the fallback for jobs
+  archived before migration `0069`:
+  - **Posting unavailable** — cleanup found the posting closed or gone
+    (`cleanup_archive_reason = 'closed'`), or the job carries a legacy
+    `liveness_status = 'expired'`.
+  - **Old · Unverified** — cleanup archived it as saved 30+ days ago with
+    availability unconfirmed (`cleanup_archive_reason = 'old_unverified'`).
+    Age is not evidence of closure.
+  - **Manually archived** — everything else, including skips.
+  These three are also the column's filter options.
+- Restore action: move a job back to active. Restoring is a deliberate action,
+  so it sets `user_activity_at` and permanently protects the job from future
+  cleanup.
+- Delete action: permanently remove the job and all associated records. Cleanup
+  never deletes; it only archives.
+
+See [Job cleanup](job-cleanup.md) for how jobs become cleanup candidates.
 
 **Auto-archive on skip:** marking a job as **Skipped** automatically moves it to
 the archive. The job leaves the active pipeline immediately — it will no longer
