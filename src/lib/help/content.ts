@@ -1264,6 +1264,7 @@ export const helpPages: HelpPage[] = [
           "Could not verify can mean the site needs a login, blocks automated checks, times out, or only shows a general page. Open the checked posting link to inspect it yourself. A job is not marked closed just because its site could not be reached.",
           "If verification stops or loses its connection, completed results remain available. Run Verify active postings again to check the remaining jobs.",
           "Cleanup keeps jobs with deliberate activity, statuses other than Found, or less than 24 hours in the app. Jobs with a missing or invalid saved date are also kept. If a job changes after preview, it is checked again and may be skipped.",
+          "If you imported jobs from a private page before this update, run Verify active postings again. The app now treats the import's automatic link lookup as part of the scan, so untouched Found jobs can appear in the cleanup preview.",
           "If archiving fails, retry. An archive batch is saved together, so a database failure does not leave half the batch archived. Open Why jobs were kept to inspect skipped results.",
           "Older actions that left no saved record may not be recognized as activity. Review the candidates before confirming; you can restore mistakes from Archived.",
         ],

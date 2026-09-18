@@ -428,13 +428,32 @@ const activityBackfilled = new WeakSet<object>();
 export function backfillJobActivityProtection() {
   const db = getDatabase();
   if (activityBackfilled.has(db)) return;
-  db.prepare(`update jobs set user_activity_at = current_timestamp
+  db.transaction(() => {
+    // The first cleanup backfill mistook automatic private-page imports for user
+    // resolution. Only undo markers written by that migration, when the import
+    // and resolution events identify the same operation. Recorded user work is
+    // re-protected by the backfill below in this same transaction.
+    db.prepare(`update jobs set user_activity_at = ''
+      where source = 'private-page-scan' and status = 'Found' and archived = 0
+        and user_activity_at = (select applied_at from schema_migrations where id = '0069_untouched_job_cleanup')
+        and exists (select 1 from activity_log resolution
+          join activity_log imported on imported.entity_id = resolution.entity_id
+            and imported.timestamp = resolution.timestamp
+            and imported.entity_type = 'private-page-scan'
+            and imported.action = 'Imported from private 24h page scan'
+          where resolution.entity_type = 'job' and resolution.entity_id = jobs.id
+            and resolution.action = 'Job posting resolution updated')`).run();
+    db.prepare(`update jobs set user_activity_at = current_timestamp
     where user_activity_at = '' and (
       source = 'manual' or status <> 'Found'
       or exists (select 1 from activity_log a where a.entity_id = jobs.id and (
         (a.entity_type = 'job' and (a.action in ('Job details updated manually',
           'Job posting resolution updated', 'Job archived', 'Job unarchived', 'Job skipped and archived',
-          'Application preparation saved') or a.action like 'Job evaluated:%'))
+          'Application preparation saved') or a.action like 'Job evaluated:%')
+          and not (a.action = 'Job posting resolution updated' and exists (
+            select 1 from activity_log imported where imported.entity_type = 'private-page-scan'
+              and imported.entity_id = a.entity_id and imported.timestamp = a.timestamp
+              and imported.action = 'Imported from private 24h page scan')))
         or a.entity_type in ('application', 'application_answers', 'company_research', 'outreach', 'gap_response')))
       or exists (select 1 from evaluations e where e.job_id = jobs.id)
       or exists (select 1 from applications a where a.job_id = jobs.id)
@@ -448,6 +467,7 @@ export function backfillJobActivityProtection() {
       or exists (select 1 from job_contact_links l where l.job_id = jobs.id)
       or exists (select 1 from story_job_links l where l.job_id = jobs.id and l.source = 'manual')
     )`).run();
+  }).immediate();
   activityBackfilled.add(db);
 }
 
@@ -529,8 +549,10 @@ export function updateJobPostingResolution(
     rawDescription?: string;
     postingResolutionStatus?: "resolved" | "needs_resolution";
     reviewStatus?: "none" | "pending_review";
+    userInitiated?: boolean;
   }
 ) {
+  if (fields.userInitiated) markJobUserActivity(id);
   const sets: string[] = ["updated_at = current_timestamp"];
   const params: Record<string, string> = { id };
   if (fields.url !== undefined) { sets.push("url = @url"); params.url = fields.url; }
@@ -550,7 +572,7 @@ export function updateJobPostingResolution(
     params.reviewStatus = fields.reviewStatus;
   }
   getDatabase().prepare(`update jobs set ${sets.join(", ")} where id = @id`).run(params);
-  logActivity("job", id, "Job posting resolution updated", {
+  logActivity("job", id, fields.userInitiated ? "Job posting resolution updated" : "Automatic posting resolution updated", {
     postingResolutionStatus: fields.postingResolutionStatus,
     hasUrl: Boolean(fields.url),
     hasDescription: Boolean(fields.rawDescription),

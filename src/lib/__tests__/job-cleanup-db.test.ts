@@ -59,10 +59,32 @@ describe("transactional job cleanup", () => {
     expect(q.getJobById(id)?.userActivityAt).toBeTruthy();
   });
   it("protects posting resolution and manual additions", () => {
-    q.updateJobPostingResolution(id, { url: "https://example.com/jobs/2" });
+    q.updateJobPostingResolution(id, { url: "https://example.com/jobs/2", userInitiated: true });
     verified(); expect(q.archiveCleanupCandidates([id]).archived).toBe(0);
     q.insertManualJob({ id: "manual-test", title: "Role", company: "Acme", url: "https://example.com/manual", rawDescription: "", datePosted: null, firstSeenDate: "2026-09-18" });
     expect(q.getJobById("manual-test")?.userActivityAt).toBeTruthy();
+  });
+  it("does not protect an automatic posting resolution", () => {
+    q.updateJobPostingResolution(id, { url: "https://example.com/jobs/2" });
+    expect(q.getJobById(id)?.userActivityAt).toBe("");
+    verified(); expect(q.archiveCleanupCandidates([id]).archived).toBe(1);
+  });
+  it("repairs only migration markers from paired private-page imports", () => {
+    const db = client.getDatabase();
+    db.prepare("update jobs set source = 'private-page-scan', user_activity_at = (select applied_at from schema_migrations where id = '0069_untouched_job_cleanup') where id = ?").run(id);
+    db.prepare("insert into activity_log values ('resolution', 'job', ?, 'Job posting resolution updated', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    db.prepare("insert into activity_log values ('import', 'private-page-scan', ?, 'Imported from private 24h page scan', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    expect(q.getJobById(id)?.userActivityAt).toBe("");
+    verified(); expect(q.archiveCleanupCandidates([id]).archived).toBe(1);
+  });
+  it("keeps imported jobs protected when other recorded user work exists", () => {
+    const db = client.getDatabase();
+    db.prepare("update jobs set source = 'private-page-scan', user_activity_at = (select applied_at from schema_migrations where id = '0069_untouched_job_cleanup') where id = ?").run(id);
+    db.prepare("insert into activity_log values ('resolution', 'job', ?, 'Job posting resolution updated', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    db.prepare("insert into activity_log values ('import', 'private-page-scan', ?, 'Imported from private 24h page scan', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    db.prepare("insert into activity_log values ('edit', 'job', ?, 'Job details updated manually', '2026-08-01T13:27:14.057Z', '{}')").run(id);
+    expect(q.getJobById(id)?.userActivityAt).toBeTruthy();
+    verified(); expect(q.archiveCleanupCandidates([id]).archived).toBe(0);
   });
   it("reports removed IDs and rolls back an archive batch on failure", () => {
     verified();

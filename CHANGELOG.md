@@ -15,6 +15,15 @@ the numbers mean and when they change.
 
 ---
 
+## 0.17.1 — 2026-09-18 — Imported jobs can be reviewed for cleanup
+
+**Fixed**
+
+- Older jobs imported from private pages can appear in cleanup after a fresh
+  verification. Their automatic posting-link lookup was mistaken for a manual
+  action and kept them protected. Saved reviews and other deliberate work still
+  protect jobs. Nothing is archived automatically.
+
 ## 0.17.0 — 2026-09-18 — Clear old jobs with confidence
 
 **Added**

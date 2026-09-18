@@ -88,6 +88,7 @@ export async function resolveEmailJobPosting(jobId: string, postingUrl: string):
     rawDescription: description ?? undefined,
     postingResolutionStatus: "resolved",
     reviewStatus: hasUsefulDescription ? "none" : "pending_review",
+    userInitiated: true,
   });
 
   return { success: true, descriptionFetched: hasUsefulDescription };

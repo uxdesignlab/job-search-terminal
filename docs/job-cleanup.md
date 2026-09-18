@@ -51,6 +51,11 @@ edits, resolution, status changes, manual archive/restore, evaluations, applicat
 work, documents, contacts and outreach. Starting evaluation/research/generation
 also protects a job even if the operation fails or is cancelled. Viewing,
 scanning, imports, selection and verification do not mark user activity.
+Older private-page imports sometimes logged their automatic link lookup as a
+manual resolution. The application repairs only activity markers from the first
+cleanup migration when that resolution and import share an exact timestamp;
+other saved user work remains protective. Automatic link lookups now have their
+own activity label. A user-chosen posting link still protects the job.
 
 ## Review and selection
 
