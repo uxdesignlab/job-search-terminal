@@ -77,6 +77,25 @@ describe("transactional job cleanup", () => {
     expect(q.getJobById(id)?.userActivityAt).toBe("");
     verified(); expect(q.archiveCleanupCandidates([id]).archived).toBe(1);
   });
+  it.each([0, 5, 59])("repairs a marker written %s seconds after the migration", (offset) => {
+    const db = client.getDatabase();
+    db.prepare(`update jobs set source = 'private-page-scan',
+      user_activity_at = (select datetime(applied_at, '+${offset} seconds') from schema_migrations where id = '0069_untouched_job_cleanup')
+      where id = ?`).run(id);
+    db.prepare("insert into activity_log values ('resolution', 'job', ?, 'Job posting resolution updated', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    db.prepare("insert into activity_log values ('import', 'private-page-scan', ?, 'Imported from private 24h page scan', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    expect(q.getJobById(id)?.userActivityAt).toBe("");
+  });
+  it("leaves activity recorded well after the migration alone", () => {
+    const db = client.getDatabase();
+    db.prepare(`update jobs set source = 'private-page-scan',
+      user_activity_at = (select datetime(applied_at, '+10 minutes') from schema_migrations where id = '0069_untouched_job_cleanup')
+      where id = ?`).run(id);
+    db.prepare("insert into activity_log values ('resolution', 'job', ?, 'Job posting resolution updated', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    db.prepare("insert into activity_log values ('import', 'private-page-scan', ?, 'Imported from private 24h page scan', '2026-07-29T13:27:14.057Z', '{}')").run(id);
+    expect(q.getJobById(id)?.userActivityAt).toBeTruthy();
+    verified(); expect(q.archiveCleanupCandidates([id]).archived).toBe(0);
+  });
   it("keeps imported jobs protected when other recorded user work exists", () => {
     const db = client.getDatabase();
     db.prepare("update jobs set source = 'private-page-scan', user_activity_at = (select applied_at from schema_migrations where id = '0069_untouched_job_cleanup') where id = ?").run(id);

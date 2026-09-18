@@ -19,7 +19,10 @@ role/company plus an application invitation. Matched JobPosting expiry and
 job-specific 404/410 or closure copy support unavailable verdicts. Login walls,
 challenges, general-page redirects, request failures, and ambiguous pages remain
 uncertain. No limited feed omission is used as evidence. Checks use safeFetch,
-six concurrent jobs, and a 12-second timeout per URL, including reading the body.
+six concurrent jobs, and a 12-second timeout per URL. A verdict settled by status
+code or URL alone releases the response body without reading it, so the socket is
+freed for the next job rather than held until the stream is collected. The
+session-gated host list is read once per process; edits apply on restart.
 The checker does not log in, click Apply, use AI, or send profile/resume data.
 
 `POST /api/jobs/liveness` retains JSON responses by default. With
@@ -54,7 +57,12 @@ scanning, imports, selection and verification do not mark user activity.
 Older private-page imports sometimes logged their automatic link lookup as a
 manual resolution. The application repairs only activity markers from the first
 cleanup migration when that resolution and import share an exact timestamp;
-other saved user work remains protective. Automatic link lookups now have their
+other saved user work remains protective. The marker itself is matched within a
+short window after the migration's applied_at rather than at an exact value,
+because the backfill runs on the first job read after the migration and both
+timestamps have one-second resolution; an exact match repairs nothing whenever
+that read lands a second later. Real user work cannot fall inside the window, and
+the protection backfill restores anything with recorded evidence regardless. Automatic link lookups now have their
 own activity label. A user-chosen posting link still protects the job.
 
 ## Review and selection

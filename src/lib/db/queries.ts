@@ -433,9 +433,18 @@ export function backfillJobActivityProtection() {
     // resolution. Only undo markers written by that migration, when the import
     // and resolution events identify the same operation. Recorded user work is
     // re-protected by the backfill below in this same transaction.
+    //
+    // That backfill runs on the first job read after the migration, so its marker is
+    // `current_timestamp` a moment after the migration's `applied_at`. Both have
+    // one-second resolution and need not land in the same second, so match a short
+    // window rather than an exact value: an exact match silently undoes nothing when
+    // the first read happens a second later. The window cannot catch real user work —
+    // nobody acts on a job in the seconds between migrating and first render, and the
+    // statement below re-protects anything with recorded evidence regardless.
     db.prepare(`update jobs set user_activity_at = ''
       where source = 'private-page-scan' and status = 'Found' and archived = 0
-        and user_activity_at = (select applied_at from schema_migrations where id = '0069_untouched_job_cleanup')
+        and user_activity_at >= (select applied_at from schema_migrations where id = '0069_untouched_job_cleanup')
+        and user_activity_at <= (select datetime(applied_at, '+60 seconds') from schema_migrations where id = '0069_untouched_job_cleanup')
         and exists (select 1 from activity_log resolution
           join activity_log imported on imported.entity_id = resolution.entity_id
             and imported.timestamp = resolution.timestamp

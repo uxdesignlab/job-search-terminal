@@ -23,14 +23,19 @@ function hostIs(url: string, hosts: string[]) {
   try { const host = new URL(url).hostname.toLowerCase(); return hosts.some((h) => host === h || host.endsWith(`.${h}`)); } catch { return false; }
 }
 export function isAggregatorPosting(url: string) { return hostIs(url, BOARD_HOSTS); }
-function sessionGated(url: string) {
+/** Read once per process: a verification run calls this thousands of times. Edits to the local file apply on restart. */
+let sessionGatedHosts: string[] | undefined;
+function sessionGatedHostList() {
+  if (sessionGatedHosts) return sessionGatedHosts;
   let local: string[] = [];
   try {
     const config = JSON.parse(readFileSync(path.join(process.cwd(), "config/liveness-hosts.local.json"), "utf8"));
     if (Array.isArray(config.sessionGated)) local = config.sessionGated.filter((v: unknown): v is string => typeof v === "string");
   } catch { /* optional local preferences */ }
-  return hostIs(url, ["linkedin.com", ...local]);
+  sessionGatedHosts = ["linkedin.com", ...local];
+  return sessionGatedHosts;
 }
+function sessionGated(url: string) { return hostIs(url, sessionGatedHostList()); }
 function text(html: string) {
   return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ")
@@ -62,7 +67,15 @@ function jobSchemas(html: string): Record<string, unknown>[] {
 export async function checkJobLiveness(url: string, identity?: PostingIdentity, signal?: AbortSignal): Promise<LivenessResult> {
   const checkedAt = new Date().toISOString();
   let evidenceUrl = url;
-  const result = (status: LivenessStatus, reason: string): LivenessResult => ({ status, reason, checkedAt, evidenceUrl });
+  // Status codes and the URL settle a verdict before the body is read. Six workers run at
+  // once, so release the socket then rather than leaving it pinned until the stream is collected.
+  let unread: Response | undefined;
+  const result = (status: LivenessStatus, reason: string): LivenessResult => {
+    const body = unread?.body;
+    unread = undefined;
+    if (body && !body.locked) void body.cancel().catch(() => { /* already closed by the peer */ });
+    return { status, reason, checkedAt, evidenceUrl };
+  };
   if (!url) return result("uncertain", "No posting link saved");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -71,11 +84,13 @@ export async function checkJobLiveness(url: string, identity?: PostingIdentity, 
       signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
       headers: { "User-Agent": "Mozilla/5.0 (compatible; job-search-bot/1.0)" }, redirect: "follow", cache: "no-store",
     });
+    unread = res;
     evidenceUrl = res.url || url;
     if (!specificUrl(evidenceUrl)) return result("uncertain", "The link leads to a general page, not this posting");
     if (res.status === 404 || res.status === 410) return result("expired", `Job-specific posting unavailable (HTTP ${res.status})`);
     if (res.status >= 400) return result("uncertain", `Posting could not be checked (HTTP ${res.status})`);
     if (sessionGated(url) || sessionGated(evidenceUrl)) return result("uncertain", "A signed-in session is needed to verify this posting");
+    unread = undefined;
     const html = (await res.text()).slice(0, 512_000);
     const visible = text(html);
     if (CHALLENGE.test(visible)) return result("uncertain", "The site returned a login or browser-check page");
