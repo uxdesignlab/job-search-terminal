@@ -85,6 +85,11 @@ export type JobRecord = {
   resumeEvidence: string[];
   gaps: string[];
   redFlags: string[];
+  createdAt?: string;
+  userActivityAt?: string;
+  livenessReason?: string;
+  livenessEvidenceUrl?: string;
+  cleanupArchiveReason?: string;
   livenessStatus: string;
   livenessCheckedAt: string;
   scopeStatus: string;

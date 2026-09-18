@@ -173,7 +173,9 @@ export function ArchivedJobsTable({ jobs, unarchiveAction, deleteArchivedAction 
                   <td className="py-3 pr-4 text-muted">{job.company}</td>
                   <td className="py-3 pr-4 font-medium">{job.fitScore}%</td>
                   <td className="py-3 pr-4">
-                    {job.livenessStatus === "expired" ? (
+                    {job.cleanupArchiveReason ? (
+                      <Badge tone="neutral">{getArchivedJobColValue(job, "archiveStatus")}</Badge>
+                    ) : job.livenessStatus === "expired" ? (
                       <Badge tone="danger">Expired</Badge>
                     ) : (
                       <Badge tone="neutral">Manually archived</Badge>

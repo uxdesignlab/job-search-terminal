@@ -1,151 +1,74 @@
 import { NextResponse } from "next/server";
-import { checkJobLiveness } from "@/lib/scanner/liveness-checker";
-import { archiveJob, getJobById, getJobs, saveJobLiveness, saveJobScopeStatus, getTitleFilters } from "@/lib/db/queries";
-import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
-import type { JobRecord } from "@/lib/db/types";
-import { hasResolvedPosting } from "@/lib/jobs/posting-resolution";
+import { verifyJobPosting } from "@/lib/scanner/liveness-checker";
+import { archiveCleanupCandidates, getJobById, getJobs, saveJobLiveness } from "@/lib/db/queries";
+import { cleanupCandidateReason, isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
+import { getJobSourceLabel } from "@/lib/job-table-helpers";
+import type { CleanupEvent, CleanupSummary } from "@/lib/jobs/cleanup-types";
 
-const CONCURRENCY = 6;
+export const runtime = "nodejs";
 
-/** Cap the wall-clock time for a single liveness check; resolve as uncertain on timeout. */
-async function withLivenessTimeout(promise: Promise<import("@/lib/scanner/liveness-checker").LivenessResult>, ms: number) {
-  const timeout = new Promise<import("@/lib/scanner/liveness-checker").LivenessResult>((resolve) =>
-    setTimeout(() => resolve({ status: "uncertain", reason: `timed out after ${ms}ms`, checkedAt: new Date().toISOString() }), ms)
-  );
-  return Promise.race([promise, timeout]);
+async function verify(signal: AbortSignal, progress: (event: CleanupEvent) => void) {
+  const all = getJobs();
+  const jobs = all.filter((job) => !isJobProtectedFromAutomaticRemoval(job));
+  const summary: CleanupSummary = { checked: 0, total: jobs.length, protected: all.length - jobs.length, active: 0, uncertain: 0, candidates: [], expiredUntouched: [], expiredProtected: [], outOfScope: [] };
+  progress({ type: "progress", summary });
+  let index = 0;
+  await Promise.all(Array.from({ length: Math.min(6, jobs.length) }, async () => {
+    while (!signal.aborted && index < jobs.length) {
+      const job = jobs[index++];
+      const result = await verifyJobPosting(job, signal);
+      signal.throwIfAborted();
+      // A deliberate action during the fetch must not be overwritten by maintenance.
+      const current = getJobById(job.id);
+      if (current && !isJobProtectedFromAutomaticRemoval(current)) {
+        saveJobLiveness(job.id, result.status, result.reason, result.evidenceUrl, result.checkedAt);
+        const cleanupReason = cleanupCandidateReason({ ...current, livenessStatus: result.status, livenessCheckedAt: result.checkedAt, livenessReason: result.reason });
+        if (cleanupReason) {
+          const candidate = { id: job.id, title: job.title, company: job.company, location: job.location, status: job.status,
+            source: getJobSourceLabel(job), savedAt: current.createdAt ?? "", reason: result.reason,
+            evidenceUrl: result.evidenceUrl ?? "", checkedAt: result.checkedAt, cleanupReason, protectedFromRemoval: false as const };
+          summary.candidates.push(candidate);
+          if (cleanupReason === "closed") summary.expiredUntouched.push(candidate);
+        }
+        if (result.status === "active") summary.active++;
+        if (result.status === "uncertain") summary.uncertain++;
+      } else summary.protected++;
+      summary.checked++;
+      progress({ type: "progress", summary });
+    }
+  }));
+  return summary;
 }
 
-type LivenessJobSummary = {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  status: string;
-  /** Server-computed so callers never re-derive protection from `status` alone. */
-  protectedFromRemoval: boolean;
-  reason: string;
-};
-
-export async function POST() {
-  try {
-    const jobs = getJobs();
-    const titleFilters = getTitleFilters();
-    const checked = await checkJobs(jobs, titleFilters);
-
-    return NextResponse.json({
-      ok: true,
-      checked: jobs.length,
-      active: checked.active,
-      uncertain: checked.uncertain,
-      expiredUntouched: checked.expiredUntouched,
-      expiredProtected: checked.expiredProtected,
-      outOfScope: checked.outOfScope,
-    });
-  } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+export async function POST(req: Request) {
+  if (!req.headers.get("accept")?.includes("application/x-ndjson")) {
+    try { return NextResponse.json({ ok: true, ...await verify(req.signal, () => {}) }); }
+    catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
   }
+  const cancellation = new AbortController();
+  const signal = AbortSignal.any([req.signal, cancellation.signal]);
+  let closed = false;
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (event: CleanupEvent) => {
+        if (closed || signal.aborted) return;
+        try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); }
+        catch { closed = true; cancellation.abort(); }
+      };
+      void verify(signal, send).then((summary) => send({ type: "result", summary })).catch((error) => {
+        if (!signal.aborted) send({ type: "error", message: String(error) });
+      }).finally(() => { if (!closed) { closed = true; controller.close(); } });
+    },
+    cancel() { closed = true; cancellation.abort(); },
+  });
+  return new Response(stream, { headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-store" } });
 }
 
 export async function DELETE(req: Request) {
   try {
-    const { ids } = (await req.json()) as { ids: string[] };
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json({ error: "No IDs provided" }, { status: 400 });
-    }
-
-    // Automatic cleanup archives rather than deletes. Liveness evidence comes from a
-    // single unauthenticated fetch, which is not strong enough to justify destroying a
-    // row and its evaluations. Archived jobs leave the active pipeline and become
-    // permanently protected; explicit purge remains available in job maintenance.
-    let deleted = 0;
-    const kept: LivenessJobSummary[] = [];
-
-    for (const id of ids) {
-      const job = getJobById(id);
-      if (!job) continue;
-      if (job.livenessStatus !== "expired" || isJobProtectedFromAutomaticRemoval(job)) {
-        kept.push(summarizeJob(job, "Protected from automatic cleanup"));
-        continue;
-      }
-      archiveJob(id);
-      deleted++;
-    }
-
-    return NextResponse.json({ ok: true, deleted, archived: deleted, kept });
-  } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
-  }
-}
-
-function matchesTitleFilters(title: string, filters: { positive: string[]; negative: string[] }): boolean {
-  const normalized = title.toLowerCase();
-  if (filters.negative.some((kw) => normalized.includes(kw.toLowerCase()))) return false;
-  if (filters.positive.length > 0 && !filters.positive.some((kw) => normalized.includes(kw.toLowerCase()))) return false;
-  return true;
-}
-
-async function checkJobs(jobs: JobRecord[], titleFilters: { positive: string[]; negative: string[] }) {
-  const expiredUntouched: LivenessJobSummary[] = [];
-  const expiredProtected: LivenessJobSummary[] = [];
-  const outOfScope: LivenessJobSummary[] = [];
-  let active = 0;
-  let uncertain = 0;
-  let index = 0;
-
-  async function next() {
-    while (index < jobs.length) {
-      const job = jobs[index++];
-      if (!hasResolvedPosting(job)) {
-        uncertain++;
-        continue;
-      }
-
-      let result = await withLivenessTimeout(checkJobLiveness(job.url), 15_000);
-      if (result.status === "uncertain" && job.originalPostingUrl && job.originalPostingUrl !== job.url) {
-        const fallback = await withLivenessTimeout(checkJobLiveness(job.originalPostingUrl), 15_000);
-        if (fallback.status !== "uncertain") result = fallback;
-      }
-      saveJobLiveness(job.id, result.status, result.reason);
-
-      if (result.status === "expired") {
-        const summary = summarizeJob(job, result.reason);
-        if (isJobProtectedFromAutomaticRemoval(job)) {
-          expiredProtected.push(summary);
-        } else {
-          expiredUntouched.push(summary);
-        }
-        continue;
-      }
-
-      const hasFilters = titleFilters.positive.length > 0 || titleFilters.negative.length > 0;
-      if (hasFilters && !matchesTitleFilters(job.title, titleFilters)) {
-        saveJobScopeStatus(job.id, "out_of_scope");
-        outOfScope.push(summarizeJob(job, "title does not match filters"));
-      } else {
-        saveJobScopeStatus(job.id, "");
-      }
-
-      if (result.status === "active") {
-        active++;
-      } else {
-        uncertain++;
-      }
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, () => next()));
-
-  return { active, uncertain, expiredUntouched, expiredProtected, outOfScope };
-}
-
-function summarizeJob(job: JobRecord, reason: string): LivenessJobSummary {
-  return {
-    id: job.id,
-    title: job.title,
-    company: job.company,
-    location: job.location,
-    status: job.status,
-    protectedFromRemoval: isJobProtectedFromAutomaticRemoval(job),
-    reason,
-  };
+    const body = await req.json();
+    if (!Array.isArray(body.ids) || !body.ids.length || body.ids.some((id: unknown) => typeof id !== "string" || !id)) return NextResponse.json({ error: "Select jobs to archive" }, { status: 400 });
+    return NextResponse.json({ ok: true, ...archiveCleanupCandidates(body.ids) });
+  } catch (err) { return NextResponse.json({ error: String(err) }, { status: 500 }); }
 }

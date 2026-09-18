@@ -1,3 +1,4 @@
+import { markJobUserActivity } from "@/lib/db/queries";
 import { NextResponse } from "next/server";
 import { generateResumeDraft } from "@/lib/documents/resume-generator";
 import { EvaluationRequiredError } from "@/lib/application-preparation";
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
       sectionModes?: ResumeSectionModeInput[];
     };
     if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
+  markJobUserActivity(jobId);
 
     const result = await generateResumeDraft(jobId, resumeId, sectionModes ?? []);
     return NextResponse.json(result);

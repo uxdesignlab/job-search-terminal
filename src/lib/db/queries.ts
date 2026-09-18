@@ -1,3 +1,4 @@
+import { cleanupCandidateReason } from "../jobs/job-protection";
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses, suppressesRepost } from "../applications/status";
 import { resolveEffectiveKeywordSignals, toKeywordPhrases } from "../evaluation/effective-keywords";
@@ -192,6 +193,11 @@ type JobRow = {
   resume_evidence_json: string;
   gaps_json: string;
   red_flags_json: string;
+  created_at: string;
+  user_activity_at: string;
+  liveness_reason: string;
+  liveness_evidence_url: string;
+  cleanup_archive_reason: string;
   liveness_status: string;
   liveness_checked_at: string;
   scope_status: string;
@@ -416,7 +422,63 @@ export function getRoleDirections(): RoleDirectionRecord[] {
   }));
 }
 
+
+const activityBackfilled = new WeakSet<object>();
+/** Migration data backfill stays inside the application's data boundary. */
+export function backfillJobActivityProtection() {
+  const db = getDatabase();
+  if (activityBackfilled.has(db)) return;
+  db.prepare(`update jobs set user_activity_at = current_timestamp
+    where user_activity_at = '' and (
+      source = 'manual' or status <> 'Found'
+      or exists (select 1 from activity_log a where a.entity_id = jobs.id and (
+        (a.entity_type = 'job' and (a.action in ('Job details updated manually',
+          'Job posting resolution updated', 'Job archived', 'Job unarchived', 'Job skipped and archived',
+          'Application preparation saved') or a.action like 'Job evaluated:%'))
+        or a.entity_type in ('application', 'application_answers', 'company_research', 'outreach', 'gap_response')))
+      or exists (select 1 from evaluations e where e.job_id = jobs.id)
+      or exists (select 1 from applications a where a.job_id = jobs.id)
+      or exists (select 1 from generated_documents d where d.job_id = jobs.id)
+      or exists (select 1 from evaluation_feedback f where f.job_id = jobs.id)
+      or exists (select 1 from application_answer_drafts d where d.job_id = jobs.id)
+      or exists (select 1 from application_preparation p where p.job_id = jobs.id)
+      or exists (select 1 from company_research r where r.job_id = jobs.id)
+      or exists (select 1 from outreach_drafts d where d.job_id = jobs.id)
+      or exists (select 1 from job_gap_responses r where r.job_id = jobs.id)
+      or exists (select 1 from job_contact_links l where l.job_id = jobs.id)
+      or exists (select 1 from story_job_links l where l.job_id = jobs.id and l.source = 'manual')
+    )`).run();
+  activityBackfilled.add(db);
+}
+
+export function markJobUserActivity(id: string) {
+  backfillJobActivityProtection();
+  getDatabase().prepare("update jobs set user_activity_at = current_timestamp where id = ? and user_activity_at = ''").run(id);
+}
+
+/** Re-read evidence and protection under one write transaction; never trust preview IDs alone. */
+export function archiveCleanupCandidates(ids: string[]) {
+  backfillJobActivityProtection();
+  return getDatabase().transaction(() => {
+    const archivedIds: string[] = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+    for (const id of new Set(ids)) {
+      const job = getJobById(id);
+      const reason = job && cleanupCandidateReason(job);
+      if (!job || !reason) {
+        skipped.push({ id, reason: "No longer eligible: protected, recently saved, already archived, or no qualifying verification." });
+        continue;
+      }
+      getDatabase().prepare("update jobs set archived = 1, cleanup_archive_reason = ?, updated_at = current_timestamp where id = ?").run(reason, id);
+      logActivity("job", id, "Cleanup archived", { reason, checkedAt: job.livenessCheckedAt, evidenceUrl: job.livenessEvidenceUrl });
+      archivedIds.push(id);
+    }
+    return { archivedIds, archived: archivedIds.length, deleted: archivedIds.length, skipped, kept: skipped };
+  }).immediate();
+}
+
 export function getJobs(): JobRecord[] {
+  backfillJobActivityProtection();
   const rows = getDatabase().prepare("select * from jobs where archived = 0 order by fit_score desc, first_seen_date desc").all() as JobRow[];
   return rows.map(mapJob);
 }
@@ -427,16 +489,19 @@ export function getArchivedJobs(): JobRecord[] {
 }
 
 export function archiveJob(id: string) {
+  markJobUserActivity(id);
   getDatabase().prepare("update jobs set archived = 1, updated_at = current_timestamp where id = @id").run({ id });
   logActivity("job", id, "Job archived", {});
 }
 
 export function unarchiveJob(id: string) {
+  markJobUserActivity(id);
   getDatabase().prepare("update jobs set archived = 0, updated_at = current_timestamp where id = @id").run({ id });
   logActivity("job", id, "Job unarchived", {});
 }
 
 export function updateJobStatus(id: string, status: string) {
+  markJobUserActivity(id);
   if (status === "Skipped") {
     // Skipped jobs are auto-archived so they leave the active pipeline immediately.
     getDatabase()
@@ -510,6 +575,7 @@ export function updateJobDetails(
 }
 
 export function updateJobRecommendedResume(id: string, resumeName: string) {
+  markJobUserActivity(id);
   getDatabase().prepare("update jobs set recommended_resume = @resumeName where id = @id").run({ id, resumeName });
 }
 
@@ -538,6 +604,7 @@ export function createResumeLane(name: string): string {
 }
 
 export function getJobById(id: string): JobRecord | undefined {
+  backfillJobActivityProtection();
   const row = getDatabase().prepare("select * from jobs where id = ?").get(id) as JobRow | undefined;
   return row ? mapJob(row) : undefined;
 }
@@ -1445,6 +1512,7 @@ export function updateRoleDirection(input: RoleDirectionUpdateInput) {
 }
 
 export function saveJobEvaluation(input: JobEvaluationResultInput) {
+  markJobUserActivity(input.jobId);
   const database = getDatabase();
   const resumeNames = getResumes().map((r) => r.name);
   const normalized = {
@@ -1773,6 +1841,7 @@ export function updateApplicationPreparationCompensation(
 }
 
 export function saveApplicationPreparation(input: ApplicationPreparationInput) {
+  markJobUserActivity(input.jobId);
   const database = getDatabase();
   database
     .prepare(
@@ -2179,6 +2248,7 @@ export function linkContactToJob(input: {
   jobId: string; contactId: string; contactRole: ContactRole;
   relevanceScore: number; relevanceReasons: string[];
 }) {
+  markJobUserActivity(input.jobId);
   getDatabase()
     .prepare(
       `insert into job_contact_links (id, job_id, contact_id, contact_role, relevance_score, relevance_reason_json)
@@ -2372,6 +2442,7 @@ export function getJobContactLink(jobId: string, contactId: string): JobContactL
 }
 
 export function saveEvaluationCorrection(input: EvaluationCorrectionInput) {
+  markJobUserActivity(input.jobId);
   const database = getDatabase();
   const correction = {
     correctedScore: input.fitScore,
@@ -2453,6 +2524,7 @@ export function saveEvaluationCorrection(input: EvaluationCorrectionInput) {
 }
 
 export function saveGeneratedDocument(input: GeneratedDocumentInput) {
+  markJobUserActivity(input.jobId);
   getDatabase()
     .prepare(
       `insert or replace into generated_documents (
@@ -3106,6 +3178,7 @@ export function insertManualJob(job: {
     redFlagsJson: JSON.stringify([])
   });
 
+  markJobUserActivity(job.id);
   return Number(result.changes);
 }
 
@@ -3173,6 +3246,10 @@ export function recordScanRun(run: ScanRunRecord) {
 }
 
 export function logActivity(entityType: string, entityId: string, action: string, details: Record<string, unknown>) {
+  if ((entityType === "job" && (action === "Job details updated manually" || action === "Job posting resolution updated" || action === "Application preparation saved" || action.startsWith("Job evaluated:")))
+    || ["application", "application_answers", "company_research", "outreach", "gap_response"].includes(entityType)) {
+    markJobUserActivity(entityId);
+  }
   getDatabase()
     .prepare(
       `insert into activity_log (id, entity_type, entity_id, action, timestamp, details_json)
@@ -3218,6 +3295,11 @@ function mapJob(row: JobRow): JobRecord {
     resumeEvidence: parseJson<string[]>(row.resume_evidence_json),
     gaps: parseJson<string[]>(row.gaps_json),
     redFlags: parseJson<string[]>(row.red_flags_json),
+    createdAt: row.created_at,
+    userActivityAt: row.user_activity_at,
+    livenessReason: row.liveness_reason,
+    livenessEvidenceUrl: row.liveness_evidence_url,
+    cleanupArchiveReason: row.cleanup_archive_reason,
     livenessStatus: row.liveness_status ?? "",
     livenessCheckedAt: row.liveness_checked_at ?? "",
     scopeStatus: row.scope_status ?? "",
@@ -4366,6 +4448,7 @@ export function getMatchingStoriesForJob(jobId: string): Array<{
 
 /** Manually links or unlinks a single existing story to a job (source 'manual'). */
 export function setStoryJobLink(storyId: string, jobId: string, linked: boolean) {
+  markJobUserActivity(jobId);
   if (linked) {
     getDatabase()
       .prepare("insert or ignore into story_job_links (story_id, job_id, source) values (@storyId, @jobId, 'manual')")
@@ -5553,14 +5636,16 @@ export function saveWritingStyle(toneProfile: string, sampleCount: number) {
   logActivity("writing_style", "singleton", "Writing style cache updated", { sampleCount });
 }
 
-export function saveJobLiveness(id: string, status: string, reason: string) {
+export function saveJobLiveness(id: string, status: string, reason: string, evidenceUrl = "", checkedAt = new Date().toISOString()) {
   const db = getDatabase();
   db.prepare(
     `update jobs set
       liveness_status = @status,
-      liveness_checked_at = current_timestamp
+      liveness_checked_at = @checkedAt,
+      liveness_reason = @reason,
+      liveness_evidence_url = @evidenceUrl
     where id = @id`
-  ).run({ id, status });
+  ).run({ id, status, reason, evidenceUrl, checkedAt });
   logActivity("job", id, `Liveness check: ${status}`, { reason });
 }
 

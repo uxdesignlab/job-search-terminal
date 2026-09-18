@@ -224,11 +224,12 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   async function fetchDescriptionAction(): Promise<FetchDescriptionState> {
     "use server";
     const { fetchJobDescriptionOutcome } = await import("@/lib/scanner/jd-fetcher");
-    const { saveJobDescription } = await import("@/lib/db/queries");
+    const { saveJobDescription, markJobUserActivity } = await import("@/lib/db/queries");
     const current = getJobById(id);
     if (!current || !hasResolvedPosting(current)) return { status: "unsupported" };
     if (current.rawDescription) return { status: "fetched" };
 
+    markJobUserActivity(id);
     const outcome = await fetchJobDescriptionOutcome(current);
     if (outcome.status === "fetched") saveJobDescription(id, outcome.text);
     revalidatePath(`/jobs/${id}`);
@@ -237,11 +238,11 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
 
   async function checkLivenessAction() {
     "use server";
-    const { checkJobLiveness } = await import("@/lib/scanner/liveness-checker");
+    const { verifyJobPosting } = await import("@/lib/scanner/liveness-checker");
     const current = getJobById(id);
     if (current && hasResolvedPosting(current)) {
-      const result = await checkJobLiveness(current.url);
-      saveJobLiveness(id, result.status, result.reason);
+      const result = await verifyJobPosting(current);
+      saveJobLiveness(id, result.status, result.reason, result.evidenceUrl, result.checkedAt);
     }
     revalidatePath(`/jobs/${id}`);
     revalidatePath("/jobs");

@@ -565,18 +565,14 @@ status, posting maintenance, and bulk tools.
   immediately — it is auto-archived and moves to the Archived page.
 - Bulk delete asks for confirmation. If selected jobs have user activity, the
   confirmation warns before deleting.
-- Maintenance tool to verify posting liveness, archive expired untouched jobs,
-  and identify active jobs whose titles no longer match saved title filters.
-  Automatic cleanup **archives** rather than deletes — a single unauthenticated
-  liveness fetch is not strong enough evidence to destroy a row and its
-  evaluations, and archived jobs are permanently protected from further automatic
-  removal. Out-of-scope cleanup only bulk-deletes unprotected jobs; jobs with user
-  activity or recent discovery must be removed through explicit selected-job
-  actions. Clicking
-  **Verify active postings** opens a blocking `ProgressModal` while the liveness
-  check runs; on completion the modal shows a badge summary (checked / active /
-  uncertain / expired counts) and prompts the user to close and take action on
-  expired jobs in the section below.
+- **Job list maintenance** verifies only untouched Found jobs. Review and confirm
+  bulk archive of unavailable postings or jobs saved 30+ days ago whose availability
+  cannot be verified. Progress is inline and cancellable; opening a job does not
+  count as activity. Deliberate activity permanently protects a job, even after its
+  status returns to Found. Archive remains reversible. See [Job cleanup](job-cleanup.md).
+- **Shift-click selection** — click a checkbox, then Shift-click another to select
+  the inclusive displayed range. Shift+Space also works; ranges can be deselected.
+  Filtering and sorting reset the anchor, and hidden rows never join the range.
 - **Bulk evaluate** — selecting jobs and clicking **Evaluate N** opens a blocking
   `ProgressModal` that tracks per-job progress ("Job X of N") while the AI
   evaluation streams for each selected job. On completion the modal shows how
@@ -2834,36 +2830,12 @@ The results header shows count badges: run status, **N new in app**, **N found a
 
 The results view is scrollable when there are many errors or new listings. Each error shows a **category badge** — *Dead or missing* (404/410, bad URL, unknown host), *Timed out* (no response within the fetch limit; the board may still be live), or *Other error*. A summary line counts how many sources reported issues, how many can be disabled as YAML/custom career sources, and a breakdown by category. **Select all** / **Clear selection** / **Disable selected** bulk-update `scan_source_overrides`; per-row **Disable** does the same for one company. Aggregator-only rows (e.g. **Adzuna**) are not disabled as career sources — the UI points to AI Provider settings instead.
 
-The Jobs page can also verify whether saved postings still exist. The liveness
-check updates `liveness_status` but does not automatically archive or delete
-anything. Expired jobs with no user activity are shown for confirmation, and
-confirming **archives** them rather than deleting them.
-
-**Removal protection** (`src/lib/jobs/job-protection.ts`). A job is protected from
-automatic removal when any of these hold:
-
-- it is already archived;
-- it has user activity — reviewed, skipped, resume-generated, or applied;
-- it was discovered within the last day (`DISCOVERY_GRACE_DAYS`). Boards that
-  challenge bots routinely look expired on one check and active on the next, so a
-  posting a scan found this morning is never swept the same afternoon.
-
-Protected jobs are kept unless the user explicitly selects and deletes them. The
-maintenance panel reads this decision from the server rather than re-deriving it,
-so the "kept" and "can be cleaned up" counts always match what the server will do.
-
-**Liveness evidence quality** (`src/lib/scanner/liveness-checker.ts`). Only HTTP
-404/410 and explicit expiry copy mark a posting expired. Two host lists soften
-that where unauthenticated checks are unreliable:
-
-- *Session-gated hosts* (LinkedIn by default) serve login walls and generic
-  "no longer accepting applications" copy for roles that are still open, so no
-  text-based verdict from them is trusted — only a hard 404/410 counts.
-- *Ambiguous hosts* (Monster by default) can return HTTP 200 challenge pages, so a
-  pattern-free 200 falls back to `uncertain` instead of `active`.
-
-Both lists can be extended locally via `config/liveness-hosts.local.json`
-(gitignored; see `config/liveness-hosts.example.json`).
+The Jobs page checks availability with explicit evidence and offers reversible,
+confirmed cleanup for untouched Found jobs. Working aggregator pages are not proof
+that the employer is still hiring. Old unverified listings have a distinct cleanup
+reason and are never labeled expired merely because of age. The persistent activity
+marker, migration, API, timeout/cancellation behavior and selection rules are
+specified in [Job cleanup](job-cleanup.md).
 
 The Jobs table also re-checks current profile preferences at render time and is
 refreshed after Preferences or Constraints are saved. Jobs that still fit show
@@ -3304,7 +3276,7 @@ for new jobs" modal.
 | Action | Title | Success message |
 |---|---|---|
 | Evaluate N selected jobs | "Evaluating N jobs" | "{N} evaluated successfully" |
-| Verify active postings | "Verifying active postings" | Badge summary + "close to take action" |
+| Verify active postings | Inline checked/total progress with Stop | Selectable cleanup preview and archive confirmation |
 | Extract profile with AI | "Extracting profile with AI" | "{N} skills extracted" |
 | Scan with Adzuna | "Scanning Adzuna" | "Found N listings — X new, Y duplicates" |
 | Start/Re-research | "Researching company" | "Research complete — scroll down…" |

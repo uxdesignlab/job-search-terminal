@@ -1,267 +1,157 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button } from "@/components/ui";
-import { ProgressModal } from "@/components/ui/progress-modal";
+import { RANGE_SELECTION_HINT, useRangeSelection } from "@/components/ui/use-range-selection";
+import type { CleanupCandidate, CleanupEvent, CleanupSummary } from "@/lib/jobs/cleanup-types";
 
-type LivenessJobSummary = {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  status: string;
-  /** Computed by the server — covers user activity and the recent-discovery grace period. */
-  protectedFromRemoval: boolean;
-  reason: string;
-};
-
-type LivenessSummary = {
-  checked: number;
-  active: number;
-  uncertain: number;
-  expiredUntouched: LivenessJobSummary[];
-  expiredProtected: LivenessJobSummary[];
-  outOfScope: LivenessJobSummary[];
-};
+const PAGE_SIZE = 25;
+const LABELS = { closed: "Posting closed or unavailable", old_unverified: "30+ days old · Could not verify" };
+function date(value: string) { return value ? new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z").toLocaleDateString() : "Unknown"; }
 
 export function JobMaintenancePanel({ jobCount }: { jobCount: number }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
-  const [verifyPhase, setVerifyPhase] = useState<"idle" | "running" | "done" | "error">("idle");
-  const [deleting, setDeleting] = useState(false);
-  const [deletingOutOfScope, setDeletingOutOfScope] = useState(false);
-  const [summary, setSummary] = useState<LivenessSummary | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [summary, setSummary] = useState<CleanupSummary | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [group, setGroup] = useState("all");
+  const [sort, setSort] = useState("saved");
+  const [page, setPage] = useState(0);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
+  const [skipped, setSkipped] = useState<Array<{ id: string; reason: string; title?: string }>>([]);
+  const cancellation = useRef<AbortController | null>(null);
+  const archiveButton = useRef<HTMLButtonElement>(null);
+  const confirmHeading = useRef<HTMLParagraphElement>(null);
+  const busy = running || archiving;
+  const candidates = summary?.candidates;
+  const filtered = useMemo(() => (candidates ?? []).filter((job) =>
+    (group === "all" || job.cleanupReason === group) && `${job.title} ${job.company} ${job.source}`.toLowerCase().includes(search.toLowerCase())
+  ).sort((a, b) => sort === "company" ? a.company.localeCompare(b.company) : sort === "role" ? a.title.localeCompare(b.title) : a.savedAt.localeCompare(b.savedAt)), [candidates, group, search, sort]);
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1));
+  const visible = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const selection = useRangeSelection(visible.map((job) => job.id), selected, setSelected, JSON.stringify([search, group, sort, currentPage]), busy || confirming);
 
   async function verifyPostings() {
-    setRunning(true);
-    setVerifyPhase("running");
-    setError(null);
-    setSummary(null);
+    setRunning(true); setError(null); setNotice(""); setSkipped([]); setSummary(null);
+    setSelected(new Set()); selection.resetAnchor(); setConfirming(false); setPage(0);
+    const controller = new AbortController(); cancellation.current = controller;
+    let completed = false;
     try {
-      const response = await fetch("/api/jobs/liveness", { method: "POST" });
-      const payload = await response.json() as LivenessSummary | { error?: string };
-      if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "Posting verification failed");
-      setSummary(payload as LivenessSummary);
-      setVerifyPhase("done");
-      router.refresh();
+      const response = await fetch("/api/jobs/liveness", { method: "POST", headers: { Accept: "application/x-ndjson" }, signal: controller.signal });
+      if (!response.ok || !response.body) throw new Error("Posting verification could not start. Try again.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder(); let buffer = "";
+      const receive = (line: string) => {
+        if (!line.trim()) return;
+        const event = JSON.parse(line) as CleanupEvent;
+        if (event.type === "error") throw new Error(event.message);
+        setSummary(event.summary);
+        if (event.type === "result") completed = true;
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
+        lines.forEach(receive);
+        if (done) { if (buffer.trim()) receive(buffer); break; }
+      }
+      if (!completed) throw new Error("Verification ended early. Completed results are available; run again to check the rest.");
+      setNotice("Verification complete. Review the reasons before choosing jobs to archive.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Posting verification failed");
-      setVerifyPhase("error");
-    } finally {
-      setRunning(false);
-    }
+      if (controller.signal.aborted) setNotice("Verification stopped. Completed results are available below; unchecked jobs were kept.");
+      else setError(err instanceof Error ? err.message : "Verification failed. Try again.");
+    } finally { setRunning(false); cancellation.current = null; router.refresh(); }
   }
 
-  async function deleteOutOfScope() {
-    const deletable = summary?.outOfScope.filter((job) => !job.protectedFromRemoval) ?? [];
-    if (deletable.length === 0) return;
-    setDeletingOutOfScope(true);
-    setError(null);
+  async function archiveSelected() {
+    setArchiving(true); setError(null);
     try {
-      const response = await fetch("/api/jobs/bulk", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: deletable.map((job) => job.id) }),
-      });
-      const payload = await response.json() as { deleted?: number; error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Deletion failed");
-      setSummary((current) => current
-        ? {
-          ...current,
-          outOfScope: current.outOfScope.filter((job) => job.protectedFromRemoval),
-        }
-        : current);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Deletion failed");
-    } finally {
-      setDeletingOutOfScope(false);
-    }
+      const response = await fetch("/api/jobs/liveness", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [...selected] }) });
+      const result = await response.json() as { archivedIds: string[]; skipped: Array<{ id: string; reason: string }>; error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Archiving failed. Try again.");
+      const removed = new Set([...result.archivedIds, ...result.skipped.map((job) => job.id)]);
+      setSkipped(result.skipped.map((item) => ({ ...item, title: candidates?.find((job) => job.id === item.id)?.title })));
+      setSummary((current) => current ? { ...current, candidates: current.candidates.filter((job) => !removed.has(job.id)) } : current);
+      setNotice(`${result.archivedIds.length} archived. ${result.skipped.length} kept because they are no longer eligible.`);
+      setSelected(new Set()); selection.resetAnchor(); setConfirming(false); router.refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : "Archiving failed"); }
+    finally { setArchiving(false); }
   }
-
-  function dismissOutOfScope() {
-    setSummary((current) => current ? { ...current, outOfScope: [] } : current);
+  function selectGroup(reason: CleanupCandidate["cleanupReason"]) {
+    selection.resetAnchor();
+    setSelected((previous) => new Set([...previous, ...(candidates ?? []).filter((job) => job.cleanupReason === reason).map((job) => job.id)]));
   }
-
-  const outOfScopeUntouched = summary?.outOfScope.filter((job) => !job.protectedFromRemoval) ?? [];
-  const outOfScopeProtected = summary?.outOfScope.filter((job) => job.protectedFromRemoval) ?? [];
-
-  async function deleteExpiredUntouched() {
-    if (!summary?.expiredUntouched.length) return;
-    setDeleting(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/jobs/liveness", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: summary.expiredUntouched.map((job) => job.id) }),
-      });
-      const payload = await response.json() as { deleted?: number; error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Cleanup failed");
-      setSummary((current) => current
-        ? { ...current, expiredUntouched: [] }
-        : current);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Cleanup failed");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  const verifyModalOpen = verifyPhase === "running" || verifyPhase === "done" || verifyPhase === "error";
 
   return (
-    <>
-    <ProgressModal
-      open={verifyModalOpen}
-      phase={verifyPhase === "running" ? "running" : "done"}
-      title="Verifying active postings"
-      message="Checking each posting link for liveness…"
-      subtitle="This may take a minute for large job lists."
-      error={verifyPhase === "error" ? (error ?? "Verification failed") : null}
-      onClose={() => setVerifyPhase("idle")}
-    >
-      {summary && (
-        <div className="grid gap-3">
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="neutral">{summary.checked} checked</Badge>
-            <Badge tone="success">{summary.active} active</Badge>
-            <Badge tone="warning">{summary.uncertain} uncertain</Badge>
-            <Badge tone={summary.expiredUntouched.length > 0 ? "danger" : "neutral"}>
-              {summary.expiredUntouched.length} expired untouched
-            </Badge>
-            <Badge tone={summary.expiredProtected.length > 0 ? "warning" : "neutral"}>
-              {summary.expiredProtected.length} expired with activity
-            </Badge>
-            <Badge tone={summary.outOfScope.length > 0 ? "warning" : "neutral"}>
-              {summary.outOfScope.length} out of scope
-            </Badge>
-          </div>
-          {(summary.expiredUntouched.length > 0 || summary.outOfScope.length > 0) && (
-            <p className="text-xs text-muted">Close to review and take action on expired or out-of-scope jobs below.</p>
-          )}
-        </div>
-      )}
-    </ProgressModal>
-
-    <section className="rounded-panel border border-border bg-panel">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+    <section aria-labelledby="maintenance-heading" className="rounded-panel border border-border bg-panel p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Job list maintenance</h2>
-          <p className="mt-1 text-xs text-muted">
-            Verify active posting links and confirm cleanup for expired jobs with no user activity.
-          </p>
+          <h2 id="maintenance-heading" className="text-sm font-semibold text-ink">Job list maintenance</h2>
+          <p className="mt-1 text-xs text-muted">Check untouched Found jobs. Review closed postings and jobs saved 30+ days ago whose availability cannot be verified.</p>
+          <p className="mt-1 text-xs text-muted">Jobs you have acted on are protected. Nothing is archived until you confirm.</p>
         </div>
-        <Button disabled={running || jobCount === 0} onClick={verifyPostings} type="button" variant="secondary">
-          {running ? "Verifying..." : "Verify active postings"}
-        </Button>
+        <Button disabled={busy || confirming || jobCount === 0} onClick={verifyPostings} type="button" variant="secondary">Verify active postings</Button>
       </div>
-
+      <div role="status" aria-live="polite" aria-atomic="true" className="mt-3 text-sm text-muted">
+        {running ? (summary ? `Checking posting links: ${summary.checked} of ${summary.total} checked. ${summary.protected} protected. Each link can take up to 12 seconds.` : "Preparing posting checks…") : notice}
+      </div>
+      {running && <Button className="mt-2" onClick={() => cancellation.current?.abort()} type="button" variant="secondary">Stop</Button>}
+      {error && <p className="mt-3 text-sm text-danger" role="alert">{error}</p>}
       {summary && (
-        <div className="border-t border-border px-5 py-4">
+        <div className="mt-4">
           <div className="flex flex-wrap gap-2">
-            <Badge tone="neutral">{summary.checked} checked</Badge>
-            <Badge tone="success">{summary.active} active</Badge>
-            <Badge tone="warning">{summary.uncertain} uncertain</Badge>
-            <Badge tone={summary.expiredUntouched.length > 0 ? "danger" : "neutral"}>
-              {summary.expiredUntouched.length} expired untouched
-            </Badge>
-            <Badge tone={summary.expiredProtected.length > 0 ? "warning" : "neutral"}>
-              {summary.expiredProtected.length} expired with activity
-            </Badge>
-            <Badge tone={summary.outOfScope.length > 0 ? "warning" : "neutral"}>
-              {summary.outOfScope.length} out of scope
-            </Badge>
+            <Badge tone="neutral">{summary.checked} checked</Badge><Badge tone="neutral">{summary.protected} protected</Badge>
+            <Badge tone="success">{summary.active} confirmed active</Badge><Badge tone="warning">{summary.uncertain} could not verify</Badge>
+            <Badge tone="neutral">{summary.candidates.length} cleanup candidates</Badge>
           </div>
-
-          {summary.expiredUntouched.length > 0 && (
-            <div className="mt-4 rounded-control border border-danger/30 bg-danger/8 p-3">
-              <p className="text-sm font-medium text-ink">
-                Archive {summary.expiredUntouched.length} expired job{summary.expiredUntouched.length !== 1 ? "s" : ""} with no user activity.
-              </p>
-              <ul className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-2 text-sm text-muted">
-                {summary.expiredUntouched.slice(0, 12).map((job) => (
-                  <li key={job.id}>
-                    <span className="font-medium text-ink">{job.title}</span> — {job.company} · {job.location}
-                  </li>
-                ))}
-                {summary.expiredUntouched.length > 12 && (
-                  <li>+{summary.expiredUntouched.length - 12} more</li>
-                )}
-              </ul>
-              <Button
-                className="mt-3 border-danger/40 bg-danger/10 text-danger hover:bg-danger/15"
-                disabled={deleting}
-                onClick={deleteExpiredUntouched}
-                type="button"
-                variant="secondary"
-              >
-                {deleting ? "Archiving..." : "Archive expired untouched jobs"}
-              </Button>
+          {!running && summary.candidates.length === 0 && <p className="mt-3 text-sm text-muted">No cleanup candidates remain in these results.</p>}
+          {summary.candidates.length > 0 && <>
+            <p className="mt-3 text-xs text-muted">An old, unverified listing may still be open. Age is not proof of closure. {RANGE_SELECTION_HINT}</p>
+            <div className="my-3 flex flex-wrap items-end gap-3">
+              <label className="text-xs text-muted">Search candidates<input className="mt-1 block rounded-control border border-border bg-panel p-2 text-ink" value={search} disabled={confirming || archiving} onChange={(e) => { setSearch(e.target.value); setPage(0); }} /></label>
+              <label className="text-xs text-muted">Cleanup reason<select className="mt-1 block rounded-control border border-border bg-panel p-2 text-ink" value={group} disabled={confirming || archiving} onChange={(e) => { setGroup(e.target.value); setPage(0); }}><option value="all">All reasons</option><option value="closed">{LABELS.closed}</option><option value="old_unverified">{LABELS.old_unverified}</option></select></label>
+              <label className="text-xs text-muted">Sort by<select className="mt-1 block rounded-control border border-border bg-panel p-2 text-ink" value={sort} disabled={confirming || archiving} onChange={(e) => { setSort(e.target.value); setPage(0); }}><option value="saved">Oldest saved first</option><option value="company">Company</option><option value="role">Role</option></select></label>
             </div>
-          )}
-
-          {summary.expiredProtected.length > 0 && (
-            <div className="mt-4 rounded-control border border-warning/30 bg-warning/8 p-3">
-              <p className="text-sm font-medium text-ink">
-                Kept {summary.expiredProtected.length} expired job{summary.expiredProtected.length !== 1 ? "s" : ""} — user activity exists, or they were discovered too recently to judge.
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                These can only be removed through an explicit selected-job delete action.
-              </p>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" disabled={busy || confirming} onClick={() => selectGroup("closed")}>Select all closed ({summary.candidates.filter((job) => job.cleanupReason === "closed").length})</Button>
+              <Button type="button" variant="secondary" disabled={busy || confirming} onClick={() => selectGroup("old_unverified")}>Select all old unverified ({summary.candidates.filter((job) => job.cleanupReason === "old_unverified").length})</Button>
+              <Button type="button" variant="quiet" disabled={busy || confirming || selected.size === 0} onClick={selection.clear}>Clear selection</Button>
             </div>
-          )}
-
-          {summary.outOfScope.length > 0 && (
-            <div className="mt-4 rounded-control border border-warning/30 bg-warning/8 p-3">
-              <p className="text-sm font-medium text-ink">
-                {summary.outOfScope.length} job{summary.outOfScope.length !== 1 ? "s" : ""} labeled &ldquo;Out of scope&rdquo; — title doesn&apos;t match your title filters.
-              </p>
-              {outOfScopeUntouched.length > 0 && (
-                <>
-                  <p className="mt-2 text-xs font-medium text-muted">
-                    Untouched jobs can be deleted here.
-                  </p>
-                  <ul className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-2 text-sm text-muted">
-                    {outOfScopeUntouched.slice(0, 12).map((job) => (
-                      <li key={job.id}>
-                        <span className="font-medium text-ink">{job.title}</span> — {job.company} · {job.location}
-                      </li>
-                    ))}
-                    {outOfScopeUntouched.length > 12 && (
-                      <li>+{outOfScopeUntouched.length - 12} more</li>
-                    )}
-                  </ul>
-                </>
-              )}
-              {outOfScopeProtected.length > 0 && (
-                <p className="mt-2 text-xs leading-5 text-muted">
-                  Kept {outOfScopeProtected.length} out-of-scope job{outOfScopeProtected.length !== 1 ? "s" : ""} with user activity or recent discovery.
-                  Remove them from the Jobs table if you decide they should be deleted.
-                </p>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  className="border-danger/40 bg-danger/10 text-danger hover:bg-danger/15"
-                  disabled={deletingOutOfScope || outOfScopeUntouched.length === 0}
-                  onClick={deleteOutOfScope}
-                  type="button"
-                  variant="secondary"
-                >
-                  {deletingOutOfScope ? "Deleting..." : `Delete ${outOfScopeUntouched.length} untouched`}
-                </Button>
-                <Button disabled={deletingOutOfScope} onClick={dismissOutOfScope} type="button" variant="secondary">
-                  Keep &amp; dismiss
-                </Button>
-              </div>
+            <p className="mb-2 text-xs text-muted">Group selection includes all results in that reason, across pages and search filters.</p>
+            <div className="overflow-x-auto" role="region" aria-label="Cleanup candidates" tabIndex={0}>
+              <table className="w-full text-left text-sm">
+                <thead><tr className="border-b border-border"><th className="p-2"><input aria-label="Select all candidates on this page" type="checkbox" {...selection.header} /></th><th className="p-2">Job</th><th className="p-2">Saved</th><th className="p-2">Reason and evidence</th></tr></thead>
+                <tbody>{visible.map((job) => <tr key={job.id} className="border-b border-border">
+                  <td className="p-2"><input aria-label={`Select ${job.title} at ${job.company}`} type="checkbox" {...selection.checkbox(job.id)} /></td>
+                  <td className="p-2"><Link className="font-medium text-accent" href={`/jobs/${job.id}`}>{job.title}</Link><p>{job.company}</p><p className="text-xs text-muted">{job.source}</p></td>
+                  <td className="p-2 whitespace-nowrap">{date(job.savedAt)}</td>
+                  <td className="p-2"><p className="font-medium">{LABELS[job.cleanupReason]}</p><p className="text-xs text-muted">{job.reason}</p><p className="text-xs text-muted">Checked {new Date(job.checkedAt).toLocaleString()}</p>{/^https?:\/\//i.test(job.evidenceUrl) && <a className="text-xs text-accent underline" href={job.evidenceUrl} target="_blank" rel="noreferrer">Checked posting link</a>}</td>
+                </tr>)}</tbody>
+              </table>
             </div>
-          )}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Button type="button" variant="quiet" disabled={currentPage === 0 || confirming || archiving} onClick={() => setPage(currentPage - 1)}>Previous</Button>
+              <span className="text-xs text-muted">Page {currentPage + 1} of {Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))} · {filtered.length} results</span>
+              <Button type="button" variant="quiet" disabled={(currentPage + 1) * PAGE_SIZE >= filtered.length || confirming || archiving} onClick={() => setPage(currentPage + 1)}>Next</Button>
+              <span className="text-sm" role="status">{selected.size} selected across all pages</span>
+              <button ref={archiveButton} className="rounded-control border border-border px-3 py-2 text-sm font-medium disabled:opacity-50" type="button" disabled={busy || confirming || selected.size === 0} onClick={() => { setConfirming(true); requestAnimationFrame(() => confirmHeading.current?.focus()); }}>Archive selected</button>
+            </div>
+            {confirming && <div className="mt-3 rounded-control border border-border p-3">
+              <p ref={confirmHeading} tabIndex={-1} className="text-sm font-medium">Archive {selected.size} selected jobs? You can restore them from Archived.</p>
+              <p className="mt-1 text-xs text-muted">Protection is checked again before archiving. Jobs you have since acted on will be kept.</p>
+              <div className="mt-3 flex gap-2"><Button type="button" disabled={archiving} onClick={archiveSelected}>{archiving ? "Archiving…" : `Confirm archive ${selected.size} jobs`}</Button><Button type="button" disabled={archiving} variant="secondary" onClick={() => { setConfirming(false); archiveButton.current?.focus(); }}>Cancel</Button></div>
+            </div>}
+          </>}
         </div>
       )}
+      {skipped.length > 0 && <details className="mt-3 text-sm"><summary>Why jobs were kept</summary><ul>{skipped.map((job) => <li key={job.id}>{job.title ?? "Job"}: {job.reason}</li>)}</ul></details>}
+      {summary && <Link className="mt-3 inline-block text-sm text-accent underline" href="/archived">View Archived to restore jobs</Link>}
     </section>
-    </>
   );
 }

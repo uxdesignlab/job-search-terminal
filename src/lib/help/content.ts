@@ -564,6 +564,34 @@ export const helpPages: HelpPage[] = [
     ],
     sections: [
       {
+        id: "clean-up-old-jobs",
+        title: "Clear old jobs without losing your work",
+        intro: "Job list maintenance checks untouched jobs marked Found. Jobs you have edited, reviewed, applied to, or prepared work for are protected, even if you change their status back to Found. Opening a job alone does not protect it.",
+        steps: [
+          { title: "Check the postings", body: "On Jobs, click Verify active postings. The count shows progress. Click Stop if you need to end the check; completed results stay available." },
+          { title: "Review the reasons", body: "Posting closed or unavailable means the check found evidence that the posting is gone or closed. 30+ days old · Could not verify means the job has been saved here for at least 30 days and the app cannot confirm it is open. That job may still be available." },
+          { title: "Choose jobs to archive", body: "Search the candidates or use Cleanup reason and Sort by. Each row shows when it was saved, why it was listed, and when it was checked. Use Checked posting link to inspect the evidence page when a link is available." },
+          { title: "Confirm the count", body: "Click Archive selected, then confirm the count. Jobs you have acted on since the check are kept. Nothing is archived just because you ran a check." },
+          { title: "Restore a job if needed", body: "Open Archived and click Restore. Restoring puts the job back in Jobs and protects it from future cleanup." },
+        ],
+        bullets: [
+          "Jobs saved less than 24 hours ago are protected. The saved date is when the job entered this app, not when the employer posted it.",
+          "Verification checks public posting links. A working job-board page does not prove the employer is still hiring. The check does not use AI or send your resume or profile.",
+          "The check does not remove Applied, Rejected, Reviewed, or other jobs you have acted on. You choose any manual removal of those jobs yourself.",
+        ],
+      },
+      {
+        id: "select-job-ranges",
+        title: "Select several jobs at once",
+        intro: "Select a checkbox, then Shift-click another to select a range. This works in Jobs and in the cleanup preview. Hold Shift and uncheck a checkbox to clear that range instead.",
+        bullets: [
+          "You can also focus a checkbox and press Shift+Space. Space without Shift changes just that checkbox and sets a new starting point.",
+          "Ranges follow the order you see. Changing the sort, filters, or page resets the starting point. Hidden rows and other pages are not included.",
+          "The top checkbox selects the displayed rows. In cleanup, Select all closed and Select all old unverified include every candidate with that reason, across pages and search filters. Review the selected count before confirming.",
+          "Selecting a job does not change its status or count as reviewing it.",
+        ],
+      },
+      {
         id: "where-you-will-work",
         title: "Say where you will work",
         intro:
@@ -1229,6 +1257,17 @@ export const helpPages: HelpPage[] = [
       "If scans return junk, fix your job titles and title filters before anything else. That is nearly always the cause.",
     ],
     sections: [
+      {
+        id: "posting-check-uncertain",
+        title: "A job cannot be verified, or cleanup keeps it",
+        bullets: [
+          "Could not verify can mean the site needs a login, blocks automated checks, times out, or only shows a general page. Open the checked posting link to inspect it yourself. A job is not marked closed just because its site could not be reached.",
+          "If verification stops or loses its connection, completed results remain available. Run Verify active postings again to check the remaining jobs.",
+          "Cleanup keeps jobs with deliberate activity, statuses other than Found, or less than 24 hours in the app. Jobs with a missing or invalid saved date are also kept. If a job changes after preview, it is checked again and may be skipped.",
+          "If archiving fails, retry. An archive batch is saved together, so a database failure does not leave half the batch archived. Open Why jobs were kept to inspect skipped results.",
+          "Older actions that left no saved record may not be recognized as activity. Review the candidates before confirming; you can restore mistakes from Archived.",
+        ],
+      },
       {
         id: "app-start",
         title: "The app will not start",

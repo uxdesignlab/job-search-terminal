@@ -1526,5 +1526,14 @@ export const migrations = [
         detected_at text not null default current_timestamp
       );
     `
+  },
+  {
+    id: "0069_untouched_job_cleanup",
+    sql: `
+      alter table jobs add column user_activity_at text not null default '';
+      alter table jobs add column liveness_reason text not null default '';
+      alter table jobs add column liveness_evidence_url text not null default '';
+      alter table jobs add column cleanup_archive_reason text not null default '';
+    `
   }
 ];

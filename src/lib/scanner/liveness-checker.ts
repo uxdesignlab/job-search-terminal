@@ -1,174 +1,116 @@
-// Checks whether a job posting URL is still active.
-// Returns "active" | "expired" | "uncertain".
-// No browser — just HTTP + text heuristics (fast, no Playwright dependency).
-
+// Availability evidence must identify a posting, not merely a working web page.
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
 import { safeFetch } from "../safe-fetch";
 
-const EXPIRED_PATTERNS = [
-  /no longer accepting applications/i,
-  /this (job|position|role|posting) (is )?(no longer |has been )?(available|active|open|accepting)/i,
-  /position (has been )?(filled|closed|removed)/i,
-  /job (has been )?(filled|closed|removed|expired)/i,
-  /this posting has (expired|been removed|been filled|been closed)/i,
-  /we('re| are) not (currently )?hiring/i,
-  /sorry[,.]? this (job|role|position) is no longer/i,
-  /sorry[,.]?\s*that job has expired/i,
-  /application deadline (has )?passed/i,
-  // Bounded on purpose. Unanchored `.*` matched any page that happened to contain
-  // both words anywhere inside the 30 KB sample, which made long career pages and
-  // bot-challenge interstitials read as expired.
-  /requisition[^.<>]{0,40}closed/i,
-  /opening[^.<>]{0,40}closed/i,
-  /listing.*no longer active/i,
-];
-
-const ACTIVE_PATTERNS = [
-  /apply now/i,
-  /submit (your )?application/i,
-  /we('re| are) hiring/i,
-];
-
 export type LivenessStatus = "active" | "expired" | "uncertain";
+export type LivenessResult = { status: LivenessStatus; reason: string; checkedAt: string; evidenceUrl?: string };
+export type PostingIdentity = { title: string; company: string };
 
-export type LivenessResult = {
-  status: LivenessStatus;
-  reason: string;
-  checkedAt: string;
-};
-
-// Hosts whose bot-detection or CDN can return HTTP 200 with page content that
-// contains no expiry or active signals (e.g. a Cloudflare challenge or error page).
-// For these hosts a pattern-free 200 falls back to "uncertain" rather than "active"
-// so that challenge pages are never misclassified as live job postings.
-// Explicit expiry or active pattern matches are still trusted.
-const UNCERTAIN_ON_AMBIGUOUS_HOSTS = [
-  "monster.com",
+const CLOSED = [
+  /no longer accepting applications/i,
+  /this (?:job|position|role|posting) is (?:no longer|not) (?:available|active|open)/i,
+  /(?:this |that )?(?:job|position|role|posting) (?:has been |is )?(?:filled|closed|removed|expired)/i,
+  /application deadline (?:has )?passed/i,
+  /this posting has (?:expired|been removed|been filled|been closed)/i,
 ];
+const CHALLENGE = /verify (?:you are|you're) human|checking your browser|access denied|captcha|just a moment|sign in to (?:view|continue)|log in to (?:view|continue)/i;
+const APPLY = /apply (?:now|for this (?:job|role|position))|submit (?:your |an )?application/i;
+const BOARD_HOSTS = ["himalayas.app", "adzuna.com", "adzuna.co.uk", "adzuna.ca", "adzuna.com.au", "linkedin.com", "indeed.com", "glassdoor.com", "monster.com", "dice.com", "wellfound.com", "jobgether.com", "jooble.org", "jobrapido.com", "lensa.com", "talent.com", "ziprecruiter.com"];
 
-// Hosts that gate postings behind a signed-in session. Without one they serve login
-// walls, bot challenges, or generic "no longer accepting applications" copy for roles
-// that are still open — so no unauthenticated verdict from them is trustworthy, not
-// even an explicit expiry match. Only a hard 404/410 is believed. Anything else is
-// "uncertain", which keeps the job in the pipeline instead of flagging it expired.
-const SESSION_GATED_HOSTS = [
-  "linkedin.com",
-];
-
-/**
- * Extra hosts from `config/liveness-hosts.local.json`, which is gitignored so a local
- * setup can list boards it scans without publishing them. Shape:
- * `{ "sessionGated": ["example.com"], "uncertainOnAmbiguous": ["example.org"] }`
- * Mirrors the `portals.yml` / `portals.example.yml` fallback in careerops-scanner.
- */
-let localHostOverrides: { sessionGated: string[]; uncertainOnAmbiguous: string[] } | null = null;
-
-function getLocalHostOverrides() {
-  if (localHostOverrides) return localHostOverrides;
-  localHostOverrides = { sessionGated: [], uncertainOnAmbiguous: [] };
+function hostIs(url: string, hosts: string[]) {
+  try { const host = new URL(url).hostname.toLowerCase(); return hosts.some((h) => host === h || host.endsWith(`.${h}`)); } catch { return false; }
+}
+export function isAggregatorPosting(url: string) { return hostIs(url, BOARD_HOSTS); }
+function sessionGated(url: string) {
+  let local: string[] = [];
   try {
-    const configPath = path.join(process.cwd(), "config", "liveness-hosts.local.json");
-    const parsed = JSON.parse(readFileSync(configPath, "utf8")) as unknown;
-    if (parsed && typeof parsed === "object") {
-      const raw = parsed as Record<string, unknown>;
-      const list = (value: unknown) =>
-        Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-      localHostOverrides = {
-        sessionGated: list(raw.sessionGated),
-        uncertainOnAmbiguous: list(raw.uncertainOnAmbiguous),
-      };
-    }
-  } catch {
-    /* the local override file is optional */
-  }
-  return localHostOverrides;
+    const config = JSON.parse(readFileSync(path.join(process.cwd(), "config/liveness-hosts.local.json"), "utf8"));
+    if (Array.isArray(config.sessionGated)) local = config.sessionGated.filter((v: unknown): v is string => typeof v === "string");
+  } catch { /* optional local preferences */ }
+  return hostIs(url, ["linkedin.com", ...local]);
 }
-
-function hostMatches(url: string, hosts: string[]): boolean {
-  if (hosts.length === 0) return false;
+function text(html: string) {
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+function normalized(value: string) { return text(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim(); }
+function matching(value: unknown, expected: string) { return typeof value === "string" && Boolean(expected.trim()) && normalized(value) === normalized(expected); }
+function specificUrl(raw: string) {
   try {
-    const { hostname } = new URL(url);
-    return hosts.some((h) => hostname === h || hostname.endsWith(`.${h}`));
-  } catch {
-    return false;
+    const url = new URL(raw);
+    return Boolean(url.searchParams.get("gh_jid") || url.searchParams.get("jobId") || url.searchParams.get("jk")) || !/^\/?(?:careers?|jobs?|positions?|openings?|search|login|signin|auth)?\/?$/i.test(url.pathname);
+  } catch { return false; }
+}
+function jobSchemas(html: string): Record<string, unknown>[] {
+  const results: Record<string, unknown>[] = [];
+  function visit(value: unknown) {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!value || typeof value !== "object") return;
+    const item = value as Record<string, unknown>;
+    if (item["@type"] === "JobPosting" || (Array.isArray(item["@type"]) && item["@type"].includes("JobPosting"))) results.push(item);
+    if (item["@graph"]) visit(item["@graph"]);
   }
+  for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try { visit(JSON.parse(match[1])); } catch { /* malformed structured data is not evidence */ }
+  }
+  return results;
 }
 
-function isUncertainOnAmbiguous(url: string): boolean {
-  return hostMatches(url, [...UNCERTAIN_ON_AMBIGUOUS_HOSTS, ...getLocalHostOverrides().uncertainOnAmbiguous]);
-}
-
-function isSessionGated(url: string): boolean {
-  return hostMatches(url, [...SESSION_GATED_HOSTS, ...getLocalHostOverrides().sessionGated]);
-}
-
-export async function checkJobLiveness(url: string): Promise<LivenessResult> {
+export async function checkJobLiveness(url: string, identity?: PostingIdentity, signal?: AbortSignal): Promise<LivenessResult> {
   const checkedAt = new Date().toISOString();
-
-  if (!url) {
-    return { status: "uncertain", reason: "No URL on file", checkedAt };
-  }
-
-  const uncertainOnAmbiguous = isUncertainOnAmbiguous(url);
-
-  let res: Response;
+  let evidenceUrl = url;
+  const result = (status: LivenessStatus, reason: string): LivenessResult => ({ status, reason, checkedAt, evidenceUrl });
+  if (!url) return result("uncertain", "No posting link saved");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    res = await safeFetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; job-search-bot/1.0)" },
-      redirect: "follow",
+    const res = await safeFetch(url, {
+      signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; job-search-bot/1.0)" }, redirect: "follow", cache: "no-store",
     });
-    clearTimeout(timeout);
+    evidenceUrl = res.url || url;
+    if (!specificUrl(evidenceUrl)) return result("uncertain", "The link leads to a general page, not this posting");
+    if (res.status === 404 || res.status === 410) return result("expired", `Job-specific posting unavailable (HTTP ${res.status})`);
+    if (res.status >= 400) return result("uncertain", `Posting could not be checked (HTTP ${res.status})`);
+    if (sessionGated(url) || sessionGated(evidenceUrl)) return result("uncertain", "A signed-in session is needed to verify this posting");
+    const html = (await res.text()).slice(0, 512_000);
+    const visible = text(html);
+    if (CHALLENGE.test(visible)) return result("uncertain", "The site returned a login or browser-check page");
+    const schemas = jobSchemas(html);
+    const matched = identity && schemas.find((schema) => {
+      const org = schema.hiringOrganization as { name?: unknown } | undefined;
+      return matching(schema.title, identity.title) && matching(org?.name, identity.company);
+    });
+    const headings = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)].map((m) => text(m[1]));
+    const heading = headings.some((value) => identity && matching(value, identity.title));
+    const identityMatches = Boolean(matched || (identity && heading && normalized(visible).includes(normalized(identity.company))));
+    // Closure copy must describe this posting, not a recommendation card or embedded script.
+    const primary = text(html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ?? html)
+      .split(/related jobs|similar jobs|recommended jobs/i)[0];
+    if (CLOSED.some((pattern) => pattern.test(primary)) && (identityMatches || headings.some((value) => CLOSED.some((pattern) => pattern.test(value))))) return result("expired", "The posting says the role is closed or no longer available");
+    if (matched && typeof matched.validThrough === "string" && Date.parse(matched.validThrough) < Date.now()) return result("expired", "The matching posting's application deadline has passed");
+    if (isAggregatorPosting(evidenceUrl)) return result("uncertain", "The listing is still on a job board; employer availability is unverified");
+    if (identityMatches && APPLY.test(primary)) return result("active", "Matching employer posting with an application invitation");
+    return result("uncertain", "The page loaded, but availability of this role could not be confirmed");
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { status: "uncertain", reason: `Fetch error: ${msg}`, checkedAt };
-  }
+    if (signal?.aborted) throw signal.reason ?? new DOMException("Stopped", "AbortError");
+    return result("uncertain", controller.signal.aborted ? "The posting check timed out" : `Could not reach the posting: ${err instanceof Error ? err.message : String(err)}`);
+  } finally { clearTimeout(timeout); }
+}
 
-  if (res.status === 404 || res.status === 410) {
-    return { status: "expired", reason: `HTTP ${res.status}`, checkedAt };
+/** Always try saved alternatives; a working employer role overrides a stale board copy. */
+export async function verifyJobPosting(job: PostingIdentity & { url: string; originalPostingUrl: string; sourceUrl: string }, signal?: AbortSignal) {
+  const urls = [...new Set([job.originalPostingUrl, job.url, job.sourceUrl].filter(Boolean))]
+    .sort((a, b) => Number(isAggregatorPosting(a)) - Number(isAggregatorPosting(b)));
+  let best: LivenessResult | undefined;
+  for (const url of urls) {
+    signal?.throwIfAborted();
+    const verdict = await checkJobLiveness(url, job, signal);
+    if (verdict.status === "active") return verdict;
+    if (!best || (verdict.status === "expired" && best.status !== "expired")) best = verdict;
   }
-
-  if (res.status >= 400) {
-    return { status: "uncertain", reason: `HTTP ${res.status}`, checkedAt };
-  }
-
-  // Past this point every verdict comes from page text. On session-gated hosts that
-  // text describes the login wall, not the posting, so stop here rather than trust it.
-  if (isSessionGated(url)) {
-    return {
-      status: "uncertain",
-      reason: "Host requires a signed-in session — cannot verify without one",
-      checkedAt,
-    };
-  }
-
-  // Sample up to 30 KB of text — enough to catch banners without huge parse cost
-  let body = "";
-  try {
-    const raw = await res.text();
-    body = raw.slice(0, 30_000);
-  } catch {
-    return { status: "uncertain", reason: "Could not read response body", checkedAt };
-  }
-
-  for (const pattern of EXPIRED_PATTERNS) {
-    if (pattern.test(body)) {
-      return { status: "expired", reason: `Matched pattern: ${pattern.source.slice(0, 60)}`, checkedAt };
-    }
-  }
-
-  for (const pattern of ACTIVE_PATTERNS) {
-    if (pattern.test(body)) {
-      return { status: "active", reason: "Active posting signals found", checkedAt };
-    }
-  }
-
-  // HTTP 200 with no clear signal
-  if (uncertainOnAmbiguous) {
-    return { status: "uncertain", reason: "HTTP 200 — no signals; host unreliable without real browser", checkedAt };
-  }
-  return { status: "active", reason: "HTTP 200 — no expiry signals detected", checkedAt };
+  return best ?? { status: "uncertain" as const, reason: "No posting link saved", checkedAt: new Date().toISOString(), evidenceUrl: "" };
 }

@@ -1,4 +1,4 @@
-import { getAISettings, getJobById, updateJobPostingResolution } from "@/lib/db/queries";
+import { getAISettings, getJobById, markJobUserActivity, updateJobPostingResolution } from "@/lib/db/queries";
 import { buildPostingSearchQuery } from "@/lib/jobs/posting-resolution";
 import { safeFetch } from "@/lib/safe-fetch";
 import { fetchJobDescription } from "./jd-fetcher";
@@ -69,6 +69,7 @@ export async function resolveEmailJobPosting(jobId: string, postingUrl: string):
   if (!job) throw new Error(`Job not found: ${jobId}`);
   if (!isLikelyPostingUrl(postingUrl)) throw new Error("Enter a valid public job posting URL.");
 
+  markJobUserActivity(jobId);
   const resolvedJob = {
     ...job,
     url: postingUrl,

@@ -171,3 +171,7 @@ The rules that most often get broken:
 - **New failure modes belong in the `troubleshooting` guide** in the same pass.
 - **`related` links should go both ways.** A guide nothing links to is a guide
   nobody finds.
+
+Job search includes untouched-job cleanup, restoration, and Shift-click/Shift+Space
+range selection. Troubleshooting covers unverifiable postings, interrupted checks,
+protected candidates, failed archives, and historical activity limitations.

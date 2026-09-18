@@ -1,3 +1,4 @@
+import { markJobUserActivity } from "@/lib/db/queries";
 import { runAndSaveJobWithAI, EvaluationPhaseError } from "@/lib/evaluation/llm-evaluator";
 import type { PhaseUpdate } from "@/lib/evaluation/llm-evaluator";
 import { EVALUATION_PHASES } from "@/lib/evaluation/evaluation-phases";
@@ -17,6 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const { jobId } = await params;
+  markJobUserActivity(jobId);
   const encoder = new TextEncoder();
 
   // Closing the EventSource is the only cancel signal a browser can send on a

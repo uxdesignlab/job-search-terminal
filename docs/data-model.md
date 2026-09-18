@@ -1455,3 +1455,11 @@ The `'cover_letter'` value is reserved in the schema but no current pipeline wri
   `JST_DATABASE_PATH` environment variable.
 - Do not delete or move `data/job-search-terminal.sqlite` while the dev server is running.
 - Create a backup with `npm run data:backup` before any risky local changes.
+
+## Untouched job cleanup (0069)
+
+Jobs gain `user_activity_at` (durable protection), `liveness_reason`,
+`liveness_evidence_url`, and `cleanup_archive_reason` (`closed` or
+`old_unverified`, empty for manual archives). `created_at` is exposed as `createdAt`
+for cleanup age; no imported posting date is used. Activity backfill runs through
+application queries. See [Job cleanup](job-cleanup.md) for eligibility and API rules.

@@ -197,7 +197,7 @@ export type ArchivedJobsSortCol = "title" | "company" | "score" | "archiveStatus
  */
 export type ArchivedJobTableRecord = Pick<
   JobRecord,
-  "id" | "title" | "company" | "fitScore" | "livenessStatus" | "datePosted" | "firstSeenDate" | "status"
+  "id" | "title" | "company" | "fitScore" | "livenessStatus" | "datePosted" | "firstSeenDate" | "status" | "cleanupArchiveReason"
 >;
 
 export function getArchivedJobColValue(job: ArchivedJobTableRecord, col: ArchivedJobsSortCol): string {
@@ -209,7 +209,7 @@ export function getArchivedJobColValue(job: ArchivedJobTableRecord, col: Archive
     case "score":
       return jobFitBucket(job.fitScore);
     case "archiveStatus":
-      return job.livenessStatus === "expired" ? "Expired" : "Manually archived";
+      return job.cleanupArchiveReason === "old_unverified" ? "Old · Unverified" : job.cleanupArchiveReason === "closed" || job.livenessStatus === "expired" ? "Posting unavailable" : "Manually archived";
     case "posted":
       return job.datePosted ? "Has date" : "No date";
     case "reason":
@@ -220,6 +220,6 @@ export function getArchivedJobColValue(job: ArchivedJobTableRecord, col: Archive
 export function getArchivedJobColOptions(jobs: ArchivedJobTableRecord[], col: ArchivedJobsSortCol): string[] {
   if (col === "score") return [...JOB_FIT_BUCKETS];
   if (col === "posted") return ["Has date", "No date"];
-  if (col === "archiveStatus") return ["Expired", "Manually archived"];
+  if (col === "archiveStatus") return ["Posting unavailable", "Old · Unverified", "Manually archived"];
   return [...new Set(jobs.map((j) => getArchivedJobColValue(j, col)))].sort();
 }

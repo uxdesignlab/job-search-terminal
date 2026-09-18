@@ -15,6 +15,31 @@ the numbers mean and when they change.
 
 ---
 
+## 0.17.0 — 2026-09-18 — Clear old jobs with confidence
+
+**Added**
+
+- Review and bulk archive untouched Found jobs whose postings are unavailable, or
+  jobs saved 30+ days ago whose availability cannot be verified. Check progress,
+  stop a run, inspect the reasons, and restore archived jobs when needed.
+- Select or clear a range of jobs with Shift-click or Shift+Space in Jobs and the
+  cleanup preview.
+
+**Changed**
+
+- Deliberate work permanently protects a job from cleanup, even if its status
+  returns to Found. A migration runs on next start; existing saved work and
+  recorded activity are used to protect older jobs. Unrecorded past actions cannot
+  be recovered. Run verification again to get the new evidence checks.
+- Cleanup always requires your selection and confirmation. The out-of-scope
+  permanent-delete shortcut has been removed from maintenance.
+
+**Fixed**
+
+- A working job-board page or generic Apply button no longer proves that a role
+  is still open. Old unverified listings are kept distinct from closed postings.
+- Select all now reflects only the displayed rows, including partial selection.
+
 ## 0.16.5 — 2026-09-14 — Summaries built on your approved version
 
 **Changed**

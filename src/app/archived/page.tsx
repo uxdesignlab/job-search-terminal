@@ -50,6 +50,7 @@ export default function ArchivedPage() {
     company: job.company,
     fitScore: job.fitScore,
     livenessStatus: job.livenessStatus,
+    cleanupArchiveReason: job.cleanupArchiveReason,
     datePosted: job.datePosted,
     firstSeenDate: job.firstSeenDate,
     status: job.status,
@@ -59,7 +60,7 @@ export default function ArchivedPage() {
     <Shell activeItem="Archived">
       <div className="grid gap-6">
         <PageHeader
-          description="Jobs hidden from the main pipeline after manual archive or skip actions."
+          description="Jobs hidden after cleanup, manual archive, or skip actions. Restore a job to keep it out of future cleanup."
           eyebrow="Archived jobs"
           title="Archived"
           actions={
@@ -96,7 +97,7 @@ export default function ArchivedPage() {
                       </Link>
                       <p className="mt-0.5 text-sm text-muted">{job.company} · {job.location}</p>
                     </div>
-                    {job.livenessStatus === "expired" && <Badge tone="danger">Expired</Badge>}
+                    {job.cleanupArchiveReason === "old_unverified" ? <Badge tone="warning">Old · Unverified</Badge> : (job.cleanupArchiveReason === "closed" || job.livenessStatus === "expired") ? <Badge tone="danger">Posting unavailable</Badge> : null}
                   </div>
                   <p className="mt-1 text-xs text-muted">{formatPostedDate(job)}</p>
                   <div className="mt-3 flex gap-2">

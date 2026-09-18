@@ -1,3 +1,4 @@
+import { markJobUserActivity } from "@/lib/db/queries";
 import { generateResumeDraft, type ResumeStageUpdate } from "@/lib/documents/resume-generator";
 import { EvaluationRequiredError } from "@/lib/application-preparation";
 import { GenerationCancelledError } from "@/lib/ai/retry";
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
   }
   const jobId = body.jobId;
   if (!jobId) return Response.json({ error: "jobId required" }, { status: 400 });
+  markJobUserActivity(jobId);
 
   const encoder = new TextEncoder();
   const cancellation = new AbortController();

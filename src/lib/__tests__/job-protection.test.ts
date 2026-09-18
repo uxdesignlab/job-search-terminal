@@ -1,42 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { localDateString } from "@/lib/dates";
-import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
+import { cleanupCandidateReason, isJobProtectedFromAutomaticRemoval, savedJobAgeDays } from "@/lib/jobs/job-protection";
+const now = Date.parse("2026-09-18T12:00:00Z");
+const job = { status: "Found", archived: false, createdAt: "2026-08-01 12:00:00", userActivityAt: "", livenessStatus: "uncertain", livenessCheckedAt: "2026-09-18T12:00:00Z", livenessReason: "Could not verify" };
 
-function daysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return localDateString(date);
-}
-
-const untouched = { status: "Found", archived: false as const };
-
-describe("isJobProtectedFromAutomaticRemoval", () => {
-  it("protects archived jobs regardless of age", () => {
-    expect(
-      isJobProtectedFromAutomaticRemoval({ status: "Found", archived: true, firstSeenDate: daysAgo(90) }),
-    ).toBe(true);
+describe("cleanup protection", () => {
+  it.each(["Reviewed", "Applied", "Rejected", "Skipped", "Resume generated", "Interviewing", "Recruiter responded", "Follow-up needed", "Unknown"])("protects %s", (status) => {
+    expect(isJobProtectedFromAutomaticRemoval({ ...job, status }, now)).toBe(true);
+    expect(cleanupCandidateReason({ ...job, status }, now)).toBeNull();
   });
-
-  it("protects jobs the user has acted on", () => {
-    expect(
-      isJobProtectedFromAutomaticRemoval({ status: "Applied", archived: false, firstSeenDate: daysAgo(90) }),
-    ).toBe(true);
+  it("protects archived and previously acted-on Found jobs", () => {
+    expect(isJobProtectedFromAutomaticRemoval({ ...job, archived: true }, now)).toBe(true);
+    expect(isJobProtectedFromAutomaticRemoval({ ...job, userActivityAt: "2026-08-05" }, now)).toBe(true);
   });
-
-  it("protects jobs discovered today", () => {
-    expect(isJobProtectedFromAutomaticRemoval({ ...untouched, firstSeenDate: daysAgo(0) })).toBe(true);
+  it("uses exactly 24 hours of grace, not the posting/first-seen date", () => {
+    expect(isJobProtectedFromAutomaticRemoval({ ...job, createdAt: "2026-09-17T12:00:01Z", firstSeenDate: "2020-01-01" }, now)).toBe(true);
+    expect(isJobProtectedFromAutomaticRemoval({ ...job, createdAt: "2026-09-17T12:00:00Z" }, now)).toBe(false);
   });
-
-  it("protects jobs discovered yesterday, covering a full scan cycle", () => {
-    expect(isJobProtectedFromAutomaticRemoval({ ...untouched, firstSeenDate: daysAgo(1) })).toBe(true);
+  it.each([undefined, "", "not a date", "2026-02-30", "2027-01-01"])("keeps invalid/missing/future saved date %s", (createdAt) => {
+    expect(savedJobAgeDays(createdAt, now)).toBeNull();
+    expect(cleanupCandidateReason({ ...job, createdAt }, now)).toBeNull();
   });
-
-  it("leaves older untouched jobs eligible for automatic cleanup", () => {
-    expect(isJobProtectedFromAutomaticRemoval({ ...untouched, firstSeenDate: daysAgo(2) })).toBe(false);
-    expect(isJobProtectedFromAutomaticRemoval({ ...untouched, firstSeenDate: daysAgo(30) })).toBe(false);
+  it("offers only uncertain jobs at the 30 day boundary", () => {
+    expect(cleanupCandidateReason({ ...job, createdAt: "2026-08-19T12:00:01Z" }, now)).toBeNull();
+    expect(cleanupCandidateReason({ ...job, createdAt: "2026-08-19T12:00:00Z" }, now)).toBe("old_unverified");
+    expect(cleanupCandidateReason({ ...job, livenessStatus: "active" }, now)).toBeNull();
+    expect(cleanupCandidateReason({ ...job, livenessStatus: "expired" }, now)).toBe("closed");
   });
-
-  it("does not treat a missing discovery date as recent", () => {
-    expect(isJobProtectedFromAutomaticRemoval({ ...untouched, firstSeenDate: "" })).toBe(false);
+  it("requires recorded new verification evidence", () => {
+    expect(cleanupCandidateReason({ ...job, livenessCheckedAt: "" }, now)).toBeNull();
+    expect(cleanupCandidateReason({ ...job, livenessReason: "" }, now)).toBeNull();
   });
 });

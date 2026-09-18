@@ -1,3 +1,4 @@
+import { markJobUserActivity } from "@/lib/db/queries";
 import { researchCompanyStreaming } from "@/lib/research/llm-researcher";
 import { aiErrorMessage } from "@/lib/ai/error-response";
 
@@ -5,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
+  markJobUserActivity(jobId);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

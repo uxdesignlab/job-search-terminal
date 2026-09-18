@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { RANGE_SELECTION_HINT, useRangeSelection } from "@/components/ui/use-range-selection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -221,17 +222,8 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
     return [...result].sort(compareJobs);
   }, [jobs, activeCompanyFocus, compareJobs, filters, duplicateGroupFilter]);
 
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-
-  const toggleAll = () =>
-    setSelected((prev) =>
-      prev.size === displayJobs.length ? new Set() : new Set(displayJobs.map((j) => j.id))
-    );
+  const selection = useRangeSelection(displayJobs.map((job) => job.id), selected, setSelected,
+    JSON.stringify([sort, Object.entries(filters).map(([key, values]) => [key, values ? [...values] : []]), activeCompanyFocus, duplicateGroupFilter]), isRunning);
 
   const failedJobIds = useMemo(
     () => new Set(Object.entries(jobStatus).filter(([, s]) => s === "error").map(([id]) => id)),
@@ -276,10 +268,11 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
       }
     }
     setRunning(false);
+    selection.resetAnchor();
     setSelected(new Set());
     setEvalModal((prev) => ({ ...prev, phase: "done", doneCount, errorCount }));
     router.refresh();
-  }, [router]);
+  }, [router, selection]);
 
   const evaluate = useCallback(() => evaluateIds([...selected]), [selected, evaluateIds]);
 
@@ -310,12 +303,13 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
           body: JSON.stringify({ ids, status: action === "skip" ? "Skipped" : "Archived" }),
         });
       }
+      selection.resetAnchor();
       setSelected(new Set());
       router.refresh();
     } finally {
       setBulkRunning(false);
     }
-  }, [jobs, selected, router]);
+  }, [jobs, selected, router, selection]);
 
   const selectedCount = selected.size;
 
@@ -384,6 +378,8 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
           />
         )}
 
+        <p className="mb-3 text-xs text-muted">{RANGE_SELECTION_HINT}</p>
+
         {/* `table-fixed` + explicit column widths is what keeps this inside the card.
             Auto layout sizes columns to content, which overflowed the panel; and
             `overflow-x: auto` is not an option because setting overflow-x makes
@@ -413,9 +409,8 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
                 <th className="pb-3 pr-3 text-left">
                   <input
                     aria-label="Select all jobs"
-                    checked={selectedCount === displayJobs.length && displayJobs.length > 0}
+                    {...selection.header}
                     className="h-4 w-4 rounded border-border"
-                    onChange={toggleAll}
                     type="checkbox"
                   />
                 </th>
@@ -457,10 +452,8 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
                     <td className="py-3 pr-3">
                       <input
                         aria-label={`Select ${job.title} at ${job.company}`}
-                        checked={selected.has(job.id)}
+                        {...selection.checkbox(job.id)}
                         className="h-4 w-4 rounded border-border"
-                        disabled={isRunning}
-                        onChange={() => toggle(job.id)}
                         type="checkbox"
                       />
                     </td>
@@ -625,7 +618,7 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
                 </Button>
                 <Button
                   disabled={isRunning}
-                  onClick={() => setSelected(new Set())}
+                  onClick={selection.clear}
                   type="button"
                   variant="quiet"
                 >
