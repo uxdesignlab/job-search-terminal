@@ -1100,25 +1100,23 @@ before the bullets it summarised.
   "cross-functional collaboration"; single words and acronyms keep theirs), and the rubric
   forbids bolting a phrase onto a sentence end. Measured on a real summary, a model did
   both anyway until the check below sent it back.
-- **One repair, bounded.** Each part is checked by `lintPart` (see *Resume checks*). A
-  part that breaks a rule is sent back once with the specific problems listed; the answer
-  with fewer problems wins, and any that remain are reported, not retried.
-- **An approved summary is the foundation.** The goal is a summary tailored for the
-  posting, built on the approved one and written to resume best practices. When the
-  approved lane has summary text, the summary task labels it *the foundation* and asks
-  the writer to tailor it rather than replace it. The system prompt's summary rubric
-  spells that out: keep its professional identity, main claims, and what it leads with;
-  bring the posting's supported language and must-haves forward, shift emphasis toward
-  what the job needs, and tighten the wording. The rest of the resume may back up a point
-  that serves the posting, but is not a reason to rebuild the summary.
-  `summaryContextFor` labels the resume *to keep the summary consistent with it, not to
-  rebuild the summary from* in that case. Only when the summary is empty is it the thing
-  to *write the summary from*. Before 0.16.4 the writer was told to write the summary
-  from the rest of the resume, discarded the approved one, and wrote a different summary
-  from the bullets. 0.16.4 framed the fix as keeping every number and adding none;
-  0.16.5 replaced that with the foundation framing, because the defect was the rebuild,
-  not the figures. There is deliberately no number check. Truth rule 2 (keep a source line's numbers, add none the evidence does not give for that line) defines its summary case, since a summary has no single source line: a figure must be stated in the approved resume or a confirmed gap answer for the same work, never combined, inflated, or moved. Without that, the foundation rubric's "back up a point" and the mandatory per-line rule contradicted each other, and the outcome depended on the model. Applies to full generation and
-  to ↻ Regenerate and ✨ Improve on the summary, which share the same task.
+- **One repair, bounded.** Each part is checked by `lintPart` (see *Resume checks*).
+  A part with a lint issue is sent back once. The summary and key achievements also
+  get one retry if their wording is unchanged, even when the model only reordered
+  achievements. A rewrite wins that retry only if it changes wording without adding
+  lint issues. If the model still copies the approved text, the existing unchanged
+  notice identifies the section in the editor.
+- **The approved summary supplies identity and claims.** The writer keeps the
+  approved professional identity and supported facts, but must connect two or three
+  of the strongest relevant facts to the posting. It may replace a generic or less
+  relevant sentence with supported experience from the approved resume. The previous
+  instruction to keep what the summary led with caused local models to copy all its
+  sentences, even for a job with clearly relevant evidence elsewhere in the lane.
+  `summaryContextFor` supplies the rewritten bullets as proof for the job connection.
+  When the approved summary is empty, it is written from that context. The truth
+  rules still prevent moving figures between jobs or claiming requirements that the
+  evidence does not support. Full generation, ↻ Regenerate, and ✨ Improve share the
+  summary task; the unchanged retry applies only to tailoring from the approved lane.
 - **Summary heading follows the lane.** `templateFromApprovedSections` copies the summary
   section's title into `summaryHeading` (falling back to "Professional Summary"), and
   `buildTailoredContent` carries it into the draft. It was previously dropped, so every

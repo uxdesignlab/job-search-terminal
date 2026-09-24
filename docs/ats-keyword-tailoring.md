@@ -121,7 +121,10 @@ A run that changes nothing is reported rather than passed off as tailoring. Sele
 sections are compared against the source draft on the model's own output; a section
 where half or more of the lines came back verbatim is named in the draft editor, and a
 run where nothing changed at all is recorded as `source-only` — the same status a
-provider failure produces.
+provider failure produces. Before accepting an unchanged summary or key achievements,
+the writer asks the model once more to connect approved experience to this posting.
+If that attempt is still unchanged or breaks more writing checks, the original text
+stays in the draft and the notice remains visible.
 
 ## Safety and review boundary
 

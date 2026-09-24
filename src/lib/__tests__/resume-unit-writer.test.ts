@@ -161,6 +161,40 @@ describe("writing a part", () => {
     const result = await writeUnit(context, roleInput);
     expect(result).toMatchObject({ ok: false, label: "Design Lead, Northwind" });
   });
+
+  it("tries again when the summary copies the approved version and keeps a grounded rewrite", async () => {
+    const input: UnitInput = { unit: { kind: "summary" }, label: "Professional summary", lines: [draft.summary], mode: "tailor" };
+    calls.answers.push(
+      { summary: draft.summary },
+      { summary: "Design leader for data-heavy platforms, with accessibility work across 30 releases." },
+    );
+    const result = await writeUnit(context, input);
+    expect(calls.prompts).toHaveLength(2);
+    expect(calls.prompts[1]).toContain("It copied the approved wording without tailoring it");
+    expect(result.ok && result.lines[0]).toContain("accessibility work");
+    expect(result.ok && result.repaired).toBe(true);
+  });
+
+  it("tries again when achievements are only reordered", async () => {
+    const input: UnitInput = { unit: { kind: "impact" }, label: "Key achievements", lines: draft.impactItems, mode: "tailor" };
+    calls.answers.push(
+      { lines: [{ source: 0, text: draft.impactItems[0] }] },
+      { lines: [{ source: 0, text: "Built a design system for 12 product teams." }] },
+    );
+    const result = await writeUnit(context, input);
+    expect(calls.prompts).toHaveLength(2);
+    expect(result.ok && result.lines[0]).toContain("design system for 12 product teams");
+  });
+
+  it("keeps the first answer if an unchanged-section retry adds a lint issue", async () => {
+    const input: UnitInput = { unit: { kind: "summary" }, label: "Professional summary", lines: [draft.summary], mode: "tailor" };
+    calls.answers.push(
+      { summary: draft.summary },
+      { summary: "Visionary designer with accessibility work across 30 releases." },
+    );
+    const result = await writeUnit(context, input);
+    expect(result.ok && result.lines[0]).toBe(draft.summary);
+  });
 });
 
 describe("assembling parts into a draft", () => {
@@ -272,9 +306,7 @@ describe("aligning the summary with the posting's title", () => {
 });
 
 describe("tailoring an approved summary", () => {
-  it("tailors from the approved summary as its foundation instead of rebuilding it from the resume", () => {
-    // The bug: told to "write the summary from" the rest of the resume, the writer
-    // discarded the approved summary and wrote a different one from the bullets.
+  it("keeps the approved identity while asking for job-specific evidence", () => {
     const task = buildUnitTask(context, {
       unit: { kind: "summary" },
       label: "Professional summary",
@@ -282,12 +314,12 @@ describe("tailoring an approved summary", () => {
       context: summaryContextFor(draft),
       mode: "tailor",
     });
-    expect(task).toContain("Current summary — the foundation. Tailor it for this posting; do not replace it");
-    expect(task).toContain("not to rebuild the summary from");
+    expect(task).toContain("preserve its factual identity, then rewrite it to lead with evidence relevant to this posting");
+    expect(task).toContain("use its most relevant supported proof to connect the approved summary to this posting");
     expect(task).not.toContain("write the summary from this");
     const rubric = buildUnitSystemPrompt(context);
-    expect(rubric).toContain("it is the foundation. Build on it; do not replace it");
-    expect(rubric).toContain("bring the posting's supported language and must-haves forward");
+    expect(rubric).toContain("preserve its truthful professional identity and strongest claims");
+    expect(rubric).toContain("Select the two or three most relevant facts from the approved resume");
     // The per-line number rule has no "line" to mean for a summary; without this the
     // foundation rubric and a mandatory truth rule contradicted each other.
     expect(rubric).toContain("A summary has no single source line: a number in it must be stated in the approved resume or a confirmed gap answer for the same work it describes");

@@ -946,7 +946,7 @@ export const helpPages: HelpPage[] = [
 	          },
           {
             title: "Choose section handling",
-            body: "For each approved section, choose whether to keep it unchanged, let AI update it, or hide it from this generated resume. When AI updates your summary, it builds on the summary you approved instead of writing a new one. It keeps who you are and what you lead with, then shifts the focus and wording toward what this job asks for. It uses only what your resume and confirmed answers support. Check the draft before you use it: the AI can still drift from your wording. The heading prints as you named it in your approved resume.",
+            body: "For each approved section, choose whether to keep it unchanged, let AI update it, or hide it from this generated resume. When AI updates your summary, it keeps your professional identity and supported claims, then leads with the experience that best fits this job. It can change the wording and emphasis, so check the draft before you use it. The heading prints as you named it in your approved resume.",
           },
           {
             title: "Use confirmed context only",
@@ -1306,6 +1306,7 @@ export const helpPages: HelpPage[] = [
         title: "A section was not tailored, or a suggestion kept my old wording",
         bullets: [
           "If the editor says Not tailored, kept as in your approved resume and names a section, the AI could not write that one part. The rest of the resume was still tailored. Press ↻ Regenerate on that section to try again.",
+          "If your summary or key achievements still match your approved resume word for word, the app has already asked the AI to try that part again once. That extra try can take longer or use more paid AI credits. Check the notice above the editor, then use ↻ Regenerate or add an instruction that names the relevant experience you want to lead with.",
           "If a suggestion says it kept the earlier wording on some lines, the new wording claimed something — usually a number, a tool, or a job level — that is not in your resume, gap answers, or profile. That is the app protecting you. If the claim is true, add it to your Evidence Bank or a gap answer, then regenerate.",
           "If a suggestion keeps some of your job's words exactly as they were, that is on purpose too: those words already matched the posting, and the rewrite would have lost them.",
           "✨ Improve keeps figures you typed yourself. ↻ Regenerate starts again from your approved resume, so a number you added only in the editor will not survive it.",

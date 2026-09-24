@@ -15,6 +15,20 @@ the numbers mean and when they change.
 
 ---
 
+## 0.17.3 — 2026-09-24 — Resume summaries that connect to the job
+
+**Fixed**
+
+- Resume writing now asks the AI to lead the summary with supported experience
+  relevant to the posting while keeping your professional identity and true claims.
+  The earlier wording could cause it to copy your approved summary unchanged.
+- When a summary or key achievements come back unchanged, the app asks once more
+  for job-specific wording. This can add one AI call per unchanged section, so
+  generation may take longer or use more paid AI credits. It still flags the
+  section if the second attempt does not help. Generate the resume again to apply
+  this fix to an existing draft; generating again replaces that draft, including
+  your edits.
+
 ## 0.17.2 — 2026-09-18 — Politer posting checks
 
 **Changed**

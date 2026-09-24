@@ -181,9 +181,9 @@ HOW TO WRITE A BULLET:
 - If a line is already specific and relevant to this posting, you may keep its wording.
 
 HOW TO WRITE A SUMMARY:
-- When a current summary is given, it is the foundation. Build on it; do not replace it. Keep its professional identity, its main claims, and what it chooses to lead with, so the candidate still recognizes it as their own summary.
-- Tailor that foundation for this posting: bring the posting's supported language and must-haves forward, shift the emphasis toward what this job needs, and tighten the wording.
-- The rest of the resume may back up a point that serves this posting. It is not a reason to rebuild the summary.
+- When a current summary is given, preserve its truthful professional identity and strongest claims. Rewrite its emphasis and wording for this specific posting; copying it unchanged is not tailoring.
+- Select the two or three most relevant facts from the approved resume and confirmed answers. Connect those facts to the posting's supported needs and outcomes. Prefer concrete experience over broad claims of expertise.
+- You may replace generic or less relevant sentences with better supported evidence from elsewhere in the approved resume. Do not imply experience with a posting requirement merely because the posting mentions it.
 - ${MAX_SUMMARY_SENTENCES - 2} to ${MAX_SUMMARY_SENTENCES} sentences, at most ${MAX_SUMMARY_WORDS} words.
 - Open with the candidate's professional identity and scope, as the resume states them.
 - Follow with the proof that matches this posting's must-haves most closely.
@@ -249,11 +249,11 @@ export function buildUnitTask(ctx: UnitWriterContext, input: UnitInput): string 
   if (input.context) parts.push(input.context);
 
   if (input.unit.kind === "summary") {
-    // An approved summary is the candidate's own choices — which identity, which
-    // scope, what to lead with. Told to "write the summary from" the rest of the
-    // resume, the writer discarded it and wrote a different summary from the bullets.
+    // Preserve the candidate's professional identity while asking for a real
+    // connection to this posting. "Do not replace it" previously caused the
+    // writer to return the approved summary verbatim.
     parts.push(input.lines[0]?.trim()
-      ? `Current summary — the foundation. Tailor it for this posting; do not replace it:\n${input.lines[0]}`
+      ? `Current approved summary — preserve its factual identity, then rewrite it to lead with evidence relevant to this posting. Do not return it verbatim:\n${input.lines[0]}`
       : "There is no summary yet. Write one from what the resume says below.");
     const held = closestHeldTitle(ctx.evidenceDraft, ctx.job.title);
     if (held) {
@@ -295,11 +295,19 @@ export function buildUnitTask(ctx: UnitWriterContext, input: UnitInput): string 
   return parts.join("\n\n");
 }
 
-function messagesFor(ctx: UnitWriterContext, input: UnitInput, repair?: { previous: unknown; issues: LintIssue[] }): AIMessage[] {
+function messagesFor(ctx: UnitWriterContext, input: UnitInput, repair?: { previous: unknown; issues: LintIssue[]; unchanged?: boolean }): AIMessage[] {
   const task = buildUnitTask(ctx, input);
-  const repairText = repair
-    ? `\n\nYour previous answer was:\n${JSON.stringify(repair.previous)}\n\nIt broke these rules:\n${repair.issues.map((issue) => `- ${issue.index >= 0 && input.unit.kind !== "summary" ? `Line ${issue.index + 1}: ` : ""}${issue.message}`).join("\n")}\n\nFix only those problems and return the whole part again in the same JSON shape.`
-    : "";
+  const feedback = repair ? [`Your previous answer was:\n${JSON.stringify(repair.previous)}`] : [];
+  if (repair?.unchanged) {
+    feedback.push("It copied the approved wording without tailoring it to this posting. Keep the claims true, but lead with the approved experience that best answers this job's needs and use the posting's language only where supported. Change the wording and emphasis, not just the line order.");
+  }
+  if (repair?.issues.length) {
+    feedback.push(`It broke these rules:\n${repair.issues.map((issue) =>
+      `- ${issue.index >= 0 && input.unit.kind !== "summary" ? `Line ${issue.index + 1}: ` : ""}${issue.message}`
+    ).join("\n")}`);
+  }
+  if (repair) feedback.push("Return the whole part again in the same JSON shape.");
+  const repairText = feedback.length ? `\n\n${feedback.join("\n\n")}` : "";
   return [
     { role: "system", content: buildUnitSystemPrompt(ctx) },
     { role: "user", content: `${buildUnitSharedContext(ctx)}\n\n${task}${repairText}` },
@@ -343,7 +351,7 @@ export function validateUnitOutput(input: UnitInput, raw: unknown): { order: num
   return { order, lines };
 }
 
-async function callModel(ctx: UnitWriterContext, input: UnitInput, run: UnitRunOptions, repair?: { previous: unknown; issues: LintIssue[] }) {
+async function callModel(ctx: UnitWriterContext, input: UnitInput, run: UnitRunOptions, repair?: { previous: unknown; issues: LintIssue[]; unchanged?: boolean }) {
   const provider: AIProvider = getWritingProvider();
   const chain = provider as AIProvider & {
     abortOn?: (signal: AbortSignal) => void;
@@ -400,14 +408,21 @@ export async function writeUnit(ctx: UnitWriterContext, input: UnitInput, run: U
       .map((signal) => signal.keyword)
       .filter((keyword) => keywordMatchTier(sourceText, keyword) !== "exact");
     let best = { ...valid, issues: lintPart(lintKind(input.unit), valid.lines, placed), meta: first, repaired: false };
-    if (best.issues.length > 0) {
+    // Reordering alone may improve scanning, but a copied summary or achievement
+    // section still makes the finished resume read like the approved lane.
+    const unchanged = input.mode === "tailor" && (input.unit.kind === "summary" || input.unit.kind === "impact") &&
+      best.lines.every((line, index) => line.trim() === input.lines[best.order[index]]?.trim());
+    if (best.issues.length > 0 || unchanged) {
       if (run.signal?.aborted) throw new GenerationCancelledError();
       try {
-        const second = await callModel(ctx, input, run, { previous: first.raw, issues: best.issues });
+        const second = await callModel(ctx, input, run, { previous: first.raw, issues: best.issues, unchanged });
         const repaired = validateUnitOutput(input, second.raw);
         if (repaired) {
           const issues = lintPart(lintKind(input.unit), repaired.lines, placed);
-          if (issues.length < best.issues.length) best = { ...repaired, issues, meta: second, repaired: true };
+          const changed = repaired.lines.some((line, index) => line.trim() !== input.lines[repaired.order[index]]?.trim());
+          if (issues.length < best.issues.length || (unchanged && changed && issues.length <= best.issues.length)) {
+            best = { ...repaired, issues, meta: second, repaired: true };
+          }
         }
       } catch (error) {
         if (error instanceof GenerationCancelledError) throw error;
@@ -603,7 +618,7 @@ export function summaryContextFor(draft: ResumeTemplateInput): string {
     .map((entry) => `${[entry.title, entry.organization].filter(Boolean).join(", ")}${entry.dateRange ? ` (${entry.dateRange})` : ""}\n${entry.bullets.map((bullet) => `- ${bullet}`).join("\n")}`)
     .join("\n");
   const lead = draft.summary.trim()
-    ? "What the tailored resume now says — to keep the summary consistent with it, not to rebuild the summary from"
+    ? "What the tailored resume now says — use its most relevant supported proof to connect the approved summary to this posting"
     : "What the tailored resume now says — write the summary from this";
   return `${lead}:\n${draft.headline ? `Headline: ${draft.headline}\n` : ""}${impact}${roles}`;
 }
