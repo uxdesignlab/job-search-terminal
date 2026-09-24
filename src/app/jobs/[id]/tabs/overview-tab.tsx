@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import type { EvaluationRecord, JobRecord, ResolvedGapResponse } from "@/lib/db/types";
 import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
+import { extractPostedCompensation } from "@/lib/evaluation/posting-evidence";
 import { DetailList } from "./detail-list";
 import type { TabHref } from "./types";
 
@@ -42,6 +43,7 @@ export function OverviewTab({
   resumeLaneNames,
   tabHref,
 }: Props) {
+  const postedCompensation = extractPostedCompensation(job);
   return (
     <div className="grid gap-6">
       <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
@@ -66,10 +68,10 @@ export function OverviewTab({
                   <p className="mt-1 text-sm leading-6 text-ink">{job.mainConcern}</p>
                 </div>
               </div>
-              {job.salaryNotes && (
+              {postedCompensation && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted">Salary / location</p>
-                  <p className="mt-1 text-sm leading-6 text-ink">{job.salaryNotes}</p>
+                  <p className="mt-1 text-sm leading-6 text-ink">{postedCompensation}</p>
                 </div>
               )}
             </div>

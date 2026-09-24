@@ -110,6 +110,24 @@ describe("reading the model's answer for one part", () => {
 });
 
 describe("prompts for each part", () => {
+  it("passes every evaluated qualification to the writer even when preparation is unavailable", () => {
+    const qualifications = Array.from({ length: 22 }, (_, index) => ({
+      requirement: `Qualification ${index + 1}`,
+      status: index === 21 ? "unknown" as const : "supported" as const,
+      evidence: index === 21 ? "" : "Approved resume evidence",
+    }));
+    const shared = buildUnitSharedContext({
+      ...context,
+      job: { ...context.job, rawDescription: `${"Introductory posting text. ".repeat(260)}Late qualification 22.` },
+      evaluation: { ...context.evaluation, modelOutput: { requirementMatches: qualifications } } as EvaluationRecord,
+      requirements: [],
+    });
+    expect(shared).toContain("Qualification 1 [evaluation: supported]");
+    expect(shared).toContain("Qualification 22 [evaluation: unknown]");
+    expect(shared).toContain("Partial or unknown qualifications must not be presented as met");
+    expect(shared).toContain("[Truncated");
+  });
+
   it("share a byte-identical prefix, so the cache pays for it once", () => {
     const system = buildUnitSystemPrompt(context);
     const shared = buildUnitSharedContext(context);

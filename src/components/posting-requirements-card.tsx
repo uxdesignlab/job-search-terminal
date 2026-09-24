@@ -1,5 +1,6 @@
 import { Badge, Card, CardDescription, CardHeader, CardTitle } from "@/components/ui";
 import type { EvaluationRecord } from "@/lib/db/types";
+import { extractQualificationChecklist } from "@/lib/evaluation/posting-evidence";
 import {
   extractPostingRequirements,
   looksScored,
@@ -26,6 +27,8 @@ const STATUS_TONE: Record<RequirementStatus, "success" | "warning" | undefined> 
  */
 export function PostingRequirementsCard({ evaluation, description }: Props) {
   const { items, sourceNote } = resolveRequirements(evaluation, description);
+  const qualifications = extractQualificationChecklist(description);
+  const qualificationCount = qualifications.required.length + qualifications.preferred.length;
 
   return (
     <Card>
@@ -56,6 +59,21 @@ export function PostingRequirementsCard({ evaluation, description }: Props) {
           ))}
         </ul>
       )}
+      {qualificationCount > 0 && (
+        <details className="mt-4 border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-medium text-ink">
+            Full qualifications from the saved posting ({qualificationCount})
+          </summary>
+          {(["required", "preferred"] as const).map((group) => qualifications[group].length > 0 && (
+            <div className="mt-3" key={group}>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{group}</h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink">
+                {qualifications[group].map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+          ))}
+        </details>
+      )}
     </Card>
   );
 }
@@ -68,7 +86,7 @@ function resolveRequirements(
   if (scored.length > 0) {
     return {
       items: scored.map((match) => ({ text: match.requirement, status: match.status })),
-      sourceNote: "Read from the posting by the evaluation, with how your resume covers each one.",
+      sourceNote: "AI match status for recorded items. Open the full saved list below to check coverage.",
     };
   }
 
@@ -80,7 +98,7 @@ function resolveRequirements(
   if (looksScored(merged)) {
     return {
       items: merged,
-      sourceNote: "Read from the posting by the evaluation, with how your resume covers each one.",
+      sourceNote: "AI match status for recorded items. Open the full saved list below to check coverage.",
     };
   }
 

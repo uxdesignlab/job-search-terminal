@@ -5,6 +5,7 @@ import { getAISettings, getApplicationPreparation, getEvaluationByJobId, getGene
 } from "../db/queries";
 import type { EvaluationRecord, GeneratedDocumentInput, GenerationStageTiming, JobKeywordSignal, JobRecord, ResumeBuilderSection, ResumeBuilderVersionRecord, ResumeRecord, ResumeSectionMode, ResumeSectionModeInput, SkillRecord, UserProfileRecord } from "../db/types";
 import { EvaluationRequiredError, prepareApplication } from "../application-preparation";
+import { evaluationNeedsRefresh } from "../evaluation/currentness";
 import { exhaustedProviders, orderForCredits, resolveWritingCandidates } from "../ai/factory";
 import { GenerationCancelledError } from "../ai/retry";
 import { aiErrorMessage } from "../ai/error-response";
@@ -163,6 +164,9 @@ export async function buildTailoredDraft(jobId: string, options: BuildDraftOptio
   // behind it and hid the dependency. The caller is told to evaluate first.
   const evaluation = getEvaluationByJobId(jobId);
   if (!evaluation) throw new EvaluationRequiredError(jobId);
+  if (evaluationNeedsRefresh(evaluation, job)) {
+    throw new EvaluationRequiredError(jobId, "The job description changed after this evaluation. Run Evaluate again before generating a resume.");
+  }
 
   const profile = getUserProfile();
   const resumes = getResumes();

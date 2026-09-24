@@ -912,7 +912,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Review the overview",
-            body: "The top of the page collects what is known so far: the company and title, where the job came from, how old the posting is, pay if it was stated, what the role requires, and — once you have scored it — how well you match and anything that looked off.",
+            body: "The top of the page collects what is known so far: the company and title, where the job came from, how old the posting is, pay if it was stated, what the role requires, and — once you have scored it — how well you match and anything that looked off. Pay shown from a saved posting comes from its own text.",
           },
           {
             title: "Check the description is saved",
@@ -920,7 +920,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Run AI analysis",
-            body: "Open the Analysis tab and press the button to score the job. The reasoning appears as it is written rather than all at once at the end, so you can follow how it reached its answer instead of being handed a number to trust.",
+            body: "Open the Analysis tab and press the button to score the job. The app reads the full saved description, including pay and qualifications near the end. Longer descriptions can take more time and AI tokens. Open Full qualifications from the saved posting to compare the source text with the AI's assessment. If the app warns that it assessed too few qualifications, review the posting and run the evaluation again. Older evaluations need a new run to use the full description.",
           },
           {
             title: "Correct the AI if needed",
@@ -942,7 +942,7 @@ export const helpPages: HelpPage[] = [
         steps: [
 	          {
 	            title: "Open the Resume tab",
-	            body: "The app recommends the best approved resume lane for the selected job.",
+	            body: "The app suggests a resume lane using the job evaluation. You can save a different lane if it fits better. If the posting changed after evaluation, run Evaluate again before generating.",
 	          },
           {
             title: "Choose section handling",
@@ -950,7 +950,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Use confirmed context only",
-            body: "Tailoring uses approved resume content plus gap answers and profile supplements that have enough concrete detail. Draft gap answers marked Needs detail are not used until completed.",
+            body: "Tailoring reads the evaluation's full qualification list, including items near the end of a long posting. It uses approved resume content plus gap answers and profile supplements that have enough concrete detail. A qualification marked Unknown is not treated as experience you have. Draft gap answers marked Needs detail are not used until completed.",
           },
           {
             title: "Watch it work",

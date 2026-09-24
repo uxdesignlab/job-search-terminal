@@ -526,6 +526,7 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
         {tab === "resume" && (
           <ResumeTab
             evaluation={evaluation}
+            job={job}
             generatedDocument={generatedDocument}
             hasDraft={hasDraft}
             id={id}

@@ -56,7 +56,7 @@ export function EvaluationTab({
         // The score's first follow-up question is "against what?", so the
         // posting's requirements sit beside it rather than a tab away.
         <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
-          <FastEvaluationCard evaluation={evaluation} />
+          <FastEvaluationCard evaluation={evaluation} job={job} />
           <PostingRequirementsCard
             description={job.parsedDescription || job.rawDescription}
             evaluation={evaluation}

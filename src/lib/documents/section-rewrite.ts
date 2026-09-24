@@ -11,6 +11,7 @@ import {
   getUserProfile,
 } from "../db/queries";
 import { EvaluationRequiredError } from "../application-preparation";
+import { evaluationNeedsRefresh } from "../evaluation/currentness";
 import { evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceRevert } from "./evidence-audit";
 import { isKeywordInText, keywordStrengthDetailsForText } from "./keyword-coverage";
 import { restoreLostKeywords, type KeywordRestore } from "./keyword-preservation";
@@ -163,6 +164,9 @@ export async function rewriteSection(input: {
   if (!job) throw new SectionRewriteError("The job for this draft no longer exists.", 404);
   const evaluation = getEvaluationByJobId(job.id);
   if (!evaluation) throw new EvaluationRequiredError(job.id);
+  if (evaluationNeedsRefresh(evaluation, job)) {
+    throw new EvaluationRequiredError(job.id, "The job description changed after this evaluation. Run Evaluate again before rewriting a resume section.");
+  }
 
   const resumes = getResumes();
   const lane = resolveDocumentResumeLane(doc, resumes);

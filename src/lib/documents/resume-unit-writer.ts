@@ -21,7 +21,7 @@ import {
   buildJobDescriptionBlock,
   buildJobGapsBlock,
   buildKeywordStrategyBlock,
-  buildRequirementsBlock,
+  buildEvaluationRequirementsBlock,
   buildSkillsPreferenceBlock,
   buildStrengthsBlock,
   buildStyleContextBlock,
@@ -219,7 +219,7 @@ ${evidence}${buildGapContext(ctx.gapResponses, ctx.supplements)}
 ## Target Role
 Title: ${ctx.job.title}
 Company: ${ctx.job.company}
-Archetype: ${ctx.evaluation.roleArchetype}${buildRequirementsBlock(ctx.requirements)}${buildJobDescriptionBlock(ctx.job)}
+Archetype: ${ctx.evaluation.roleArchetype}${buildEvaluationRequirementsBlock(ctx.evaluation, ctx.requirements)}${buildJobDescriptionBlock(ctx.job)}
 
 ${strategy}
 

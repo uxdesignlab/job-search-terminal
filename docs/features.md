@@ -732,6 +732,11 @@ and does no work belonging to a later stage. It runs only when you click Evaluat
 discovering a job triggers no AI.
 
 **Fast Evaluation (`fast-v2`), one AI generation:**
+- The run reads the complete saved job description, including qualifications and
+  compensation near the end. Explicit Required and Desired/Preferred sections
+  are repeated as a checklist so each qualification receives a match assessment.
+  A longer posting can take more time and tokens. Re-evaluate older results to
+  refresh their scores and requirement matches.
 - **Fit score** out of 100, summed from four components the model scores separately:
   core requirements (0–40), role and seniority (0–25), relevant evidence (0–20),
   preferences and direction (0–15). The model never returns a total — JST calculates
@@ -739,14 +744,21 @@ discovering a job triggers no AI.
 - **Recommendation**, derived from ordered rules rather than by the model:
   `Blocked` → `Priority apply` (fit ≥ 85 and strong direction alignment) →
   `Strong apply` (fit ≥ 70, strong or partial) → `Review manually` (fit ≥ 55) → `Skip`.
-- **Confidence** — High / Medium / Low, describing *source quality, not candidate
-  quality*: how much usable job description and resume evidence the assessment had.
+- **Confidence** — High / Medium / Low, describing source quality and assessment
+  completeness, not candidate quality: how much usable job description and resume
+  evidence the assessment had, and whether it covered the explicit qualifications.
   Calculated locally with no AI call.
 - **Direction alignment** — strong / partial / none. Whether the role matches the
   direction you are searching in, which is separate from whether you could do the job.
   A capable match in the wrong direction lands at `Review manually`, not `Strong apply`.
 - Strengths, concerns, requirement tally (`8 supported · 2 partial · 1 unknown`),
   posted compensation, and recommended resume lane.
+- Posted compensation is copied from a pay line in the saved posting (or a
+  currency-marked scanner salary when the posting has none), rather than trusted
+  from model output. Each explicit qualification is kept in the saved assessment;
+  items the model skips are marked unknown. A match inferred from a job title or
+  years of work without direct evidence is also marked unknown. Both cases show
+  a warning and lower High to Medium confidence.
 - **View details** discloses the component breakdown, direction rationale, requirement
   matches, evidence used, red flags, and the provider/model/duration for the run.
 
@@ -754,6 +766,10 @@ discovering a job triggers no AI.
 the posting actually asks for, as bullets. A score's first follow-up question is
 "against what?", and the answer was previously a tab away in the collapsed job
 description. Sources, in order (`src/lib/jobs/posting-requirements.ts`):
+
+The card also has a disclosure with the full Required and Desired/Preferred
+qualifications copied from the saved posting. These are source text, separate
+from the model's match assessment, so an incomplete assessment remains visible.
 
 1. **The evaluation's own requirement list** (`modelOutput.requirementMatches`) — the
    requirements the fit score was computed from, each tagged `supported`, `partial` or
@@ -1198,10 +1214,19 @@ chain again, up to three times.
   written, since each part is written separately. This replaced a 5,000-character excerpt
   of the source PDF, which repeated the selected sections already in the prompt and,
   being cut at a character count, dropped the later sections first.
-- **What this posting requires** (`buildRequirementsBlock`) — up to 20 requirements from
-  Application Preparation, one line each with type and evidence status.
-- The job description, capped at 6,000 characters (was 10,000) — the requirements and
-  keywords were already extracted from the full posting.
+- **Evaluated qualifications** (`buildEvaluationRequirementsBlock`) — the full saved
+  `modelOutput.requirementMatches` checklist, including qualifications beyond the
+  first 6,000 posting characters. Each line carries the evaluation's supported,
+  partial, or unknown label. Those labels guide emphasis; only the approved resume
+  and confirmed answers authorize candidate claims. Additional distinct requirements
+  from Application Preparation are included when available (up to 20), and its
+  requirement list remains the fallback for older evaluations without a checklist.
+- The job description, capped at 6,000 characters (was 10,000) — the full evaluated
+  qualification checklist and Application Preparation keywords carry later content.
+- Newly saved AI evaluations record a fingerprint of the posting title, location,
+  salary notes, and description. Resume generation and section rewrites ask for a
+  new evaluation if those fields change. Older evaluations with no fingerprint remain
+  usable; re-evaluating them enables the check.
 - The prompt is ordered from what changes least to what changes most — rules, the
   candidate's evidence, this posting, then the one part being written — so a regeneration
   and a local model's prefix cache reuse as much as possible.

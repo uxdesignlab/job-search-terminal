@@ -40,8 +40,8 @@ export type { StalenessReason } from "./hashing";
 
 /** Raised when a caller reaches this stage without an evaluation (§2.4, §22). */
 export class EvaluationRequiredError extends Error {
-  constructor(readonly jobId: string) {
-    super("Evaluate this position before preparing the application.");
+  constructor(readonly jobId: string, message = "Evaluate this position before preparing the application.") {
+    super(message);
     this.name = "EvaluationRequiredError";
   }
 }
@@ -297,8 +297,8 @@ export async function prepareApplication(jobId: string, options: PreparationOpti
   (provider as { observe?: (listener: (attempt: { provider: string; model: string }) => void) => void })
     .observe?.((attempt) => options.onProvider?.(attempt.provider, attempt.model));
   if (!(provider as { observe?: unknown }).observe) options.onProvider?.(provider.name, provider.effectiveModel);
-  // Keyword extraction needs a fuller view of the posting than evaluation did, to
-  // find verbatim phrases and validate them against the body.
+  // Preparation keeps its own bounded prompt for keyword extraction; evaluation
+  // reads the complete posting so late qualifications and pay are not hidden.
   const userPrompt = buildPreparationPrompt(buildJobContext(job, 12000), evidence);
 
   // At most one live lookup, and only when the posting states nothing (§28). Started

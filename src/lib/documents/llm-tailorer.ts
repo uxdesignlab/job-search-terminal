@@ -1,4 +1,4 @@
-import type { ApplicationRequirement, JobKeywordSignal, JobRecord, SkillRecord } from "../db/types";
+import type { ApplicationRequirement, EvaluationRecord, JobKeywordSignal, JobRecord, SkillRecord } from "../db/types";
 import { getWritingStyle } from "../db/queries";
 import { formatStyleForPrompt } from "../profile/writing-style-extractor";
 import type { ResumeTemplateInput } from "./resume-template";
@@ -21,9 +21,9 @@ export type SupplementContext = {
 };
 
 /**
- * The posting is context for the requirements and keywords, which preparation has
- * already extracted from its full text — so the raw copy can be shorter than the one
- * preparation read. Past this the model is mostly re-reading benefits and EEO copy.
+ * The posting is context for the complete evaluated qualification list and the
+ * preparation keywords. The raw copy can be shorter because those structured
+ * lists carry requirements that occur near the end of a long posting.
  */
 const MAX_JD_TAILORING_CHARS = 6000;
 const MAX_REQUIREMENTS = 20;
@@ -81,7 +81,7 @@ export function buildSkillsPreferenceBlock(skills: SkillRecord[]): string {
 export function buildJobDescriptionBlock(job: JobRecord): string {
   const description = (job.rawDescription || job.parsedDescription || "").trim();
   if (!description) return "";
-  return `\n\n## Job Description (Reference for Keyword Context)\n${description.slice(0, MAX_JD_TAILORING_CHARS)}${description.length > MAX_JD_TAILORING_CHARS ? "\n[Truncated — the requirements and keywords above were extracted from the full posting.]" : ""}`;
+  return `\n\n## Job Description (Reference for Keyword Context)\n${description.slice(0, MAX_JD_TAILORING_CHARS)}${description.length > MAX_JD_TAILORING_CHARS ? "\n[Truncated — use the evaluated qualifications and preparation requirements above for the rest of the posting.]" : ""}`;
 }
 
 /** The posting's requirements as preparation read them, one line each. */
@@ -91,6 +91,21 @@ export function buildRequirementsBlock(requirements: ApplicationRequirement[]): 
     .slice(0, MAX_REQUIREMENTS)
     .map((requirement) => `- ${requirement.text} [${requirement.type.replace("_", " ")}; evidence: ${requirement.evidenceStatus}]`);
   return `\n\n## What This Posting Requires\n${lines.join("\n")}`;
+}
+
+/** The saved evaluation's full qualification checklist is never capped by preparation. */
+export function buildEvaluationRequirementsBlock(evaluation: EvaluationRecord, requirements: ApplicationRequirement[]): string {
+  const matches = evaluation.modelOutput?.requirementMatches ?? [];
+  if (matches.length === 0) return buildRequirementsBlock(requirements);
+  const lines = matches
+    .filter((match) => match.requirement.trim())
+    .map((match) => `- ${match.requirement.trim()} [evaluation: ${match.status}]`);
+  const evaluated = new Set(matches.map((match) => match.requirement.trim().toLowerCase()));
+  const additional = requirements
+    .filter((requirement) => !evaluated.has(requirement.text.trim().toLowerCase()))
+    .slice(0, MAX_REQUIREMENTS)
+    .map((requirement) => `- ${requirement.text} [${requirement.type.replace("_", " ")}; preparation evidence: ${requirement.evidenceStatus}]`);
+  return `\n\n## Evaluated Qualifications (complete saved checklist)\nThese labels are an AI assessment, not proof of candidate experience. Use only the approved resume and confirmed answers to make claims. Partial or unknown qualifications must not be presented as met without that evidence.\n${lines.join("\n")}${additional.length ? `\n\n## Other Posting Requirements from Application Preparation\n${additional.join("\n")}` : ""}`;
 }
 
 /**

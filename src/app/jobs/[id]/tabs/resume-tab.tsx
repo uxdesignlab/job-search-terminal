@@ -11,14 +11,17 @@ import {
 import type {
   EvaluationRecord,
   GeneratedDocumentRecord,
+  JobRecord,
   ResumeBuilderSection,
   ResumeBuilderVersionStatus,
   ResumeRecord,
 } from "@/lib/db/types";
 import { coerceResumeBaseToLane } from "@/lib/evaluation/resume-lane-picker";
+import { evaluationNeedsRefresh } from "@/lib/evaluation/currentness";
 
 type Props = {
   evaluation: EvaluationRecord | undefined;
+  job: JobRecord;
   generatedDocument: GeneratedDocumentRecord | undefined;
   hasDraft: boolean;
   id: string;
@@ -31,6 +34,7 @@ type Props = {
 
 export function ResumeTab({
   evaluation,
+  job,
   generatedDocument,
   hasDraft,
   id,
@@ -40,6 +44,7 @@ export function ResumeTab({
   resumes,
   setResumeBaseAction,
 }: Props) {
+  const needsRefresh = Boolean(evaluation && evaluationNeedsRefresh(evaluation, job));
   return (
     <div className="grid gap-6">
       <div className="grid gap-4 lg:grid-cols-[0.6fr_1.4fr]">
@@ -48,13 +53,13 @@ export function ResumeTab({
           <CardHeader>
             <CardTitle>Base resume</CardTitle>
             <CardDescription>
-              {evaluation
+              {evaluation && !needsRefresh
                 ? `AI suggests: ${coerceResumeBaseToLane(
                     evaluation.resumeBaseRecommendation,
                     evaluation.roleArchetype,
                     resumeLaneNames
                   )}`
-                : "Pick which resume to tailor from"}
+                : needsRefresh ? "The posting changed. Run Evaluate again before generating." : "Pick which resume to tailor from"}
             </CardDescription>
           </CardHeader>
           {resumes.length > 0 ? (
@@ -138,17 +143,17 @@ export function ResumeTab({
             )}
           </Card>
 
-          {!evaluation && (
+          {(!evaluation || needsRefresh) && (
             <Card>
               <CardHeader>
-                <CardTitle>Evaluate this job first</CardTitle>
+                <CardTitle>{needsRefresh ? "Re-evaluate this job" : "Evaluate this job first"}</CardTitle>
                 <CardDescription>
-                  Resume generation needs the evaluation: it supplies the ATS keywords and match
-                  signals the draft is tailored against. Generating without one is rejected rather
-                  than run on nothing.
+                  {needsRefresh
+                    ? "The posting changed after the saved evaluation. Run Evaluate again so the resume uses the current qualifications."
+                    : "Resume generation needs an evaluation. It selects a resume lane and assesses the posting's qualifications, strengths, and gaps. The app reads the posting for keywords when you generate."}
                 </CardDescription>
               </CardHeader>
-              <StreamingEvaluation hasExistingEvaluation={false} jobId={id} />
+              <StreamingEvaluation hasExistingEvaluation={Boolean(evaluation)} jobId={id} />
             </Card>
           )}
         </div>

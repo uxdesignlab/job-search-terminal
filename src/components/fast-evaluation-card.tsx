@@ -2,7 +2,8 @@ import { Badge, Card, CardHeader, CardTitle } from "@/components/ui";
 import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
 import { FIT_COMPONENT_MAX } from "@/lib/evaluation/fast-evaluation";
 import { LOCAL_FALLBACK_LABEL } from "@/lib/evaluation/evaluation-phases";
-import type { EvaluationRecord, FitComponents } from "@/lib/db/types";
+import type { EvaluationRecord, FitComponents, JobRecord } from "@/lib/db/types";
+import { extractPostedCompensation } from "@/lib/evaluation/posting-evidence";
 
 /**
  * The fast-v2 evaluation surface (PRD v0.2.1 §17).
@@ -34,8 +35,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function FastEvaluationCard({ evaluation }: { evaluation: EvaluationRecord }) {
+export function FastEvaluationCard({ evaluation, job }: { evaluation: EvaluationRecord; job: JobRecord }) {
   const model = evaluation.modelOutput;
+  const postedCompensation = extractPostedCompensation(job);
   const isBlocked = evaluation.recommendation === "Blocked";
   const usedFallback = evaluation.providerUsed === LOCAL_FALLBACK_LABEL;
   const summary = evaluation.requirementsSummary;
@@ -134,7 +136,7 @@ export function FastEvaluationCard({ evaluation }: { evaluation: EvaluationRecor
             </p>
           </Section>
           <Section title="Compensation">
-            <p className="text-sm text-ink">{model?.postedCompensation || "Not listed in the posting"}</p>
+            <p className="text-sm text-ink">{postedCompensation || (job.rawDescription || job.parsedDescription ? "Not listed in the saved posting" : "No posting text saved")}</p>
           </Section>
           <Section title="Recommended resume">
             <p className="text-sm text-ink">{evaluation.resumeBaseRecommendation}</p>

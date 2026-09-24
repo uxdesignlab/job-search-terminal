@@ -41,12 +41,11 @@ ${skills.slice(0, 30).map((s) => `- ${s.skillName} [${s.strengthLevel}] — ${s.
 ${roleDirections.map((r) => `- ${r.roleFamily}: ${r.fitLevel} (${r.score}%) — ${r.rationale}`).join("\n")}${resumeSection}`;
 }
 
-// Default cap keeps the shared context (reused by every evaluation block) lean.
-// Only keyword extraction (Block E), which needs the fuller posting to find
-// verbatim phrases, requests the larger cap — so the extra tokens are spent on
-// one block instead of all of them.
-export function buildJobContext(job: JobRecord, maxDescriptionChars = 6000): string {
-  const description = (job.rawDescription || job.parsedDescription || "").slice(0, maxDescriptionChars);
+// Evaluation is one generation. Cutting the description at an arbitrary point
+// hid qualifications and compensation commonly placed at the end of postings.
+export function buildJobContext(job: JobRecord, maxDescriptionChars?: number): string {
+  const savedDescription = job.rawDescription || job.parsedDescription || "";
+  const description = maxDescriptionChars ? savedDescription.slice(0, maxDescriptionChars) : savedDescription;
   return `## Job Posting
 Title: ${job.title}
 Company: ${job.company}

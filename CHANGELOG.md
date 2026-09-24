@@ -15,6 +15,31 @@ the numbers mean and when they change.
 
 ---
 
+## 0.17.5 — 2026-09-24 — Use the full evaluation in resume writing
+
+**Fixed**
+
+- Resume writing now receives every qualification from the saved evaluation,
+  including those late in long postings and when separate application preparation
+  is unavailable. Match labels guide emphasis but do not authorize unsupported
+  candidate claims.
+- New evaluations record the posting they assessed. If the title, location, pay
+  notes, or description changes, resume generation and section rewrites ask for
+  a fresh evaluation. Older evaluations without this record remain usable.
+
+## 0.17.4 — 2026-09-24 — Complete job description evaluation
+
+**Fixed**
+
+- Evaluation now reads the entire saved posting. A 6,000-character cutoff hid
+  qualifications and pay near the end of some jobs. Explicit required and
+  preferred qualifications are shown as a checklist. Skipped items and matches
+  based only on inference are marked unknown and flagged for review.
+- Pay shown in a new evaluation comes from the saved posting or a stated scanner
+  amount, even if the AI leaves its pay field blank. Re-evaluate existing jobs to
+  refresh their saved assessment. Longer postings may use more AI tokens and
+  take longer to evaluate.
+
 ## 0.17.3 — 2026-09-24 — Resume summaries that connect to the job
 
 **Fixed**
