@@ -998,7 +998,8 @@ export const helpPages: HelpPage[] = [
           "Use Research to generate company intelligence and positioning ideas.",
           "Use Outreach to draft a recruiter or hiring-manager message.",
           "Every outreach draft starts with what the organization or team needs and explains how you can help. Your background is supporting evidence, not the subject of the message.",
-          "After you select Draft message, the button says Generating message… and a status names the person and channel. Draft saved appears only after the AI finishes. Generation can take a few minutes.",
+          "After you select Draft message, the button says Generating message… and a progress panel names the person and channel. Draft saved appears only after the AI finishes. Generation can take a few minutes.",
+          "Draft message, Find email, and Find relevant people all show a progress panel while they work. It has a moving bar and a clock showing how long it has been running. The bar does not show how much is left, because Clay and the AI do not report that. If the clock is still counting, the app is still working.",
           "The active AI provider receives the role-specific job description, relevant evaluation and preparation evidence, contact details, and your saved writing style. It does not receive unrelated jobs or contacts.",
           "If a result centers your biography instead of the organization, the app asks for one rewrite. If the rewrite still misses the rule, nothing is saved and the app tells you to try again.",
           "Before Find relevant people becomes available, the People card checks your Clay API connection, hiring company, company website or LinkedIn company page, and Role focus. Anything missing is labelled Required.",
@@ -1435,7 +1436,7 @@ export const helpPages: HelpPage[] = [
         id: "outreach-draft",
         title: "An outreach draft is taking too long or was not saved",
         bullets: [
-          "While the AI is working, Draft message changes to Generating message… and the progress message stays visible. Do not click it again.",
+          "While the AI is working, Draft message changes to Generating message… and a progress panel with a running clock stays visible. Do not click it again.",
           "A local model can take a few minutes. Draft saved appears only after the model finishes and the draft is stored.",
           "If the progress changes to an error, open Account → Settings → AI Provider and test the active provider, then try again.",
           "If the app says the model could not write an organization-first message, no draft was saved. Try again or adjust the outreach prompt while keeping the message focused on how you can help that organization.",

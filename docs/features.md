@@ -1717,9 +1717,26 @@ background appears only as evidence for that contribution, not as the subject of
 message or as a compressed biography.
 
 The button changes to **Generating message…** as soon as the request starts. An inline
-status names the person and channel, explains that the AI is still working, and remains
-visible until the draft is saved or an error needs attention. The contact is not reported
-as newly drafted by this control while generation is still running.
+progress panel names the person and channel, explains that the AI is still working, and
+remains visible until the draft is saved or an error needs attention. The contact is not
+reported as newly drafted by this control while generation is still running.
+
+Before 0.17.7 that panel existed in the code but never appeared: the form used
+`action={draftMessage}`, and React runs a form action inside a transition, holding back
+its state updates until the action finishes — so "generating" and the result were painted
+together. The form now submits through `onSubmit`, which updates the page immediately.
+
+**Progress panels on slow Outreach actions** (`WorkInProgress` /
+`FormWorkInProgress` in `src/components/ui/work-in-progress.tsx`). Draft message, **Find
+email**, and **Find relevant people** each show a panel while they run: a spinner, a
+moving bar, a clock counting how long the request has been running, and a line on what
+to expect. The bar is indeterminate on purpose — neither Clay nor the AI provider reports
+progress, so a filling bar would be a guess. The clock is the proof the app has not
+frozen, and the one signal left when reduced motion stops the spinner and bar.
+`FormWorkInProgress` reads `useFormStatus`, so it works in plain server-action forms and
+must be rendered inside the `<form>`. The quicker contact buttons now say what they are
+doing while pending (Updating…, Removing…, Deleting…, Forgetting…, Adding…) instead of
+the generic Saving….
 
 The active AI provider receives the role-specific part of the job description, relevant
 evaluation and Application Preparation evidence, the contact's professional details, and

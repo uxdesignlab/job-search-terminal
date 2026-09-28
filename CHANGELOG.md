@@ -15,9 +15,17 @@ the numbers mean and when they change.
 
 ---
 
-## 0.17.7 — 2026-09-28 — Clay errors that say what went wrong
+## 0.17.7 — 2026-09-28 — Clearer feedback on the Outreach tab
 
 **Fixed**
+
+- Draft message, Find email, and Find relevant people now show a progress
+  panel while they work, with a moving bar and a clock counting the seconds, so
+  you can tell the app is busy rather than stuck. Draft message was meant to
+  show one already, but it never appeared until the draft was finished.
+- The contact buttons say what they are doing while you wait (Removing…,
+  Deleting…, Adding…) instead of a generic "Saving…". Find email used to say
+  "Saving…" for up to a minute.
 
 - When Clay failed on the Outreach tab, the app always said "Clay could not be
   reached", whatever the cause. It now tells you which problem you hit: no
