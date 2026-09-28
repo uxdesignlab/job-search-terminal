@@ -18,7 +18,7 @@ const OUTREACH_ERRORS: Record<string, string> = {
   // gets its own message rather than a single "Clay error".
   "clay-not_connected": "Connect Clay in Settings → Integrations before searching for people.",
   "clay-invalid_credential": "Clay rejected the API key. Re-check it in Settings → Integrations.",
-  "clay-allowance_reached": "Your Clay search allowance is used up for this period. Add contacts manually, or try again after it resets.",
+  "clay-allowance_reached": "Clay says your account is out of credits or search allowance. Add credits in Clay, or wait for the allowance to reset. You can still add contacts and emails yourself.",
   "clay-rate_limited": "Clay rate-limited the request. Wait a moment and try again.",
   "clay-ambiguous_company": "Not enough is known about this company to search. Add its domain first.",
   "clay-no-results": "Clay returned nobody new for this company. You can still add people manually.",
@@ -40,6 +40,8 @@ type Props = {
   outreachError: string | undefined;
   outreachErrorReason: string | undefined;
   outreachErrorStatus: string | undefined;
+  /** Clay's own words about the failure, when it gave any. */
+  clayReply: string | undefined;
   outreachMessages: Map<string, OutreachMessageRecord[]>;
   reportsToTitle: string;
   roleKeywords: string[];
@@ -56,6 +58,7 @@ export function OutreachTab({
   outreachError,
   outreachErrorReason,
   outreachErrorStatus,
+  clayReply,
   outreachMessages,
   reportsToTitle,
   roleKeywords,
@@ -67,6 +70,11 @@ export function OutreachTab({
           {outreachError === "clay-unavailable"
             ? clayUnavailableMessage(outreachErrorReason, outreachErrorStatus)
             : OUTREACH_ERRORS[outreachError] ?? "Something went wrong."}
+          {clayReply ? (
+            <span className="mt-1 block text-xs">
+              Clay&apos;s reply: &ldquo;{clayReply}&rdquo;
+            </span>
+          ) : null}
         </p>
       ) : null}
 

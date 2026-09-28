@@ -1181,7 +1181,7 @@ normally when any of them is broken or absent (§63).
 | `account_label` | Workspace or account name, from a successful test |
 | `connection_status` | `not_connected` / `connected` / `invalid_credential` / `unavailable` |
 | `enabled` | Set only by a successful test; cleared whenever the key changes or a test fails |
-| `metadata_json` | Provider details and the settings stored beside them (Clay's field-catalog cache, `enrichmentRoutineId`, `autoEnrichSearchResults`). Both writers **merge**: `saveIntegrationMetadata()` patches keys, and `saveIntegrationTestResult()` merges the connection facts a test reports rather than replacing the object. Replacing it meant clicking **Test connection**, or re-saving a masked key, silently switched enrichment off |
+| `metadata_json` | Provider details and the settings stored beside them (Clay's field-catalog cache, `enrichmentRoutineId`, `autoEnrichSearchResults`, and Clay's `lastError`). Both writers **merge**: `saveIntegrationMetadata()` patches keys, and `saveIntegrationTestResult()` merges the connection facts a test reports rather than replacing the object. Replacing it meant clicking **Test connection**, or re-saving a masked key, silently switched enrichment off |
 | `last_tested_at` | When the connection was last checked |
 
 **Credentials are masked on read.** `getIntegration()` returns `maskedCredential`
@@ -1276,6 +1276,12 @@ shape is defined by the user rather than by Clay, the response is walked for the
 value that looks like an email rather than bound to a field name. Results are stored with
 `email_confidence = 'unverified'` — Clay reports no confidence for routine output, and
 inventing a "verified" label would be worse than none.
+
+`metadata_json` also carries `lastError` — `{ at, status, message, endpoint }`, type
+`ClayLastError` in `src/lib/integrations/clay/provider.ts` — Clay's own explanation of the
+most recent failed request (`status` is `0` when Clay could not be reached at all). It is
+overwritten by the next failure and set to `null` by the next request that succeeds. It
+lives here rather than in the redirect URL because the text can echo what was searched.
 
 `metadata_json` also carries `autoEnrichSearchResults`. The routine endpoint accepts 1-100
 items, so automatic enrichment issues one run for the whole result set; results are keyed by

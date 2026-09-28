@@ -34,6 +34,9 @@ the numbers mean and when they change.
   failed, or is still running. Each message says what to do next, and a
   lookup that is still running no longer tells you to press Find email again,
   which would have started a second paid lookup.
+- When Clay explains why it said no, its own words now appear under the red
+  message ("Clay's reply: …"). An account that has run out of Clay credits is
+  now reported as that, instead of as a broken routine or a wrong company link.
 
 ---
 

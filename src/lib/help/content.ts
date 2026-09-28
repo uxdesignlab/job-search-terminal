@@ -1408,6 +1408,8 @@ export const helpPages: HelpPage[] = [
           "\"Clay turned down the request\" usually means the company website or LinkedIn page is wrong. Make sure it belongs to the employer, not a job board.",
           "When Find email fails, the message says whether Clay turned the lookup down, the routine failed, or it is still running. If Clay turned it down, check the routine id in Account → Settings → Integrations and the routine itself in Clay.",
           "If the lookup is still running, look for the email in the routine's run history in Clay. Pressing Find email again starts a second lookup, and Clay charges for it again.",
+          "When Clay explains a failure, its own words appear under the red message, after \"Clay's reply\". Read them first. They are often more exact than the app's summary.",
+          "\"Out of credits or search allowance\" means your Clay account cannot pay for the search or email lookup. Add credits in Clay, or wait for your allowance to reset.",
         ],
       },
       {

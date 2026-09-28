@@ -1647,7 +1647,15 @@ suggest retrying: Find email starts a new routine run, which Clay charges for ag
 the first run is still going; the result of the first run is in Clay's run history.
 The action redirects with `reason` and `status` query parameters
 (`src/lib/contacts/unavailable-message.ts`); Clay's own response text is never put in the
-URL, since it can echo the searched company, and goes to the server log instead. A Clay
+URL, since it can echo the searched company. It goes to the server log and to the Clay
+integration's `lastError` metadata, and the Outreach tab shows it under the banner as
+**Clay's reply: "…"** — but only for errors that came from a Clay HTTP reply, and only
+when that reply is less than five minutes old, so an old message never sits under a new
+failure.
+
+Clay does not always use 402 for an empty balance: a 4xx whose text mentions credits,
+balance, quota, allowance, or an exhausted limit is treated as **out of credits or
+allowance** (`isOutOfCreditsReply`), not as a broken routine or a bad company link. A Clay
 failure never affects evaluation, resumes or applications.
 
 **Finding a work email.** Search never returns emails, and enrichment is a separate,
