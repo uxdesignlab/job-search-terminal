@@ -1417,6 +1417,16 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "edit-job-url",
+        title: "Edit job details says another job already uses this URL",
+        bullets: [
+          "Each job link can belong to only one job. The message means you already have this posting saved as a separate job, often because two scans found it on different boards.",
+          "The app treats a link with and without a slash at the end as the same posting. Adding or removing that slash will not get around the message, and it should not — you would end up with two copies of one job.",
+          "Press Open the other job in the message to see the copy you already have. Keep whichever has the better description or the further-along status, and archive the other one.",
+          "Your other changes in the form were not saved. Put the old link back, or leave the link box as it was, and save again to keep them.",
+        ],
+      },
+      {
         id: "outreach-draft",
         title: "An outreach draft is taking too long or was not saved",
         bullets: [

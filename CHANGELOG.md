@@ -15,6 +15,18 @@ the numbers mean and when they change.
 
 ---
 
+## 0.17.6 — 2026-09-28 — Clear message for a duplicate job link
+
+**Fixed**
+
+- Changing a job's link under Edit job details to one another job already uses
+  showed a database error ("UNIQUE constraint failed: jobs.url"). It now says
+  which job already has that link and gives you a link to open it. A slash at
+  the end of the link no longer counts as a different posting, so it can't be
+  used to save a second copy of the same job by accident.
+
+---
+
 ## 0.17.5 — 2026-09-24 — Use the full evaluation in resume writing
 
 **Fixed**

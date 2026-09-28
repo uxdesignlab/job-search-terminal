@@ -666,6 +666,20 @@ export function getJobByUrl(url: string): JobRecord | undefined {
   return row ? mapJob(row) : undefined;
 }
 
+/**
+ * Another job whose URL is the same posting as `url`, treating a trailing slash
+ * as insignificant (`…/jobs/123` and `…/jobs/123/` are one posting). Used to
+ * refuse a manual URL edit that would duplicate a job the user already has.
+ */
+export function findOtherJobWithSameUrl(url: string, excludeId: string): JobRecord | undefined {
+  const bare = url.replace(/\/+$/, "");
+  if (!bare) return undefined;
+  const row = getDatabase()
+    .prepare("select * from jobs where url in (?, ?) and id != ? limit 1")
+    .get(bare, `${bare}/`, excludeId) as JobRow | undefined;
+  return row ? mapJob(row) : undefined;
+}
+
 export function getEvaluationByJobId(jobId: string): EvaluationRecord | undefined {
   const row = getDatabase()
     .prepare("select * from evaluations where job_id = ? order by created_at desc limit 1")

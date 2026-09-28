@@ -724,6 +724,15 @@ excluded so the count always equals what the focused list shows.
   or other scanner sources capture only partial metadata. All four fields are
   pre-filled with the current values. A reminder to re-run evaluation is shown
   after saving, since any description change makes the existing AI analysis stale.
+  Job URLs are unique, so a **changed** URL is checked before saving against every
+  other job, treating a trailing slash as insignificant (`…/jobs/123` and
+  `…/jobs/123/` are one posting). A match refuses the save with *Another job
+  already uses this URL: <title> at <company>* and an **Open the other job** link,
+  instead of the raw `UNIQUE constraint failed: jobs.url` error the form used to
+  show. An unchanged URL is never checked, so editing the other fields of a job
+  that already shares a posting still works. (`findOtherJobWithSameUrl` in
+  `src/lib/db/queries.ts`; `editJobAction` returns `{ success: false, error,
+  duplicateJobId }` rather than throwing.)
 
 ### Evaluation tab
 

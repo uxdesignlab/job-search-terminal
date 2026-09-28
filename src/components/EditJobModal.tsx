@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -20,13 +21,20 @@ export function EditJobModal({ jobId, defaultTitle, defaultCompany, defaultUrl, 
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState("");
+  const [duplicateJobId, setDuplicateJobId] = useState("");
   const router = useRouter();
 
   async function handleSubmit(formData: FormData) {
     setIsPending(true);
     setError("");
+    setDuplicateJobId("");
     try {
-      await editJobAction(jobId, formData);
+      const result = await editJobAction(jobId, formData);
+      if (!result.success) {
+        setError(result.error);
+        setDuplicateJobId(result.duplicateJobId ?? "");
+        return;
+      }
       setIsOpen(false);
       router.refresh();
     } catch (err) {
@@ -49,7 +57,17 @@ export function EditJobModal({ jobId, defaultTitle, defaultCompany, defaultUrl, 
       >
         <form action={handleSubmit} className="grid gap-4 p-5">
           {error && (
-            <div className="rounded-md bg-danger/10 p-4 text-sm text-danger">{error}</div>
+            <div role="alert" className="rounded-md bg-danger/10 p-4 text-sm text-danger">
+              {error}
+              {duplicateJobId && (
+                <>
+                  {" "}
+                  <Link href={`/jobs/${duplicateJobId}`} className="font-medium underline">
+                    Open the other job
+                  </Link>
+                </>
+              )}
+            </div>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input

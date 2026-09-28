@@ -2,7 +2,15 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { archiveJob, getJobByUrl, insertManualJob, setJobReviewStatus, updateJobDetails } from "@/lib/db/queries";
+import {
+  archiveJob,
+  findOtherJobWithSameUrl,
+  getJobById,
+  getJobByUrl,
+  insertManualJob,
+  setJobReviewStatus,
+  updateJobDetails,
+} from "@/lib/db/queries";
 import { localDateString } from "@/lib/dates";
 
 export async function addManualJobAction(formData: FormData) {
@@ -58,11 +66,26 @@ export async function dismissReviewAction(jobId: string) {
 export async function editJobAction(
   jobId: string,
   formData: FormData
-): Promise<{ success: boolean }> {
+): Promise<{ success: true } | { success: false; error: string; duplicateJobId?: string }> {
   const title = (formData.get("title") as string | null)?.trim() || undefined;
   const company = (formData.get("company") as string | null)?.trim() || undefined;
   const url = (formData.get("url") as string | null)?.trim() || undefined;
   const rawDescription = (formData.get("description") as string | null)?.trim() || undefined;
+
+  // Job URLs are unique. Check before writing so a URL that already belongs to
+  // another job gets a readable answer instead of a raw SQLite constraint error.
+  // Only a changed URL is checked: an unchanged one must never block editing
+  // the other fields.
+  if (url && url !== getJobById(jobId)?.url) {
+    const other = findOtherJobWithSameUrl(url, jobId);
+    if (other) {
+      return {
+        success: false,
+        error: `Another job already uses this URL: ${other.title} at ${other.company || "an unnamed company"}. Open that job instead, or archive one of the two.`,
+        duplicateJobId: other.id,
+      };
+    }
+  }
 
   updateJobDetails(jobId, { title, company, url, rawDescription });
 
