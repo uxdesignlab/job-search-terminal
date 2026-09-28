@@ -15,3 +15,4 @@ export * from "./stat-card";
 export * from "./submit-button";
 export * from "./table";
 export * from "./textarea";
+export * from "./work-in-progress";

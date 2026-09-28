@@ -39,21 +39,94 @@ function requireKey(): string {
   return key;
 }
 
-/** Map Clay's HTTP codes onto §63's states — each needs a different thing from the user. */
-async function raiseForStatus(res: Response): Promise<never> {
-  const detail = await res.text().catch(() => "");
-  const snippet = detail.slice(0, 200);
-  if (res.status === 401 || res.status === 403) {
-    throw new ContactProviderError("invalid_credential", "Clay rejected the API key. Re-check it in Settings → Integrations.");
+/**
+ * Clay's own explanation of a failed request, as plain text.
+ *
+ * Clay answers errors with JSON whose message field varies by endpoint, so the
+ * common shapes are all tried. An HTML error page is dropped rather than shown.
+ */
+export function readClayErrorText(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed || trimmed.startsWith("<")) return "";
+  let text = trimmed;
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const pick = (value: unknown): string => {
+      if (typeof value === "string") return value;
+      if (Array.isArray(value)) return pick(value[0]);
+      if (value && typeof value === "object") {
+        const inner = value as Record<string, unknown>;
+        return pick(inner.message ?? inner.error ?? inner.detail);
+      }
+      return "";
+    };
+    const errors = Array.isArray(parsed.errors) ? parsed.errors[0] : undefined;
+    text = pick(parsed.message) || pick(parsed.error) || pick(parsed.detail) || pick(errors) || trimmed;
+  } catch {
+    // Not JSON — keep the raw text.
   }
-  if (res.status === 402) {
-    // Documented as the search-result allowance being exhausted (§42).
-    throw new ContactProviderError("allowance_reached", "Your Clay search allowance is used up for this period.");
+  return text.replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
+/**
+ * Clay does not always use 402 for an empty balance: a routine that cannot pay
+ * for its enrichment has come back as a 400 whose text says so. Read the words
+ * rather than trusting the status alone, or "out of credits" is reported as a
+ * broken routine and the user goes hunting for a misconfiguration.
+ */
+const OUT_OF_CREDITS = /\b(credits?|insufficient|balance|quota|allowance|out of (?:credits|funds)|limit (?:reached|exceeded)|upgrade your plan)\b/i;
+
+export function isOutOfCreditsReply(status: number, clayText: string): boolean {
+  return status === 402 || (status >= 400 && status < 500 && OUT_OF_CREDITS.test(clayText));
+}
+
+export type ClayLastError = { at: string; status: number; message: string; endpoint: "search" | "routine" };
+
+/**
+ * Keep Clay's explanation next to the integration, where the Outreach tab can
+ * show it. It never goes in the redirect URL: the text can echo what was
+ * searched, and URLs end up in browser history.
+ */
+function recordLastError(error: ClayLastError) {
+  try {
+    saveIntegrationMetadata("clay", { lastError: error });
+  } catch (cause) {
+    console.warn("[clay] could not record the last error:", cause);
+  }
+}
+
+export function readClayLastError(): ClayLastError | null {
+  const metadata = getIntegration("clay")?.metadata as { lastError?: ClayLastError } | undefined;
+  const last = metadata?.lastError;
+  return last && typeof last.message === "string" && typeof last.at === "string" ? last : null;
+}
+
+/** Map Clay's HTTP codes onto §63's states — each needs a different thing from the user. */
+async function raiseForStatus(res: Response, path: string): Promise<never> {
+  const detail = await res.text().catch(() => "");
+  const clayText = readClayErrorText(detail);
+  const endpoint = path.startsWith("/routines") ? "routine" : "search";
+  recordLastError({ at: new Date().toISOString(), status: res.status, message: clayText, endpoint });
+  const said = clayText ? ` Clay said: ${clayText}` : "";
+
+  if (res.status === 401 || res.status === 403) {
+    throw new ContactProviderError("invalid_credential", `Clay rejected the API key.${said}`);
   }
   if (res.status === 429) {
-    throw new ContactProviderError("rate_limited", "Clay rate-limited the request. Try again shortly.");
+    throw new ContactProviderError("rate_limited", `Clay rate-limited the request.${said}`);
   }
-  throw new ContactProviderError("unavailable", `Clay returned HTTP ${res.status}. ${snippet}`.trim());
+  if (isOutOfCreditsReply(res.status, clayText)) {
+    // 402 is documented as the search-result allowance being exhausted (§42).
+    throw new ContactProviderError("allowance_reached", `Clay is out of credits or allowance (HTTP ${res.status}).${said}`, {
+      httpStatus: res.status,
+    });
+  }
+  throw new ContactProviderError("unavailable", `Clay returned HTTP ${res.status}.${said}`, {
+    // A 4xx from a routine endpoint means the user's routine id or inputs, not the
+    // company link — telling them to fix the company would leave them stuck.
+    reason: res.status >= 500 ? "server_error" : endpoint === "routine" ? "routine_rejected" : "request_rejected",
+    httpStatus: res.status,
+  });
 }
 
 async function clayFetch(path: string, init: RequestInit & { key: string }): Promise<unknown> {
@@ -65,9 +138,15 @@ async function clayFetch(path: string, init: RequestInit & { key: string }): Pro
       headers: { Accept: "application/json", "Content-Type": "application/json", "clay-api-key": key, ...(rest.headers ?? {}) },
     });
   } catch (error) {
-    throw new ContactProviderError("unavailable", `Could not reach Clay: ${error instanceof Error ? error.message : String(error)}`);
+    // Overwrite any earlier reply so the tab never pairs this failure with stale text.
+    recordLastError({ at: new Date().toISOString(), status: 0, message: "", endpoint: path.startsWith("/routines") ? "routine" : "search" });
+    throw new ContactProviderError("unavailable", `Could not reach Clay: ${error instanceof Error ? error.message : String(error)}`, {
+      reason: "network",
+    });
   }
-  if (!res.ok) await raiseForStatus(res);
+  if (!res.ok) await raiseForStatus(res, path);
+  // A request that worked makes any earlier reply stale.
+  if (readClayLastError()) saveIntegrationMetadata("clay", { lastError: null });
   return res.json();
 }
 
@@ -215,7 +294,7 @@ export class ClayProvider implements ContactProvider {
     }
 
     const searchId = created.search_id ?? created.id;
-    if (!searchId) throw new ContactProviderError("unavailable", "Clay did not return a search id.");
+    if (!searchId) throw new ContactProviderError("unavailable", "Clay did not return a search id.", { reason: "bad_response" });
 
     const limit = Math.max(1, Math.min(DEFAULT_PEOPLE_LIMIT, input.limit || DEFAULT_PEOPLE_LIMIT));
     const run = (await clayFetch(`${SEARCH_PATH}/${searchId}/run`, {
@@ -264,7 +343,7 @@ export class ClayProvider implements ContactProvider {
       // Clay's managed function declares its input as the literal label
       // "Social Profile URL" — not a snake_case key. Verified against a live run.
       // §71: this is the only thing sent; no resume, notes or career history.
-      inputs: { "Social Profile URL": input.linkedinUrl },
+      inputs: { "Social Profile URL": toClayProfileUrl(input.linkedinUrl) },
     }));
 
     const started = (await clayFetch(`/routines/${encodeURIComponent(routineId)}/run`, {
@@ -272,7 +351,7 @@ export class ClayProvider implements ContactProvider {
     })) as { routine_run_id?: string };
 
     const runId = started.routine_run_id;
-    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.");
+    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.", { reason: "bad_response" });
 
     const run = await pollRoutineRun(key, runId);
 
@@ -305,12 +384,12 @@ export class ClayProvider implements ContactProvider {
       key,
       method: "POST",
       body: JSON.stringify({
-        items: [{ id: "jst-1", inputs: { "Social Profile URL": input.linkedinUrl } }],
+        items: [{ id: "jst-1", inputs: { "Social Profile URL": toClayProfileUrl(input.linkedinUrl) } }],
       }),
     })) as { routine_run_id?: string };
 
     const runId = started.routine_run_id;
-    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.");
+    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.", { reason: "bad_response" });
 
     // One poller for both paths. This loop was duplicated inline and kept the old
     // endpoint after the shared one was corrected — exactly the drift that having
@@ -325,6 +404,18 @@ export class ClayProvider implements ContactProvider {
       provider: "clay-routine",
     };
   }
+}
+
+/**
+ * Contacts store LinkedIn links in normalized form — `linkedin.com/in/dana` — so
+ * the same person matches however the link was pasted. Clay's routine input
+ * rejects that: "Must be a valid URI including protocol". Add the scheme here,
+ * at the boundary, and leave the stored identity alone.
+ */
+export function toClayProfileUrl(linkedinUrl: string): string {
+  const trimmed = linkedinUrl.trim();
+  if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed.replace(/^\/+/, "")}`;
 }
 
 const MAX_ENRICHMENT_ITEMS = 100;
@@ -352,12 +443,13 @@ async function pollRoutineRun(key: string, runId: string): Promise<ClayRoutineRu
     const progress = (await clayFetch(`/routines/run/${encodeURIComponent(runId)}/results`, { key, method: "GET" })) as ClayRoutineRun;
     if (progress.status === "complete" || progress.status === "completed") return progress;
     if (progress.status === "failed" || progress.status === "error") {
-      throw new ContactProviderError("unavailable", "The Clay routine failed. Check the routine in Clay.");
+      throw new ContactProviderError("unavailable", "The Clay routine failed. Check the routine in Clay.", { reason: "routine_failed" });
     }
   }
   throw new ContactProviderError(
     "unavailable",
-    `The Clay routine did not finish within ${(ENRICHMENT_POLL_ATTEMPTS * ENRICHMENT_POLL_INTERVAL_MS) / 1000}s. It is still running in Clay — try again shortly.`
+    `The Clay routine did not finish within ${(ENRICHMENT_POLL_ATTEMPTS * ENRICHMENT_POLL_INTERVAL_MS) / 1000}s. It is still running in Clay; its result is in the routine's run history there.`,
+    { reason: "routine_timeout" }
   );
 }
 

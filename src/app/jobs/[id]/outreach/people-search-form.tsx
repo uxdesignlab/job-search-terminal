@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Input, SubmitButton } from "@/components/ui";
+import { Badge, FormWorkInProgress, Input, SubmitButton } from "@/components/ui";
 import {
   buildPeopleSearchPlan,
   parsePeopleSearchKeywords,
@@ -140,6 +140,11 @@ export function PeopleSearchForm({
             : `Complete ${missing.join(", ")} before searching.`}
         </p>
       </div>
+
+      <FormWorkInProgress
+        detail="Three searches are running in Clay, then new people are saved to this job. This can take a few minutes. Leave this page open to see the results."
+        title={`Searching Clay for people at ${companyName.trim() || "this company"}…`}
+      />
     </form>
   );
 }

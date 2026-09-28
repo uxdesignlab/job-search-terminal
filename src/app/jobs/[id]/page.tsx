@@ -51,6 +51,7 @@ import { splitListValue } from "@/lib/profile/intelligence";
 import { buildPostingSearchQuery, hasResolvedPosting } from "@/lib/jobs/posting-resolution";
 import { ApplyTab } from "./tabs/apply-tab";
 import { EvaluationTab } from "./tabs/evaluation-tab";
+import { readClayLastError } from "@/lib/integrations/clay/provider";
 import { OutreachTab } from "./tabs/outreach-tab";
 import { OverviewTab } from "./tabs/overview-tab";
 import type { FetchDescriptionState } from "./fetch-description-button";
@@ -61,7 +62,7 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; error?: string }>;
+  searchParams: Promise<{ tab?: string; error?: string; reason?: string; status?: string }>;
 };
 
 
@@ -79,9 +80,12 @@ function validTab(t: string | undefined): Tab {
   return RENAMED_TABS[requested] ?? "overview";
 }
 
+/** The outreach errors that come from a Clay HTTP reply, and so may carry Clay's words. */
+const CLAY_REPLY_ERRORS = new Set(["clay-invalid_credential", "clay-allowance_reached", "clay-rate_limited", "clay-unavailable"]);
+
 export default async function JobDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { tab: rawTab, error: outreachError } = await searchParams;
+  const { tab: rawTab, error: outreachError, reason: outreachErrorReason, status: outreachErrorStatus } = await searchParams;
   const tab = validTab(rawTab);
 
   const job = getJobById(id);
@@ -92,6 +96,13 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const application = getApplicationByJobId(id);
   const contacts = getJobContacts(id);
   const clayConnected = getIntegration("clay")?.connectionStatus === "connected";
+  // Only pair Clay's reply with a Clay error that just happened — the reply is
+  // kept in the integration, not the URL, so an old one must not resurface.
+  const clayLastError = CLAY_REPLY_ERRORS.has(outreachError ?? "") ? readClayLastError() : null;
+  const clayReply =
+    clayLastError && clayLastError.message && Date.now() - new Date(clayLastError.at).getTime() < 5 * 60 * 1000
+      ? clayLastError.message
+      : undefined;
   const savedCompanyContactMetadata = getCompanyContactMetadata(job.company);
   const companyResolution = resolveCompanyIdentifier({
     job,
@@ -560,6 +571,9 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             jobTitle={job.title}
             outreachDrafts={outreachDrafts}
             outreachError={outreachError}
+            outreachErrorReason={outreachErrorReason}
+            outreachErrorStatus={outreachErrorStatus}
+            clayReply={clayReply}
             outreachMessages={outreachMessages}
             reportsToTitle={peopleSearchReportsToTitle}
             roleKeywords={peopleSearchRoleKeywords}

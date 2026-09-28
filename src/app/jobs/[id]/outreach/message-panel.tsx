@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Input, Select, SubmitButton, Textarea } from "@/components/ui";
+import { Badge, Button, Input, Select, SubmitButton, Textarea, WorkInProgress } from "@/components/ui";
 import { OUTREACH_CHANNELS, channelSpec, lengthState } from "@/lib/outreach/channels";
 import type { OutreachChannel, OutreachMessageRecord } from "@/lib/db/types";
 import { deleteMessageAction, draftMessageAction, saveMessageEditAction } from "./actions";
@@ -61,7 +61,19 @@ export function MessagePanel({ jobId, contactId, contactName, messages }: {
 
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <form action={draftMessage} className="flex flex-wrap items-end gap-2">
+      {/*
+        onSubmit, not action={draftMessage}: React runs a form action inside a
+        transition and holds back its state updates until it finishes, so the
+        "generating" panel was never painted — it and the result arrived together.
+      */}
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (generating) return;
+          void draftMessage(new FormData(event.currentTarget));
+        }}
+      >
         <Select
           className="min-w-52"
           disabled={generating}
@@ -79,32 +91,25 @@ export function MessagePanel({ jobId, contactId, contactName, messages }: {
         </Button>
       </form>
 
-      {generation.state !== "idle" && (
+      {generating && (
+        <WorkInProgress
+          className="mt-3"
+          detail="The AI is reading the role and relevant evidence. This can take a few minutes; the draft is not ready yet."
+          title={generation.message}
+        />
+      )}
+
+      {(generation.state === "saved" || generation.state === "error") && (
         <div
           aria-live="polite"
-          className={`mt-3 flex items-start gap-3 rounded-control border px-3 py-2 text-sm ${
+          className={`mt-3 rounded-control border px-3 py-2 text-sm ${
             generation.state === "error"
               ? "border-danger/35 bg-danger/10 text-danger"
-              : generation.state === "saved"
-                ? "border-success/35 bg-success/10 text-success"
-                : "border-accent/35 bg-accent/5 text-ink"
+              : "border-success/35 bg-success/10 text-success"
           }`}
           role={generation.state === "error" ? "alert" : "status"}
         >
-          {generating && (
-            <span
-              aria-hidden
-              className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent"
-            />
-          )}
-          <div>
-            <p className="font-medium">{generation.message}</p>
-            {generating && (
-              <p className="mt-1 text-xs text-muted">
-                The AI is reading the role and relevant evidence. This can take a few minutes; the draft is not ready yet.
-              </p>
-            )}
-          </div>
+          <p className="font-medium">{generation.message}</p>
         </div>
       )}
 
@@ -140,7 +145,7 @@ export function MessagePanel({ jobId, contactId, contactName, messages }: {
 
                 <div className="mt-2 flex flex-wrap gap-2 border-t border-border pt-2">
                   <form action={deleteMessageAction.bind(null, jobId, message.id)}>
-                    <SubmitButton label="Delete draft" savedLabel="Deleted" variant="quiet" />
+                    <SubmitButton label="Delete draft" pendingLabel="Deleting…" savedLabel="Deleted" variant="quiet" />
                   </form>
                   <p className="text-xs text-muted">
                     Copy this into {spec.hasSubject ? "your email client" : "LinkedIn"} to send — Job Search

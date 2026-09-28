@@ -1,4 +1,4 @@
-import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, Select, SubmitButton } from "@/components/ui";
+import { Badge, Card, CardDescription, CardHeader, CardTitle, FormWorkInProgress, Input, Select, SubmitButton } from "@/components/ui";
 import { outreachRecommendation } from "@/lib/contacts/ranking";
 import type { ContactRole, ContactStatus, JobContact, OutreachMessageRecord } from "@/lib/db/types";
 import { MessagePanel } from "./message-panel";
@@ -127,22 +127,29 @@ export function ContactsPanel({
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                     {STATUSES.filter((status) => status !== contact.link.status).map((status) => (
                       <form action={setContactStatusAction.bind(null, jobId, contact.id, status)} key={status}>
-                        <SubmitButton label={`Mark ${status}`} savedLabel="Updated" variant="quiet" />
+                        <SubmitButton label={`Mark ${status}`} pendingLabel="Updating…" savedLabel="Updated" variant="quiet" />
                       </form>
                     ))}
                     {clayConnected && !contact.workEmail && contact.linkedinUrl && (
-                      <form action={enrichContactAction.bind(null, jobId, contact.id)}>
-                        <SubmitButton label="Find email" savedLabel="Searched" variant="quiet" />
+                      // `contents` lets the progress panel wrap onto its own full-width
+                      // line inside the button row instead of squeezing beside the button.
+                      <form action={enrichContactAction.bind(null, jobId, contact.id)} className="contents">
+                        <SubmitButton label="Find email" pendingLabel="Finding email…" savedLabel="Searched" variant="quiet" />
+                        <FormWorkInProgress
+                          className="order-last basis-full"
+                          detail="Your Clay routine is looking up this person's work email. This usually takes 30 to 60 seconds. Leave this page open to see the result."
+                          title={`Looking up ${contact.name}'s work email…`}
+                        />
                       </form>
                     )}
                     <form action={removeFromJobAction.bind(null, jobId, contact.id)}>
-                      <SubmitButton label="Remove from this job" savedLabel="Removed" variant="quiet" />
+                      <SubmitButton label="Remove from this job" pendingLabel="Removing…" savedLabel="Removed" variant="quiet" />
                     </form>
                     <form action={deleteContactAction.bind(null, jobId, contact.id)}>
-                      <SubmitButton label="Delete contact" savedLabel="Deleted" variant="quiet" />
+                      <SubmitButton label="Delete contact" pendingLabel="Deleting…" savedLabel="Deleted" variant="quiet" />
                     </form>
                     <form action={forgetContactAction.bind(null, jobId, contact.id)}>
-                      <SubmitButton label="Forget this person" savedLabel="Forgotten" variant="quiet" />
+                      <SubmitButton label="Forget this person" pendingLabel="Forgetting…" savedLabel="Forgotten" variant="quiet" />
                     </form>
                   </div>
                 </li>
@@ -176,7 +183,7 @@ export function ContactsPanel({
             <Input label="Work email" name="workEmail" placeholder="Optional" />
           </div>
           <Input label="Notes" name="notes" placeholder="How you know them, or why they matter" />
-          <div><SubmitButton label="Add contact" savedLabel="Added" /></div>
+          <div><SubmitButton label="Add contact" pendingLabel="Adding…" savedLabel="Added" /></div>
         </form>
       </Card>
     </div>

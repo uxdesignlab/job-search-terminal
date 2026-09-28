@@ -34,6 +34,7 @@ import {
   reportsToTitleFromDescription,
 } from "@/lib/contacts/search-details";
 import { ContactProviderError } from "@/lib/contacts/provider";
+import { providerErrorQuery } from "@/lib/contacts/unavailable-message";
 import type { ContactCandidate } from "@/lib/contacts/provider";
 import { identityKeys } from "@/lib/contacts/identity";
 import { ClayProvider, hasEnrichmentRoutine, isAutoEnrichEnabled } from "@/lib/integrations/clay/provider";
@@ -200,7 +201,9 @@ export async function findPeopleAction(jobId: string, formData: FormData) {
     )));
   } catch (error) {
     if (error instanceof ContactProviderError) {
-      redirect(`/jobs/${jobId}?tab=outreach&error=clay-${error.kind}`);
+      // The full message stays in the server log; the URL carries only the reason.
+      console.warn("[outreach] Clay request failed:", error.message);
+      redirect(`/jobs/${jobId}?${providerErrorQuery(error)}`);
     }
     throw error;
   }
@@ -342,7 +345,9 @@ export async function enrichContactAction(jobId: string, contactIdValue: string)
     });
   } catch (error) {
     if (error instanceof ContactProviderError) {
-      redirect(`/jobs/${jobId}?tab=outreach&error=clay-${error.kind}`);
+      // The full message stays in the server log; the URL carries only the reason.
+      console.warn("[outreach] Clay request failed:", error.message);
+      redirect(`/jobs/${jobId}?${providerErrorQuery(error)}`);
     }
     throw error;
   }

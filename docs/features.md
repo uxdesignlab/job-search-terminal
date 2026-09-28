@@ -1636,13 +1636,38 @@ LinkedIn company page before enabling search rather than returning confident res
 the wrong organisation. Job-board links are rejected if pasted into that field.
 
 **When Clay has a problem**, each case says something different and useful: key rejected,
-allowance used up, rate limited, company ambiguous, or unreachable. A Clay failure never
-affects evaluation, resumes or applications.
+allowance used up, rate limited, company ambiguous, or unavailable. "Unavailable" is itself
+split by reason, because each asks something different of the user: no connection to Clay
+(check your internet), a Clay server error (shown with its code, wait and retry), a request
+Clay turned down (shown with its code, check the company link), a reply in an unexpected
+shape, and — for Find email — a routine Clay turned down (a 4xx from a `/routines`
+endpoint, which points at the routine id rather than the company link), a routine that
+failed, or one still running after a minute. The timeout message deliberately does not
+suggest retrying: Find email starts a new routine run, which Clay charges for again while
+the first run is still going; the result of the first run is in Clay's run history.
+The action redirects with `reason` and `status` query parameters
+(`src/lib/contacts/unavailable-message.ts`); Clay's own response text is never put in the
+URL, since it can echo the searched company. It goes to the server log and to the Clay
+integration's `lastError` metadata, and the Outreach tab shows it under the banner as
+**Clay's reply: "…"** — but only for errors that came from a Clay HTTP reply, and only
+when that reply is less than five minutes old, so an old message never sits under a new
+failure.
+
+Clay does not always use 402 for an empty balance: a 4xx whose text mentions credits,
+balance, quota, allowance, or an exhausted limit is treated as **out of credits or
+allowance** (`isOutOfCreditsReply`), not as a broken routine or a bad company link. A Clay
+failure never affects evaluation, resumes or applications.
 
 **Finding a work email.** Search never returns emails, and enrichment is a separate,
 per-contact action — **Find email** appears on a contact once you have decided they matter.
 It is never applied across a search result set, so five results cannot quietly become five
 enrichment charges.
+
+Contacts store LinkedIn links in normalized form (`linkedin.com/in/…`) so the same person
+matches however the link was pasted. Clay's routine input rejects a link without a scheme
+("Must be a valid URI including protocol"), so `toClayProfileUrl()` adds `https://` to
+what is sent. Before 0.17.7 the bare form was sent, and every Find email — and every
+automatic lookup after a search — failed with a 400.
 
 Automatic enrichment, when it is switched on, submits only people the search actually
 created and whose email is still missing. Before that it batched everyone the search
@@ -1706,9 +1731,26 @@ background appears only as evidence for that contribution, not as the subject of
 message or as a compressed biography.
 
 The button changes to **Generating message…** as soon as the request starts. An inline
-status names the person and channel, explains that the AI is still working, and remains
-visible until the draft is saved or an error needs attention. The contact is not reported
-as newly drafted by this control while generation is still running.
+progress panel names the person and channel, explains that the AI is still working, and
+remains visible until the draft is saved or an error needs attention. The contact is not
+reported as newly drafted by this control while generation is still running.
+
+Before 0.17.7 that panel existed in the code but never appeared: the form used
+`action={draftMessage}`, and React runs a form action inside a transition, holding back
+its state updates until the action finishes — so "generating" and the result were painted
+together. The form now submits through `onSubmit`, which updates the page immediately.
+
+**Progress panels on slow Outreach actions** (`WorkInProgress` /
+`FormWorkInProgress` in `src/components/ui/work-in-progress.tsx`). Draft message, **Find
+email**, and **Find relevant people** each show a panel while they run: a spinner, a
+moving bar, a clock counting how long the request has been running, and a line on what
+to expect. The bar is indeterminate on purpose — neither Clay nor the AI provider reports
+progress, so a filling bar would be a guess. The clock is the proof the app has not
+frozen, and the one signal left when reduced motion stops the spinner and bar.
+`FormWorkInProgress` reads `useFormStatus`, so it works in plain server-action forms and
+must be rendered inside the `<form>`. The quicker contact buttons now say what they are
+doing while pending (Updating…, Removing…, Deleting…, Forgetting…, Adding…) instead of
+the generic Saving….
 
 The active AI provider receives the role-specific part of the job description, relevant
 evaluation and Application Preparation evidence, the contact's professional details, and
