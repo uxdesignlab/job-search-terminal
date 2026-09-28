@@ -1636,8 +1636,15 @@ LinkedIn company page before enabling search rather than returning confident res
 the wrong organisation. Job-board links are rejected if pasted into that field.
 
 **When Clay has a problem**, each case says something different and useful: key rejected,
-allowance used up, rate limited, company ambiguous, or unreachable. A Clay failure never
-affects evaluation, resumes or applications.
+allowance used up, rate limited, company ambiguous, or unavailable. "Unavailable" is itself
+split by reason, because each asks something different of the user: no connection to Clay
+(check your internet), a Clay server error (shown with its code, wait and retry), a request
+Clay turned down (shown with its code, check the company link), a reply in an unexpected
+shape, and — for Find email — a routine that failed or is still running after a minute.
+The action redirects with `reason` and `status` query parameters
+(`src/lib/contacts/unavailable-message.ts`); Clay's own response text is never put in the
+URL, since it can echo the searched company, and goes to the server log instead. A Clay
+failure never affects evaluation, resumes or applications.
 
 **Finding a work email.** Search never returns emails, and enrichment is a separate,
 per-contact action — **Find email** appears on a contact once you have decided they matter.

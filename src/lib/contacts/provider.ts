@@ -39,10 +39,34 @@ export type ContactProviderErrorKind =
   | "ambiguous_company"
   | "unavailable";
 
+/**
+ * Why an "unavailable" failure happened. "Clay could not be reached" covered a
+ * dropped connection, a Clay outage, a rejected request and a stalled routine
+ * alike — each of which asks something different of the user.
+ */
+export type ContactProviderUnavailableReason =
+  | "network"
+  | "server_error"
+  | "request_rejected"
+  | "bad_response"
+  | "routine_failed"
+  | "routine_timeout";
+
+export type ContactProviderErrorDetail = {
+  reason?: ContactProviderUnavailableReason;
+  /** The HTTP status Clay answered with, when it answered at all. */
+  httpStatus?: number;
+};
+
 export class ContactProviderError extends Error {
-  constructor(readonly kind: ContactProviderErrorKind, message: string) {
+  readonly reason: ContactProviderUnavailableReason | undefined;
+  readonly httpStatus: number | undefined;
+
+  constructor(readonly kind: ContactProviderErrorKind, message: string, detail: ContactProviderErrorDetail = {}) {
     super(message);
     this.name = "ContactProviderError";
+    this.reason = detail.reason;
+    this.httpStatus = detail.httpStatus;
   }
 }
 

@@ -15,6 +15,18 @@ the numbers mean and when they change.
 
 ---
 
+## 0.17.7 — 2026-09-28 — Clay errors that say what went wrong
+
+**Fixed**
+
+- When Clay failed on the Outreach tab, the app always said "Clay could not be
+  reached", whatever the cause. It now tells you which problem you hit: no
+  connection to Clay, a problem on Clay's side (with its error code), a request
+  Clay turned down, or — for Find email — a routine that failed or is still
+  running. Each message says what to do next.
+
+---
+
 ## 0.17.6 — 2026-09-28 — Clear message for a duplicate job link
 
 **Fixed**

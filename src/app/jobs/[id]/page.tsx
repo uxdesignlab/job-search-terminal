@@ -61,7 +61,7 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; error?: string }>;
+  searchParams: Promise<{ tab?: string; error?: string; reason?: string; status?: string }>;
 };
 
 
@@ -81,7 +81,7 @@ function validTab(t: string | undefined): Tab {
 
 export default async function JobDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { tab: rawTab, error: outreachError } = await searchParams;
+  const { tab: rawTab, error: outreachError, reason: outreachErrorReason, status: outreachErrorStatus } = await searchParams;
   const tab = validTab(rawTab);
 
   const job = getJobById(id);
@@ -560,6 +560,8 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             jobTitle={job.title}
             outreachDrafts={outreachDrafts}
             outreachError={outreachError}
+            outreachErrorReason={outreachErrorReason}
+            outreachErrorStatus={outreachErrorStatus}
             outreachMessages={outreachMessages}
             reportsToTitle={peopleSearchReportsToTitle}
             roleKeywords={peopleSearchRoleKeywords}

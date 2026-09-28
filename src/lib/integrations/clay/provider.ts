@@ -53,7 +53,10 @@ async function raiseForStatus(res: Response): Promise<never> {
   if (res.status === 429) {
     throw new ContactProviderError("rate_limited", "Clay rate-limited the request. Try again shortly.");
   }
-  throw new ContactProviderError("unavailable", `Clay returned HTTP ${res.status}. ${snippet}`.trim());
+  throw new ContactProviderError("unavailable", `Clay returned HTTP ${res.status}. ${snippet}`.trim(), {
+    reason: res.status >= 500 ? "server_error" : "request_rejected",
+    httpStatus: res.status,
+  });
 }
 
 async function clayFetch(path: string, init: RequestInit & { key: string }): Promise<unknown> {
@@ -65,7 +68,9 @@ async function clayFetch(path: string, init: RequestInit & { key: string }): Pro
       headers: { Accept: "application/json", "Content-Type": "application/json", "clay-api-key": key, ...(rest.headers ?? {}) },
     });
   } catch (error) {
-    throw new ContactProviderError("unavailable", `Could not reach Clay: ${error instanceof Error ? error.message : String(error)}`);
+    throw new ContactProviderError("unavailable", `Could not reach Clay: ${error instanceof Error ? error.message : String(error)}`, {
+      reason: "network",
+    });
   }
   if (!res.ok) await raiseForStatus(res);
   return res.json();
@@ -215,7 +220,7 @@ export class ClayProvider implements ContactProvider {
     }
 
     const searchId = created.search_id ?? created.id;
-    if (!searchId) throw new ContactProviderError("unavailable", "Clay did not return a search id.");
+    if (!searchId) throw new ContactProviderError("unavailable", "Clay did not return a search id.", { reason: "bad_response" });
 
     const limit = Math.max(1, Math.min(DEFAULT_PEOPLE_LIMIT, input.limit || DEFAULT_PEOPLE_LIMIT));
     const run = (await clayFetch(`${SEARCH_PATH}/${searchId}/run`, {
@@ -272,7 +277,7 @@ export class ClayProvider implements ContactProvider {
     })) as { routine_run_id?: string };
 
     const runId = started.routine_run_id;
-    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.");
+    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.", { reason: "bad_response" });
 
     const run = await pollRoutineRun(key, runId);
 
@@ -310,7 +315,7 @@ export class ClayProvider implements ContactProvider {
     })) as { routine_run_id?: string };
 
     const runId = started.routine_run_id;
-    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.");
+    if (!runId) throw new ContactProviderError("unavailable", "Clay did not return a routine run id.", { reason: "bad_response" });
 
     // One poller for both paths. This loop was duplicated inline and kept the old
     // endpoint after the shared one was corrected — exactly the drift that having
@@ -352,12 +357,13 @@ async function pollRoutineRun(key: string, runId: string): Promise<ClayRoutineRu
     const progress = (await clayFetch(`/routines/run/${encodeURIComponent(runId)}/results`, { key, method: "GET" })) as ClayRoutineRun;
     if (progress.status === "complete" || progress.status === "completed") return progress;
     if (progress.status === "failed" || progress.status === "error") {
-      throw new ContactProviderError("unavailable", "The Clay routine failed. Check the routine in Clay.");
+      throw new ContactProviderError("unavailable", "The Clay routine failed. Check the routine in Clay.", { reason: "routine_failed" });
     }
   }
   throw new ContactProviderError(
     "unavailable",
-    `The Clay routine did not finish within ${(ENRICHMENT_POLL_ATTEMPTS * ENRICHMENT_POLL_INTERVAL_MS) / 1000}s. It is still running in Clay — try again shortly.`
+    `The Clay routine did not finish within ${(ENRICHMENT_POLL_ATTEMPTS * ENRICHMENT_POLL_INTERVAL_MS) / 1000}s. It is still running in Clay — try again shortly.`,
+    { reason: "routine_timeout" }
   );
 }
 

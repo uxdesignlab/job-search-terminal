@@ -1402,6 +1402,10 @@ export const helpPages: HelpPage[] = [
           "Add at least one Role focus. Use functions such as user experience or product design, separated by commas. The app fills this from the job title when it can.",
           "Review Who Clay will look for before searching. The three groups should make sense for the position, and the result counts should add up to five.",
           "If Clay rejects the search after the checklist is ready, check the red message above the People card. It tells you whether the key, allowance, rate limit, or Clay service needs attention.",
+          "\"Could not connect to Clay\" means the app never reached Clay. Check your internet connection and try again.",
+          "\"Clay had a problem on its side\" is Clay's own fault, not yours. Wait a few minutes and try again.",
+          "\"Clay turned down the request\" usually means the company website or LinkedIn page is wrong. Make sure it belongs to the employer, not a job board.",
+          "When Find email fails, the message says whether your Clay routine failed or is still running. A routine that is still running will finish in Clay, so try Find email again in a minute or two.",
         ],
       },
       {
