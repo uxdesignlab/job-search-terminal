@@ -1663,6 +1663,12 @@ per-contact action — **Find email** appears on a contact once you have decided
 It is never applied across a search result set, so five results cannot quietly become five
 enrichment charges.
 
+Contacts store LinkedIn links in normalized form (`linkedin.com/in/…`) so the same person
+matches however the link was pasted. Clay's routine input rejects a link without a scheme
+("Must be a valid URI including protocol"), so `toClayProfileUrl()` adds `https://` to
+what is sent. Before 0.17.7 the bare form was sent, and every Find email — and every
+automatic lookup after a search — failed with a 400.
+
 Automatic enrichment, when it is switched on, submits only people the search actually
 created and whose email is still missing. Before that it batched everyone the search
 returned who had a LinkedIn URL, so re-running the same search bought the same addresses

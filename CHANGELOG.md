@@ -34,6 +34,10 @@ the numbers mean and when they change.
   failed, or is still running. Each message says what to do next, and a
   lookup that is still running no longer tells you to press Find email again,
   which would have started a second paid lookup.
+- Find email always failed with Clay error 400 ("Social Profile URL: Must be a
+  valid URI"), because the app sent LinkedIn links without `https://`. It now
+  sends the full link. Automatic email lookup after a search had the same
+  problem and now works too.
 - When Clay explains why it said no, its own words now appear under the red
   message ("Clay's reply: …"). An account that has run out of Clay credits is
   now reported as that, instead of as a broken routine or a wrong company link.

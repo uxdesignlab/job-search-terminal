@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOutOfCreditsReply, readClayErrorText } from "@/lib/integrations/clay/provider";
+import { isOutOfCreditsReply, readClayErrorText, toClayProfileUrl } from "@/lib/integrations/clay/provider";
 
 describe("readClayErrorText", () => {
   it("reads the message from the JSON shapes Clay uses", () => {
@@ -31,5 +31,18 @@ describe("isOutOfCreditsReply", () => {
   it("leaves a genuine routine problem alone", () => {
     expect(isOutOfCreditsReply(400, "Routine not found")).toBe(false);
     expect(isOutOfCreditsReply(500, "credit service down")).toBe(false);
+  });
+});
+
+describe("toClayProfileUrl", () => {
+  it("adds https:// to a stored linkedin.com link, which Clay otherwise rejects", () => {
+    expect(toClayProfileUrl("linkedin.com/in/dana-reeve")).toBe("https://linkedin.com/in/dana-reeve");
+    expect(toClayProfileUrl("  www.linkedin.com/in/dana  ")).toBe("https://www.linkedin.com/in/dana");
+  });
+
+  it("leaves a link that already has a scheme, and an empty one, as they are", () => {
+    expect(toClayProfileUrl("https://www.linkedin.com/in/dana")).toBe("https://www.linkedin.com/in/dana");
+    expect(toClayProfileUrl("http://linkedin.com/in/dana")).toBe("http://linkedin.com/in/dana");
+    expect(toClayProfileUrl("")).toBe("");
   });
 });

@@ -343,7 +343,7 @@ export class ClayProvider implements ContactProvider {
       // Clay's managed function declares its input as the literal label
       // "Social Profile URL" — not a snake_case key. Verified against a live run.
       // §71: this is the only thing sent; no resume, notes or career history.
-      inputs: { "Social Profile URL": input.linkedinUrl },
+      inputs: { "Social Profile URL": toClayProfileUrl(input.linkedinUrl) },
     }));
 
     const started = (await clayFetch(`/routines/${encodeURIComponent(routineId)}/run`, {
@@ -384,7 +384,7 @@ export class ClayProvider implements ContactProvider {
       key,
       method: "POST",
       body: JSON.stringify({
-        items: [{ id: "jst-1", inputs: { "Social Profile URL": input.linkedinUrl } }],
+        items: [{ id: "jst-1", inputs: { "Social Profile URL": toClayProfileUrl(input.linkedinUrl) } }],
       }),
     })) as { routine_run_id?: string };
 
@@ -404,6 +404,18 @@ export class ClayProvider implements ContactProvider {
       provider: "clay-routine",
     };
   }
+}
+
+/**
+ * Contacts store LinkedIn links in normalized form — `linkedin.com/in/dana` — so
+ * the same person matches however the link was pasted. Clay's routine input
+ * rejects that: "Must be a valid URI including protocol". Add the scheme here,
+ * at the boundary, and leave the stored identity alone.
+ */
+export function toClayProfileUrl(linkedinUrl: string): string {
+  const trimmed = linkedinUrl.trim();
+  if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed.replace(/^\/+/, "")}`;
 }
 
 const MAX_ENRICHMENT_ITEMS = 100;
