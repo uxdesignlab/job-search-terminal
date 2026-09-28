@@ -1405,7 +1405,8 @@ export const helpPages: HelpPage[] = [
           "\"Could not connect to Clay\" means the app never reached Clay. Check your internet connection and try again.",
           "\"Clay had a problem on its side\" is Clay's own fault, not yours. Wait a few minutes and try again.",
           "\"Clay turned down the request\" usually means the company website or LinkedIn page is wrong. Make sure it belongs to the employer, not a job board.",
-          "When Find email fails, the message says whether your Clay routine failed or is still running. A routine that is still running will finish in Clay, so try Find email again in a minute or two.",
+          "When Find email fails, the message says whether Clay turned the lookup down, the routine failed, or it is still running. If Clay turned it down, check the routine id in Account → Settings → Integrations and the routine itself in Clay.",
+          "If the lookup is still running, look for the email in the routine's run history in Clay. Pressing Find email again starts a second lookup, and Clay charges for it again.",
         ],
       },
       {

@@ -22,8 +22,10 @@ the numbers mean and when they change.
 - When Clay failed on the Outreach tab, the app always said "Clay could not be
   reached", whatever the cause. It now tells you which problem you hit: no
   connection to Clay, a problem on Clay's side (with its error code), a request
-  Clay turned down, or — for Find email — a routine that failed or is still
-  running. Each message says what to do next.
+  Clay turned down, or — for Find email — a routine that was turned down,
+  failed, or is still running. Each message says what to do next, and a
+  lookup that is still running no longer tells you to press Find email again,
+  which would have started a second paid lookup.
 
 ---
 

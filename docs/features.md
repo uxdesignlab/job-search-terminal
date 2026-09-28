@@ -1640,7 +1640,11 @@ allowance used up, rate limited, company ambiguous, or unavailable. "Unavailable
 split by reason, because each asks something different of the user: no connection to Clay
 (check your internet), a Clay server error (shown with its code, wait and retry), a request
 Clay turned down (shown with its code, check the company link), a reply in an unexpected
-shape, and — for Find email — a routine that failed or is still running after a minute.
+shape, and — for Find email — a routine Clay turned down (a 4xx from a `/routines`
+endpoint, which points at the routine id rather than the company link), a routine that
+failed, or one still running after a minute. The timeout message deliberately does not
+suggest retrying: Find email starts a new routine run, which Clay charges for again while
+the first run is still going; the result of the first run is in Clay's run history.
 The action redirects with `reason` and `status` query parameters
 (`src/lib/contacts/unavailable-message.ts`); Clay's own response text is never put in the
 URL, since it can echo the searched company, and goes to the server log instead. A Clay

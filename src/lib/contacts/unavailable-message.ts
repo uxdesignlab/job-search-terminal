@@ -5,6 +5,7 @@ const REASONS: readonly ContactProviderUnavailableReason[] = [
   "server_error",
   "request_rejected",
   "bad_response",
+  "routine_rejected",
   "routine_failed",
   "routine_timeout",
 ];
@@ -54,10 +55,14 @@ export function clayUnavailableMessage(rawReason: string | undefined, rawStatus:
       return `Clay turned down the request${code}. Check that the company website or LinkedIn page belongs to the employer, then try again. If it keeps happening, Clay may have changed how its search works. ${UNAFFECTED}`;
     case "bad_response":
       return `Clay answered, but not in the form Job Search Terminal expects. Try again; if it keeps happening, Clay may have changed how its service works. ${UNAFFECTED}`;
+    case "routine_rejected":
+      return `Clay turned down the email lookup${code}. The routine id in Settings → Integrations may be wrong, or the routine was changed or deleted in Clay. Check it in both places. The contact is unchanged.`;
     case "routine_failed":
       return "Your Clay email lookup routine reported a failure. Open the routine in Clay to see what went wrong. The contact is unchanged.";
     case "routine_timeout":
-      return "Your Clay email lookup routine is taking longer than a minute. It keeps running in Clay — try Find email again in a minute or two. The contact is unchanged.";
+      // Not "try again": Find email starts a new run, and Clay charges for it
+      // while the first run is still going.
+      return "Your Clay email lookup took longer than a minute, so Job Search Terminal stopped waiting. The lookup keeps running in Clay, and its result will be in the routine's run history there. Pressing Find email again starts a new lookup, which Clay charges for again. The contact is unchanged.";
     default:
       return `Clay did not complete the request${code}. Try again in a few minutes. ${UNAFFECTED}`;
   }

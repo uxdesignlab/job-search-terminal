@@ -40,7 +40,7 @@ function requireKey(): string {
 }
 
 /** Map Clay's HTTP codes onto §63's states — each needs a different thing from the user. */
-async function raiseForStatus(res: Response): Promise<never> {
+async function raiseForStatus(res: Response, path: string): Promise<never> {
   const detail = await res.text().catch(() => "");
   const snippet = detail.slice(0, 200);
   if (res.status === 401 || res.status === 403) {
@@ -54,7 +54,9 @@ async function raiseForStatus(res: Response): Promise<never> {
     throw new ContactProviderError("rate_limited", "Clay rate-limited the request. Try again shortly.");
   }
   throw new ContactProviderError("unavailable", `Clay returned HTTP ${res.status}. ${snippet}`.trim(), {
-    reason: res.status >= 500 ? "server_error" : "request_rejected",
+    // A 4xx from a routine endpoint means the user's routine id or inputs, not the
+    // company link — telling them to fix the company would leave them stuck.
+    reason: res.status >= 500 ? "server_error" : path.startsWith("/routines") ? "routine_rejected" : "request_rejected",
     httpStatus: res.status,
   });
 }
@@ -72,7 +74,7 @@ async function clayFetch(path: string, init: RequestInit & { key: string }): Pro
       reason: "network",
     });
   }
-  if (!res.ok) await raiseForStatus(res);
+  if (!res.ok) await raiseForStatus(res, path);
   return res.json();
 }
 
@@ -362,7 +364,7 @@ async function pollRoutineRun(key: string, runId: string): Promise<ClayRoutineRu
   }
   throw new ContactProviderError(
     "unavailable",
-    `The Clay routine did not finish within ${(ENRICHMENT_POLL_ATTEMPTS * ENRICHMENT_POLL_INTERVAL_MS) / 1000}s. It is still running in Clay — try again shortly.`,
+    `The Clay routine did not finish within ${(ENRICHMENT_POLL_ATTEMPTS * ENRICHMENT_POLL_INTERVAL_MS) / 1000}s. It is still running in Clay; its result is in the routine's run history there.`,
     { reason: "routine_timeout" }
   );
 }

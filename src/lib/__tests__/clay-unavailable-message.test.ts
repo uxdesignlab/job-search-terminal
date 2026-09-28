@@ -35,7 +35,20 @@ describe("clayUnavailableMessage", () => {
 
   it("sends routine failures back to Clay", () => {
     expect(clayUnavailableMessage("routine_failed", undefined)).toMatch(/Open the routine in Clay/);
-    expect(clayUnavailableMessage("routine_timeout", undefined)).toMatch(/try Find email again/);
+  });
+
+  it("blames the routine, not the company link, when Clay rejects an email lookup", () => {
+    const message = clayUnavailableMessage("routine_rejected", "404");
+    expect(message).toContain("(error 404)");
+    expect(message).toMatch(/routine id/);
+    expect(message).not.toMatch(/company website/);
+  });
+
+  it("warns that retrying a timed-out lookup is charged again rather than suggesting it", () => {
+    const message = clayUnavailableMessage("routine_timeout", undefined);
+    expect(message).toMatch(/run history/);
+    expect(message).toMatch(/charges for again/);
+    expect(message).not.toMatch(/try Find email again/);
   });
 
   it("falls back to general wording for an unknown reason and ignores a malformed status", () => {

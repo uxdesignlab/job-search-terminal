@@ -49,6 +49,7 @@ export type ContactProviderUnavailableReason =
   | "server_error"
   | "request_rejected"
   | "bad_response"
+  | "routine_rejected"
   | "routine_failed"
   | "routine_timeout";
 
