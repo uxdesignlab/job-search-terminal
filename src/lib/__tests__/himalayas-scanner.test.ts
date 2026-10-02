@@ -5,6 +5,7 @@ import {
   himalayasPubDateToIso,
   normalizeHimalayasJob,
   parseHimalayasPayload,
+  himalayasSearchTerms,
 } from "@/lib/scanner/himalayas-scanner";
 import { buildJobPreferenceFilter, type JobPreferenceProfile } from "@/lib/jobs/preference-fit";
 import { parseBrowserBoardScanFile, prepareBrowserBoardJobs } from "@/lib/scanner/browser-board-importer";
@@ -27,6 +28,22 @@ describe("parseHimalayasPayload", () => {
   it("drops non-whitespace control characters rather than substituting them", () => {
     const parsed = parseHimalayasPayload('{"a":"xy"}') as { a: string };
     expect(parsed.a).toBe("xy");
+  });
+});
+
+describe("himalayasSearchTerms", () => {
+  it("prefers the positive keywords, trimmed and without case-insensitive duplicates", () => {
+    expect(himalayasSearchTerms([" UX ", "product design", "ux", ""], ["Head of Design"])).toEqual(["UX", "product design"]);
+  });
+
+  it("falls back to target roles only when there are no usable keywords", () => {
+    expect(himalayasSearchTerms(["  "], ["Head of Design"])).toEqual(["Head of Design"]);
+    expect(himalayasSearchTerms([], [])).toEqual([]);
+  });
+
+  it("caps a run at twelve searches", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `k${i}`);
+    expect(himalayasSearchTerms(many)).toHaveLength(12);
   });
 });
 

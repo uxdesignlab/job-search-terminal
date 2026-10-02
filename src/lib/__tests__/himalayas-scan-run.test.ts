@@ -2,10 +2,12 @@
  * Coverage for the walk itself — `runHimalayasScan` — as opposed to the pure
  * helpers exercised in `himalayas-scanner.test.ts`.
  *
- * What is worth pinning here is when a run reports the page cap. Hitting the cap
- * is the normal ending, so reporting it every time buried the runs where the
- * sweep really was too thin to cover the gap between scans. Both sides of that
- * decision are asserted, along with the two other ways a walk can end.
+ * What is worth pinning here is how each search ends and when that is reported.
+ * Stopping at the page cap is fine when the pages read cover the gap between
+ * scans, and reporting it anyway buried the runs where coverage really was too
+ * thin. Both sides of that decision are asserted, along with the other ways a
+ * search or a whole run can end: the coverage horizon, the end of the results,
+ * the request budget, a rate limit, and repeated failures.
  *
  * The network and the importer are mocked; the file write is redirected to a
  * temp directory, so a run touches nothing real.
@@ -45,10 +47,11 @@ vi.mock("@/lib/scanner/browser-board-importer", async (importOriginal) => {
 import { runHimalayasScan } from "@/lib/scanner/himalayas-scanner";
 
 /** Mirrors the constants the scanner uses; a change to either should fail here. */
-const MAX_PAGES = 60;
+const MAX_PAGES_PER_QUERY = 10;
+const MAX_REQUESTS = 50;
 const PAGE_SIZE = 20;
 
-function posting(id: number, ageHours: number) {
+function posting(id: number | string, ageHours: number) {
   return {
     title: "Product Designer",
     companyName: `Company ${id}`,
@@ -60,35 +63,29 @@ function posting(id: number, ageHours: number) {
   };
 }
 
-/**
- * A page as the API returns it. The cursor is the next offset in disguise, so a
- * mocked feed can be addressed by position whichever way the scanner pages.
- */
-function page(jobs: unknown[], offset = 0) {
-  const nextCursor = jobs.length > 0 ? `c${offset + jobs.length}` : null;
-  return { ok: true, text: async () => JSON.stringify({ jobs, nextCursor }) };
+/** A search page as the API returns it. */
+function page(jobs: unknown[], totalCount = 10_000) {
+  return { ok: true, status: 200, text: async () => JSON.stringify({ jobs, totalCount }) };
 }
 
-/**
- * A feed whose postings age linearly from now to `spanHours` across the full
- * page budget — the shape that decides whether the cap is worth reporting.
- */
-function feedSpanning(spanHours: number) {
-  const perPage = PAGE_SIZE;
-  const total = MAX_PAGES * perPage;
-  return (offset: number) => {
-    const jobs = Array.from({ length: perPage }, (_, i) => {
-      const index = offset + i;
-      return posting(index, (index / total) * spanHours);
-    });
-    return page(jobs, offset);
-  };
-}
-
-function offsetFromUrl(url: string): number {
+function searchOf(url: string): { q: string; page: number } {
   const params = new URL(url).searchParams;
-  const cursor = params.get("cursor");
-  return cursor ? Number(cursor.slice(1)) : Number(params.get("offset") ?? 0);
+  return { q: params.get("q") ?? "", page: Number(params.get("page")) };
+}
+
+/**
+ * Results whose postings age `hoursPerPage` per page, newest first — the shape
+ * that decides whether a search reaches the horizon before its page cap.
+ */
+function resultsAging(hoursPerPage: number) {
+  return (url: string) => {
+    const { q, page: n } = searchOf(url);
+    return page(
+      Array.from({ length: PAGE_SIZE }, (_, i) =>
+        posting(`${q}-${n}-${i}`, ((n - 1) * PAGE_SIZE + i) * (hoursPerPage / PAGE_SIZE)),
+      ),
+    );
+  };
 }
 
 /** Runs the scan with fake timers, so the inter-page delays cost no real time. */
@@ -117,54 +114,152 @@ afterAll(() => {
   rmSync(importDir, { recursive: true, force: true });
 });
 
-describe("runHimalayasScan — how a walk ends", () => {
-  it("reports the page cap when the sweep covered less feed than the gap between scans", async () => {
-    const feed = feedSpanning(2);
-    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(feed(offsetFromUrl(url))));
+describe("runHimalayasScan — what it searches for", () => {
+  it("searches each positive title keyword, newest first", async () => {
+    mocks.safeFetch.mockResolvedValue(page([], 0));
 
-    const progress: string[] = [];
-    const result = await scan({ titleFilters: NO_TITLE_MATCHES }, (m) => progress.push(m));
+    await scan({ titleFilters: { positive: ["UX", "product design", "ux"], negative: ["intern"] } });
 
-    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_PAGES);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatch(/Reached the 60-page cap after only 2\.0h of postings/);
-    expect(result.errors[0]).toContain("under the 6h between scans");
-    expect(progress.some((m) => m.startsWith("Note: Reached the 60-page cap"))).toBe(true);
+    const urls = mocks.safeFetch.mock.calls.map(([url]) => new URL(url as string));
+    expect(urls.map((u) => `${u.origin}${u.pathname}`)).toEqual([
+      "https://himalayas.app/jobs/api/search",
+      "https://himalayas.app/jobs/api/search",
+    ]);
+    // Duplicates differing only in case are searched once.
+    expect(urls.map((u) => u.searchParams.get("q"))).toEqual(["UX", "product design"]);
+    expect(urls.every((u) => u.searchParams.get("sort") === "recent")).toBe(true);
+    expect(urls.every((u) => u.searchParams.get("page") === "1")).toBe(true);
   });
 
-  it("finishes clean when the cap ends a sweep that covered more than the gap", async () => {
-    const feed = feedSpanning(10);
-    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(feed(offsetFromUrl(url))));
+  it("falls back to target roles when there are no positive keywords", async () => {
+    mocks.safeFetch.mockResolvedValue(page([], 0));
 
+    await scan({ titleFilters: { positive: [], negative: [] }, targetRoles: ["Head of Product Design"] });
+
+    expect(searchOf(mocks.safeFetch.mock.calls[0][0] as string).q).toBe("Head of Product Design");
+  });
+
+  it("keeps only titles matching the target roles it fell back to, not everything the search returned", async () => {
+    mocks.safeFetch.mockResolvedValue(page([
+      { ...posting(1, 1), title: "Head of Product Design, Platform" },
+      { ...posting(2, 1), title: "Airtable Specialist" },
+    ], 2));
+
+    const result = await scan({ titleFilters: { positive: [], negative: [] }, targetRoles: ["Head of Product Design"] });
+
+    expect(result.totalFound).toBe(2);
+    const [filePath] = mocks.importBrowserBoardJobs.mock.calls[0] as [string];
+    const written = JSON.parse(readFileSync(filePath, "utf-8")).jobs as Array<{ position: string }>;
+    expect(written.map((j) => j.position)).toEqual(["Head of Product Design, Platform"]);
+  });
+
+  it("says so, rather than importing the whole board, when there is nothing to search for", async () => {
     const progress: string[] = [];
-    const result = await scan({ titleFilters: NO_TITLE_MATCHES }, (m) => progress.push(m));
+    const result = await scan({ titleFilters: { positive: [], negative: [] }, targetRoles: [] }, (m) => progress.push(m));
 
-    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_PAGES);
+    expect(mocks.safeFetch).not.toHaveBeenCalled();
     expect(result.status).toBe("ok");
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatch(/^Himalayas was not searched: add an include keyword under Account → Settings → Preferences → Title filters/);
+  });
+});
+
+describe("runHimalayasScan — how a search ends", () => {
+  it("stops a search once a whole page is older than the 12-hour horizon", async () => {
+    // 5h per page: page 3 starts at 10h, page 4 at 15h — the first page wholly past it.
+    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(resultsAging(5)(url)));
+
+    const result = await scan({ titleFilters: { positive: ["designer"], negative: ["designer"] } });
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(4);
     expect(result.errors).toEqual([]);
-    expect(progress).toContain("Reached the 60-page cap, covering the newest 10.0h of postings.");
   });
 
-  it("stops at the first posting past the freshness window, without reporting the cap", async () => {
-    // Newest-first: one posting older than the window means every page behind it
-    // is older still, so the walk ends there rather than at the page budget.
+  it("does not stop at one old posting, because the last page of results mixes dates", async () => {
     mocks.safeFetch.mockImplementation((url: string) => {
-      const offset = offsetFromUrl(url);
-      const jobs = Array.from({ length: PAGE_SIZE }, (_, i) =>
-        posting(offset + i, offset === 0 && i === PAGE_SIZE - 1 ? 100 : 1)
-      );
-      return Promise.resolve(page(jobs, offset));
+      const { page: n } = searchOf(url);
+      const jobs = Array.from({ length: PAGE_SIZE }, (_, i) => posting(`${n}-${i}`, i === 0 ? 500 : 1));
+      return Promise.resolve(page(n <= 2 ? jobs : []));
     });
 
-    const result = await scan({ titleFilters: NO_TITLE_MATCHES, freshnessWindowHours: 72 });
+    const result = await scan({ titleFilters: NO_TITLE_MATCHES });
 
-    expect(mocks.safeFetch).toHaveBeenCalledTimes(1);
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(3);
+    // The 500-hour-old postings fall outside the 72h window and are not counted.
+    expect(result.totalFound).toBe(2 * (PAGE_SIZE - 1));
+  });
+
+  it("stops when the results run out, and does not mistake a short page for the end", async () => {
+    // Himalayas often returns 17–19 per page after dropping duplicates.
+    mocks.safeFetch.mockImplementation((url: string) => {
+      const { page: n } = searchOf(url);
+      const jobs = Array.from({ length: 18 }, (_, i) => posting(`${n}-${i}`, 1));
+      return Promise.resolve(page(jobs, 50));
+    });
+
+    const result = await scan({ titleFilters: NO_TITLE_MATCHES });
+
+    // totalCount 50 is spent after page 3 (3 × 20 ≥ 50).
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(3);
+    expect(result.totalFound).toBe(54);
     expect(result.errors).toEqual([]);
-    expect(result.totalFound).toBe(PAGE_SIZE - 1);
+  });
+
+  it("reports the page cap when the search covered less than the gap between scans", async () => {
+    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(resultsAging(0.2)(url)));
+
+    const progress: string[] = [];
+    const result = await scan({ titleFilters: NO_TITLE_MATCHES }, (m) => progress.push(m));
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_PAGES_PER_QUERY);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatch(/reached the 10-page cap after only 2\.0h of postings/);
+    expect(result.errors[0]).toContain("under the 6h between scans");
+    expect(progress.some((m) => m.startsWith("Note: Himalayas search for"))).toBe(true);
+  });
+
+  it("finishes clean when the cap ends a search that covered more than the gap", async () => {
+    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(resultsAging(1)(url)));
+
+    const result = await scan({ titleFilters: NO_TITLE_MATCHES });
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_PAGES_PER_QUERY);
+    expect(result.status).toBe("ok");
+    expect(result.errors).toEqual([]);
+  });
+
+  it("skips postings outside the freshness window and counts each posting once across searches", async () => {
+    mocks.safeFetch.mockImplementation(() =>
+      Promise.resolve(page([posting("shared", 1), posting("old", 100)], 2)),
+    );
+
+    const result = await scan({ titleFilters: { positive: ["ux", "hci"], negative: ["designer"] }, freshnessWindowHours: 72 });
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(2);
+    expect(result.totalFound).toBe(1);
+  });
+});
+
+describe("runHimalayasScan — protecting the API", () => {
+  it("stops the whole run at the first rate limit and names what was not searched", async () => {
+    mocks.safeFetch
+      .mockResolvedValueOnce(page([posting(1, 1)], 1))
+      .mockResolvedValue({ ok: false, status: 429, text: async () => "" });
+
+    const progress: string[] = [];
+    const result = await scan(
+      { titleFilters: { positive: ["ux", "hci", "accessibility"], negative: ["designer"] } },
+      (m) => progress.push(m),
+    );
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(2);
+    expect(result.errors).toContain("Himalayas rate-limited the scan (HTTP 429) after 2 requests, so it stopped early.");
+    expect(result.errors.some((e) => e.startsWith("Not searched back 6h this run: \u201chci\u201d, \u201caccessibility\u201d."))).toBe(true);
+    expect(progress).toContain("Himalayas asked the scan to slow down — stopping early.");
   });
 
   it("aborts after three consecutive page failures instead of hammering a degraded API", async () => {
-    mocks.safeFetch.mockResolvedValue({ ok: false, text: async () => "" });
+    mocks.safeFetch.mockResolvedValue({ ok: false, status: 503, text: async () => "" });
 
     const progress: string[] = [];
     const result = await scan({ titleFilters: NO_TITLE_MATCHES }, (m) => progress.push(m));
@@ -175,35 +270,66 @@ describe("runHimalayasScan — how a walk ends", () => {
     // No pages were read, so the cap never enters the picture.
     expect(result.errors.some((e) => e.includes("page cap"))).toBe(false);
   });
-});
 
-describe("runHimalayasScan — paging", () => {
-  it("follows nextCursor after the first page instead of the deprecated offset", async () => {
-    const feed = feedSpanning(10);
-    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(feed(offsetFromUrl(url))));
+  it("retries a failed page from the same position", async () => {
+    mocks.safeFetch
+      .mockResolvedValueOnce({ ok: false, status: 502, text: async () => "" })
+      .mockResolvedValue(page([], 0));
 
     await scan({ titleFilters: NO_TITLE_MATCHES });
 
-    const urls = mocks.safeFetch.mock.calls.map(([url]) => new URL(url as string));
-    expect(urls[0].searchParams.has("cursor")).toBe(false);
-    expect(urls[0].searchParams.has("offset")).toBe(false);
-    expect(urls[1].searchParams.get("cursor")).toBe(`c${PAGE_SIZE}`);
-    expect(urls.slice(1).every((u) => !u.searchParams.has("offset"))).toBe(true);
+    const pages = mocks.safeFetch.mock.calls.map(([url]) => searchOf(url as string).page);
+    expect(pages).toEqual([1, 1]);
   });
 
-  it("falls back to offset when a response carries no cursor", async () => {
-    mocks.safeFetch.mockImplementation((url: string) => {
-      const offset = offsetFromUrl(url);
-      const jobs = offset < PAGE_SIZE * 2
-        ? Array.from({ length: PAGE_SIZE }, (_, i) => posting(offset + i, 1))
-        : [];
-      return Promise.resolve({ ok: true, text: async () => JSON.stringify({ jobs }) });
+  it("never spends more than the request budget in one run, and names keywords it never reached", async () => {
+    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(resultsAging(1)(url)));
+    const keywords = Array.from({ length: 8 }, (_, i) => `keyword${i}`);
+
+    const result = await scan({ titleFilters: { positive: keywords, negative: ["designer"] } });
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_REQUESTS);
+    expect(result.errors).toContain("Reached the 50-request limit for one scan.");
+    expect(result.errors).toContain(
+      "Not searched back 6h this run: \u201ckeyword5\u201d, \u201ckeyword6\u201d, \u201ckeyword7\u201d. " +
+        "The next scan starts from the newest postings again.",
+    );
+  });
+
+  it("stays quiet when the budget cuts off a search that already covered the gap between scans", async () => {
+    const aging = resultsAging(1);
+    // "short" runs out after 3 pages, four keywords take 10 each, leaving 7 pages
+    // — 7h of postings — for "last" before the budget runs out.
+    mocks.safeFetch.mockImplementation((url: string) =>
+      Promise.resolve(searchOf(url).q === "short" ? { ...aging(url), text: async () => JSON.stringify({
+        jobs: [posting(`short-${searchOf(url).page}`, 1)], totalCount: 60,
+      }) } : aging(url)),
+    );
+
+    const result = await scan({
+      titleFilters: { positive: ["short", "k1", "k2", "k3", "k4", "last"], negative: ["designer"] },
     });
 
-    await scan({ titleFilters: NO_TITLE_MATCHES });
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_REQUESTS);
+    expect(result.errors).toEqual([]);
+  });
 
-    const second = new URL(mocks.safeFetch.mock.calls[1][0] as string);
-    expect(second.searchParams.get("offset")).toBe(String(PAGE_SIZE));
+  it("names a search the budget cut off before it covered the gap between scans", async () => {
+    const aging = resultsAging(1);
+    // As above, but "last" is left only 3 pages — 3h of postings.
+    mocks.safeFetch.mockImplementation((url: string) =>
+      Promise.resolve(searchOf(url).q === "short" ? { ...aging(url), text: async () => JSON.stringify({
+        jobs: [posting(`short-${searchOf(url).page}`, 1)], totalCount: 140,
+      }) } : aging(url)),
+    );
+
+    const result = await scan({
+      titleFilters: { positive: ["short", "k1", "k2", "k3", "k4", "last"], negative: ["designer"] },
+    });
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_REQUESTS);
+    expect(result.errors).toContain("Reached the 50-request limit for one scan.");
+    expect(result.errors.some((e) => e.startsWith("Not searched back 6h this run: \u201clast\u201d."))).toBe(true);
   });
 });
 
@@ -236,7 +362,7 @@ describe("runHimalayasScan — the employer's own posting", () => {
 
   it("uses the employer's posting when the lookup finds one, keeping Himalayas as the source", async () => {
     mocks.safeFetch.mockImplementation((url: string) =>
-      Promise.resolve(page(offsetFromUrl(url) === 0 ? [himalayasPosting(1), himalayasPosting(2)] : []))
+      Promise.resolve(page(searchOf(url).page === 1 ? [himalayasPosting(1), himalayasPosting(2)] : [], 2))
     );
     mocks.findEmployerPostings.mockImplementation(async (jobs: Array<{ sourceUrl: string }>) => ({
       matches: new Map([[jobs[0].sourceUrl, {
@@ -263,7 +389,7 @@ describe("runHimalayasScan — the employer's own posting", () => {
 
   it("imports the jobs anyway when the lookup throws", async () => {
     mocks.safeFetch.mockImplementation((url: string) =>
-      Promise.resolve(page(offsetFromUrl(url) === 0 ? [himalayasPosting(1)] : []))
+      Promise.resolve(page(searchOf(url).page === 1 ? [himalayasPosting(1)] : [], 1))
     );
     mocks.findEmployerPostings.mockRejectedValue(new Error("ATS down"));
     importEcho();
@@ -277,7 +403,7 @@ describe("runHimalayasScan — the employer's own posting", () => {
 
   it("does not look up jobs that arrive with an employer link of their own", async () => {
     mocks.safeFetch.mockImplementation((url: string) =>
-      Promise.resolve(page(offsetFromUrl(url) === 0 ? [posting(1, 1)] : []))
+      Promise.resolve(page(searchOf(url).page === 1 ? [posting(1, 1)] : [], 1))
     );
     importEcho();
 
@@ -290,9 +416,8 @@ describe("runHimalayasScan — the employer's own posting", () => {
 describe("runHimalayasScan — handing matched jobs to the importer", () => {
   it("writes the scan file under its final name and imports it", async () => {
     mocks.safeFetch.mockImplementation((url: string) => {
-      const offset = offsetFromUrl(url);
-      // A short page ends the walk, so this test is about the write, not the walk.
-      return Promise.resolve(page(offset === 0 ? [posting(1, 1), posting(2, 2)] : []));
+      // A spent totalCount ends the search, so this test is about the write, not the walk.
+      return Promise.resolve(page(searchOf(url).page === 1 ? [posting(1, 1), posting(2, 2)] : [], 2));
     });
     mocks.importBrowserBoardJobs.mockImplementation((filePath: string) => {
       const scanFile = JSON.parse(readFileSync(filePath, "utf-8"));
@@ -334,7 +459,7 @@ describe("runHimalayasScan — handing matched jobs to the importer", () => {
 
   it("reports an importer failure as an error result that still names the jobs found", async () => {
     mocks.safeFetch.mockImplementation((url: string) =>
-      Promise.resolve(page(offsetFromUrl(url) === 0 ? [posting(1, 1)] : []))
+      Promise.resolve(page(searchOf(url).page === 1 ? [posting(1, 1)] : [], 1))
     );
     mocks.importBrowserBoardJobs.mockRejectedValue(new Error("database is locked"));
 

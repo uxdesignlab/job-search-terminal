@@ -87,7 +87,9 @@ all** — a user who opens them has nowhere to look:
 The Himalayas remote board was on this list until 0.18.0, which added the
 `himalayas` section to the job-search guide (what it is, why its jobs link to
 Himalayas, and how **Find posting** resolves them) plus a `himalayas-links`
-troubleshooting entry.
+troubleshooting entry. 0.19.0 rewrote that section for keyword search, added a
+`himalayas-scan-notes` troubleshooting entry for the lane's error rows, and added
+a privacy bullet listing the search words each board lane sends.
 
 Thinner than the feature warrants, but not absent: saved filter presets,
 the resume builder, the keyword/taxonomy manager, story consolidation, and the

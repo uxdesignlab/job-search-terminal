@@ -3134,54 +3134,91 @@ Dice is a tech-focused job board. JST integrates with Dice via Dice's free, publ
 
 ## Himalayas Remote Board Scanner (In-App, No Credentials)
 
-Himalayas is a remote-only job board with a large public feed (~97,000 live
-postings, ~2,900 added per day). No key or login is required. It runs
-automatically as a lane of the Dashboard scan alongside CareerOps, Dice, and
-Adzuna.
+Himalayas is a remote-only job board (~97,000 live postings, ~600 added per
+hour at peak). No key or login is required. It runs automatically as a lane of
+the Dashboard scan alongside CareerOps, Dice, and Adzuna.
 
-**Four API facts shape the implementation** (`src/lib/scanner/himalayas-scanner.ts`):
+**Since 0.19.0 the lane searches instead of walking the feed.** Through 0.18.x it
+paged the unfiltered `/jobs/api` feed newest-first, 60 pages per run. At the
+current posting rate that covered only about two hours of a six-hour scan
+interval, and walking further tripped Himalayas' rate limit (Cloudflare 429 after
+about 60 requests under repeated load). It now uses the documented search
+endpoint, `/jobs/api/search?q=<term>&sort=recent&page=<n>`.
 
-- **No server-side filtering.** `search`, `category`, and similar parameters are
-  accepted and then ignored — every query returns the same feed. Verified
-  directly: `?search=designer` and `?category=design` return results identical to
-  an unfiltered call. Titles are therefore filtered client-side with the same
-  positive/negative lists the other lanes use.
-- **`limit` is hard-capped at 20** regardless of the value requested.
-- **Paging is by cursor.** Each response carries `nextCursor`, passed back as
-  `?cursor=`. Himalayas deprecated `offset` on 2026-08-21 and announced its
-  removal (the notice is in the feed's own `comments` field), so the scanner
-  follows the cursor and only falls back to `offset` for a response that omits
-  one. The first request sends neither. A failed page is retried from the same
-  position — the cursor only advances on a page that was read.
+**API facts that shape the implementation** (`src/lib/scanner/himalayas-scanner.ts`,
+all verified live on 2026-10-02):
+
+- **Search filters server-side, but loosely.** "product designer" returns ~1,100
+  postings instead of the whole board, yet the match is fuzzy ("Airtable
+  Specialist" comes back for it). Titles are still filtered client-side with the
+  same positive/negative lists the other lanes use. The plain feed ignores every
+  filter parameter, which is why the old lane had to walk it.
+- **`sort=recent` is newest-first** on the pages a scan reads, but the final page
+  of a result set is not in date order. A query therefore stops when an *entire*
+  page is older than the horizon, never at the first old posting.
+- **`limit` is hard-capped at 20**, and pages often carry 17–19 because Himalayas
+  drops duplicates after counting. A short page is not the end of the results;
+  `totalCount` (`page × 20 ≥ totalCount`) and an empty page are.
+- **Paging is by `page=`, from 1.** The search endpoint has no cursor. (The feed's
+  `offset` deprecation notice of 2026-08-21 no longer affects the lane.)
 - **No employer link.** `applicationLink` is always Himalayas' own job page (a
   live sample of 20 postings: 20 of 20 on `himalayas.app`, no off-site links in
   any description), and those pages sit behind Cloudflare bot protection, so the
   employer's Apply link cannot be read from them either. See **Employer postings
   for Himalayas jobs** below.
 
-**Why it is still viable:** the feed is strictly newest-first, so a scan reads
-the newest pages and stops instead of walking all ~4,800. `MAX_PAGES` (60) covers
-the newest ~1,200 postings — roughly ten hours at the observed rate, comfortably
-ahead of the six-hour schedule.
+**What it searches for.** `himalayasSearchTerms` takes the positive title-filter
+keywords, trimmed and de-duplicated case-insensitively, falling back to the
+profile's target roles when there are none, capped at `MAX_QUERIES` (12).
+Whatever is searched also gates what is kept: with no keywords, the target
+roles become the title filter's positive list, since an empty list would accept
+every fuzzy match the search returned.
+Short keywords suit a loose search whose results are narrowed afterwards. With
+neither keywords nor roles the lane makes no request and returns one error row,
+"Himalayas was not searched: …", rather than importing the whole board as the
+old feed walk would have. `job-discovery.ts` passes `profile.targetRoles` and
+relays each "Searching Himalayas for “term”" progress line to the scan dialog.
 
-**Only genuinely thin sweeps are reported.** In practice the page cap, not the
-freshness cutoff, ends the walk: a 72-hour window would need ~435 pages. Hitting
-the cap is therefore the normal ending and is no longer recorded as an error —
-doing so put an "Other error" row (with a Disable prompt) on the Himalayas lane
-after runs that had just delivered new jobs. Instead the run measures how many
-hours of postings it actually read, and records the cap only when that span is
-under `MIN_COVERAGE_HOURS` (6) — the gap between scheduled scans, and the only
-case where postings could have slipped past unseen. Wider sweeps report the
-covered span as scan progress and finish clean. Three consecutive page failures
-abort the walk so a degraded API is not hammered.
+**How far each search reads.** Each query pages until a whole page is older than
+`COVERAGE_HOURS` (12, twice the scan interval, so one missed scheduled scan loses
+nothing), the results run out, or `MAX_PAGES_PER_QUERY` (10). Postings older than
+the horizon but inside the freshness window are still kept when a page carries
+them; the horizon only decides when to stop asking. Postings are de-duplicated
+across queries by Himalayas URL.
+
+**Protecting the API.** A run makes at most `MAX_REQUESTS` (50) requests, 500 ms
+apart. HTTP 429 stops the whole run at once ("Himalayas rate-limited the scan
+(HTTP 429) after N requests…"). A failed page is retried from the same position,
+and three consecutive failures abort the run.
+
+**Only genuinely thin coverage is reported.** Stopping short — on the page cap,
+the request budget, or a rate limit — is recorded as an error only when that
+query's postings span less than `MIN_COVERAGE_HOURS` (6), the gap between
+scheduled scans. A page-cap stop produces "Himalayas search for “term” reached the
+10-page cap after only Xh…"; budget and rate-limit stops list the affected
+keywords in one "Not searched back 6h this run: …" row, and keywords never reached
+count as 0 h. A budget stop that left every keyword covered is silent. Reporting
+every stop put a recurring error row on the lane after runs that had just
+delivered jobs, which is how Himalayas once got "disabled" by accident.
+
+**Measured yield and cost (2026-10-02, this project's nine title keywords):** 48
+requests in ~34 s, 549 unique postings inside the freshness window, 109 title
+matches spanning about twelve hours. The busiest keywords ("product design",
+"ux") reach their 10-page cap at about 10–11 hours during the morning burst,
+above the 6-hour threshold, so no note. Recall check: every title match found by
+walking the newest 400 feed postings also came back from search. For comparison,
+the 0.18 feed walk read 1,158 postings and matched 12.
 
 **Test coverage:** `src/lib/__tests__/himalayas-scanner.test.ts` covers the pure
-helpers (payload sanitising, date and salary formatting, location mapping, title
-and preference filtering). `src/lib/__tests__/himalayas-scan-run.test.ts` covers
-`runHimalayasScan` itself with the network, importer, and employer lookup mocked
-and the file write redirected to a temp directory: both sides of the page-cap
-reporting rule, the freshness-cutoff stop, the consecutive-failure abort, cursor
-paging and its offset fallback, employer-posting substitution (and a throwing
+helpers (payload sanitising, date and salary formatting, location mapping, search
+terms, title and preference filtering). `src/lib/__tests__/himalayas-scan-run.test.ts`
+covers `runHimalayasScan` itself with the network, importer, and employer lookup
+mocked and the file write redirected to a temp directory: which terms are
+searched and the target-role and nothing-to-search fallbacks, each way a search
+ends (horizon, mixed-date last page, `totalCount` with short pages, page cap on
+both sides of the coverage rule), freshness and cross-query de-duplication, the
+429 stop, the consecutive-failure abort, same-page retry, the request budget on
+both sides of the coverage rule, employer-posting substitution (and a throwing
 lookup not failing the scan), the two-step scan-file write, and an importer
 failure surfacing as an error result. `employer-posting-lookup.test.ts` covers
 the matcher, chiefly what it must refuse: near-miss titles and same-slug boards
@@ -3197,13 +3234,8 @@ belonging to another company. `posting-resolution.test.ts` covers
   `; ` so the preference filter's multi-location splitting evaluates each one.
   Those countries are matched against the profile's **remote regions** list at
   import, so a country outside it is dropped rather than written to the database.
-  This lane sends no location to the API — it cannot filter server-side — which
-  makes it the one most dependent on that import-time check.
-
-**Measured yield:** a live run read 1,158 recent postings in ~28 seconds and
-matched 12. Three were `ux` substring false positives ("Lin-ux", "BENEL-ux") and
-two were EU-restricted remote roles; both classes are now filtered out upstream,
-leaving 7 genuine design roles.
+  This lane sends only title keywords to the API, never a location, which makes
+  it the one most dependent on that import-time check.
 
 **Scan type recorded:** `himalayas-api-scan`. Jobs appear with a **Himalayas**
 source badge.

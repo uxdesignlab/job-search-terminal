@@ -1,17 +1,23 @@
 /**
  * Himalayas remote-job board scanner.
  *
- * Himalayas publishes a large remote-only feed (~97,000 live postings, ~2,900
- * added per day). Its public API has two constraints that shape this design:
+ * Himalayas publishes a large remote-only board (~97,000 live postings, ~600
+ * added per hour). The scanner reads it through the documented search endpoint,
+ * `/jobs/api/search`, one request per title keyword per page:
  *
- *  - **No server-side filtering.** `search`, `category`, and friends are all
- *    accepted and then ignored — every query returns the same feed. Titles must
- *    therefore be filtered client-side.
- *  - **`limit` is hard-capped at 20**, whatever value is requested.
- *  - **Paging is by cursor.** Each response carries a `nextCursor` to pass back
- *    as `?cursor=`. The older `offset` parameter is deprecated and due to be
- *    removed (announced in the feed's own `comments` field, 2026-08-21), so
- *    offset is only a fallback for a response that omits the cursor.
+ *  - **Search filters server-side.** "product designer" returns ~1,100 postings
+ *    rather than the whole board. The match is fuzzy ("Airtable Specialist"
+ *    comes back for "product designer"), so the client-side title filter still
+ *    decides what is kept. The plain `/jobs/api` feed ignores every filter, which
+ *    is why the scanner used to walk it page by page — 60 pages covered only
+ *    about two hours of postings and more tripped Himalayas' rate limit.
+ *  - **`sort=recent` is newest-first** on the pages a scan reads. The final page
+ *    of a result set is not in date order, so a query stops when an *entire*
+ *    page is older than the coverage horizon, never at the first old posting.
+ *  - **`limit` is hard-capped at 20**, and a page often carries 17–19 because
+ *    Himalayas drops duplicates after counting. A short page is not the end;
+ *    `totalCount` and an empty page are.
+ *  - **Paging is by `page=`**, starting at 1. The search endpoint has no cursor.
  *  - **No employer link.** `applicationLink` is always Himalayas' own job page,
  *    and those pages are behind bot protection. The employer's posting is looked
  *    up separately on Greenhouse, Lever, and Ashby — see
@@ -19,18 +25,9 @@
  *    Himalayas link with `originalPostingUrl` left empty, so the job page can
  *    offer the "Find the employer's posting" panel.
  *
- * What makes it usable anyway is that the feed is strictly newest-first, so a
- * scan can read the newest pages and stop, rather than crawling all ~4,800 pages.
- * A run reads at most `MAX_PAGES`, covering roughly the last ten hours of
- * postings — more than the six-hour scan interval. In practice the page cap, not
- * the freshness cutoff, ends the walk, so that alone is not reported; the run
- * only flags it when the pages read span less than the gap between scans.
- *
- * Measured against this project's own title/location filters: a live run read
- * 1,158 recent postings in ~28s and matched 12. Of those, 3 were `ux`
- * substring false positives ("Lin-ux", "BENEL-ux") and 2 were EU-restricted
- * remote roles; both classes are now filtered out upstream, leaving 7 genuine
- * design roles.
+ * Measured against this project's own title filters (2026-10-02): the nine
+ * keywords need ~25 requests to cover twelve hours, and every title match found
+ * by walking the newest 400 feed postings also came back from search.
  */
 
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
@@ -42,38 +39,46 @@ import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browse
 import { buildTitleFilter } from "@/lib/jobs/title-filter";
 import { findEmployerPostingsForScan, type EmployerPostingMatch } from "./employer-posting-lookup";
 
-const API_URL = "https://himalayas.app/jobs/api";
+const SEARCH_URL = "https://himalayas.app/jobs/api/search";
 /** The API silently caps `limit` at 20, so asking for more just wastes the round trip. */
 const PAGE_SIZE = 20;
 /**
- * Ceiling on pages per scan.
+ * How far back each query reads, in hours.
  *
- * At 20 per page this covers the newest ~1,200 postings, which at the observed
- * ~2,900/day posting rate is roughly ten hours of feed — comfortably more than
- * the six-hour scan interval, with margin.
- *
- * It is the *page cap*, not the freshness cutoff, that normally ends the walk:
- * a 72-hour window would need ~435 pages. See {@link MIN_COVERAGE_HOURS} for
- * when hitting the cap is worth reporting.
+ * Twice the six-hour scan interval, so one missed scheduled scan loses nothing.
+ * Postings older than this but inside the freshness window are still kept when a
+ * page carries them; the horizon only decides when to stop asking for more.
  */
-const MAX_PAGES = 60;
+const COVERAGE_HOURS = 12;
+/**
+ * Ceiling on pages for one query. The busiest keyword measured ("product
+ * design", ~11 postings an hour) covers the horizon in about 7 pages.
+ */
+const MAX_PAGES_PER_QUERY = 10;
+/**
+ * Ceiling on requests for a whole run. Himalayas answered with Cloudflare 429s
+ * after about 60 requests under repeated load, so a run stays well under that.
+ */
+const MAX_REQUESTS = 50;
+/** Keywords searched per run; past this, the run would mostly spend its budget. */
+const MAX_QUERIES = 12;
 const REQUEST_TIMEOUT_MS = 30_000;
-const INTER_PAGE_DELAY_MS = 300;
-/** Consecutive page failures that abort the walk, so a degraded API is not hammered. */
+const INTER_PAGE_DELAY_MS = 500;
+/** Consecutive page failures that abort the run, so a degraded API is not hammered. */
 const MAX_CONSECUTIVE_FAILURES = 3;
 /**
- * Hours of feed a run must cover before the page cap counts as a real gap.
+ * Hours a query must cover before stopping short counts as a real gap.
  *
- * Hitting the cap is the normal way a run ends — a 72-hour window would need
- * ~435 pages — so reporting it every time trained the user to ignore a lane's
- * error row on a run that had just delivered new jobs. What actually matters is
- * whether the walk covered the gap since the previous scan (six hours), so the
- * cap is only reported when the postings read span less than that.
+ * A query that hits its page cap after covering the six hours since the previous
+ * scan has missed nothing new, and reporting it anyway trains the user to ignore
+ * the lane's error row on a run that just delivered jobs.
  */
 const MIN_COVERAGE_HOURS = 6;
 
 export type HimalayasScanOptions = {
   titleFilters?: { positive: string[]; negative: string[] };
+  /** Searched only when there are no positive title keywords. */
+  targetRoles?: string[];
   freshnessWindowHours?: FreshnessWindowHours;
   /** Replaces the employer-posting lookup; `null` turns it off. Tests use both. */
   findEmployerPostings?: typeof findEmployerPostingsForScan | null;
@@ -200,7 +205,28 @@ export function normalizeHimalayasJob(raw: HimalayasJob): NormalizedHimalayasJob
   };
 }
 
-type HimalayasPage = { jobs: HimalayasJob[]; nextCursor: string | null };
+type HimalayasPage = { jobs: HimalayasJob[]; totalCount: number | null };
+
+/**
+ * The keywords a run searches for: the positive title keywords when there are
+ * any, otherwise the target roles. Keywords are short and broad, which suits a
+ * fuzzy search whose results the title filter narrows afterwards; full role
+ * titles are the fallback for a profile with no keywords. Duplicates are
+ * dropped case-insensitively, and the list is capped at {@link MAX_QUERIES}.
+ */
+export function himalayasSearchTerms(positive: string[] = [], targetRoles: string[] = []): string[] {
+  const pick = (list: string[]) => list.map((t) => t.trim()).filter(Boolean);
+  const candidates = pick(positive).length > 0 ? pick(positive) : pick(targetRoles);
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const term of candidates) {
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push(term);
+  }
+  return terms.slice(0, MAX_QUERIES);
+}
 
 /**
  * Swaps in the employer's own posting wherever one is found, keeping the
@@ -236,121 +262,178 @@ async function attachEmployerPostings(
   });
 }
 
-async function fetchPage(position: { cursor: string } | { offset: number }): Promise<HimalayasPage | null> {
+type FetchOutcome = { kind: "page"; page: HimalayasPage } | { kind: "failed" } | { kind: "rate-limited" };
+
+async function fetchSearchPage(term: string, page: number): Promise<FetchOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const query = "cursor" in position
-    ? `cursor=${encodeURIComponent(position.cursor)}`
-    : position.offset > 0 ? `offset=${position.offset}` : "";
+  const params = new URLSearchParams({ q: term, sort: "recent", page: String(page) });
   try {
-    const res = await safeFetch(`${API_URL}?limit=${PAGE_SIZE}${query ? `&${query}` : ""}`, {
+    const res = await safeFetch(`${SEARCH_URL}?${params}`, {
       signal: controller.signal,
       cache: "no-store",
       headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 (compatible; JobSearchTerminal/1.0; remote-board-fetch)" },
     });
-    if (!res.ok) return null;
-    const data = parseHimalayasPayload(await res.text()) as { jobs?: unknown; nextCursor?: unknown };
+    if (res.status === 429) return { kind: "rate-limited" };
+    if (!res.ok) return { kind: "failed" };
+    const data = parseHimalayasPayload(await res.text()) as { jobs?: unknown; totalCount?: unknown };
     return {
-      jobs: Array.isArray(data.jobs) ? (data.jobs as HimalayasJob[]) : [],
-      nextCursor: typeof data.nextCursor === "string" && data.nextCursor ? data.nextCursor : null,
+      kind: "page",
+      page: {
+        jobs: Array.isArray(data.jobs) ? (data.jobs as HimalayasJob[]) : [],
+        totalCount: typeof data.totalCount === "number" ? data.totalCount : null,
+      },
     };
   } catch {
-    return null;
+    return { kind: "failed" };
   } finally {
     clearTimeout(timer);
   }
 }
+
+const quoted = (term: string) => `\u201c${term}\u201d`;
 
 export async function runHimalayasScan(
   opts: HimalayasScanOptions = {},
   onProgress?: (msg: string) => void,
 ): Promise<HimalayasScanResult> {
   const freshnessWindowHours = opts.freshnessWindowHours ?? 72;
-  const cutoffMs = Date.now() - freshnessWindowHours * 60 * 60 * 1000;
+  const hourMs = 60 * 60 * 1000;
+  const cutoffMs = Date.now() - freshnessWindowHours * hourMs;
+  const horizonMs = Date.now() - Math.min(COVERAGE_HOURS, freshnessWindowHours) * hourMs;
   const scanTimestamp = new Date().toISOString();
+
+  const terms = himalayasSearchTerms(opts.titleFilters?.positive, opts.targetRoles);
+  if (terms.length === 0) {
+    const detail =
+      "Himalayas was not searched: add an include keyword under Account → Settings → Preferences → Title filters, " +
+      "or a target role under Account → Profile.";
+    onProgress?.(detail);
+    return {
+      status: "ok", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0,
+      totalFound: 0, errors: [detail], jobs: [],
+    };
+  }
 
   const collected: NormalizedHimalayasJob[] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
+  let requests = 0;
   let consecutiveFailures = 0;
-  let reachedCutoff = false;
-  let pagesRead = 0;
-  let oldestSeenMs: number | null = null;
-  let cursor: string | null = null;
+  let stopReason: "rate-limited" | "failing" | "budget" | null = null;
+  const unsearched: string[] = [];
 
-  for (let page = 0; page < MAX_PAGES && !reachedCutoff; page += 1) {
-    // A failed page is retried from the same position: the cursor only moves on
-    // a page that was actually read.
-    const result = await fetchPage(cursor ? { cursor } : { offset: page * PAGE_SIZE });
-
-    if (result === null) {
-      consecutiveFailures += 1;
-      errors.push(`Himalayas page ${page} failed`);
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        errors.push(`Aborted after ${consecutiveFailures} consecutive page failures.`);
-        onProgress?.("Himalayas is not responding — stopping early.");
-        break;
-      }
-      await new Promise((r) => setTimeout(r, INTER_PAGE_DELAY_MS));
+  for (const term of terms) {
+    if (stopReason) {
+      unsearched.push(term);
       continue;
     }
+    onProgress?.(`Searching Himalayas for ${quoted(term)}`);
+    let pagesRead = 0;
+    let reachedHorizon = false;
+    let oldestSeenMs: number | null = null;
 
-    consecutiveFailures = 0;
-    pagesRead += 1;
-    const { jobs } = result;
-    cursor = result.nextCursor;
-    if (jobs.length === 0) break;
-
-    for (const raw of jobs) {
-      const job = normalizeHimalayasJob(raw);
-      if (!job) continue;
-      // The feed is newest-first, so the first posting past the window means
-      // every remaining page is older still.
-      if (job.datePosted && Date.parse(job.datePosted) < cutoffMs) {
-        reachedCutoff = true;
+    for (let page = 1; page <= MAX_PAGES_PER_QUERY && !reachedHorizon; page += 1) {
+      if (requests >= MAX_REQUESTS) {
+        stopReason = "budget";
         break;
       }
-      if (job.datePosted) {
-        const postedMs = Date.parse(job.datePosted);
-        if (!Number.isNaN(postedMs) && (oldestSeenMs === null || postedMs < oldestSeenMs)) {
-          oldestSeenMs = postedMs;
+      if (requests > 0) await new Promise((r) => setTimeout(r, INTER_PAGE_DELAY_MS));
+      requests += 1;
+      const outcome = await fetchSearchPage(term, page);
+
+      if (outcome.kind === "rate-limited") {
+        stopReason = "rate-limited";
+        break;
+      }
+      if (outcome.kind === "failed") {
+        consecutiveFailures += 1;
+        errors.push(`Himalayas search for ${quoted(term)}, page ${page}, failed`);
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          stopReason = "failing";
+          break;
+        }
+        // A failed page is retried once more from the same position.
+        page -= 1;
+        continue;
+      }
+
+      consecutiveFailures = 0;
+      pagesRead += 1;
+      const { jobs, totalCount } = outcome.page;
+      if (jobs.length === 0) break;
+
+      let newestOnPageMs: number | null = null;
+      for (const raw of jobs) {
+        const job = normalizeHimalayasJob(raw);
+        if (!job) continue;
+        const postedMs = job.datePosted ? Date.parse(job.datePosted) : NaN;
+        if (!Number.isNaN(postedMs)) {
+          if (newestOnPageMs === null || postedMs > newestOnPageMs) newestOnPageMs = postedMs;
+          if (oldestSeenMs === null || postedMs < oldestSeenMs) oldestSeenMs = postedMs;
+          if (postedMs < cutoffMs) continue;
+        }
+        if (seen.has(job.sourceUrl)) continue;
+        seen.add(job.sourceUrl);
+        collected.push(job);
+      }
+
+      // Only a page that is old *throughout* ends the query: the last page of a
+      // result set mixes dates, so one old posting proves nothing.
+      if (newestOnPageMs !== null && newestOnPageMs < horizonMs) reachedHorizon = true;
+      if (totalCount !== null && page * PAGE_SIZE >= totalCount) reachedHorizon = true;
+    }
+
+    // Stopping short — on the page cap, the request budget, or a rate limit — is
+    // only worth reporting when the pages read span less than the gap between
+    // scans: the case where postings could have slipped through unseen. A
+    // partial sweep reported as a clean one is how a lane goes quiet without
+    // anyone noticing; a full sweep reported as an error is how a real one stops
+    // being read.
+    if (!reachedHorizon) {
+      const coveredHours = oldestSeenMs === null ? 0 : (Date.now() - oldestSeenMs) / hourMs;
+      if (coveredHours < MIN_COVERAGE_HOURS) {
+        if (stopReason) {
+          unsearched.push(term);
+        } else if (pagesRead >= MAX_PAGES_PER_QUERY) {
+          const detail =
+            `Himalayas search for ${quoted(term)} reached the ${MAX_PAGES_PER_QUERY}-page cap after only ` +
+            `${coveredHours.toFixed(1)}h of postings (under the ${MIN_COVERAGE_HOURS}h between scans) — ` +
+            `older matches were not seen this run.`;
+          errors.push(detail);
+          onProgress?.(`Note: ${detail}`);
         }
       }
-      if (seen.has(job.sourceUrl)) continue;
-      seen.add(job.sourceUrl);
-      collected.push(job);
-    }
-
-    if (jobs.length < PAGE_SIZE) break;
-    await new Promise((r) => setTimeout(r, INTER_PAGE_DELAY_MS));
-  }
-
-  onProgress?.(`Read ${pagesRead} Himalayas page(s); ${collected.length} postings within the freshness window.`);
-
-  // Exhausting the page budget before reaching the cutoff means the walk stopped
-  // mid-feed. That is the normal ending, so it is only worth reporting when the
-  // pages read span less than the interval between scans — that is the case
-  // where postings could have slipped through unseen. A partial sweep reported
-  // as a clean one is how a lane goes quiet without anyone noticing; a full
-  // sweep reported as an error is how a real one stops being read.
-  if (!reachedCutoff && pagesRead >= MAX_PAGES) {
-    const coveredHours =
-      oldestSeenMs === null ? 0 : (Date.now() - oldestSeenMs) / (60 * 60 * 1000);
-    if (coveredHours < MIN_COVERAGE_HOURS) {
-      const detail =
-        `Reached the ${MAX_PAGES}-page cap after only ${coveredHours.toFixed(1)}h of postings ` +
-        `(under the ${MIN_COVERAGE_HOURS}h between scans) — postings older than that were not seen this run.`;
-      errors.push(detail);
-      onProgress?.(`Note: ${detail}`);
-    } else {
-      onProgress?.(
-        `Reached the ${MAX_PAGES}-page cap, covering the newest ${coveredHours.toFixed(1)}h of postings.`,
-      );
     }
   }
+
+  if (stopReason === "rate-limited") {
+    errors.push(`Himalayas rate-limited the scan (HTTP 429) after ${requests} requests, so it stopped early.`);
+    onProgress?.("Himalayas asked the scan to slow down — stopping early.");
+  } else if (stopReason === "failing") {
+    errors.push(`Aborted after ${MAX_CONSECUTIVE_FAILURES} consecutive page failures.`);
+    onProgress?.("Himalayas is not responding — stopping early.");
+  } else if (stopReason === "budget" && unsearched.length > 0) {
+    errors.push(`Reached the ${MAX_REQUESTS}-request limit for one scan.`);
+  }
+  if (unsearched.length > 0) {
+    errors.push(
+      `Not searched back ${MIN_COVERAGE_HOURS}h this run: ${unsearched.map(quoted).join(", ")}. ` +
+        `The next scan starts from the newest postings again.`,
+    );
+  }
+
+  onProgress?.(
+    `Ran ${requests} Himalayas ${requests === 1 ? "search" : "searches"} for ${terms.length} ` +
+      `${terms.length === 1 ? "keyword" : "keywords"}; ${collected.length} postings within the freshness window.`,
+  );
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
-  const titleMatches = buildTitleFilter({ positive, negative });
+  // Search is loose, so whatever was searched for must also gate what is kept.
+  // With no keywords the terms are the target roles, and an empty positive list
+  // would otherwise accept every title the fuzzy search returned.
+  const hasKeywords = positive.some((k) => k.trim());
+  const titleMatches = buildTitleFilter({ positive: hasKeywords ? positive : terms, negative });
 
   const totalFound = collected.length;
   const titleMatched = collected.filter((j) => titleMatches(j.position));
@@ -379,8 +462,8 @@ export async function runHimalayasScan(
       totalJobsDiscovered: totalFound,
       totalJobsValid: filteredJobs.length,
       totalJobsSkipped: skipped,
-      searchCriteria: { titles: [], locations: [], remotePreference: "remote-only" },
-      generatedBy: "Himalayas Remote Board Scanner v1.0",
+      searchCriteria: { titles: terms, locations: [], remotePreference: "remote-only" },
+      generatedBy: "Himalayas Remote Board Scanner v2.0",
     },
     jobs: filteredJobs.map((j) => ({
       ...j,

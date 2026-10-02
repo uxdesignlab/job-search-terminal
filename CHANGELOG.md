@@ -15,6 +15,27 @@ the numbers mean and when they change.
 
 ---
 
+## 0.19.0 — 2026-10-02 — Himalayas searches for your keywords
+
+**Changed**
+
+- Himalayas is now searched for each of your title keywords instead of being
+  read from the newest posting down. A scan now looks back about twelve hours
+  rather than two, so jobs posted between scans are no longer missed. In a test
+  with nine design keywords it found 109 matching jobs, where the old way found
+  12, and made fewer requests to Himalayas (48 instead of 60).
+- What leaves your computer: your include keywords from **Title filters** are
+  now sent to Himalayas as search words. If you have none, your target roles are
+  sent instead. Nothing else from your profile or resume is sent. The privacy
+  page in Help now lists the search words every job board receives.
+- The scan window names each keyword as Himalayas searches it.
+- If you have no include keywords and no target roles, Himalayas is skipped and
+  the scan results say why. Before, it imported every recent Himalayas job that
+  passed your other filters.
+- Himalayas only reports a problem when a keyword could not be searched back six
+  hours, the time between scans. A new Help entry explains each message and what
+  to do about it.
+
 ## 0.18.0 — 2026-10-02 — Himalayas jobs that lead to the employer
 
 **Added**
