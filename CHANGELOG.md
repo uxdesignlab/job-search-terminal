@@ -15,6 +15,18 @@ the numbers mean and when they change.
 
 ---
 
+## 0.18.1 — 2026-10-02 — Sharper searches for a job's real posting
+
+**Changed**
+
+- **Find posting** and **Open web search** now put the job title in quotes, so
+  results must contain that exact title instead of any job with similar words.
+- For Himalayas jobs the search leaves out the location, which was in
+  Himalayas' own wording ("United States (Remote)"), and skips Himalayas itself,
+  so it no longer leads you back to the listing you started from.
+
+---
+
 ## 0.18.0 — 2026-10-02 — Himalayas jobs that lead to the employer
 
 **Added**

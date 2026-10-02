@@ -3265,6 +3265,14 @@ listing — but:
   exact-title board lookup first (labelled e.g. *Greenhouse · exact title
   match*) and then Brave Search when a key is set (labelled *Web search*;
   Himalayas URLs are filtered out). **Open web search** is always offered.
+- The search query (`buildPostingSearchQuery`) quotes the title so results must
+  contain that exact phrase, leaves out the location — Himalayas' format,
+  `United States (Remote)`, is not how careers pages word it — and excludes the
+  board: `Acme "Senior Product Designer" -site:himalayas.app`. Brave documents
+  exclusion as `NOT site:`, so `toBraveQuery` rewrites `-site:` for the Brave
+  request while the Google link keeps it. Other jobs (email leads) get the
+  quoted title plus their location and `job`. A saved `posting_search_query`
+  still wins.
 - Saving a URL goes through `resolveEmailJobPosting`, which for board-only jobs
   keeps `sourceUrl` as the Himalayas listing, refuses a Himalayas URL ("That is
   the job board's own page…"), and keeps the existing description when the

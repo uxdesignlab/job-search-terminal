@@ -66,7 +66,7 @@ export async function searchPostingCandidates(jobId: string): Promise<{
   }
 
   const params = new URLSearchParams({
-    q: `${query} (jobs OR careers OR greenhouse OR lever OR ashby OR workday)`,
+    q: `${toBraveQuery(query)} (jobs OR careers OR greenhouse OR lever OR ashby OR workday)`,
     count: "8",
     search_lang: "en",
     country: "us",
@@ -133,6 +133,14 @@ export async function resolveEmailJobPosting(jobId: string, postingUrl: string):
   });
 
   return { success: true, descriptionFetched: hasUsefulDescription };
+}
+
+/**
+ * Brave documents exclusion as `NOT site:x`, not Google's `-site:x`, so the
+ * query shown to the user (and sent to Google) is translated for Brave.
+ */
+export function toBraveQuery(query: string): string {
+  return query.replace(/(^|\s)-site:/g, "$1NOT site:");
 }
 
 function isLikelyPostingUrl(rawUrl: string): boolean {
