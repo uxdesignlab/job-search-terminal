@@ -8,6 +8,16 @@
  *    accepted and then ignored — every query returns the same feed. Titles must
  *    therefore be filtered client-side.
  *  - **`limit` is hard-capped at 20**, whatever value is requested.
+ *  - **Paging is by cursor.** Each response carries a `nextCursor` to pass back
+ *    as `?cursor=`. The older `offset` parameter is deprecated and due to be
+ *    removed (announced in the feed's own `comments` field, 2026-08-21), so
+ *    offset is only a fallback for a response that omits the cursor.
+ *  - **No employer link.** `applicationLink` is always Himalayas' own job page,
+ *    and those pages are behind bot protection. The employer's posting is looked
+ *    up separately on Greenhouse, Lever, and Ashby — see
+ *    `employer-posting-lookup.ts` — and when none is found the job keeps its
+ *    Himalayas link with `originalPostingUrl` left empty, so the job page can
+ *    offer the "Find the employer's posting" panel.
  *
  * What makes it usable anyway is that the feed is strictly newest-first, so a
  * scan can read the newest pages and stop, rather than crawling all ~4,800 pages.
@@ -30,6 +40,7 @@ import { safeFetch } from "@/lib/safe-fetch";
 import type { FreshnessWindowHours } from "@/lib/db/types";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
 import { buildTitleFilter } from "@/lib/jobs/title-filter";
+import { findEmployerPostingsForScan, type EmployerPostingMatch } from "./employer-posting-lookup";
 
 const API_URL = "https://himalayas.app/jobs/api";
 /** The API silently caps `limit` at 20, so asking for more just wastes the round trip. */
@@ -64,6 +75,8 @@ const MIN_COVERAGE_HOURS = 6;
 export type HimalayasScanOptions = {
   titleFilters?: { positive: string[]; negative: string[] };
   freshnessWindowHours?: FreshnessWindowHours;
+  /** Replaces the employer-posting lookup; `null` turns it off. Tests use both. */
+  findEmployerPostings?: typeof findEmployerPostingsForScan | null;
 };
 
 export type HimalayasScanResult = {
@@ -154,11 +167,22 @@ export type NormalizedHimalayasJob = {
   salaryNotes: string;
 };
 
+export function isHimalayasUrl(url: string): boolean {
+  try {
+    return /(^|\.)himalayas\.app$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeHimalayasJob(raw: HimalayasJob): NormalizedHimalayasJob | null {
   const position = str(raw.title);
   const company = str(raw.companyName);
   const url = str(raw.applicationLink) || str(raw.guid);
   if (!position || !company || !url) return null;
+  // `applicationLink` has only ever been Himalayas' own page. Should it ever
+  // carry a real employer link, it is kept as one; a Himalayas page never is.
+  const originalPostingUrl = isHimalayasUrl(url) ? "" : url;
 
   const datePosted = himalayasPubDateToIso(raw.pubDate);
   return {
@@ -168,7 +192,7 @@ export function normalizeHimalayasJob(raw: HimalayasJob): NormalizedHimalayasJob
     jobDescription: str(raw.description) || str(raw.excerpt),
     url,
     sourceUrl: str(raw.guid) || url,
-    originalPostingUrl: url,
+    originalPostingUrl,
     discoveredAt: datePosted ?? new Date().toISOString(),
     datePosted,
     location: formatHimalayasLocation(raw.locationRestrictions),
@@ -176,18 +200,60 @@ export function normalizeHimalayasJob(raw: HimalayasJob): NormalizedHimalayasJob
   };
 }
 
-async function fetchPage(offset: number): Promise<HimalayasJob[] | null> {
+type HimalayasPage = { jobs: HimalayasJob[]; nextCursor: string | null };
+
+/**
+ * Swaps in the employer's own posting wherever one is found, keeping the
+ * Himalayas page as `sourceUrl`. A failed lookup never fails the scan — the job
+ * simply keeps its Himalayas link and can be resolved from the job page.
+ */
+async function attachEmployerPostings(
+  jobs: NormalizedHimalayasJob[],
+  opts: HimalayasScanOptions,
+  onProgress?: (msg: string) => void,
+): Promise<NormalizedHimalayasJob[]> {
+  const lookup = opts.findEmployerPostings === undefined ? findEmployerPostingsForScan : opts.findEmployerPostings;
+  const needLookup = jobs.filter((j) => !j.originalPostingUrl);
+  if (!lookup || needLookup.length === 0) return jobs;
+
+  let matches: Map<string, EmployerPostingMatch>;
+  try {
+    const result = await lookup(needLookup);
+    matches = result.matches;
+    if (result.attempted > 0) {
+      onProgress?.(
+        `Found the employer's own posting for ${matches.size} of ${result.attempted} new Himalayas ` +
+          `${result.attempted === 1 ? "job" : "jobs"} (Greenhouse, Lever, Ashby).`,
+      );
+    }
+  } catch {
+    return jobs;
+  }
+
+  return jobs.map((job) => {
+    const match = matches.get(job.sourceUrl);
+    return match ? { ...job, url: match.url, originalPostingUrl: match.url } : job;
+  });
+}
+
+async function fetchPage(position: { cursor: string } | { offset: number }): Promise<HimalayasPage | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const query = "cursor" in position
+    ? `cursor=${encodeURIComponent(position.cursor)}`
+    : position.offset > 0 ? `offset=${position.offset}` : "";
   try {
-    const res = await safeFetch(`${API_URL}?limit=${PAGE_SIZE}&offset=${offset}`, {
+    const res = await safeFetch(`${API_URL}?limit=${PAGE_SIZE}${query ? `&${query}` : ""}`, {
       signal: controller.signal,
       cache: "no-store",
       headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 (compatible; JobSearchTerminal/1.0; remote-board-fetch)" },
     });
     if (!res.ok) return null;
-    const data = parseHimalayasPayload(await res.text()) as { jobs?: unknown };
-    return Array.isArray(data.jobs) ? (data.jobs as HimalayasJob[]) : [];
+    const data = parseHimalayasPayload(await res.text()) as { jobs?: unknown; nextCursor?: unknown };
+    return {
+      jobs: Array.isArray(data.jobs) ? (data.jobs as HimalayasJob[]) : [],
+      nextCursor: typeof data.nextCursor === "string" && data.nextCursor ? data.nextCursor : null,
+    };
   } catch {
     return null;
   } finally {
@@ -210,11 +276,14 @@ export async function runHimalayasScan(
   let reachedCutoff = false;
   let pagesRead = 0;
   let oldestSeenMs: number | null = null;
+  let cursor: string | null = null;
 
   for (let page = 0; page < MAX_PAGES && !reachedCutoff; page += 1) {
-    const jobs = await fetchPage(page * PAGE_SIZE);
+    // A failed page is retried from the same position: the cursor only moves on
+    // a page that was actually read.
+    const result = await fetchPage(cursor ? { cursor } : { offset: page * PAGE_SIZE });
 
-    if (jobs === null) {
+    if (result === null) {
       consecutiveFailures += 1;
       errors.push(`Himalayas page ${page} failed`);
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
@@ -228,6 +297,8 @@ export async function runHimalayasScan(
 
     consecutiveFailures = 0;
     pagesRead += 1;
+    const { jobs } = result;
+    cursor = result.nextCursor;
     if (jobs.length === 0) break;
 
     for (const raw of jobs) {
@@ -282,8 +353,9 @@ export async function runHimalayasScan(
   const titleMatches = buildTitleFilter({ positive, negative });
 
   const totalFound = collected.length;
-  const filteredJobs = collected.filter((j) => titleMatches(j.position));
-  const skipped = totalFound - filteredJobs.length;
+  const titleMatched = collected.filter((j) => titleMatches(j.position));
+  const skipped = totalFound - titleMatched.length;
+  const filteredJobs = await attachEmployerPostings(titleMatched, opts, onProgress);
 
   if (filteredJobs.length === 0) {
     return {

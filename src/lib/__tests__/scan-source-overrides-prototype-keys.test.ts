@@ -55,3 +55,18 @@ describe("scan source overrides with prototype-shaped names", () => {
     }
   });
 });
+
+// Adzuna, Dice, and Himalayas share the scan-error list with career pages, but
+// overrides never governed them. A "disabled" row changed nothing except to make
+// the UI report the lane as off — which is how Himalayas got switched "off".
+describe("scan source overrides for scan lanes", () => {
+  it("refuses to record a lane as disabled", async () => {
+    const { queries } = await loadFreshDb();
+
+    for (const lane of ["Himalayas", "Dice", "Adzuna"]) queries.setScanSourceEnabled(lane, false);
+    queries.setScanSourceEnabled("Acme", false);
+
+    const overrides = queries.getScanSourceOverrides();
+    expect(Object.keys(overrides)).toEqual(["Acme"]);
+  });
+});

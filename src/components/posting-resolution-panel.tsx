@@ -9,6 +9,7 @@ type Candidate = {
   title: string;
   url: string;
   description: string;
+  origin?: string;
 };
 
 type SearchResult = {
@@ -22,9 +23,17 @@ type Props = {
   jobId: string;
   searchQuery: string;
   evidence: EmailImportEvidenceRecord[];
+  /**
+   * `email` — an alert with no posting URL at all. `board` — a listing from a
+   * board that hides the employer's link (Himalayas): the job is usable, but
+   * applying and checking it is still open need the employer's own page.
+   */
+  variant?: "email" | "board";
+  boardLabel?: string;
 };
 
-export function PostingResolutionPanel({ jobId, searchQuery, evidence }: Props) {
+export function PostingResolutionPanel({ jobId, searchQuery, evidence, variant = "email", boardLabel = "the job board" }: Props) {
+  const isBoard = variant === "board";
   const router = useRouter();
   const emailLinks = uniqueLinks(evidence.flatMap((item) => item.candidateLinks));
   const [postingUrl, setPostingUrl] = useState("");
@@ -75,11 +84,13 @@ export function PostingResolutionPanel({ jobId, searchQuery, evidence }: Props) 
     <Card className="mb-4 border-warning/35 bg-warning/8">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>Resolve posting</CardTitle>
-          <Badge tone="warning">Email lead</Badge>
+          <CardTitle>{isBoard ? "Find the employer's posting" : "Resolve posting"}</CardTitle>
+          <Badge tone="warning">{isBoard ? `${boardLabel} link only` : "Email lead"}</Badge>
         </div>
         <CardDescription>
-          This job came from an email alert without a direct posting URL. Search only when you are ready to resolve this lead.
+          {isBoard
+            ? `${boardLabel} does not share the company's own link, so this job points to ${boardLabel}. Find posting checks the company's Greenhouse, Lever, and Ashby job boards for this exact title. Saving the company's link lets you apply there and lets Check live work.`
+            : "This job came from an email alert without a direct posting URL. Search only when you are ready to resolve this lead."}
         </CardDescription>
       </CardHeader>
 
@@ -129,6 +140,7 @@ export function PostingResolutionPanel({ jobId, searchQuery, evidence }: Props) 
                   <a className="text-sm font-medium text-accent hover:underline" href={candidate.url} rel="noreferrer" target="_blank">
                     {candidate.title}
                   </a>
+                  {candidate.origin ? <p className="text-xs font-medium text-muted">{candidate.origin}</p> : null}
                   {candidate.description ? <p className="text-xs text-muted">{candidate.description}</p> : null}
                   <div>
                     <Button disabled={saving} onClick={() => void resolve(candidate.url)} type="button" variant="secondary">
@@ -139,12 +151,24 @@ export function PostingResolutionPanel({ jobId, searchQuery, evidence }: Props) 
               ))
             ) : (
               <p className="text-sm text-muted">
-                No API candidates found.{" "}
+                {isBoard
+                  ? searchResult.usedBrave
+                    ? "No exact match on the company's Greenhouse, Lever, or Ashby board, and the web search found nothing either."
+                    : "No exact match on the company's Greenhouse, Lever, or Ashby board."
+                  : "No API candidates found."}{" "}
                 <a className="font-medium text-accent hover:underline" href={searchResult.externalSearchUrl} rel="noreferrer" target="_blank">
                   Open web search
                 </a>
               </p>
             )}
+            {isBoard && searchResult.candidates.length > 0 ? (
+              <p className="text-xs text-muted">
+                Not the right posting?{" "}
+                <a className="font-medium text-accent hover:underline" href={searchResult.externalSearchUrl} rel="noreferrer" target="_blank">
+                  Open web search
+                </a>
+              </p>
+            ) : null}
           </div>
         ) : null}
 

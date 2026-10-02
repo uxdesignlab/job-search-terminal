@@ -1,3 +1,4 @@
+import { isScanLane } from "../scan-lanes";
 import { cleanupCandidateReason } from "../jobs/job-protection";
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses, suppressesRepost } from "../applications/status";
@@ -2645,6 +2646,19 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
     baseResume: input.baseResume,
     keywordCoverage: input.keywordCoverage
   });
+}
+
+/**
+ * Every listing, posting, and source URL on file. The employer-posting lookup
+ * uses it to skip a Himalayas listing it has already seen; unlike the dedup
+ * keys, it includes `source_url`, which is where a resolved job keeps the
+ * Himalayas link.
+ */
+export function getKnownJobUrls(): Set<string> {
+  const rows = getDatabase()
+    .prepare("select url, source_url, original_posting_url from jobs")
+    .all() as Array<{ url: string; source_url: string; original_posting_url: string }>;
+  return new Set(rows.flatMap((r) => [r.url, r.source_url, r.original_posting_url]).filter(Boolean));
 }
 
 export function getJobDedupKeys() {
@@ -5721,6 +5735,9 @@ export function getScanSourceOverrides(): Record<string, boolean> {
 }
 
 export function setScanSourceEnabled(name: string, enabled: boolean) {
+  // Lanes (Adzuna, Dice, Himalayas) are not governed by overrides; a "disabled"
+  // row for one changed nothing but made the UI report the lane as off.
+  if (!enabled && isScanLane(name)) return;
   getDatabase()
     .prepare(
       `insert or replace into scan_source_overrides (name, enabled, updated_at)

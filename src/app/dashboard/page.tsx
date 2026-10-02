@@ -23,6 +23,7 @@ import {
   setScanSourceEnabled,
 } from "@/lib/db/queries";
 import { isScanSourceEnabled } from "@/lib/scanner/careerops-scanner";
+import { isScanLane } from "@/lib/scan-lanes";
 import { loadLastSourceDiscoveryAt } from "@/lib/scanner/source-discovery";
 import { detectZeroYieldLanes, SCAN_YIELD_SAMPLE_PER_LANE } from "@/lib/scanner/scan-yield";
 import { cn } from "@/lib/utils";
@@ -357,7 +358,10 @@ export default function DashboardPage() {
                           </p>
                           <ul className="grid gap-1" aria-label="Latest scan errors">
                             {latestScan.errors.slice(0, 5).map((error) => {
-                              const sourceIsOff = !isScanSourceEnabled(error.company);
+                              // Adzuna, Dice, and Himalayas are not career-site entries: Disable
+                              // has no effect on them, so they are never shown as off or offered it.
+                              const isLane = isScanLane(error.company);
+                              const sourceIsOff = !isLane && !isScanSourceEnabled(error.company);
                               return (
                                 <li
                                   className={cn(
@@ -381,6 +385,8 @@ export default function DashboardPage() {
                                   </span>
                                   {sourceIsOff ? (
                                     <span className="shrink-0 text-xs text-muted">Skipped on next scan</span>
+                                  ) : isLane ? (
+                                    <span className="shrink-0 text-xs text-muted">Runs on every scan</span>
                                   ) : (
                                     <form action={disableSourceAction}>
                                       <input name="name" type="hidden" value={error.company} />

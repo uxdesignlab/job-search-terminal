@@ -100,6 +100,20 @@ describe("normalizeHimalayasJob", () => {
     });
   });
 
+  it("never records Himalayas' own page as the employer's posting", () => {
+    // The API's applicationLink is always a himalayas.app page. Recording it as
+    // the original posting told the app the employer link was already known.
+    const job = normalizeHimalayasJob(raw);
+    expect(job?.url).toBe("https://himalayas.app/companies/acme/jobs/spd");
+    expect(job?.sourceUrl).toBe("https://himalayas.app/companies/acme/jobs/spd");
+    expect(job?.originalPostingUrl).toBe("");
+  });
+
+  it("keeps an applicationLink that points off Himalayas as the employer's posting", () => {
+    const job = normalizeHimalayasJob({ ...raw, applicationLink: "https://jobs.lever.co/acme/123" });
+    expect(job?.originalPostingUrl).toBe("https://jobs.lever.co/acme/123");
+  });
+
   it("falls back to the excerpt when no description is present", () => {
     const job = normalizeHimalayasJob({ ...raw, description: undefined, excerpt: "Short blurb" });
     expect(job?.jobDescription).toBe("Short blurb");
