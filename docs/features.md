@@ -3170,6 +3170,9 @@ all verified live on 2026-10-02):
 **What it searches for.** `himalayasSearchTerms` takes the positive title-filter
 keywords, trimmed and de-duplicated case-insensitively, falling back to the
 profile's target roles when there are none, capped at `MAX_QUERIES` (12).
+Whatever is searched also gates what is kept: with no keywords, the target
+roles become the title filter's positive list, since an empty list would accept
+every fuzzy match the search returned.
 Short keywords suit a loose search whose results are narrowed afterwards. With
 neither keywords nor roles the lane makes no request and returns one error row,
 "Himalayas was not searched: …", rather than importing the whole board as the

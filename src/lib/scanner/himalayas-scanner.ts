@@ -429,7 +429,11 @@ export async function runHimalayasScan(
   );
 
   const { positive = [], negative = [] } = opts.titleFilters ?? {};
-  const titleMatches = buildTitleFilter({ positive, negative });
+  // Search is loose, so whatever was searched for must also gate what is kept.
+  // With no keywords the terms are the target roles, and an empty positive list
+  // would otherwise accept every title the fuzzy search returned.
+  const hasKeywords = positive.some((k) => k.trim());
+  const titleMatches = buildTitleFilter({ positive: hasKeywords ? positive : terms, negative });
 
   const totalFound = collected.length;
   const titleMatched = collected.filter((j) => titleMatches(j.position));

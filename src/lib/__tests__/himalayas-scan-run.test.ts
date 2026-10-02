@@ -139,6 +139,20 @@ describe("runHimalayasScan — what it searches for", () => {
     expect(searchOf(mocks.safeFetch.mock.calls[0][0] as string).q).toBe("Head of Product Design");
   });
 
+  it("keeps only titles matching the target roles it fell back to, not everything the search returned", async () => {
+    mocks.safeFetch.mockResolvedValue(page([
+      { ...posting(1, 1), title: "Head of Product Design, Platform" },
+      { ...posting(2, 1), title: "Airtable Specialist" },
+    ], 2));
+
+    const result = await scan({ titleFilters: { positive: [], negative: [] }, targetRoles: ["Head of Product Design"] });
+
+    expect(result.totalFound).toBe(2);
+    const [filePath] = mocks.importBrowserBoardJobs.mock.calls[0] as [string];
+    const written = JSON.parse(readFileSync(filePath, "utf-8")).jobs as Array<{ position: string }>;
+    expect(written.map((j) => j.position)).toEqual(["Head of Product Design, Platform"]);
+  });
+
   it("says so, rather than importing the whole board, when there is nothing to search for", async () => {
     const progress: string[] = [];
     const result = await scan({ titleFilters: { positive: [], negative: [] }, targetRoles: [] }, (m) => progress.push(m));
