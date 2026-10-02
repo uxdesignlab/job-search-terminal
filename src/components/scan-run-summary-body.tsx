@@ -11,10 +11,10 @@ import {
   scanErrorCategoryLabel,
   type ScanErrorCategory,
 } from "@/lib/scan-error-category";
+import { isScanLane, scanLaneHint } from "@/lib/scan-lanes";
 import { cn } from "@/lib/utils";
 
 /** Scan errors for aggregators are not per-company YAML sources — hide source disable. */
-const NO_SOURCE_DISABLE_COMPANIES = new Set(["Adzuna"]);
 
 type Props = {
   summary: ScanJobResultSummary;
@@ -40,7 +40,7 @@ function categoryTone(category: ScanErrorCategory): "neutral" | "success" | "war
 }
 
 function rowCanDisableSource(company: string): boolean {
-  return !NO_SOURCE_DISABLE_COMPANIES.has(company);
+  return !isScanLane(company);
 }
 
 export function ScanRunSummaryBody({
@@ -204,8 +204,8 @@ export function ScanRunSummaryBody({
                     </button>
                   ) : null}
                 </div>
-                {!canDisableRow && e.company === "Adzuna" ? (
-                  <p className="pl-6 text-xs text-muted">Adjust Adzuna under Settings → AI Provider → Discovery & Aggregators.</p>
+                {scanLaneHint(e.company) ? (
+                  <p className="pl-6 text-xs text-muted">{scanLaneHint(e.company)}</p>
                 ) : null}
               </li>
             );

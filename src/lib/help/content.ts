@@ -745,6 +745,7 @@ export const helpPages: HelpPage[] = [
           "So for each new Himalayas job, the app looks for the same job on the company's own job board, if the company uses Greenhouse, Lever, or Ashby. It only accepts a job with exactly the same title, so a near match is left alone rather than risk sending you to the wrong job.",
           "When it finds one, the job links straight to the company's posting. A small Found on Himalayas link beside Job posting still takes you back to the original listing.",
           "When it does not, the job page shows a Himalayas listing button and a Find the employer's posting box. See the steps below.",
+          "Himalayas runs on every scan and cannot be switched off. When it reports a problem in the scan results, the row says Himalayas is part of every scan instead of offering Disable — that button only switches off company job pages. Dice and Adzuna work the same way.",
           "The app never applies for you, on Himalayas or anywhere else.",
         ],
         steps: [

@@ -1,3 +1,4 @@
+import { isScanLane } from "../scan-lanes";
 import { cleanupCandidateReason } from "../jobs/job-protection";
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses, suppressesRepost } from "../applications/status";
@@ -5721,6 +5722,9 @@ export function getScanSourceOverrides(): Record<string, boolean> {
 }
 
 export function setScanSourceEnabled(name: string, enabled: boolean) {
+  // Lanes (Adzuna, Dice, Himalayas) are not governed by overrides; a "disabled"
+  // row for one changed nothing but made the UI report the lane as off.
+  if (!enabled && isScanLane(name)) return;
   getDatabase()
     .prepare(
       `insert or replace into scan_source_overrides (name, enabled, updated_at)

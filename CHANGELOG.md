@@ -15,6 +15,17 @@ the numbers mean and when they change.
 
 ---
 
+## 0.18.2 — 2026-10-02 — No more Disable on sources that cannot be disabled
+
+**Fixed**
+
+- Scan results and the Dashboard no longer offer **Disable** on Himalayas,
+  Dice, or Adzuna. Those sources run on every scan, and the button never
+  switched them off — it only made the app claim they would be skipped. The
+  row now says the source is part of every scan instead.
+
+---
+
 ## 0.18.1 — 2026-10-02 — Sharper searches for a job's real posting
 
 **Changed**
