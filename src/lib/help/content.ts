@@ -738,9 +738,11 @@ export const helpPages: HelpPage[] = [
         id: "himalayas",
         title: "Remote jobs from Himalayas",
         intro:
-          "Himalayas is a job board that lists only remote jobs, and a lot of them. Every scan reads its newest postings and keeps the ones that match your title keywords. It needs no account and no key, and there is nothing to switch on.",
+          "Himalayas is a job board that lists only remote jobs, and a lot of them. Every scan searches it for each of your include keywords from Account → Settings → Preferences → Title filters, looks back over roughly the last twelve hours, and keeps the jobs whose titles match. It needs no account and no key, and there is nothing to switch on.",
         bullets: [
           "Jobs from Himalayas show Himalayas in the Source column under Jobs.",
+          "Short, general keywords work best — product design, ux, accessibility. Himalayas' search is loose, so the app checks every title against your keywords again before keeping a job. Only the first twelve keywords are searched. If you have no include keywords, it searches your target roles from Account → Profile instead.",
+          "Watch the progress window during a scan. It names each keyword as Himalayas searches it.",
           "Himalayas does not share the company's own link to a job. Its listings only link back to Himalayas itself.",
           "So for each new Himalayas job, the app looks for the same job on the company's own job board, if the company uses Greenhouse, Lever, or Ashby. It only accepts a job with exactly the same title. A note in brackets such as (Remote) or (f/m/d) is ignored, but any other difference, like (Frontend) against (Backend), counts as a different job. If the company lists that title more than once for different places, the app picks one only when just one fits the countries the Himalayas job is open to. Otherwise it leaves the choice to you, rather than risk sending you to the wrong job.",
           "When it finds one, the job links straight to the company's posting. A small Found on Himalayas link beside Job posting still takes you back to the original listing.",
@@ -1224,6 +1226,7 @@ export const helpPages: HelpPage[] = [
           "If your first service runs out of credits, the app moves on to the next one in your list. A bar at the top of the page tells you when that is happening, so you are never surprised about which service received your text.",
           "If a document is genuinely sensitive, do not run a cloud AI feature on it. Use Ollama for that one, or handle it yourself.",
           "If you think anyone else has seen your key, delete it on the service\'s website and make a new one.",
+          "To search job boards, a scan sends the words it is searching for: your include keywords or target roles to Himalayas, your target roles and on-site locations to Dice, and, if you set it up, your include keywords and on-site location to Adzuna. Nothing else from your profile, and nothing from your resume, is sent.",
           "When a scan finds a new Himalayas job, or you press Find posting, the app asks Greenhouse, Lever, and Ashby for that company's public list of jobs. The company's name is part of the web address it asks for. Nothing about you, your resume, or your profile is sent.",
           "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends one code identifying a version that is already published on GitHub — nothing about you, your jobs, or your resumes, and nothing you have written yourself.",
         ],
@@ -1403,6 +1406,16 @@ export const helpPages: HelpPage[] = [
           "Watch the progress window during a scan. It names each keyword as it searches and says how many jobs came back, so you can see which keyword is the dead one.",
           "If the counts look healthy but nothing reaches Jobs, look for outside your locations in the scan summary. Those jobs were found and then ruled out by your on-site locations and Remote regions.",
           "If you have no include keywords at all, Adzuna falls back to your target roles from Account → Profile. Those are usually full job titles, which is exactly what Adzuna cannot match — add a few short keywords instead.",
+        ],
+      },
+      {
+        id: "himalayas-scan-notes",
+        title: "Himalayas reports a problem in the scan results",
+        bullets: [
+          "Himalayas was not searched means there was nothing to search for. Add a few include keywords under Account → Settings → Preferences → Title filters, or a target role under Account → Profile.",
+          "Not searched back 6h this run names keywords the scan did not finish. Each scan makes at most fifty searches so that Himalayas does not block it, and a long list of broad keywords can use them up. The next scan starts again from the newest jobs. If the same keywords show up every time, remove the ones that rarely find anything useful, or move the important ones to the top of the list.",
+          "Himalayas asked the scan to slow down means Himalayas refused more searches for a while. The jobs found before that point are kept. Wait for the next scan; scanning again straight away tends to get refused too.",
+          "A note that a search reached its page cap means one keyword matches so many new jobs that the scan could not read back six hours. Make that keyword more specific, for example product designer instead of design.",
         ],
       },
       {

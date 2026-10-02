@@ -134,8 +134,14 @@ export async function runJobDiscoveryScan(input: {
     runSource(
       "himalayas",
       "Himalayas",
-      "Scanning recent Himalayas remote postings",
-      () => runHimalayasScan({ titleFilters, freshnessWindowHours }),
+      "Searching Himalayas for your title keywords",
+      () =>
+        runHimalayasScan(
+          { titleFilters, targetRoles: profile.targetRoles, freshnessWindowHours },
+          // One search per keyword; naming each makes a slow or empty run legible.
+          (detail) =>
+            reportProgress({ sourceId: "himalayas", sourceLabel: "Himalayas", status: "running", detail }),
+        ),
       (result) => `Checked Himalayas — ${result.totalFound} recent ${result.totalFound === 1 ? "posting" : "postings"} found`,
     ),
   ]);
