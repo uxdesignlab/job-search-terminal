@@ -2648,6 +2648,19 @@ export function saveGeneratedDocument(input: GeneratedDocumentInput) {
   });
 }
 
+/**
+ * Every listing, posting, and source URL on file. The employer-posting lookup
+ * uses it to skip a Himalayas listing it has already seen; unlike the dedup
+ * keys, it includes `source_url`, which is where a resolved job keeps the
+ * Himalayas link.
+ */
+export function getKnownJobUrls(): Set<string> {
+  const rows = getDatabase()
+    .prepare("select url, source_url, original_posting_url from jobs")
+    .all() as Array<{ url: string; source_url: string; original_posting_url: string }>;
+  return new Set(rows.flatMap((r) => [r.url, r.source_url, r.original_posting_url]).filter(Boolean));
+}
+
 export function getJobDedupKeys() {
   const rows = getDatabase()
     .prepare("select id, url, source_url, original_posting_url, original_posting_key, company, title, location, status from jobs")

@@ -15,29 +15,6 @@ the numbers mean and when they change.
 
 ---
 
-## 0.18.2 — 2026-10-02 — No more Disable on sources that cannot be disabled
-
-**Fixed**
-
-- Scan results and the Dashboard no longer offer **Disable** on Himalayas,
-  Dice, or Adzuna. Those sources run on every scan, and the button never
-  switched them off — it only made the app claim they would be skipped. The
-  row now says the source is part of every scan instead.
-
----
-
-## 0.18.1 — 2026-10-02 — Sharper searches for a job's real posting
-
-**Changed**
-
-- **Find posting** and **Open web search** now put the job title in quotes, so
-  results must contain that exact title instead of any job with similar words.
-- For Himalayas jobs the search leaves out the location, which was in
-  Himalayas' own wording ("United States (Remote)"), and skips Himalayas itself,
-  so it no longer leads you back to the listing you started from.
-
----
-
 ## 0.18.0 — 2026-10-02 — Himalayas jobs that lead to the employer
 
 **Added**
@@ -45,13 +22,16 @@ the numbers mean and when they change.
 - New Himalayas jobs now link to the company's own posting whenever the app can
   find it. Himalayas never shares the company's link, so each scan looks for the
   same job, with exactly the same title, on the company's Greenhouse, Lever, or
-  Ashby job board. In a test on 80 recent design jobs, it found the right posting
-  for 11 of them and never picked a wrong one.
+  Ashby job board. When the company has posted that title for several places,
+  the app only picks one if just one fits where the Himalayas job is open. In a
+  test on 80 recent design jobs, it found the right posting for 11 of them and
+  never picked a wrong one.
 - A **Find the employer's posting** box on Himalayas jobs that still link only
   to Himalayas. **Find posting** checks the company's job boards (and the web,
-  if you have a Brave Search key); you check the result and press **Use this
-  posting**, or paste a link you found yourself. Saving it brings back **Check
-  live** and pulls in the fuller job description from the company's page.
+  if you have a Brave Search key) and lists every posting with that title, with
+  where each is based. You check the result and press **Use this posting**, or
+  paste a link you found yourself. Saving it brings back **Check live** and
+  pulls in the fuller job description from the company's page.
 - A **Found on Himalayas ↗** link on resolved jobs, so you can always get back
   to the original listing.
 - Help now covers Himalayas: what it is, why its jobs link to Himalayas, and how
@@ -62,6 +42,10 @@ the numbers mean and when they change.
 - Himalayas jobs that still link to Himalayas show **Himalayas listing ↗**
   instead of **Job posting ↗**, and no longer offer **Check live**. Himalayas
   blocks automated visits, so that check could only ever answer "uncertain".
+- **Find posting** and **Open web search** put the job title in quotes, so
+  results must contain that exact title. For Himalayas jobs the search leaves
+  out Himalayas' own location wording ("United States (Remote)") and skips
+  Himalayas itself, so it no longer leads back to the listing you started from.
 - When a scan finds a new Himalayas job, or you press **Find posting**, the app
   asks Greenhouse, Lever, and Ashby for that company's public job list. The
   company's name is part of the web address it asks for; nothing about you is
@@ -72,6 +56,10 @@ the numbers mean and when they change.
 - The Himalayas scan now pages through results the way Himalayas asks. The old
   method is being retired, and once removed it would have quietly stopped this
   source from finding jobs.
+- Scan results and the Dashboard no longer offer **Disable** on Himalayas,
+  Dice, or Adzuna. Those sources run on every scan, and the button never
+  switched them off — it only made the app claim they would be skipped. The
+  row now says the source is part of every scan instead.
 
 Jobs you already have from Himalayas are not looked up again automatically.
 Open one and press **Find posting** to resolve it.

@@ -14,13 +14,18 @@
  * liveness check against the wrong posting — so the matching is deliberately
  * strict, and Greenhouse boards must also report a matching company name.
  *
- * Measured against 80 recent Himalayas design roles (2026-10-02): 16 companies
- * had a reachable board and 12 jobs matched exactly, all of them correct. The
- * rest fall through to the "Find posting" panel on the job page.
+ * When a board lists the same title more than once (one per office or region),
+ * the scan accepts a posting only if exactly one fits the Himalayas job's
+ * location; otherwise it leaves the choice to the user, and the job page lists
+ * every exact-title posting for them to pick from.
+ *
+ * Measured against 80 recent Himalayas design roles (2026-10-02): 11 resolved
+ * to the correct employer posting, none wrongly. The rest fall through to the
+ * "Find posting" panel on the job page.
  */
 
 import { safeFetch } from "@/lib/safe-fetch";
-import { getJobDedupKeys } from "@/lib/db/queries";
+import { getKnownJobUrls } from "@/lib/db/queries";
 
 export type EmployerBoardProvider = "greenhouse" | "lever" | "ashby";
 
@@ -29,6 +34,8 @@ export type EmployerPostingMatch = {
   boardSlug: string;
   url: string;
   title: string;
+  /** The posting's location as the ATS reports it; shown so the user can tell twins apart. */
+  location: string;
 };
 
 export type EmployerPostingQuery = {
@@ -36,6 +43,8 @@ export type EmployerPostingQuery = {
   title: string;
   /** The board's own company slug, e.g. the `acme` in himalayas.app/companies/acme/…. */
   companySlug?: string | null;
+  /** The Himalayas location string, e.g. `United States (Remote); Canada (Remote)`, or `Remote`. */
+  location?: string | null;
 };
 
 type BoardPosting = { title: string; url: string; location: string };
@@ -59,17 +68,27 @@ const COMPANY_SUFFIX =
   /[,\s]+(inc|incorporated|llc|l\.l\.c|ltd|limited|gmbh|ag|sa|s\.a|bv|b\.v|plc|corp|corporation|co|company|group|holdings)\.?$/i;
 
 function stripDiacritics(value: string): string {
-  return value.normalize("NFKD").replace(/[̀-ͯ]/g, "");
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
 }
 
 /**
- * Title normalisation for matching: case, accents, punctuation, and parenthetical
- * asides ("(Remote)", "(f/m/d)") are ignored; the words themselves must agree.
+ * Bracketed asides that do not change which job it is: a remote/hybrid note or a
+ * gender marker ("(Remote)", "(Remote - US)", "(f/m/d)", "(all genders)").
+ * Anything else in brackets — "(Frontend)", "(Contract)" — distinguishes one
+ * opening from another and is kept.
+ */
+const NON_SEMANTIC_ASIDE =
+  /\((?:[^)]*\b(?:remote|hybrid|anywhere|worldwide)\b[^)]*|\s*[mwfdhx]\s*\/\s*[mwfdhx](?:\s*\/\s*[mwfdhx])?\s*|\s*all genders?\s*|\s*any gender\s*)\)/gi;
+
+/**
+ * Title normalisation for matching: case, accents, punctuation, and remote or
+ * gender asides are ignored. Every other word must agree, including words in
+ * brackets, so "Engineer (Frontend)" never matches "Engineer (Backend)".
  */
 export function normalizeTitleForMatch(title: string): string {
   return stripDiacritics(title)
     .toLowerCase()
-    .replace(/\([^)]*\)/g, " ")
+    .replace(NON_SEMANTIC_ASIDE, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
@@ -223,17 +242,18 @@ function readBoard(
 }
 
 /**
- * Looks for `query.title` on the company's Greenhouse, Lever, or Ashby board.
- * Returns null when no board is found or no posting matches exactly.
+ * Every posting on the company's Greenhouse, Lever, or Ashby board whose title
+ * matches `query.title` exactly, from the first board that has any. The job page
+ * lists these for the user to choose from.
  */
-export async function findEmployerPosting(
+export async function findEmployerPostingCandidates(
   query: EmployerPostingQuery,
   options: { fetchJson?: JsonFetcher; cache?: BoardCache } = {},
-): Promise<EmployerPostingMatch | null> {
+): Promise<EmployerPostingMatch[]> {
   const fetchJson = options.fetchJson ?? defaultFetchJson;
   const cache = options.cache ?? new Map();
   const wanted = normalizeTitleForMatch(query.title);
-  if (!wanted) return null;
+  if (!wanted) return [];
 
   for (const slug of employerSlugCandidates(query.company, query.companySlug)) {
     const listings = await Promise.all(PROVIDERS.map((p) => readBoard(p, slug, fetchJson, cache)));
@@ -242,21 +262,86 @@ export async function findEmployerPosting(
       if (!companyNamesAgree(listing.companyName, query.company)) continue;
       const hits = listing.postings.filter((p) => p.url && normalizeTitleForMatch(p.title) === wanted);
       if (hits.length === 0) continue;
-      // Several same-titled postings usually differ by office; a remote one is
-      // the likeliest twin of a listing on a remote-only board.
-      const hit = hits.find((p) => /remote/i.test(p.location)) ?? hits[0];
-      return { provider: PROVIDERS[index], boardSlug: slug, url: hit.url, title: hit.title };
+      const unique = [...new Map(hits.map((h) => [h.url, h])).values()];
+      return unique.map((hit) => ({
+        provider: PROVIDERS[index],
+        boardSlug: slug,
+        url: hit.url,
+        title: hit.title,
+        location: hit.location,
+      }));
     }
   }
-  return null;
+  return [];
 }
 
-export type ScanLookupJob = { company: string; position: string; sourceUrl: string };
+/** Ways an ATS location might name a country the Himalayas listing names. */
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  "united states": ["united states", "usa", "us", "u s", "america"],
+  "united kingdom": ["united kingdom", "uk", "u k", "england", "great britain", "britain"],
+  "united arab emirates": ["united arab emirates", "uae"],
+};
+
+function locationWords(value: string): string {
+  return ` ${stripDiacritics(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+}
+
+/** Countries a Himalayas location string restricts the job to; empty means unrestricted. */
+export function himalayasCountries(location: string | null | undefined): string[] {
+  if (!location) return [];
+  return location
+    .split(";")
+    .map((part) => part.replace(/\(remote\)/i, "").trim())
+    .filter((part) => part && !/^remote$/i.test(part))
+    .map((part) => locationWords(part).trim());
+}
+
+/** True when an ATS posting's location names one of the Himalayas job's countries. */
+export function locationFitsCountries(atsLocation: string, countries: string[]): boolean {
+  const haystack = locationWords(atsLocation);
+  return countries.some((country) =>
+    (COUNTRY_ALIASES[country] ?? [country]).some((alias) => haystack.includes(` ${alias} `)),
+  );
+}
+
+/**
+ * The single posting the scan may adopt without asking. With one exact-title
+ * posting on the board, that is it. With several (one per office or region),
+ * only a posting that is the sole fit for the Himalayas job's countries is
+ * accepted; an unrestricted listing gives nothing to tell them apart by, so it
+ * is left for the user to choose on the job page.
+ */
+export function pickUnambiguousPosting(
+  candidates: EmployerPostingMatch[],
+  location: string | null | undefined,
+): EmployerPostingMatch | null {
+  if (candidates.length === 1) return candidates[0];
+  const countries = himalayasCountries(location);
+  if (candidates.length === 0 || countries.length === 0) return null;
+  const fitting = candidates.filter((c) => locationFitsCountries(c.location, countries));
+  return fitting.length === 1 ? fitting[0] : null;
+}
+
+/**
+ * Looks for `query.title` on the company's Greenhouse, Lever, or Ashby board.
+ * Returns null when no board is found, no posting matches exactly, or several
+ * match and the job's location does not single one out.
+ */
+export async function findEmployerPosting(
+  query: EmployerPostingQuery,
+  options: { fetchJson?: JsonFetcher; cache?: BoardCache } = {},
+): Promise<EmployerPostingMatch | null> {
+  return pickUnambiguousPosting(await findEmployerPostingCandidates(query, options), query.location);
+}
+
+export type ScanLookupJob = { company: string; position: string; sourceUrl: string; location?: string };
 
 /**
  * Runs {@link findEmployerPosting} for a Himalayas scan's matched jobs, keyed by
- * `sourceUrl`. Jobs already in the database are skipped — they were looked up
- * when first imported — and lookups stop at a time budget so a slow ATS cannot
+ * `sourceUrl`. A job whose Himalayas listing is already in the database is
+ * skipped — it was looked up when first imported. The check is by listing URL
+ * only: a new posting with the same company and title is a different opening
+ * and gets its own lookup. Lookups stop at a time budget so a slow ATS cannot
  * stall the scan; anything left over can still be found from the job page.
  */
 export async function findEmployerPostingsForScan(
@@ -276,7 +361,12 @@ export async function findEmployerPostingsForScan(
       const job = pending[next++];
       attempted += 1;
       const match = await findEmployerPosting(
-        { company: job.company, title: job.position, companySlug: himalayasCompanySlug(job.sourceUrl) },
+        {
+          company: job.company,
+          title: job.position,
+          companySlug: himalayasCompanySlug(job.sourceUrl),
+          location: job.location,
+        },
         { fetchJson: options.fetchJson, cache },
       );
       if (match) matches.set(job.sourceUrl, match);
@@ -289,10 +379,8 @@ export async function findEmployerPostingsForScan(
 
 function defaultIsKnown(): (job: ScanLookupJob) => boolean {
   try {
-    const dedup = getJobDedupKeys();
-    return (job) =>
-      dedup.urls.has(job.sourceUrl) ||
-      dedup.companyRoles.has(`${job.company.toLowerCase()}::${job.position.toLowerCase()}`);
+    const known = getKnownJobUrls();
+    return (job) => known.has(job.sourceUrl);
   } catch {
     return () => false;
   }

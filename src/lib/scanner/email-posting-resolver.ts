@@ -2,7 +2,7 @@ import { getAISettings, getJobById, markJobUserActivity, updateJobPostingResolut
 import { buildPostingSearchQuery, isBoardOnlyUrl, needsEmployerPosting } from "@/lib/jobs/posting-resolution";
 import { safeFetch } from "@/lib/safe-fetch";
 import { fetchJobDescription } from "./jd-fetcher";
-import { findEmployerPosting, himalayasCompanySlug, type EmployerBoardProvider } from "./employer-posting-lookup";
+import { findEmployerPostingCandidates, himalayasCompanySlug, type EmployerBoardProvider } from "./employer-posting-lookup";
 
 const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 
@@ -44,19 +44,26 @@ export async function searchPostingCandidates(jobId: string): Promise<{
 
   // A board-only job (Himalayas) gets the free, exact-title check of the
   // company's own Greenhouse, Lever, or Ashby board before any web search.
+  // Every exact-title posting is listed, with its location: when a company posts
+  // the same title per office or region, the user is the one to choose.
   const boardCandidates: PostingCandidate[] = [];
   if (needsEmployerPosting(job)) {
-    const match = await findEmployerPosting({
+    const matches = await findEmployerPostingCandidates({
       company: job.company,
       title: job.title,
       companySlug: himalayasCompanySlug(job.sourceUrl) ?? himalayasCompanySlug(job.url),
-    }).catch(() => null);
-    if (match) {
+      location: job.location,
+    }).catch(() => []);
+    const several = matches.length > 1;
+    for (const match of matches.slice(0, 5)) {
+      const where = match.location ? ` · ${match.location}` : "";
       boardCandidates.push({
         title: `${match.title} — ${job.company}`,
         url: match.url,
-        description: `Exact title match on ${job.company}'s ${PROVIDER_LABEL[match.provider]} job board.`,
-        origin: `${PROVIDER_LABEL[match.provider]} · exact title match`,
+        description: several
+          ? `One of ${matches.length} postings with this title on ${job.company}'s ${PROVIDER_LABEL[match.provider]} job board. Check the location before using it.`
+          : `Exact title match on ${job.company}'s ${PROVIDER_LABEL[match.provider]} job board.`,
+        origin: `${PROVIDER_LABEL[match.provider]} · exact title match${where}`,
       });
     }
   }

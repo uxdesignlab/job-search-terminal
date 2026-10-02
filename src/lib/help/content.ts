@@ -742,7 +742,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Jobs from Himalayas show Himalayas in the Source column under Jobs.",
           "Himalayas does not share the company's own link to a job. Its listings only link back to Himalayas itself.",
-          "So for each new Himalayas job, the app looks for the same job on the company's own job board, if the company uses Greenhouse, Lever, or Ashby. It only accepts a job with exactly the same title, so a near match is left alone rather than risk sending you to the wrong job.",
+          "So for each new Himalayas job, the app looks for the same job on the company's own job board, if the company uses Greenhouse, Lever, or Ashby. It only accepts a job with exactly the same title. A note in brackets such as (Remote) or (f/m/d) is ignored, but any other difference, like (Frontend) against (Backend), counts as a different job. If the company lists that title more than once for different places, the app picks one only when just one fits the countries the Himalayas job is open to. Otherwise it leaves the choice to you, rather than risk sending you to the wrong job.",
           "When it finds one, the job links straight to the company's posting. A small Found on Himalayas link beside Job posting still takes you back to the original listing.",
           "When it does not, the job page shows a Himalayas listing button and a Find the employer's posting box. See the steps below.",
           "Himalayas runs on every scan and cannot be switched off. When it reports a problem in the scan results, the row says Himalayas is part of every scan instead of offering Disable — that button only switches off company job pages. Dice and Adzuna work the same way.",
@@ -755,7 +755,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Check the result and use it",
-            body: "Each result says where it came from. Open it, make sure it is the same job, then press Use this posting. If nothing turns up, press Open web search, find the job on the company's careers page yourself, paste its link into Posting URL, and press Save URL.",
+            body: "Each result says where it came from and, for a company job board, where the job is based. When a company has posted the same title for several places, all of them are listed, so pick the one that matches. Open it, make sure it is the same job, then press Use this posting. If nothing turns up, press Open web search, find the job on the company's careers page yourself, paste its link into Posting URL, and press Save URL.",
           },
           {
             title: "What changes once it is saved",

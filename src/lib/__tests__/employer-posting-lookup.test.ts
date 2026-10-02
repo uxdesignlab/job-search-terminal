@@ -9,16 +9,20 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/db/queries", () => ({ getJobDedupKeys: () => ({ urls: new Set(), companyRoles: new Set() }) }));
+const known = vi.hoisted(() => ({ urls: new Set<string>() }));
+vi.mock("@/lib/db/queries", () => ({ getKnownJobUrls: () => known.urls }));
 
 import {
   companyNamesAgree,
   employerSlugCandidates,
   findEmployerPosting,
+  findEmployerPostingCandidates,
+  himalayasCountries,
   findEmployerPostingsForScan,
   himalayasCompanySlug,
   normalizeTitleForMatch,
   parseBoardListing,
+  pickUnambiguousPosting,
   type JsonFetcher,
 } from "@/lib/scanner/employer-posting-lookup";
 
@@ -53,6 +57,21 @@ describe("matching helpers", () => {
     expect(normalizeTitleForMatch("UI/UX Designer")).toBe("ui ux designer");
     expect(normalizeTitleForMatch("Diseñador de Producto")).toBe("disenador de producto");
     expect(normalizeTitleForMatch("Senior Product Designer")).not.toBe(normalizeTitleForMatch("Product Designer"));
+  });
+
+  it("ignores remote and gender asides but keeps brackets that distinguish openings", () => {
+    expect(normalizeTitleForMatch("UX Designer (Remote - US)")).toBe("ux designer");
+    expect(normalizeTitleForMatch("UX Designer (f/m/d)")).toBe("ux designer");
+    expect(normalizeTitleForMatch("UX Designer (m/w/d)")).toBe("ux designer");
+    expect(normalizeTitleForMatch("UX Designer (all genders)")).toBe("ux designer");
+    expect(normalizeTitleForMatch("Software Engineer (Frontend)")).not.toBe(normalizeTitleForMatch("Software Engineer (Backend)"));
+    expect(normalizeTitleForMatch("Designer (Contract)")).toBe("designer contract");
+  });
+
+  it("reads the countries a Himalayas location restricts the job to", () => {
+    expect(himalayasCountries("United States (Remote); Canada (Remote)")).toEqual(["united states", "canada"]);
+    expect(himalayasCountries("Remote")).toEqual([]);
+    expect(himalayasCountries("")).toEqual([]);
   });
 
   it("reads the company slug from a Himalayas URL and nothing else", () => {
@@ -102,6 +121,7 @@ describe("findEmployerPosting", () => {
       boardSlug: "cresta",
       url: "https://job-boards.greenhouse.io/x/jobs/7",
       title: "Senior Product Designer, AI Builders",
+      location: "New York",
     });
   });
 
@@ -133,16 +153,58 @@ describe("findEmployerPosting", () => {
       .toBeNull();
   });
 
-  it("prefers a remote posting when several share the title", async () => {
-    const fetchJson = boards({
-      [GH("acme")]: greenhouse("Acme", [
-        { title: "Product Designer", id: 1, location: "London" },
-        { title: "Product Designer", id: 2, location: "Remote - US" },
-      ]),
+  describe("when several postings share the title", () => {
+    const twins = () =>
+      boards({
+        [GH("acme")]: greenhouse("Acme", [
+          { title: "Product Designer", id: 1, location: "Remote - US" },
+          { title: "Product Designer", id: 2, location: "Remote - Germany" },
+        ]),
+      });
+
+    it("adopts the one posting that fits the job's countries", async () => {
+      const match = await findEmployerPosting(
+        { company: "Acme", title: "Product Designer", location: "Germany (Remote)" },
+        { fetchJson: twins() },
+      );
+      expect(match?.url).toBe("https://job-boards.greenhouse.io/x/jobs/2");
     });
 
-    const match = await findEmployerPosting({ company: "Acme", title: "Product Designer" }, { fetchJson });
-    expect(match?.url).toBe("https://job-boards.greenhouse.io/x/jobs/2");
+    it("refuses to guess for an unrestricted listing", async () => {
+      expect(
+        await findEmployerPosting({ company: "Acme", title: "Product Designer", location: "Remote" }, { fetchJson: twins() }),
+      ).toBeNull();
+    });
+
+    it("refuses when no posting, or more than one, fits the job's countries", async () => {
+      expect(
+        await findEmployerPosting({ company: "Acme", title: "Product Designer", location: "France (Remote)" }, { fetchJson: twins() }),
+      ).toBeNull();
+      expect(
+        await findEmployerPosting(
+          { company: "Acme", title: "Product Designer", location: "United States (Remote); Germany (Remote)" },
+          { fetchJson: twins() },
+        ),
+      ).toBeNull();
+    });
+
+    it("still lists every one of them for the user to choose from", async () => {
+      const all = await findEmployerPostingCandidates({ company: "Acme", title: "Product Designer" }, { fetchJson: twins() });
+      expect(all.map((c) => c.location)).toEqual(["Remote - US", "Remote - Germany"]);
+    });
+
+    it("recognises common short forms of a country", () => {
+      const us = { provider: "greenhouse" as const, boardSlug: "a", title: "D", url: "u1", location: "New York, NY, USA" };
+      const uk = { provider: "greenhouse" as const, boardSlug: "a", title: "D", url: "u2", location: "London, UK" };
+      expect(pickUnambiguousPosting([us, uk], "United Kingdom (Remote)")?.url).toBe("u2");
+      expect(pickUnambiguousPosting([us, uk], "United States (Remote)")?.url).toBe("u1");
+    });
+  });
+
+  it("does not let a bracketed qualifier stand in for another opening", async () => {
+    const fetchJson = boards({ [GH("acme")]: greenhouse("Acme", [{ title: "Software Engineer (Backend)", id: 1 }]) });
+
+    expect(await findEmployerPosting({ company: "Acme", title: "Software Engineer (Frontend)" }, { fetchJson })).toBeNull();
   });
 
   it("returns null when no board exists", async () => {
@@ -164,6 +226,18 @@ describe("findEmployerPostingsForScan", () => {
 
     expect(result.matches.size).toBe(2);
     expect(fetchJson.calls.filter((u) => u === GH("acme"))).toHaveLength(1);
+  });
+
+  it("skips a listing already on file, but not a new listing with the same company and title", async () => {
+    const fetchJson = boards({ [GH("acme")]: greenhouse("Acme", [{ title: "Product Designer", id: 1 }]) });
+    known.urls = new Set([job("Acme", 1).sourceUrl]);
+
+    // No isKnown override: the real check, by listing URL, is what runs.
+    const result = await findEmployerPostingsForScan([job("Acme", 1), job("Acme", 2)], { fetchJson });
+
+    expect(result.attempted).toBe(1);
+    expect([...result.matches.keys()]).toEqual([job("Acme", 2).sourceUrl]);
+    known.urls = new Set();
   });
 
   it("skips jobs already in the database", async () => {
