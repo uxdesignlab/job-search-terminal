@@ -119,7 +119,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Run your first scan",
-            body: "Go back to the Dashboard and press Scan for new jobs. The app checks around fifty company job pages, plus Dice, plus Adzuna if you set it up. A progress window shows what it is working through. When it finishes, the new jobs are waiting under Jobs.",
+            body: "Go back to the Dashboard and press Scan for new jobs. The app checks around fifty company job pages, plus Dice and the Himalayas remote job board, plus Adzuna if you set it up. A progress window shows what it is working through. When it finishes, the new jobs are waiting under Jobs.",
           },
         ],
         callout: {
@@ -641,7 +641,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Start the scan",
-            body: "Press Scan for new jobs on the Dashboard. The app works through the company job pages you have switched on, plus Dice, plus Adzuna if you set it up. A window shows each source moving from waiting to scanning to complete, so you can see what is slow and what failed.",
+            body: "Press Scan for new jobs on the Dashboard. The app works through the company job pages you have switched on, plus Dice and Himalayas, plus Adzuna if you set it up. A window shows each source moving from waiting to scanning to complete, so you can see what is slow and what failed.",
           },
           {
             title: "Read the scan summary",
@@ -732,6 +732,38 @@ export const helpPages: HelpPage[] = [
         callout: {
           title: "What Adzuna covers",
           body: "Adzuna reaches jobs that may not show up in company job pages or browser-board searches. Each scan takes your first four title keywords and searches each one twice: once in your first on-site location, and once across the whole country. The nationwide pass matters because Adzuna never labels a job as remote, so searching the country and letting your Remote regions decide is the only way to reach a role open from anywhere. That is eight searches per scan, which keeps a free key inside its 2,000 a month. It reads up to 50 jobs per search, within your fresh-posting window: 24 hours, 72 hours by default, or 7 days.",
+        },
+      },
+      {
+        id: "himalayas",
+        title: "Remote jobs from Himalayas",
+        intro:
+          "Himalayas is a job board that lists only remote jobs, and a lot of them. Every scan reads its newest postings and keeps the ones that match your title keywords. It needs no account and no key, and there is nothing to switch on.",
+        bullets: [
+          "Jobs from Himalayas show Himalayas in the Source column under Jobs.",
+          "Himalayas does not share the company's own link to a job. Its listings only link back to Himalayas itself.",
+          "So for each new Himalayas job, the app looks for the same job on the company's own job board, if the company uses Greenhouse, Lever, or Ashby. It only accepts a job with exactly the same title, so a near match is left alone rather than risk sending you to the wrong job.",
+          "When it finds one, the job links straight to the company's posting. A small Found on Himalayas link beside Job posting still takes you back to the original listing.",
+          "When it does not, the job page shows a Himalayas listing button and a Find the employer's posting box. See the steps below.",
+          "The app never applies for you, on Himalayas or anywhere else.",
+        ],
+        steps: [
+          {
+            title: "Press Find posting",
+            body: "Open the job. In the Find the employer's posting box, press Find posting. The app checks the company's Greenhouse, Lever, and Ashby job boards for this exact title. If you have a Brave Search key, it also searches the web.",
+          },
+          {
+            title: "Check the result and use it",
+            body: "Each result says where it came from. Open it, make sure it is the same job, then press Use this posting. If nothing turns up, press Open web search, find the job on the company's careers page yourself, paste its link into Posting URL, and press Save URL.",
+          },
+          {
+            title: "What changes once it is saved",
+            body: "The job now links to the company's own posting, and Check live appears, so the app can tell you whether the job is still open. The app also tries to read the fuller job description from the company's page.",
+          },
+        ],
+        callout: {
+          title: "Why Check live is missing on some Himalayas jobs",
+          body: "Himalayas blocks automated visits to its job pages, so the app cannot tell from Himalayas whether a job is still open. Check live appears once the job links to the company's own posting.",
         },
       },
       {
@@ -1191,6 +1223,7 @@ export const helpPages: HelpPage[] = [
           "If your first service runs out of credits, the app moves on to the next one in your list. A bar at the top of the page tells you when that is happening, so you are never surprised about which service received your text.",
           "If a document is genuinely sensitive, do not run a cloud AI feature on it. Use Ollama for that one, or handle it yourself.",
           "If you think anyone else has seen your key, delete it on the service\'s website and make a new one.",
+          "When a scan finds a new Himalayas job, or you press Find posting, the app asks Greenhouse, Lever, and Ashby for that company's public list of jobs. The company's name is part of the web address it asks for. Nothing about you, your resume, or your profile is sent.",
           "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends one code identifying a version that is already published on GitHub — nothing about you, your jobs, or your resumes, and nothing you have written yourself.",
         ],
         callout: {
@@ -1369,6 +1402,16 @@ export const helpPages: HelpPage[] = [
           "Watch the progress window during a scan. It names each keyword as it searches and says how many jobs came back, so you can see which keyword is the dead one.",
           "If the counts look healthy but nothing reaches Jobs, look for outside your locations in the scan summary. Those jobs were found and then ruled out by your on-site locations and Remote regions.",
           "If you have no include keywords at all, Adzuna falls back to your target roles from Account → Profile. Those are usually full job titles, which is exactly what Adzuna cannot match — add a few short keywords instead.",
+        ],
+      },
+      {
+        id: "himalayas-links",
+        title: "A Himalayas job links to Himalayas, not the company",
+        bullets: [
+          "This is expected. Himalayas does not share the company's own link, so the app finds it when it can and leaves the job pointing at Himalayas when it cannot.",
+          "Open the job and press Find posting in the Find the employer's posting box. If no result appears, the company is not on Greenhouse, Lever, or Ashby, or it lists the job under a different title. Press Open web search, find the job on the company's careers page, and paste the link into Posting URL.",
+          "If the app says That is the job board's own page, you pasted a Himalayas link. Use the link from the company's own site instead.",
+          "Jobs found before version 0.18.0 were never looked up. Find posting works on them too.",
         ],
       },
       {

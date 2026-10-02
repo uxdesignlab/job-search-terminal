@@ -48,7 +48,13 @@ import { coerceResumeBaseToLane } from "@/lib/evaluation/resume-lane-picker";
 import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
 import { nextBestAction, opportunityProgress } from "@/lib/jobs/next-best-action";
 import { splitListValue } from "@/lib/profile/intelligence";
-import { buildPostingSearchQuery, hasResolvedPosting } from "@/lib/jobs/posting-resolution";
+import {
+  boardOnlySourceLabel,
+  buildPostingSearchQuery,
+  hasResolvedPosting,
+  isBoardOnlyUrl,
+  needsEmployerPosting,
+} from "@/lib/jobs/posting-resolution";
 import { ApplyTab } from "./tabs/apply-tab";
 import { EvaluationTab } from "./tabs/evaluation-tab";
 import { readClayLastError } from "@/lib/integrations/clay/provider";
@@ -128,6 +134,13 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
   const resumes = getResumes();
   const profile = getUserProfile();
   const resolvedPosting = hasResolvedPosting(job);
+  // Himalayas never shares the employer's link. Until one is found the job links
+  // to the Himalayas listing, and a liveness check against that page proves
+  // nothing — it is behind bot protection — so Check live waits for the real one.
+  const boardLabel = boardOnlySourceLabel(job.source);
+  const missingEmployerPosting = needsEmployerPosting(job);
+  const foundOnBoardUrl =
+    boardLabel && !missingEmployerPosting && isBoardOnlyUrl(job.source, job.sourceUrl) ? job.sourceUrl : null;
   const resumeVersions: Record<string, { status: ResumeBuilderVersionStatus; sections: ResumeBuilderSection[] }> = Object.fromEntries(
     await Promise.all(
       resumes.map(async (resume) => {
@@ -356,12 +369,26 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
           {/* Header actions — evaluate, liveness, posting link */}
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {!job.archived && <StreamingEvaluation hasExistingEvaluation={!!evaluation} jobId={id} />}
-            {!job.archived && resolvedPosting && (
+            {!job.archived && resolvedPosting && !missingEmployerPosting && (
               <form action={checkLivenessAction}>
                 <SubmitButton label="Check live" pendingLabel="Checking…" savedLabel="Done ✓" variant="secondary" />
               </form>
             )}
-            {resolvedPosting ? <ExternalLinkButton href={job.url}>Job posting ↗</ExternalLinkButton> : null}
+            {resolvedPosting ? (
+              <ExternalLinkButton href={job.url}>
+                {missingEmployerPosting ? `${boardLabel} listing ↗` : "Job posting ↗"}
+              </ExternalLinkButton>
+            ) : null}
+            {foundOnBoardUrl ? (
+              <a
+                className="text-xs text-muted underline-offset-2 hover:text-accent hover:underline"
+                href={foundOnBoardUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Found on {boardLabel} ↗
+              </a>
+            ) : null}
           </div>
         </div>
 
@@ -370,6 +397,14 @@ export default async function JobDetailPage({ params, searchParams }: Props) {
             evidence={emailEvidence}
             jobId={id}
             searchQuery={buildPostingSearchQuery(job)}
+          />
+        ) : missingEmployerPosting && !job.archived ? (
+          <PostingResolutionPanel
+            boardLabel={boardLabel ?? "the job board"}
+            evidence={[]}
+            jobId={id}
+            searchQuery={buildPostingSearchQuery(job)}
+            variant="board"
           />
         ) : null}
 

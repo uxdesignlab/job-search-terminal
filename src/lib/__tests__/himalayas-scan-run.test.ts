@@ -21,6 +21,12 @@ const importDir = mkdtempSync(path.join(tmpdir(), "himalayas-scan-"));
 const mocks = vi.hoisted(() => ({
   safeFetch: vi.fn(),
   importBrowserBoardJobs: vi.fn(),
+  findEmployerPostings: vi.fn(),
+}));
+
+// The lookup reads the database and the ATS APIs; its own tests cover it.
+vi.mock("@/lib/scanner/employer-posting-lookup", () => ({
+  findEmployerPostingsForScan: (...args: unknown[]) => mocks.findEmployerPostings(...args),
 }));
 
 vi.mock("@/lib/safe-fetch", () => ({
@@ -54,8 +60,13 @@ function posting(id: number, ageHours: number) {
   };
 }
 
-function page(jobs: unknown[]) {
-  return { ok: true, text: async () => JSON.stringify({ jobs }) };
+/**
+ * A page as the API returns it. The cursor is the next offset in disguise, so a
+ * mocked feed can be addressed by position whichever way the scanner pages.
+ */
+function page(jobs: unknown[], offset = 0) {
+  const nextCursor = jobs.length > 0 ? `c${offset + jobs.length}` : null;
+  return { ok: true, text: async () => JSON.stringify({ jobs, nextCursor }) };
 }
 
 /**
@@ -70,12 +81,14 @@ function feedSpanning(spanHours: number) {
       const index = offset + i;
       return posting(index, (index / total) * spanHours);
     });
-    return page(jobs);
+    return page(jobs, offset);
   };
 }
 
 function offsetFromUrl(url: string): number {
-  return Number(new URL(url).searchParams.get("offset") ?? 0);
+  const params = new URL(url).searchParams;
+  const cursor = params.get("cursor");
+  return cursor ? Number(cursor.slice(1)) : Number(params.get("offset") ?? 0);
 }
 
 /** Runs the scan with fake timers, so the inter-page delays cost no real time. */
@@ -92,6 +105,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   mocks.safeFetch.mockReset();
   mocks.importBrowserBoardJobs.mockReset();
+  mocks.findEmployerPostings.mockReset();
+  mocks.findEmployerPostings.mockResolvedValue({ matches: new Map(), attempted: 0, skippedForTime: 0 });
 });
 
 afterEach(() => {
@@ -138,7 +153,7 @@ describe("runHimalayasScan — how a walk ends", () => {
       const jobs = Array.from({ length: PAGE_SIZE }, (_, i) =>
         posting(offset + i, offset === 0 && i === PAGE_SIZE - 1 ? 100 : 1)
       );
-      return Promise.resolve(page(jobs));
+      return Promise.resolve(page(jobs, offset));
     });
 
     const result = await scan({ titleFilters: NO_TITLE_MATCHES, freshnessWindowHours: 72 });
@@ -159,6 +174,116 @@ describe("runHimalayasScan — how a walk ends", () => {
     expect(progress).toContain("Himalayas is not responding — stopping early.");
     // No pages were read, so the cap never enters the picture.
     expect(result.errors.some((e) => e.includes("page cap"))).toBe(false);
+  });
+});
+
+describe("runHimalayasScan — paging", () => {
+  it("follows nextCursor after the first page instead of the deprecated offset", async () => {
+    const feed = feedSpanning(10);
+    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(feed(offsetFromUrl(url))));
+
+    await scan({ titleFilters: NO_TITLE_MATCHES });
+
+    const urls = mocks.safeFetch.mock.calls.map(([url]) => new URL(url as string));
+    expect(urls[0].searchParams.has("cursor")).toBe(false);
+    expect(urls[0].searchParams.has("offset")).toBe(false);
+    expect(urls[1].searchParams.get("cursor")).toBe(`c${PAGE_SIZE}`);
+    expect(urls.slice(1).every((u) => !u.searchParams.has("offset"))).toBe(true);
+  });
+
+  it("falls back to offset when a response carries no cursor", async () => {
+    mocks.safeFetch.mockImplementation((url: string) => {
+      const offset = offsetFromUrl(url);
+      const jobs = offset < PAGE_SIZE * 2
+        ? Array.from({ length: PAGE_SIZE }, (_, i) => posting(offset + i, 1))
+        : [];
+      return Promise.resolve({ ok: true, text: async () => JSON.stringify({ jobs }) });
+    });
+
+    await scan({ titleFilters: NO_TITLE_MATCHES });
+
+    const second = new URL(mocks.safeFetch.mock.calls[1][0] as string);
+    expect(second.searchParams.get("offset")).toBe(String(PAGE_SIZE));
+  });
+});
+
+describe("runHimalayasScan — the employer's own posting", () => {
+  function himalayasPosting(id: number) {
+    return {
+      ...posting(id, 1),
+      applicationLink: `https://himalayas.app/companies/acme/jobs/designer-${id}`,
+      guid: `https://himalayas.app/companies/acme/jobs/designer-${id}`,
+    };
+  }
+
+  function importEcho() {
+    mocks.importBrowserBoardJobs.mockImplementation((filePath: string) => {
+      const scanFile = JSON.parse(readFileSync(filePath, "utf-8"));
+      return Promise.resolve({
+        imported: scanFile.jobs.length, duplicates: 0, fresh: scanFile.jobs.length,
+        unknownDate: 0, staleFiltered: 0, errors: [],
+        importedJobs: scanFile.jobs.map((j: { position: string; url: string; company: string }) => ({
+          title: j.position, url: j.url, company: j.company,
+        })),
+      });
+    });
+  }
+
+  function writtenJobs() {
+    const [filePath] = mocks.importBrowserBoardJobs.mock.calls.at(-1) as [string];
+    return JSON.parse(readFileSync(filePath, "utf-8")).jobs as Array<Record<string, string>>;
+  }
+
+  it("uses the employer's posting when the lookup finds one, keeping Himalayas as the source", async () => {
+    mocks.safeFetch.mockImplementation((url: string) =>
+      Promise.resolve(page(offsetFromUrl(url) === 0 ? [himalayasPosting(1), himalayasPosting(2)] : []))
+    );
+    mocks.findEmployerPostings.mockImplementation(async (jobs: Array<{ sourceUrl: string }>) => ({
+      matches: new Map([[jobs[0].sourceUrl, {
+        provider: "greenhouse", boardSlug: "acme",
+        url: "https://job-boards.greenhouse.io/acme/jobs/1", title: "Product Designer",
+      }]]),
+      attempted: jobs.length,
+      skippedForTime: 0,
+    }));
+    importEcho();
+
+    const progress: string[] = [];
+    await scan({ titleFilters: { positive: ["designer"], negative: [] } }, (m) => progress.push(m));
+
+    const [found, notFound] = writtenJobs();
+    expect(found.url).toBe("https://job-boards.greenhouse.io/acme/jobs/1");
+    expect(found.originalPostingUrl).toBe("https://job-boards.greenhouse.io/acme/jobs/1");
+    expect(found.sourceUrl).toBe("https://himalayas.app/companies/acme/jobs/designer-1");
+    // No match: the Himalayas page is the job's link, but never its employer link.
+    expect(notFound.url).toBe("https://himalayas.app/companies/acme/jobs/designer-2");
+    expect(notFound.originalPostingUrl).toBe("");
+    expect(progress).toContain("Found the employer's own posting for 1 of 2 new Himalayas jobs (Greenhouse, Lever, Ashby).");
+  });
+
+  it("imports the jobs anyway when the lookup throws", async () => {
+    mocks.safeFetch.mockImplementation((url: string) =>
+      Promise.resolve(page(offsetFromUrl(url) === 0 ? [himalayasPosting(1)] : []))
+    );
+    mocks.findEmployerPostings.mockRejectedValue(new Error("ATS down"));
+    importEcho();
+
+    const result = await scan({ titleFilters: { positive: ["designer"], negative: [] } });
+
+    expect(result.status).toBe("ok");
+    expect(result.imported).toBe(1);
+    expect(writtenJobs()[0].url).toBe("https://himalayas.app/companies/acme/jobs/designer-1");
+  });
+
+  it("does not look up jobs that arrive with an employer link of their own", async () => {
+    mocks.safeFetch.mockImplementation((url: string) =>
+      Promise.resolve(page(offsetFromUrl(url) === 0 ? [posting(1, 1)] : []))
+    );
+    importEcho();
+
+    await scan({ titleFilters: { positive: ["designer"], negative: [] } });
+
+    expect(mocks.findEmployerPostings).not.toHaveBeenCalled();
   });
 });
 

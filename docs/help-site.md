@@ -81,9 +81,13 @@ all** — a user who opens them has nowhere to look:
 | Analytics | `/analytics`, primary nav | 0 |
 | Evidence bank | `/evidence`, reached from Analytics and Dashboard | 0 (the word "evidence" appears, the page does not) |
 | Strategy | `/strategy`, Account menu | 0 |
-| Himalayas remote board | In-app scanner, no credentials | 0 |
 | Archived jobs | `/archived` | 0 |
 | Email job-alert imports | Pending candidate approval flow | 0 |
+
+The Himalayas remote board was on this list until 0.18.0, which added the
+`himalayas` section to the job-search guide (what it is, why its jobs link to
+Himalayas, and how **Find posting** resolves them) plus a `himalayas-links`
+troubleshooting entry.
 
 Thinner than the feature warrants, but not absent: saved filter presets,
 the resume builder, the keyword/taxonomy manager, story consolidation, and the

@@ -190,7 +190,7 @@ Every job discovered by scanning or added manually.
 | `title` | Job title |
 | `url` | Primary job posting URL opened by the app; browser-board imports prefer a visible employer/ATS URL and fall back to the platform URL |
 | `source_url` | Platform URL where a browser-board job was found |
-| `original_posting_url` | Visible job-specific employer/ATS apply URL when available |
+| `original_posting_url` | Visible job-specific employer/ATS apply URL when available. Never a board's own page: Himalayas jobs leave it empty unless the employer posting was found (scan-time Greenhouse/Lever/Ashby lookup, or **Find posting** on the job page). Himalayas rows imported before 0.18.0 still hold the Himalayas URL here; nothing reads it for display, and `needsEmployerPosting` keys off `url`, so they were not migrated |
 | `original_posting_key` | Canonical dedupe key, preferring ATS provider + job ID |
 | `source` | ATS source, manual source, or browser-board source (`linkedin-claude-scan`, `wellfound-browser-scan`, `workatastartup-browser-scan`, `glassdoor-browser-scan`, `indeed-browser-scan`, `monster-browser-scan`) |
 | `location` | Job location text |

@@ -3139,7 +3139,7 @@ postings, ~2,900 added per day). No key or login is required. It runs
 automatically as a lane of the Dashboard scan alongside CareerOps, Dice, and
 Adzuna.
 
-**Two API constraints shape the implementation** (`src/lib/scanner/himalayas-scanner.ts`):
+**Four API facts shape the implementation** (`src/lib/scanner/himalayas-scanner.ts`):
 
 - **No server-side filtering.** `search`, `category`, and similar parameters are
   accepted and then ignored — every query returns the same feed. Verified
@@ -3147,6 +3147,17 @@ Adzuna.
   an unfiltered call. Titles are therefore filtered client-side with the same
   positive/negative lists the other lanes use.
 - **`limit` is hard-capped at 20** regardless of the value requested.
+- **Paging is by cursor.** Each response carries `nextCursor`, passed back as
+  `?cursor=`. Himalayas deprecated `offset` on 2026-08-21 and announced its
+  removal (the notice is in the feed's own `comments` field), so the scanner
+  follows the cursor and only falls back to `offset` for a response that omits
+  one. The first request sends neither. A failed page is retried from the same
+  position — the cursor only advances on a page that was read.
+- **No employer link.** `applicationLink` is always Himalayas' own job page (a
+  live sample of 20 postings: 20 of 20 on `himalayas.app`, no off-site links in
+  any description), and those pages sit behind Cloudflare bot protection, so the
+  employer's Apply link cannot be read from them either. See **Employer postings
+  for Himalayas jobs** below.
 
 **Why it is still viable:** the feed is strictly newest-first, so a scan reads
 the newest pages and stops instead of walking all ~4,800. `MAX_PAGES` (60) covers
@@ -3167,10 +3178,15 @@ abort the walk so a degraded API is not hammered.
 **Test coverage:** `src/lib/__tests__/himalayas-scanner.test.ts` covers the pure
 helpers (payload sanitising, date and salary formatting, location mapping, title
 and preference filtering). `src/lib/__tests__/himalayas-scan-run.test.ts` covers
-`runHimalayasScan` itself with the network and importer mocked and the file write
-redirected to a temp directory: both sides of the page-cap reporting rule, the
-freshness-cutoff stop, the consecutive-failure abort, the two-step scan-file
-write, and an importer failure surfacing as an error result.
+`runHimalayasScan` itself with the network, importer, and employer lookup mocked
+and the file write redirected to a temp directory: both sides of the page-cap
+reporting rule, the freshness-cutoff stop, the consecutive-failure abort, cursor
+paging and its offset fallback, employer-posting substitution (and a throwing
+lookup not failing the scan), the two-step scan-file write, and an importer
+failure surfacing as an error result. `employer-posting-lookup.test.ts` covers
+the matcher, chiefly what it must refuse: near-miss titles and same-slug boards
+belonging to another company. `posting-resolution.test.ts` covers
+`needsEmployerPosting` and `isBoardOnlyUrl`.
 
 **Data handling:**
 - `pubDate` is UNIX epoch **seconds**, not milliseconds.
@@ -3191,6 +3207,76 @@ leaving 7 genuine design roles.
 
 **Scan type recorded:** `himalayas-api-scan`. Jobs appear with a **Himalayas**
 source badge.
+
+### Employer postings for Himalayas jobs
+
+Because Himalayas hides the employer's link, a Himalayas job is resolved to the
+company's own posting in two places. Both use
+`src/lib/scanner/employer-posting-lookup.ts`.
+
+**At scan time.** After title filtering, `runHimalayasScan` passes the matched
+jobs to `findEmployerPostingsForScan`. Jobs already in the database (by URL or
+company + title) are skipped. For each remaining job, `findEmployerPosting`
+guesses the company's board slug and reads its public Greenhouse, Lever, and
+Ashby job lists:
+
+- **Slug candidates** (`employerSlugCandidates`, at most four): the Himalayas
+  company slug from the listing URL, with its disambiguating hex suffix
+  (`fluency-inc-a92b56`) removed, both de-hyphenated and as-is, then the company
+  name with legal suffixes stripped, compact and hyphenated.
+- **Match rule:** the normalised titles must be **identical** — case, accents,
+  punctuation, and parenthetical asides such as `(Remote)` are ignored; nothing
+  else is. Greenhouse boards report `company_name`, which must also equal the
+  company after legal suffixes and a trailing `Careers`/`Jobs`/`Hiring`/`Talent`
+  are removed — a prefix is not enough, because `Base` and `Base Operations` are
+  different employers that could share a slug. Unlisted Ashby postings are
+  ignored. When several postings share the title, a remote one is preferred.
+- **Cost and limits:** boards are cached per run, so several jobs from one
+  company read its boards once. Four lookups run at a time, each request times
+  out after 8 s, and lookups stop starting after a 45 s budget. A lookup failure
+  never fails the scan.
+
+A match sets the job's `url` and `originalPostingUrl` to the employer posting
+while `sourceUrl` keeps the Himalayas listing. Because the importer derives
+`original_posting_key` from the ATS URL (`greenhouse:<board>:<id>`), a Himalayas
+job that resolves to a board the career-site lane also scans deduplicates against
+it. With no match, `url` stays the Himalayas page and `originalPostingUrl` is
+**empty**. Before this change the scanner wrote the Himalayas page into
+`originalPostingUrl` too, which told the rest of the app the employer link was
+already known.
+
+**Measured yield (2026-10-02):** run live against the 80 most recent Himalayas
+design roles in a real database, 11 resolved to the correct employer posting
+(Greenhouse, Lever, and Ashby all represented), with no wrong matches. The run
+took about 12 s.
+
+**On the job page.** `needsEmployerPosting(job)` in
+`src/lib/jobs/posting-resolution.ts` is true for a `himalayas-api-scan` job whose
+`url` is still on `himalayas.app` (the board-only hosts are listed in
+`BOARD_ONLY_SOURCES`). Such a job is not `needs_resolution` — it has a usable
+listing — but:
+
+- The header button reads **Himalayas listing ↗** instead of **Job posting ↗**.
+- **Check live** is hidden: a liveness check against a bot-protected board page
+  proves nothing and always came back uncertain.
+- `PostingResolutionPanel` renders with `variant="board"`, titled **Find the
+  employer's posting** with a **Himalayas link only** badge. **Find posting**
+  calls `searchPostingCandidates`, which for board-only jobs runs the same
+  exact-title board lookup first (labelled e.g. *Greenhouse · exact title
+  match*) and then Brave Search when a key is set (labelled *Web search*;
+  Himalayas URLs are filtered out). **Open web search** is always offered.
+- Saving a URL goes through `resolveEmailJobPosting`, which for board-only jobs
+  keeps `sourceUrl` as the Himalayas listing, refuses a Himalayas URL ("That is
+  the job board's own page…"), and keeps the existing description when the
+  employer page cannot be read.
+
+Once the job links to the employer, the header shows **Job posting ↗**, **Check
+live** returns, and a small **Found on Himalayas ↗** link points back to the
+original listing.
+
+Existing Himalayas jobs are not migrated: they already satisfy
+`needsEmployerPosting` through their `url`, so the panel appears on them
+without a data change.
 
 **Sources evaluated and rejected:** Remotive and RemoteOK were tested and are not
 viable. Remotive's entire public feed is 34 jobs spanning twelve unrelated
