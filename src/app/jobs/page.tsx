@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge, EmptyState, PageHeader } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
 import { formatPostedDate } from "@/lib/dates";
-import { getJobs, getReviewQueueCount, getUserProfile } from "@/lib/db/queries";
+import { getJobs, getReviewQueueJobs, getUserProfile } from "@/lib/db/queries";
 import { OUTSIDE_PREFERENCES_LABEL, UNKNOWN_LOCATION_LABEL, buildJobPreferenceFilter } from "@/lib/jobs/preference-fit";
 import { isJobProtectedFromAutomaticRemoval } from "@/lib/jobs/job-protection";
 import { hasResolvedPosting, isHttpPostingUrl } from "@/lib/jobs/posting-resolution";
@@ -10,6 +10,7 @@ import { getSourceLabelOverrides } from "@/lib/jobs/source-labels";
 import { AddJobModal } from "@/components/AddJobModal";
 import { BatchEvaluateForm } from "@/components/batch-evaluate-form";
 import { JobMaintenancePanel } from "@/components/job-maintenance-panel";
+import { ReviewQueuePanel } from "@/components/review-queue-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
 import { getJobSourceLabel, type MainJobTableRecord } from "@/lib/job-table-helpers";
@@ -41,7 +42,7 @@ export default async function JobsPage({ searchParams }: Props) {
   const companyFocus = rawCompanyFocus?.trim() || null;
   const profile = getUserProfile();
   const preferenceFilter = buildJobPreferenceFilter(profile);
-  const reviewQueueCount = getReviewQueueCount();
+  const reviewQueue = getReviewQueueJobs();
   const sourceLabelOverrides = getSourceLabelOverrides();
   const jobs = getJobs().map((job) => {
     const preferenceDecision = preferenceFilter(job);
@@ -113,14 +114,7 @@ export default async function JobsPage({ searchParams }: Props) {
 
         {jobs.length > 0 ? <JobMaintenancePanel jobCount={jobs.length} /> : null}
 
-        {reviewQueueCount > 0 ? (
-          <div className="flex items-center justify-between rounded-panel border border-warning/40 bg-warning/8 px-4 py-3 text-sm">
-            <span className="font-medium text-ink">
-              {reviewQueueCount} job{reviewQueueCount !== 1 ? "s" : ""} need{reviewQueueCount === 1 ? "s" : ""} review — short or missing description
-            </span>
-            <span className="text-xs text-muted">Open a job to add the missing detail</span>
-          </div>
-        ) : null}
+        <ReviewQueuePanel jobs={reviewQueue} />
 
         {jobs.length === 0 ? (
           <EmptyState

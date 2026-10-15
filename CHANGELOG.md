@@ -15,6 +15,46 @@ the numbers mean and when they change.
 
 ---
 
+## 0.19.1 — 2026-10-15 — Help for every page
+
+**Added**
+
+- Help now covers Analytics, the Evidence bank, and Strategy in a new guide,
+  **Learn from your search**. It explains what each Analytics card counts, how to
+  answer a gap once so every later resume can use it, and how to read and correct
+  your Direct, Adjacent, Selective, and Avoid role directions. It also covers the
+  **AI Prompts** tab and what **Reset to default** does.
+- Help explains the **Archived** page: **Restore**, **Delete**, and **Delete all
+  archived**, and that a restored job is protected from Cleanup.
+- Help explains the **Consolidate stories** wizard for tidying old auto-generated
+  interview story suggestions.
+- A new troubleshooting entry for an Analytics, Strategy, or Evidence bank page
+  that shows nothing.
+
+**Changed**
+
+- The privacy page in Help now also says what Brave Search and Clay receive, and
+  when. The project's `PRIVACY.md` now lists every service the app can contact —
+  job boards, Brave, Clay, Common Crawl, and the daily GitHub update check —
+  instead of AI providers only, and mentions Ollama.
+- The screenshots in Help and the README now show the app as it is today —
+  seven Settings tabs, the provider priority list with Ollama, the Evidence
+  bank card on the Dashboard — using a made-up job seeker instead of real data.
+
+**Fixed**
+
+- The "jobs need review" box on the Jobs page could never be cleared. It now
+  opens into a list of those jobs, each with the reason it is there and two
+  buttons: **Keep** if the job is fine as it is, and **Archive** to move it out of
+  the way. Saving a full description also takes a job off the list by itself.
+  Jobs already flagged show up in the list straight away; there is nothing to
+  re-scan.
+- Help told you to press **Resolve posting** on jobs from alert emails. That is
+  the box's name; the button is **Find posting**, or paste the link and press
+  **Save URL**.
+
+---
+
 ## 0.19.0 — 2026-10-02 — Himalayas searches for your keywords
 
 **Changed**

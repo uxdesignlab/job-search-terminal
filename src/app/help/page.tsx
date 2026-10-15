@@ -35,7 +35,7 @@ export default function HelpPage() {
                   {category === "Profile" && "Upload your resumes and tell the app what work you are after. Everything else depends on this."}
                   {category === "Jobs" && "Where jobs come from, how to add ones the app missed, and how to keep the list manageable."}
                   {category === "Apply" && "Score how well a job fits you, then write a resume and answers for it. You still apply yourself."}
-                  {category === "Track" && "Keep track of where each application stands and what needs chasing."}
+                  {category === "Track" && "Keep track of where each application stands, what needs chasing, and what your search is teaching you."}
                   {category === "Prep" && "Build the stories you will retell in every interview, and practise them out loud."}
                   {category === "Reference" && "What happens to your data, what the app will never do, and what to try when something breaks."}
                 </CardDescription>
