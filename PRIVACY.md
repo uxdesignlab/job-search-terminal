@@ -80,6 +80,12 @@ any job board.
   email** sends the chosen person's LinkedIn link. Clay never receives your resume, notes,
   the job description, or application answers.
 
+### Location suggestions
+
+When you type at least two characters into a location field (on-site places or remote
+regions), the app sends exactly what you typed to OpenStreetMap's Nominatim service to
+suggest matching places. Nothing else is sent with it.
+
 ### Update check
 
 Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It

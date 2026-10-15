@@ -27,7 +27,7 @@ export function ReviewQueuePanel({ jobs }: { jobs: ReviewQueueJob[] }) {
       <div className="border-t border-warning/30 px-4 py-3">
         <p className="mb-3 text-xs text-muted">
           Open a job to add the missing detail — saving a full description clears it from this list. Keep marks it
-          reviewed as it is. Archive moves it to Archived, where you can restore it.
+          reviewed as it is and protects it from Cleanup. Archive moves it to Archived, where you can restore it.
         </p>
         <ul className="grid gap-2" aria-label="Jobs waiting for review">
           {jobs.map((job) => (

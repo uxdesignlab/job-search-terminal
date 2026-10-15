@@ -8,6 +8,7 @@ import {
   getJobById,
   getJobByUrl,
   insertManualJob,
+  markJobUserActivity,
   setJobReviewStatus,
   updateJobDetails,
 } from "@/lib/db/queries";
@@ -52,6 +53,9 @@ export async function addManualJobAction(formData: FormData) {
 }
 
 export async function approveReviewAction(jobId: string) {
+  // Keep is a deliberate decision about this job, so it protects the job from
+  // cleanup the same way any other user action does.
+  markJobUserActivity(jobId);
   setJobReviewStatus(jobId, "none");
   revalidatePath("/jobs");
   revalidatePath("/dashboard");

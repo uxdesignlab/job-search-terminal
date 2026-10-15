@@ -633,8 +633,9 @@ status, posting maintenance, and bulk tools.
   above the table: "N jobs need review — the app could not fully read them", with
   **Review jobs** / **Hide**. Expanded, it lists each job (`getReviewQueueJobs()`,
   newest first) with its reason — *Short or missing description* or *Posting not found
-  yet* — a link to open it, and two buttons: **Keep** (`approveReviewAction`, clears the
-  flag) and **Archive** (`dismissReviewAction`, archives the job; restorable from
+  yet* — a link to open it, and two buttons: **Keep** (`approveReviewAction`: records user activity via
+  `markJobUserActivity`, so the job is protected from Cleanup like any other deliberate
+  action, then clears the flag) and **Archive** (`dismissReviewAction`, archives the job; restorable from
   Archived). The panel disappears when the queue is empty.
   Saving a description of 100+ characters — **Fetch description**, the job page, or
   **Edit job details** (`saveJobDescription` / `updateJobDetails`) — clears the flag

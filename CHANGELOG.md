@@ -15,6 +15,22 @@ the numbers mean and when they change.
 
 ---
 
+## 0.19.2 — 2026-10-15 — Keep means keep
+
+**Fixed**
+
+- Pressing **Keep** in the Jobs review list now also protects the job from
+  Cleanup, like anything else you do to a job. Before, a kept job could still be
+  cleared by the next cleanup if it was old or its posting had closed.
+- Help told you to press **Fetch description** for a job whose description is
+  short. That button only appears when no description is saved at all; Help now
+  says to paste the full description under **Edit job details** instead.
+- The privacy notes left out one thing that leaves your computer: when you type
+  in a location box, the letters you type are sent to OpenStreetMap to suggest
+  places. Both the in-app privacy page and `PRIVACY.md` now say so.
+
+---
+
 ## 0.19.1 — 2026-10-15 — Help for every page
 
 **Added**
