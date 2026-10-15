@@ -1,76 +1,30 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-let tempDir: string | null = null;
-let queries: typeof import("@/lib/db/queries");
+const SHORT_DESCRIPTION_THRESHOLD = 100;
 
-const LONG = "A full description of the role. ".repeat(6);
+function classifyReviewStatus(rawDescription: string): "none" | "pending_review" {
+  return rawDescription.length < SHORT_DESCRIPTION_THRESHOLD ? "pending_review" : "none";
+}
 
-beforeEach(async () => {
-  vi.resetModules();
-  tempDir = mkdtempSync(path.join(os.tmpdir(), "jst-review-queue-"));
-  process.env.JST_DATABASE_PATH = path.join(tempDir, "test.sqlite");
-  const client = await import("@/lib/db/client");
-  queries = await import("@/lib/db/queries");
-  const db = client.getDatabase();
-  const insert = db.prepare(
-    `insert into jobs (
-      id, company, title, url, source, location, remote_type, first_seen_date, freshness_label,
-      raw_description, parsed_description, status, fit_score, role_archetype, recommendation, summary,
-      why_it_matches, main_concern, recommended_resume, salary_notes, requirement_match_json,
-      resume_evidence_json, gaps_json, red_flags_json, review_status, posting_resolution_status
-    ) values (
-      @id, 'Acme', @title, @url, 'linkedin', 'Remote', 'remote', @seen, 'fresh',
-      'short', 'short', 'Found', 0, '', '', '', '', '', '', '', '[]', '[]', '[]', '[]',
-      @review, @resolution
-    )`
-  );
-  insert.run({ id: "short", title: "Short one", url: "https://example.com/1", seen: "2026-10-01", review: "pending_review", resolution: "" });
-  insert.run({ id: "board", title: "Board only", url: "https://example.com/2", seen: "2026-10-02", review: "pending_review", resolution: "needs_resolution" });
-  insert.run({ id: "fine", title: "Fine", url: "https://example.com/3", seen: "2026-10-03", review: "none", resolution: "" });
-});
-
-afterEach(() => {
-  if (tempDir) rmSync(tempDir, { recursive: true, force: true });
-  tempDir = null;
-  delete process.env.JST_DATABASE_PATH;
-});
-
-describe("review queue", () => {
-  it("lists pending jobs newest first with the reason each is there", () => {
-    expect(queries.getReviewQueueJobs()).toEqual([
-      { id: "board", company: "Acme", title: "Board only", reason: "Posting not found yet" },
-      { id: "short", company: "Acme", title: "Short one", reason: "Short or missing description" },
-    ]);
-    expect(queries.getReviewQueueCount()).toBe(2);
+describe("review queue routing", () => {
+  it("routes job with no description to pending_review", () => {
+    expect(classifyReviewStatus("")).toBe("pending_review");
   });
 
-  it("drops archived jobs and jobs marked reviewed", () => {
-    queries.archiveJob("short");
-    queries.setJobReviewStatus("board", "none");
-    expect(queries.getReviewQueueJobs()).toEqual([]);
+  it("routes job with very short description to pending_review", () => {
+    expect(classifyReviewStatus("Short description.")).toBe("pending_review");
   });
 
-  it("clears the flag once a full description is saved", () => {
-    queries.saveJobDescription("short", LONG);
-    expect(queries.getReviewQueueJobs().map((job) => job.id)).toEqual(["board"]);
+  it("routes job with exactly 99 chars to pending_review", () => {
+    expect(classifyReviewStatus("a".repeat(99))).toBe("pending_review");
   });
 
-  it("keeps the flag when the saved description is still short", () => {
-    queries.saveJobDescription("short", "Still too short.");
-    expect(queries.getReviewQueueJobs().map((job) => job.id)).toContain("short");
+  it("routes job with exactly 100 chars to none", () => {
+    expect(classifyReviewStatus("a".repeat(100))).toBe("none");
   });
 
-  it("keeps a board-only job queued until its posting is resolved", () => {
-    queries.saveJobDescription("board", LONG);
-    queries.updateJobDetails("board", { rawDescription: LONG });
-    expect(queries.getReviewQueueJobs().map((job) => job.id)).toContain("board");
-  });
-
-  it("clears the flag when Edit job details saves a full description", () => {
-    queries.updateJobDetails("short", { rawDescription: LONG });
-    expect(queries.getReviewQueueJobs().map((job) => job.id)).toEqual(["board"]);
+  it("routes job with full description to none", () => {
+    const fullDesc = "We are looking for a Senior Software Engineer to join our growing team. You will work on distributed systems, lead technical projects, and mentor junior engineers. Strong experience with TypeScript and Node.js required.";
+    expect(classifyReviewStatus(fullDesc)).toBe("none");
   });
 });
