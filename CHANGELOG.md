@@ -37,6 +37,9 @@ the numbers mean and when they change.
   when. The project's `PRIVACY.md` now lists every service the app can contact —
   job boards, Brave, Clay, Common Crawl, and the daily GitHub update check —
   instead of AI providers only, and mentions Ollama.
+- The screenshots in Help and the README now show the app as it is today —
+  seven Settings tabs, the provider priority list with Ollama, the Evidence
+  bank card on the Dashboard — using a made-up job seeker instead of real data.
 
 **Fixed**
 
