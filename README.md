@@ -258,6 +258,7 @@ Job Search Terminal is local-first.
 - The app does not use hosted cloud storage.
 - Data is sent to an AI provider only when you choose to run an AI action such as evaluation, resume generation, company research, transcription, or writing assistance. With Ollama, AI stays on your machine.
 - Scans send search words (your title keywords, target roles, and on-site locations) to the job boards they search. Optional services — Brave Search, Adzuna, Clay — receive only what their feature needs, and only once you add a key.
+- Typing in a location box sends what you typed to OpenStreetMap to suggest places.
 - Once a day the app asks GitHub whether a newer version exists. Set `JST_UPDATE_CHECK=off` to stop it.
 - You are responsible for reviewing your selected AI provider's data policies.
 

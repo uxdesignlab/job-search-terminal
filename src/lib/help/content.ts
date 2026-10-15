@@ -1373,6 +1373,7 @@ export const helpPages: HelpPage[] = [
           "To search job boards, a scan sends the words it is searching for: your include keywords or target roles to Himalayas, your target roles and on-site locations to Dice, and, if you set it up, your include keywords and on-site location to Adzuna. Nothing else from your profile, and nothing from your resume, is sent.",
           "When a scan finds a new Himalayas job, or you press Find posting, the app asks Greenhouse, Lever, and Ashby for that company's public list of jobs. The company's name is part of the web address it asks for. Nothing about you, your resume, or your profile is sent.",
           "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends one code identifying a version that is already published on GitHub — nothing about you, your jobs, or your resumes, and nothing you have written yourself.",
+          "When you type at least two letters into a location box under Preferences, the app looks the place up on OpenStreetMap so it can suggest matches. Only the letters you typed are sent.",
           "If you add a Brave Search key, three things use it. Search for companies sends fixed searches for company job boards, with nothing about you in them. Find posting sends the job title and company name. Preparing application answers can send the job title and location to look up typical pay for that role.",
           "If you connect Clay, it only receives something when you press a button on a job's Outreach tab. Find relevant people sends the company's website or LinkedIn page and the job titles to look for. Find email sends the chosen person's LinkedIn link. Clay never receives your resume, notes, the job description, or your answers.",
         ],
@@ -1642,9 +1643,9 @@ export const helpPages: HelpPage[] = [
         title: "A job stays in the review box on the Jobs page",
         bullets: [
           "The yellow box lists jobs the app could not read properly. Each row says why: Short or missing description, or Posting not found yet.",
-          "For a short description, open the job and press Fetch description, or paste the description under Edit job details. Once a full description is saved, the job leaves the box by itself.",
+          "For a short description, open the job, press Edit job details, and paste the full description from the job posting. Once a full description is saved, the job leaves the box by itself. (Fetch description only appears when no description is saved at all.)",
           "For Posting not found yet, open the job and use Find posting, or paste the employer's link and press Save URL. Adding a description alone does not clear this one.",
-          "If the job is fine as it is, press Keep. If you do not want it, press Archive. You can bring an archived job back from the Archived page.",
+          "If the job is fine as it is, press Keep. Keep also protects the job from Cleanup, the same as anything else you do to a job. If you do not want it, press Archive. You can bring an archived job back from the Archived page.",
         ],
       },
       {

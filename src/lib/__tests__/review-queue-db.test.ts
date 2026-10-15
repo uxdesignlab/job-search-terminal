@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
 let tempDir: string | null = null;
 let queries: typeof import("@/lib/db/queries");
 
@@ -71,6 +73,17 @@ describe("review queue", () => {
 
   it("clears the flag when Edit job details saves a full description", () => {
     queries.updateJobDetails("short", { rawDescription: LONG });
+    expect(queries.getReviewQueueJobs().map((job) => job.id)).toEqual(["board"]);
+  });
+
+  it("Keep protects the job from cleanup as well as clearing the flag", async () => {
+    const { approveReviewAction } = await import("@/app/jobs/actions");
+    const { getDatabase } = await import("@/lib/db/client");
+    const activity = () =>
+      (getDatabase().prepare("select user_activity_at as at from jobs where id = 'short'").get() as { at: string }).at;
+    expect(activity()).toBe("");
+    await approveReviewAction("short");
+    expect(activity()).not.toBe("");
     expect(queries.getReviewQueueJobs().map((job) => job.id)).toEqual(["board"]);
   });
 });
