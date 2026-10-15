@@ -47,8 +47,11 @@ components. The help registry stores serializable icon names, and
   organization-first outreach drafting and progress, and Clay's five-person
   contact-shortlist plan, readiness, privacy, allowance use, and recovery
 - Application tracking, statuses, kanban/table views, follow-ups, archive vs.
-  delete
-- Interview preparation with STAR stories and voice practice
+  delete, and the Archived page (restore, delete, delete all)
+- Analytics, the Evidence bank (answer a gap once, reused everywhere), Strategy
+  role directions, and AI prompt overrides
+- Interview preparation with STAR stories, voice practice, and the one-time
+  story-consolidation wizard
 - Privacy, local data, AI-provider data flow, local Ollama behavior, the footer
   version stamp and daily update check, backups, and safety boundaries
 - Troubleshooting for setup, AI, resume/PDF, scan quality, remote regions that
@@ -72,17 +75,23 @@ rewriting the help copy.
 
 ## Known Coverage Gaps
 
-Audited 2026-08-29 by grepping `src/lib/help/content.ts` for each app route and
-nav destination. These features ship to users and have **no help coverage at
-all** — a user who opens them has nowhere to look:
+Re-audited 2026-10-15 against every route in `src/app/*/page.tsx` and every nav
+item in `src/components/ui/shell.tsx`. The five features the 2026-08-29 audit
+found with **no help coverage at all** are now covered:
 
-| Feature | Route / location | Mentions in help |
+| Feature | Route / location | Where help covers it |
 |---|---|---|
-| Analytics | `/analytics`, primary nav | 0 |
-| Evidence bank | `/evidence`, reached from Analytics and Dashboard | 0 (the word "evidence" appears, the page does not) |
-| Strategy | `/strategy`, Account menu | 0 |
-| Archived jobs | `/archived` | 0 |
-| Email job-alert imports | Pending candidate approval flow | 0 |
+| Analytics | `/analytics`, primary nav | `insights` guide → `analytics` |
+| Evidence bank | `/evidence`, reached from Analytics and Dashboard | `insights` guide → `evidence-bank` |
+| Strategy (and AI Prompts tab) | `/strategy`, Account menu | `insights` guide → `strategy`, `ai-prompts` |
+| Archived jobs | `/archived`, linked from the Jobs header | `applications` guide → `archived-page` |
+| Email job-alert imports | Pending candidate approval flow | `job-search` guide → `email-alerts` |
+
+The same pass added the story-consolidation wizard (`/interview-prep/consolidate`)
+to `interview-prep` → `consolidate`, an `insights-empty` troubleshooting entry, and
+two privacy bullets that were missing from `privacy-data` → `what-leaves`: what
+Brave Search receives (company-discovery searches, Find posting, pay research
+during application preparation) and what Clay receives on the Outreach tab.
 
 The Himalayas remote board was on this list until 0.18.0, which added the
 `himalayas` section to the job-search guide (what it is, why its jobs link to
@@ -96,9 +105,9 @@ the resume builder, the keyword/taxonomy manager, story consolidation, and the
 interview plan. Clay contact search now explains its prerequisites and common
 failures, but the one-time email-enrichment routine setup is still thin.
 
-Analytics and the Evidence bank are the sharpest gaps — the Evidence bank is
-deliberately kept out of the primary nav, so help is the only place a user could
-learn it exists.
+The Evidence bank is deliberately kept out of the primary nav, so the `insights`
+guide is the main place a user learns it exists — keep its "how to reach it"
+sentence in step with the links on Analytics and the Dashboard.
 
 Separately from missing coverage, check covered guides for *staleness*: renamed
 controls, counts that drifted, and options that no longer exist. These cost less

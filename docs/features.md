@@ -11,7 +11,8 @@ The Shell header provides two navigation groups:
 
 **Primary nav** (always visible): Dashboard · Jobs · Applications · Interview Prep · Analytics · Resumes
 
-**Account dropdown** (hover on "Account"): Profile · Strategy · Settings
+**Account dropdown** (hover on "Account"): Profile · Strategy · Settings · Data & Backup
+(the last is a shortcut to `/settings?tab=data`)
 
 **Not in the nav:** the Evidence bank at `/evidence` is deliberately kept out of the
 primary nav. It is reached from the "Top gap patterns" card on Analytics and from the
@@ -2322,12 +2323,25 @@ The page has two tabs:
 
 Search performance metrics drawn from actual evaluation and application data.
 
-**Charts and metrics:**
-- Score-to-outcome correlation: do high-score jobs convert to interviews?
-- Archetype performance: which role types get the most responses.
-- Remote policy conversion: how remote / hybrid / onsite jobs track through the funnel.
-- Gap coverage: what percentage of evaluated gaps have been addressed.
-- Application funnel conversion rates.
+Computed on each request from local data only (`force-dynamic`, no AI call, nothing
+leaves the machine). Cards, top to bottom:
+
+- **Summary tiles** — Jobs tracked, Evaluated (with % of pipeline), Applied (with % of
+  evaluated), Interviews. "Applied" counts Applied, Follow-up needed, Recruiter
+  responded, Interviewing and Offer.
+- **Pipeline funnel** — `getFunnelStages()` counts per stage, bars scaled to total jobs;
+  empty stages are hidden.
+- **Score vs. outcome** — applications bucketed by fit score (80–100, 60–79, 40–59,
+  0–39) with total, applied, interviewing and rejected counts per band.
+- **Remote policy** — jobs whose `remoteType` matches Remote / Hybrid / On-site /
+  Flexible, with how many of each reached Applied or later.
+- **Archetype performance** — top eight role archetypes from evaluations by volume,
+  with average fit score and applied count.
+- **Top gap patterns** — see below.
+- **Recent evaluations** — the latest scored roles with score and recommendation.
+
+There is no reply-rate or response-rate metric: "Recruiter responded" is counted inside
+"Applied", not reported separately. Each card shows an empty state until it has data.
 
 **Top gap patterns** is read-only here. It lists the six most frequent gaps with their
 recurrence count and their bank status (`Answered` / `Needs detail`), then links to the
@@ -2537,8 +2551,15 @@ rejected, verified against a live account on 2026-08-18. Create a scoped key und
 **Profile → API keys (beta) → Add API key** with the Public API scope. Use Clay's copy
 control rather than selecting the displayed value, which is truncated with an ellipsis.
 
-> Contact search itself is not built yet. This phase establishes the credential and
-> connection plumbing only.
+Contact search is built and lives on the job's Outreach page — see **Finding people with
+Clay** under Outreach `/jobs/[id]/outreach`. The same tab also holds:
+
+- **Enrichment routine id (optional)** with **Save enrichment settings** — the Clay
+  routine that **Find email** runs for one chosen contact.
+- **Test connection** and **Disconnect**.
+- **Forgotten contacts** — people you chose to forget. Only a one-way fingerprint is kept,
+  enough to discard them if a later search returns them and not enough to reconstruct
+  who they were; **Clear forgotten list** empties it.
 
 ### Job Sources
 

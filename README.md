@@ -37,15 +37,27 @@ This project is free for non-commercial use because job seekers should not have 
 
 ## What it does
 
-- Discovers jobs from company career pages and supported ATS sources.
-- Imports job-alert email files from a local drop folder.
-- Scores each job against your profile using AI.
-- Generates tailored resumes for specific roles.
+- Discovers jobs from company job boards (Greenhouse, Lever, Ashby), plus Dice and
+  the Himalayas remote board on every scan, and Adzuna if you add a free key.
+- Works with Claude or Codex to bring in jobs from LinkedIn, Wellfound, Work at a
+  Startup, Glassdoor, Indeed, and Monster through your own logged-in browser.
+- Imports job-alert email files from a local drop folder, for you to approve.
+- Checks whether a posting is still live, and clears untouched old jobs without
+  losing anything you worked on.
+- Scores each job against your profile using AI, with the gaps and red flags it found.
+- Collects those gaps in an Evidence bank, so you answer each one once and every
+  later resume reuses it.
+- Generates tailored resumes for specific roles, with keyword and recruiter checks.
 - Drafts application answers for manual copy-paste.
-- Tracks applications through a full funnel.
+- Researches the company and drafts outreach; optionally finds the right people
+  with your own Clay account. It never sends anything.
+- Tracks applications through a full funnel, as a table or a drag-and-drop board.
+- Shows analytics on where your effort goes, and a role-fit strategy map.
 - Helps prepare for interviews with STAR stories and voice practice.
 - Supports multiple resume lanes for different career directions.
-- Keeps your data in a local SQLite database on your machine.
+- Keeps your data in a local SQLite database on your machine, with password-protected
+  backups.
+- Includes an in-app help site at `/help`, written for job seekers rather than developers.
 
 The app never submits applications for you. You stay in control.
 
@@ -105,11 +117,15 @@ Open:
 http://localhost:3000
 ```
 
-Then follow the 3-step setup wizard:
+Then follow the setup wizard. Four steps are required, one is optional:
 
 1. Add an AI provider (cloud API key or local Ollama — see below).
-2. Upload your resume.
-3. Scan for jobs.
+2. Upload your resume (one per career direction, called a lane).
+3. Choose the roles and title keywords you are searching for.
+4. Say where you will work — remote regions and on-site or hybrid places.
+5. *(Optional)* Add free Brave Search and Adzuna keys to find more jobs.
+
+Then run your first scan from the Dashboard.
 
 Full setup guide: [docs/getting-started.md](docs/getting-started.md)
 
@@ -240,7 +256,9 @@ Job Search Terminal is local-first.
 - Your job data, resumes, applications, generated documents, and profile data are stored in a local SQLite database.
 - The app does not require an account.
 - The app does not use hosted cloud storage.
-- Data is sent to an AI provider only when you choose to run an AI action such as evaluation, resume generation, company research, transcription, or writing assistance.
+- Data is sent to an AI provider only when you choose to run an AI action such as evaluation, resume generation, company research, transcription, or writing assistance. With Ollama, AI stays on your machine.
+- Scans send search words (your title keywords, target roles, and on-site locations) to the job boards they search. Optional services — Brave Search, Adzuna, Clay — receive only what their feature needs, and only once you add a key.
+- Once a day the app asks GitHub whether a newer version exists. Set `JST_UPDATE_CHECK=off` to stop it.
 - You are responsible for reviewing your selected AI provider's data policies.
 
 See [PRIVACY.md](PRIVACY.md) for details.

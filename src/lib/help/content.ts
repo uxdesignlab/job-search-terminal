@@ -706,7 +706,7 @@ export const helpPages: HelpPage[] = [
           "Save the email from your mail program, then put the file into the `data/email-job-alert-imports/` folder inside the app\'s folder while the app is running. It accepts `.eml`, `.html`, and `.txt` files.",
           "The app reads the file and lists what it found, but adds nothing yet. You approve each one, or dismiss it.",
           "Anything you do not act on stays waiting. Nothing is added behind your back.",
-          "Alert emails often link back to the job board rather than the employer. Open the job and press Resolve posting to go looking for the real posting.",
+          "Alert emails often link back to the job board rather than the employer. Open the job and, in the Resolve posting box, press Find posting to look for the real one — or paste the link yourself and press Save URL.",
           "The app never connects to your mailbox. It only reads files you put in that folder yourself.",
         ],
       },
@@ -1047,7 +1047,7 @@ export const helpPages: HelpPage[] = [
         ],
       },
     ],
-    related: ["resume-lanes", "applications", "interview-prep"],
+    related: ["resume-lanes", "applications", "insights"],
   },
   {
     slug: "applications",
@@ -1104,8 +1104,123 @@ export const helpPages: HelpPage[] = [
           "Delete removes the job and everything attached to it — your notes, the resumes you generated for it, and its history. It cannot be undone, so use it only for genuine mistakes and duplicates.",
         ],
       },
+      {
+        id: "archived-page",
+        title: "Find and restore archived jobs",
+        intro:
+          "The Archived page holds every job you skipped, archived yourself, or cleared with Cleanup. Nothing on it is gone — it is just out of your way.",
+        bullets: [
+          "Open it with the Archived link at the top of the Jobs page.",
+          "Restore puts a job back in Jobs. A restored job is also protected, so Cleanup will not clear it again.",
+          "Delete on a single row removes that job for good, with its notes and generated resumes.",
+          "Delete all archived empties the whole page at once. It cannot be undone, so only use it when you are sure none of those jobs matter any more.",
+        ],
+      },
     ],
-    related: ["job-search", "evaluate-tailor", "privacy-data"],
+    related: ["job-search", "insights", "privacy-data"],
+  },
+  {
+    slug: "insights",
+    title: "Learn from your search: Analytics, the Evidence bank, and Strategy",
+    shortTitle: "Analytics and strategy",
+    description: "See which jobs you actually apply to, answer the gaps employers keep raising once, and decide which kinds of role are worth your time.",
+    category: "Track",
+    readTime: "7 min",
+    icon: "search",
+    highlights: [
+      "Analytics counts what you have done — jobs scored, applications sent, interviews — so you can see where your effort goes.",
+      "The Evidence bank collects every gap the job scores raised. Answer a gap once and the app reuses that answer for every resume after.",
+      "Strategy sorts kinds of role into Direct, Adjacent, Selective, and Avoid, so you know where to spend your energy.",
+    ],
+    sections: [
+      {
+        id: "analytics",
+        title: "Read the Analytics page",
+        intro:
+          "Analytics is in the top menu. It is built only from what is already in your app — jobs, scores, and application statuses. It sends nothing anywhere and costs nothing to open.",
+        bullets: [
+          "The four numbers at the top show how many jobs you are tracking, how many you have scored, how many you applied to, and how many reached an interview.",
+          "Pipeline funnel shows how many jobs sit at each stage, from found to offer.",
+          "Score vs. outcome groups your applications by fit score. If you keep applying to low scores, this is where you will see it.",
+          "Remote policy shows how many remote, hybrid, and on-site jobs you found, and how many of each you applied to.",
+          "Archetype performance lists the kinds of role your scores found most often, with an average score for each.",
+          "Top gap patterns lists the six gaps that came up most often across your scored jobs, and links to the Evidence bank to answer them.",
+          "Recent evaluations links back to the jobs you scored most recently.",
+        ],
+        callout: {
+          title: "An empty page is normal at first",
+          body: "Each card needs data to show anything. Score a few jobs and move a few to Applied, and the cards fill in. Analytics only counts statuses you set, so it is only as accurate as your Applications page.",
+        },
+      },
+      {
+        id: "evidence-bank",
+        title: "Answer gaps once in the Evidence bank",
+        intro:
+          "When the app scores a job, it lists gaps — things the posting asks for that your resume does not show. Many jobs raise the same gap. The Evidence bank is where you answer it once. It is not in the top menu: open it from Top gap patterns on Analytics, or from Evidence gaps to finish on the Dashboard.",
+        steps: [
+          {
+            title: "Start with Needs work",
+            body: "The list opens on Needs work. It shows answers you started but did not finish, plus gaps that two or more jobs raised. A gap only one job raised is easier to answer on that job's page. Use Answered or Every gap to see the rest.",
+          },
+          {
+            title: "Open a gap",
+            body: "Press Answer, Add detail, or Edit on the row. The gap is restated as a plain question, with at most two things the app still needs to know.",
+          },
+          {
+            title: "Write it, or ask for a draft",
+            body: "Type what you actually did. Draft with AI suggests a starting answer built only from your resume and gaps you already answered. If your experience does not cover the gap, it says so and lists what you would need to add, instead of making something up. Use this draft puts it in the box; nothing is saved yet.",
+          },
+          {
+            title: "Check every claim, then save",
+            body: "Polish wording tidies the text without adding facts. Save to profile checks whether the answer is detailed enough. A complete answer is marked Answered. A thin one stays as Needs detail, with a follow-up question.",
+          },
+        ],
+        bullets: [
+          "Only answers marked Answered are used when the app writes a resume. Needs detail answers wait here until you finish them.",
+          "Clear everywhere deletes an answer. There is only one copy, so it disappears from every job that raised that gap.",
+          "Draft with AI and Save to profile use your AI service, so they send your resume text and the gap to it — unless Ollama is doing the work.",
+        ],
+      },
+      {
+        id: "strategy",
+        title: "Decide where to aim with Strategy",
+        intro:
+          "Strategy is under Account → Strategy. It groups the kinds of role you could go for, based on your profile and skills.",
+        steps: [
+          {
+            title: "Generate your map",
+            body: "Press Generate with AI. The app reads your profile and skills and writes a list of role directions. This uses your AI service. Press Regenerate with AI later to rebuild the list after your profile changes. Regenerating replaces the current list, including your edits.",
+          },
+          {
+            title: "Read each direction",
+            body: "Each one has a fit level, a score, the reasoning, and Gaps to address.",
+          },
+          {
+            title: "Correct anything that is wrong",
+            body: "Open Edit this direction to change the fit level, score, reasoning, or gaps, then press Save. You know your career better than the AI does.",
+          },
+        ],
+        bullets: [
+          "Direct: apply to strong matches, tailor a resume, and put most of your effort here.",
+          "Adjacent: apply when the posting leans on strengths that carry over, and explain the link carefully.",
+          "Selective: apply only to very high scores, and look into the team first.",
+          "Avoid: skip by default, unless you know the hiring manager or have a strong referral.",
+          "Evaluation corrections lists every job score you changed by hand, so you can check whether your map still matches what you believe.",
+        ],
+      },
+      {
+        id: "ai-prompts",
+        title: "Change how the AI writes",
+        intro:
+          "Account → Strategy → AI Prompts holds the instructions the app gives the AI when it tailors a resume, drafts application answers, and drafts outreach. You can rewrite them and press Save prompt.",
+        bullets: [
+          "An edited prompt is marked Custom and saved on your computer. Reset to default puts the original wording back.",
+          "Some safety rules cannot be edited away. The app still refuses to invent experience on a resume, and outreach still focuses on how you can help the organization.",
+          "If results get worse after an edit, reset the prompt before trying anything else.",
+        ],
+      },
+    ],
+    related: ["applications", "evaluate-tailor", "interview-prep"],
   },
   {
     slug: "interview-prep",
@@ -1177,6 +1292,34 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "consolidate",
+        title: "Tidy up old auto-generated story suggestions",
+        intro:
+          "Older versions of the app added a suggested story every time it scored a job. Those suggestions are mostly the same few experiences, reworded. If your Story bank still has them, it shows a banner with a Consolidate button.",
+        steps: [
+          {
+            title: "Open Consolidate stories",
+            body: "Press Consolidate on the Story bank banner, or the to consolidate link at the top of Interview Prep.",
+          },
+          {
+            title: "Press Analyze suggestions",
+            body: "Your AI service groups the near-copies and writes one clean story for each group. This can take a minute.",
+          },
+          {
+            title: "Review each proposed story",
+            body: "Edit the title, the STAR parts, and the tags. Each proposal lists the suggestions it was built from. Untick any you do not want.",
+          },
+          {
+            title: "Commit",
+            body: "Press Commit to save the stories you kept. Nothing changes in your bank until you do. The merged suggestions are removed, and their links to jobs move to the new stories.",
+          },
+        ],
+        callout: {
+          title: "You can stop halfway",
+          body: "If you leave before committing, the review is kept and waits for you next time. A new install never shows this banner — it only appears when old suggestions exist.",
+        },
+      },
+      {
         id: "use-in-interviews",
         title: "Use stories during interviews",
         bullets: [
@@ -1229,6 +1372,8 @@ export const helpPages: HelpPage[] = [
           "To search job boards, a scan sends the words it is searching for: your include keywords or target roles to Himalayas, your target roles and on-site locations to Dice, and, if you set it up, your include keywords and on-site location to Adzuna. Nothing else from your profile, and nothing from your resume, is sent.",
           "When a scan finds a new Himalayas job, or you press Find posting, the app asks Greenhouse, Lever, and Ashby for that company's public list of jobs. The company's name is part of the web address it asks for. Nothing about you, your resume, or your profile is sent.",
           "Once a day the app asks GitHub whether a newer version of Job Search Terminal exists. It sends one code identifying a version that is already published on GitHub — nothing about you, your jobs, or your resumes, and nothing you have written yourself.",
+          "If you add a Brave Search key, three things use it. Search for companies sends fixed searches for company job boards, with nothing about you in them. Find posting sends the job title and company name. Preparing application answers can send the job title and location to look up typical pay for that role.",
+          "If you connect Clay, it only receives something when you press a button on a job's Outreach tab. Find relevant people sends the company's website or LinkedIn page and the job titles to look for. Find email sends the chosen person's LinkedIn link. Clay never receives your resume, notes, the job description, or your answers.",
         ],
         callout: {
           title: "Fully private with Ollama",
@@ -1489,6 +1634,16 @@ export const helpPages: HelpPage[] = [
           "The app treats a link with and without a slash at the end as the same posting. Adding or removing that slash will not get around the message, and it should not — you would end up with two copies of one job.",
           "Press Open the other job in the message to see the copy you already have. Keep whichever has the better description or the further-along status, and archive the other one.",
           "Your other changes in the form were not saved. Put the old link back, or leave the link box as it was, and save again to keep them.",
+        ],
+      },
+      {
+        id: "insights-empty",
+        title: "Analytics, Strategy, or the Evidence bank shows nothing",
+        bullets: [
+          "Analytics only counts jobs you have scored and statuses you have set. Score a few jobs, and move the ones you applied to into Applied on the Applications page.",
+          "The Evidence bank fills from job scores. If it says No gaps identified yet, score a job first. If Needs work is empty but you have gaps, open Every gap — gaps only one job raised are hidden from Needs work.",
+          "Strategy stays empty until you press Generate with AI. It needs a working AI service and a profile with your skills filled in.",
+          "If Generate with AI fails, open Account → Settings → AI Provider and test your service, then try again.",
         ],
       },
       {
