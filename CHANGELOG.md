@@ -43,6 +43,12 @@ the numbers mean and when they change.
 
 **Fixed**
 
+- The "jobs need review" box on the Jobs page could never be cleared. It now
+  opens into a list of those jobs, each with the reason it is there and two
+  buttons: **Keep** if the job is fine as it is, and **Archive** to move it out of
+  the way. Saving a full description also takes a job off the list by itself.
+  Jobs already flagged show up in the list straight away; there is nothing to
+  re-scan.
 - Help told you to press **Resolve posting** on jobs from alert emails. That is
   the box's name; the button is **Find posting**, or paste the link and press
   **Save URL**.

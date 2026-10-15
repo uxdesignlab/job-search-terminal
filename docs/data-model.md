@@ -221,7 +221,7 @@ Every job discovered by scanning or added manually.
 | `cleanup_archive_reason` | `closed` or `old_unverified` when cleanup archived the job, `''` for a manual archive (migration `0069`). Drives the archive-status badge on `/archived` |
 | `scope_status` | Legacy maintenance label (migration `0029`), formerly `out_of_scope` when a verified active posting no longer matched saved title filters. **No longer written** — the out-of-scope shortcut was removed with the 0.17.0 cleanup rewrite, and its writer was deleted in 0.17.2. Existing values are retained and still read into `JobRecord.scopeStatus`, but nothing sets or displays them |
 | `archived` | 0 = active, 1 = archived |
-| `review_status` | `none` (default) or `pending_review` — set to `pending_review` by the importer when a job's raw description is under 100 characters (low-confidence import); cleared to `none` when the user approves the job from the review queue banner |
+| `review_status` | `none` (default) or `pending_review` — set to `pending_review` by the importer when a job's raw description is under 100 characters (low-confidence import), or when a board/email lead still needs its posting resolved; cleared to `none` by **Keep** in the Jobs page review queue, by posting resolution, or automatically when a description of 100+ characters is saved while `posting_resolution_status` is not `needs_resolution`. Read by `getReviewQueueJobs()` / `getReviewQueueCount()` |
 | `posting_resolution_status` | `resolved` (default) or `needs_resolution` for email leads that do not yet have a real posting URL |
 | `posting_search_query` | Saved company/title/location query used by on-demand posting resolution |
 | `created_at` | ISO timestamp |

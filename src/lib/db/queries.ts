@@ -543,9 +543,24 @@ export function updateJobStatus(id: string, status: string) {
   }
 }
 
+/**
+ * A job joins the review queue for a short or missing description
+ * (REVIEW_MIN_DESCRIPTION_CHARS) or an unresolved board-only posting. Saving a
+ * real description answers the first reason, so it clears the flag — unless the
+ * posting itself still needs resolving, which only Find posting can answer.
+ */
+export const REVIEW_MIN_DESCRIPTION_CHARS = 100;
+const CLEAR_REVIEW_ON_DESCRIPTION = `review_status = case
+  when length(trim(@rawDescription)) >= ${REVIEW_MIN_DESCRIPTION_CHARS}
+   and coalesce(posting_resolution_status, '') <> 'needs_resolution'
+  then 'none' else review_status end`;
+
 export function saveJobDescription(id: string, rawDescription: string) {
   getDatabase()
-    .prepare("update jobs set raw_description = @rawDescription, parsed_description = @rawDescription where id = @id")
+    .prepare(
+      `update jobs set raw_description = @rawDescription, parsed_description = @rawDescription,
+        ${CLEAR_REVIEW_ON_DESCRIPTION} where id = @id`
+    )
     .run({ id, rawDescription });
 }
 
@@ -599,7 +614,7 @@ export function updateJobDetails(
   if (fields.company !== undefined) { sets.push("company = @company"); params.company = fields.company; }
   if (fields.url !== undefined) { sets.push("url = @url"); params.url = fields.url; }
   if (fields.rawDescription !== undefined) {
-    sets.push("raw_description = @rawDescription, parsed_description = @rawDescription");
+    sets.push("raw_description = @rawDescription, parsed_description = @rawDescription", CLEAR_REVIEW_ON_DESCRIPTION);
     params.rawDescription = fields.rawDescription;
   }
   getDatabase().prepare(`update jobs set ${sets.join(", ")} where id = @id`).run(params);
@@ -5713,6 +5728,33 @@ export function setJobReviewStatus(id: string, status: "none" | "pending_review"
   getDatabase()
     .prepare("update jobs set review_status = @status where id = @id")
     .run({ id, status });
+}
+
+export type ReviewQueueJob = {
+  id: string;
+  company: string;
+  title: string;
+  /** Why it is in the queue, in the words the Jobs page shows. */
+  reason: "Posting not found yet" | "Short or missing description";
+};
+
+/** Active jobs waiting in the review queue, newest first. */
+export function getReviewQueueJobs(): ReviewQueueJob[] {
+  const rows = getDatabase()
+    .prepare(
+      `select id, coalesce(company, '') as company, coalesce(title, '') as title,
+              coalesce(posting_resolution_status, '') as postingResolutionStatus
+         from jobs
+        where review_status = 'pending_review' and archived = 0
+        order by first_seen_date desc, id`
+    )
+    .all() as Array<{ id: string; company: string; title: string; postingResolutionStatus: string }>;
+  return rows.map((row) => ({
+    id: row.id,
+    company: row.company,
+    title: row.title,
+    reason: row.postingResolutionStatus === "needs_resolution" ? "Posting not found yet" : "Short or missing description",
+  }));
 }
 
 export function getReviewQueueCount(): number {

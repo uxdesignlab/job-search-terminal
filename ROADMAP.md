@@ -21,16 +21,15 @@ Add a hybrid fresh-job discovery lane modeled on the Google searches at
 > four items done. The current code has no unattended Brave job scan: Brave
 > Search is used only for **Search for companies**, **Find posting**, and pay
 > research during application preparation. The low-confidence review banner on
-> the Jobs page exists, but its Approve / Dismiss controls are not wired to any
-> UI (see `docs/features.md` → Jobs → Review queue banner). The items below are
-> therefore still open.
+> the Jobs page gained working **Keep** / **Archive** controls in 0.19.1. The
+> remaining items below are still open.
 
 - Run unattended Brave Search scans for jobs indexed in the past 24 hours.
 - Start with Greenhouse, Lever, Ashby, Workday, and jobs/careers subdomains.
 - Route confidently parsed jobs through the existing local import, freshness,
   dedupe, notification, and liveness pipeline.
-- Let low-confidence imports (missing/short description) be approved or
-  dismissed from the Jobs page — the banner exists; the controls do not.
+- ✅ Low-confidence imports (missing/short description) can be kept or
+  archived from the review queue on the Jobs page (0.19.1).
 - Add an agent-assisted Chrome workflow for exact Google 12-hour searches (partial — documented in CLAUDE.md).
 - Preserve the local-first boundary: never auto-apply, click Apply, or send job
   data anywhere except the configured search API and local dashboard.

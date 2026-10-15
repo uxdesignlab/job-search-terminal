@@ -892,6 +892,7 @@ export const helpPages: HelpPage[] = [
         title: "Duplicates and imported jobs",
         bullets: [
           "Imported jobs arrive marked Found and Needs review, the same as anything a scan turned up. Nothing is scored until you ask for it.",
+          "If the app could not read a job properly — the description is very short or missing, or it has not found the employer's own posting yet — it is listed in a yellow box at the top of Jobs. Press Review jobs to see the list. Open a job to add the missing detail, press Keep if it is fine as it is, or press Archive to move it out of the way.",
           "LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster badges identify imported jobs in the Jobs table.",
           "A Duplicate badge appears when the original posting key, URL, or company plus title and location matches an existing record.",
           "Duplicate jobs are not silently dropped; they stay visible so you can review them.",
@@ -1634,6 +1635,16 @@ export const helpPages: HelpPage[] = [
           "The app treats a link with and without a slash at the end as the same posting. Adding or removing that slash will not get around the message, and it should not — you would end up with two copies of one job.",
           "Press Open the other job in the message to see the copy you already have. Keep whichever has the better description or the further-along status, and archive the other one.",
           "Your other changes in the form were not saved. Put the old link back, or leave the link box as it was, and save again to keep them.",
+        ],
+      },
+      {
+        id: "review-box",
+        title: "A job stays in the review box on the Jobs page",
+        bullets: [
+          "The yellow box lists jobs the app could not read properly. Each row says why: Short or missing description, or Posting not found yet.",
+          "For a short description, open the job and press Fetch description, or paste the description under Edit job details. Once a full description is saved, the job leaves the box by itself.",
+          "For Posting not found yet, open the job and use Find posting, or paste the employer's link and press Save URL. Adding a description alone does not clear this one.",
+          "If the job is fine as it is, press Keep. If you do not want it, press Archive. You can bring an archived job back from the Archived page.",
         ],
       },
       {

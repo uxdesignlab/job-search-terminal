@@ -626,47 +626,23 @@ status, posting maintenance, and bulk tools.
 - **Saved filter presets** — name and save up to 5 filter+sort combinations as
   reusable chips above the table. Presets are persisted to the database and
   survive page reloads. Click a chip to re-apply; click × to delete.
-- **Review queue banner** — when low-confidence imports are present (jobs with a
-  description under 100 characters), a yellow banner appears at the top of the
-  Jobs page showing the count of jobs pending review. The banner auto-hides when
-  the queue is empty. It is informational: the per-row Review column with
-  **Approve** / **Dismiss** buttons was removed to keep the table inside the page
-  width. `approveReviewAction` and `dismissReviewAction` remain in
-  `src/app/jobs/actions.ts` but are not currently wired to any UI, so
-  `review_status` is not clearable from the Jobs table.
-
----
-
-## Job Detail `/jobs/[id]`
-
-Tabbed view for a single job. Five tabs — Overview, Evaluation, Resume, Apply and
-Outreach:
-
-### Header company link
-
-The company name in the page header (`{company} · {location} · {remoteType}`) is a
-link to the Jobs list focused on that company, when there is anything there beyond
-the job already open. The rules live in
-[`src/lib/jobs/company-link.ts`](../src/lib/jobs/company-link.ts) and are driven by
-`getCompanyJobStats(company)`, which counts non-archived `jobs` rows for that exact
-company name:
-
-| Company state | Header renders |
-|---|---|
-| Applied to one or more positions (`applied > 0`) | Link with the applied count — `Reddit (2)` |
-| More than one active position, none applied to (`total > 1`, `applied === 0`) | Link, no count |
-| A single active position, never applied to | Plain text, no link |
-
-`applied` counts the statuses in `APPLIED_JOB_STATUSES` — `Applied`,
-`Follow-up needed`, `Recruiter responded`, `Interviewing`, `Offer`, and `Rejected`.
-Everything after `Applied` can only be reached by having applied, so all of them
-count as an application at that company; `Skipped` and `Archived` do not.
-
-The link is `/jobs?company=<encoded name>`. Counting and matching are exact on
-`jobs.company`, matching the Jobs table's own company filter, and archived jobs are
-excluded so the count always equals what the focused list shows.
-
-### Overview tab
+- **Review queue** (`ReviewQueuePanel`, `src/components/review-queue-panel.tsx`) — when
+  active jobs carry `review_status = 'pending_review'` (an import whose description is
+  under `REVIEW_MIN_DESCRIPTION_CHARS` = 100 characters, or a board-only posting with
+  `posting_resolution_status = 'needs_resolution'`), a collapsed yellow panel appears
+  above the table: "N jobs need review — the app could not fully read them", with
+  **Review jobs** / **Hide**. Expanded, it lists each job (`getReviewQueueJobs()`,
+  newest first) with its reason — *Short or missing description* or *Posting not found
+  yet* — a link to open it, and two buttons: **Keep** (`approveReviewAction`, clears the
+  flag) and **Archive** (`dismissReviewAction`, archives the job; restorable from
+  Archived). The panel disappears when the queue is empty.
+  Saving a description of 100+ characters — **Fetch description**, the job page, or
+  **Edit job details** (`saveJobDescription` / `updateJobDetails`) — clears the flag
+  automatically, except while the posting still `needs_resolution`; that reason is
+  cleared only by resolving the posting (Find posting / Save URL) or by **Keep**.
+  Before 0.19.1 the banner was informational only: the actions existed but nothing
+  called them, and adding a description did not clear the flag, so the count could
+  never go down.
 - Company, title, location, remote type, ATS source, freshness.
 - Fit score, recommendation badge, role archetype.
 - Match rationale, main concern, salary notes.
