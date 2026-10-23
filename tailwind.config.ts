@@ -20,7 +20,11 @@ const config: Config = {
         accent: "rgb(var(--color-accent) / <alpha-value>)",
         success: "rgb(var(--color-success) / <alpha-value>)",
         warning: "rgb(var(--color-warning) / <alpha-value>)",
-        danger: "rgb(var(--color-danger) / <alpha-value>)"
+        danger: "rgb(var(--color-danger) / <alpha-value>)",
+        // Text on the tone's own 10% tint only (`text-success-on-tint` over `bg-success/10`).
+        "success-on-tint": "rgb(var(--color-success-on-tint) / <alpha-value>)",
+        "warning-on-tint": "rgb(var(--color-warning-on-tint) / <alpha-value>)",
+        "danger-on-tint": "rgb(var(--color-danger-on-tint) / <alpha-value>)"
       },
       borderRadius: {
         control: "var(--radius-control)",

@@ -39,6 +39,9 @@ values or arbitrary Tailwind numbers.
 | Success | `--color-success` | `17 129 59` | `text-success`, `bg-success` | Positive status |
 | Warning | `--color-warning` | `152 104 3` | `text-warning`, `bg-warning` | Caution status |
 | Danger | `--color-danger` | `220 38 38` | `text-danger`, `bg-danger` | Error / destructive |
+| Success on tint | `--color-success-on-tint` | `16 120 55` | `text-success-on-tint` | Text on `bg-success/10` (tinted Badge, "Saved" button) |
+| Warning on tint | `--color-warning-on-tint` | `139 95 3` | `text-warning-on-tint` | Text on `bg-warning/10` (tinted Badge) |
+| Danger on tint | `--color-danger-on-tint` | `200 32 32` | `text-danger-on-tint` | Text on `bg-danger/10` (tinted Badge) |
 
 Accent is UX Design Lab's brand accent `#c34527` (`195 69 39`), set on
 2026-10-23; it passes WCAG 2.2 AA on both `panel` and `surface`. Success and
@@ -61,16 +64,26 @@ normal text and 3:1 for control boundaries and focus indicators (1.4.3, 1.4.11).
 | `text-warning` | 4.87:1 | 4.54:1 | 2.94:1 | 4.5:1 text |
 | `text-danger` | 4.83:1 | 4.51:1 | unchanged | 4.5:1 text |
 | `text-muted` | 5.63:1 | 5.26:1 | unchanged | 4.5:1 text |
+| `text-success-on-tint` on `bg-success/10` | 4.86:1 | 4.56:1 | 4.33:1 (`text-success`) | 4.5:1 text |
+| `text-warning-on-tint` on `bg-warning/10` | 4.95:1 | 4.64:1 | 4.28:1 (`text-warning`) | 4.5:1 text |
+| `text-danger-on-tint` on `bg-danger/10` | 4.88:1 | 4.56:1 | 4.13:1 (`text-danger`) | 4.5:1 text |
 | `border-control` | 3.24:1 | 3.03:1 | 1.26:1 (`border-border`) | 3:1 boundary |
 | Focus outline (solid accent) | 5.00:1 | 4.66:1 | ~1.3:1 (20% alpha ring) | 3:1 indicator |
 | `border-border` (decorative) | 1.26:1 | 1.18:1 | unchanged | none — never a control's only boundary |
 
-**Known gap (not yet fixed).** Tinted Badges put the tone's text on its own 10%
-tint, which lowers contrast below 4.5:1: success 4.33:1, warning 4.28:1, danger
-4.13:1 over `panel`, and about 0.3 lower over `surface`. The `SubmitButton`
-"Saved" state has the same success-on-tint pairing (4.33:1). Fixing this needs a
-design decision (a darker text shade for tinted backgrounds, or a lighter tint)
-and has not been made yet.
+Tinted rows are measured on the 10% tint as the browser renders it over that
+background (for example success over panel is `231 242 235`).
+
+**Tinted backgrounds use on-tint text.** A tone's text on its own 10% tint fell
+below 4.5:1 (success 4.33:1, warning 4.28:1, danger 4.13:1 over `panel`, about
+0.27 lower over `surface`). The primary `SubmitButton` "Saved" state was worse:
+it added its success classes on top of the primary variant, and because `cn`
+does not merge classes, `text-white` won by CSS order and rendered white on the
+pale tint. It now replaces the primary variant while "Saved" shows.
+
+On 2026-10-23 the project owner chose darker on-tint text tokens over untinted
+badges, because a lighter tint only passes at 0–2% alpha. Tinted Badges and the
+"Saved" state now use `text-*-on-tint`. Networking Agents uses the same values.
 
 **Semantic color rules:**
 - `surface` — only for the outermost page background.
@@ -80,8 +93,12 @@ and has not been made yet.
   dividers and card edges; it is too light (1.26:1) to be the sole boundary of a
   control.
 - Never use raw Tailwind `gray-*` values; always use the token utilities.
-- Tinted Badge backgrounds are expressed as `bg-success/10`, `bg-warning/10`,
-  `bg-danger/10` with matching `border-*` and `text-*` at matching opacity.
+- Tinted backgrounds are `bg-success/10`, `bg-warning/10`, `bg-danger/10` with
+  a matching `border-*/35` and **on-tint text**: `text-success-on-tint`,
+  `text-warning-on-tint`, `text-danger-on-tint`. Never put plain `text-success`,
+  `text-warning`, or `text-danger` on its own tint; it fails 4.5:1. The on-tint
+  tokens are measured for 10% tints only; a stronger tint needs its own
+  measurement.
 
 ### Typography
 
@@ -214,9 +231,9 @@ Three exports: `Button` (native `<button>`), `LinkButton` (Next.js `<Link>`),
 | Tone | Background / Border / Text | Usage |
 |---|---|---|
 | `neutral` (default) | `bg-surface / border-border / text-ink` | Default labels, counts |
-| `success` | `bg-success/10 / border-success/35 / text-success` | Applied, offer, positive |
-| `warning` | `bg-warning/10 / border-warning/35 / text-warning` | Follow-up needed, caution |
-| `danger` | `bg-danger/10 / border-danger/35 / text-danger` | Rejected, red flags, errors |
+| `success` | `bg-success/10 / border-success/35 / text-success-on-tint` | Applied, offer, positive |
+| `warning` | `bg-warning/10 / border-warning/35 / text-warning-on-tint` | Follow-up needed, caution |
+| `danger` | `bg-danger/10 / border-danger/35 / text-danger-on-tint` | Rejected, red flags, errors |
 
 **Base styles:** `min-h-7`, `rounded-control`, `px-2.5`, `text-xs font-medium`.
 

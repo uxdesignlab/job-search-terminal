@@ -21,6 +21,11 @@
   --color-warning: 152 104 3; /* 4.87:1 / 4.54:1 */
   --color-danger: 220 38 38;
 
+  /* Text on a tone's own 10% tint (tinted badges, "Saved" button) — on tint over panel / surface */
+  --color-success-on-tint: 16 120 55; /* 4.86:1 / 4.56:1 */
+  --color-warning-on-tint: 139 95 3; /* 4.95:1 / 4.64:1 */
+  --color-danger-on-tint: 200 32 32; /* 4.88:1 / 4.56:1 */
+
   /* Spacing */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
