@@ -53,7 +53,7 @@ export function SearchableMultiSelect({ label, placeholder = "Search…", option
     <div className="relative" ref={ref}>
       <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</span>
       <button
-        className="mt-1 flex min-h-10 w-full min-w-0 items-center justify-between rounded-control border border-border bg-panel px-3 text-left text-sm text-ink"
+        className="mt-1 flex min-h-10 w-full min-w-0 items-center justify-between rounded-control border border-control bg-panel px-3 text-left text-sm text-ink"
         onClick={() => setOpen((prev) => !prev)}
         type="button"
       >
@@ -67,7 +67,7 @@ export function SearchableMultiSelect({ label, placeholder = "Search…", option
         <div className="absolute z-20 mt-1 w-full min-w-[14rem] rounded-control border border-border bg-panel p-2 shadow-lg">
           <input
             autoFocus
-            className="mb-2 w-full rounded border border-border bg-surface px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+            className="mb-2 w-full rounded border border-control bg-surface px-2 py-1.5 text-xs text-ink"
             onChange={(event) => setSearch(event.target.value)}
             placeholder={placeholder}
             type="text"

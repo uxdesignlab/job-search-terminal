@@ -14,6 +14,9 @@ const config: Config = {
         ink: "rgb(var(--color-ink) / <alpha-value>)",
         muted: "rgb(var(--color-muted) / <alpha-value>)",
         border: "rgb(var(--color-border) / <alpha-value>)",
+        // Use as `border-control` only: boundaries of inputs and other controls. Kept in
+        // `colors` next to `border` so a caller's `border-accent` / `border-danger` still wins.
+        control: "rgb(var(--color-border-control) / <alpha-value>)",
         accent: "rgb(var(--color-accent) / <alpha-value>)",
         success: "rgb(var(--color-success) / <alpha-value>)",
         warning: "rgb(var(--color-warning) / <alpha-value>)",
@@ -22,9 +25,6 @@ const config: Config = {
       borderRadius: {
         control: "var(--radius-control)",
         panel: "var(--radius-panel)"
-      },
-      boxShadow: {
-        focus: "var(--shadow-focus)"
       },
       fontFamily: {
         sans: ["var(--font-sans)", "Arial", "sans-serif"]

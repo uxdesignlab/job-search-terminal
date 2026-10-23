@@ -59,7 +59,7 @@ export function ProgressModal({
           {isDone && (
             <button
               aria-label="Close"
-              className="shrink-0 rounded-control p-1 text-muted hover:bg-surface hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="shrink-0 rounded-control p-1 text-muted hover:bg-surface hover:text-ink"
               onClick={onClose}
               type="button"
             >

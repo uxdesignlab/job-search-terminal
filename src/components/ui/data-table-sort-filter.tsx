@@ -219,7 +219,7 @@ export function DataTableSortFilterDropdown({
         {options.length > 7 && (
           <input
             autoFocus
-            className="mb-2 w-full rounded border border-border bg-surface px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+            className="mb-2 w-full rounded border border-control bg-surface px-2 py-1 text-xs"
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
             type="text"
@@ -718,7 +718,7 @@ export function DataTableSavedFiltersBar<T extends string>({
       {items.map((entry) => (
         <span
           key={entry.id}
-          className="inline-flex max-w-[14rem] items-stretch overflow-hidden rounded border border-border bg-surface text-[11px] leading-tight text-ink shadow-sm"
+          className="inline-flex max-w-[14rem] items-stretch overflow-hidden rounded border border-control bg-surface text-[11px] leading-tight text-ink shadow-sm"
         >
           <button
             className="min-w-0 flex-1 truncate px-2 py-1 text-left transition-colors hover:bg-panel"
@@ -752,7 +752,7 @@ export function DataTableSavedFiltersBar<T extends string>({
           <input
             ref={nameInputRef}
             autoComplete="off"
-            className="min-w-[9rem] max-w-[14rem] flex-1 rounded border border-border bg-surface px-2 py-1 text-[11px] text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+            className="min-w-[9rem] max-w-[14rem] flex-1 rounded border border-control bg-surface px-2 py-1 text-[11px] text-ink"
             id={nameFieldId}
             maxLength={MAX_SAVED_FILTER_NAME_LENGTH}
             onChange={(e) => setSaveNameDraft(e.target.value)}
@@ -771,7 +771,7 @@ export function DataTableSavedFiltersBar<T extends string>({
             value={saveNameDraft}
           />
           <button
-            className="shrink-0 rounded border border-border bg-surface px-2 py-1 text-[11px] font-medium text-ink hover:bg-panel"
+            className="shrink-0 rounded border border-control bg-surface px-2 py-1 text-[11px] font-medium text-ink hover:bg-panel"
             onClick={commitSave}
             type="button"
           >
