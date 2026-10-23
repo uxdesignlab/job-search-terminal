@@ -32,16 +32,53 @@ values or arbitrary Tailwind numbers.
 | Panel | `--color-panel` | `255 255 255` | `bg-panel` | Card / nav background |
 | Ink | `--color-ink` | `14 17 22` | `text-ink` | Primary text, headings |
 | Muted | `--color-muted` | `94 104 120` | `text-muted` | Secondary text, labels |
-| Border | `--color-border` | `225 229 235` | `border-border` | Dividers, card borders |
-| Accent | `--color-accent` | `215 69 39` | `bg-accent`, `text-accent` | Brand, CTAs, active nav |
+| Border | `--color-border` | `225 229 235` | `border-border` | Decorative dividers, card and table edges |
+| Control border | `--color-border-control` | `127 144 170` | `border-control` | Boundaries of inputs, selects, textareas, secondary buttons, and other controls |
+| Accent | `--color-accent` | `195 69 39` | `bg-accent`, `text-accent` | Brand, CTAs, active nav, focus outline |
 | Accent Strong | `--color-accent-strong` | `179 53 32` | (hover only) | Accent hover state |
-| Success | `--color-success` | `22 163 74` | `text-success`, `bg-success` | Positive status |
-| Warning | `--color-warning` | `202 138 4` | `text-warning`, `bg-warning` | Caution status |
+| Success | `--color-success` | `17 129 59` | `text-success`, `bg-success` | Positive status |
+| Warning | `--color-warning` | `152 104 3` | `text-warning`, `bg-warning` | Caution status |
 | Danger | `--color-danger` | `220 38 38` | `text-danger`, `bg-danger` | Error / destructive |
+
+Accent is UX Design Lab's brand accent `#c34527` (`195 69 39`), set on
+2026-10-23; it passes WCAG 2.2 AA on both `panel` and `surface`. Success and
+warning were darkened the same day to the smallest change that passes AA on
+both. The previous values were accent `215 69 39`, success `22 163 74`, and
+warning `202 138 4`. Networking Agents uses the same values so the two design
+systems stay aligned.
+
+### Measured contrast
+
+WCAG 2.2 relative-luminance contrast, measured on 2026-10-23. AA needs 4.5:1 for
+normal text and 3:1 for control boundaries and focus indicators (1.4.3, 1.4.11).
+
+| Pair | On panel `255 255 255` | On surface `246 247 249` | Was (on panel) | Requirement |
+|---|---|---|---|---|
+| `text-accent` | 5.00:1 | 4.66:1 | 4.40:1 | 4.5:1 text |
+| White text on `bg-accent` (primary button) | 5.00:1 | — | 4.40:1 | 4.5:1 text |
+| White text on accent-strong (primary hover) | 6.09:1 | — | 6.09:1 | 4.5:1 text |
+| `text-success` | 4.97:1 | 4.63:1 | 3.30:1 | 4.5:1 text |
+| `text-warning` | 4.87:1 | 4.54:1 | 2.94:1 | 4.5:1 text |
+| `text-danger` | 4.83:1 | 4.51:1 | unchanged | 4.5:1 text |
+| `text-muted` | 5.63:1 | 5.26:1 | unchanged | 4.5:1 text |
+| `border-control` | 3.24:1 | 3.03:1 | 1.26:1 (`border-border`) | 3:1 boundary |
+| Focus outline (solid accent) | 5.00:1 | 4.66:1 | ~1.3:1 (20% alpha ring) | 3:1 indicator |
+| `border-border` (decorative) | 1.26:1 | 1.18:1 | unchanged | none — never a control's only boundary |
+
+**Known gap (not yet fixed).** Tinted Badges put the tone's text on its own 10%
+tint, which lowers contrast below 4.5:1: success 4.33:1, warning 4.28:1, danger
+4.13:1 over `panel`, and about 0.3 lower over `surface`. The `SubmitButton`
+"Saved" state has the same success-on-tint pairing (4.33:1). Fixing this needs a
+design decision (a darker text shade for tinted backgrounds, or a lighter tint)
+and has not been made yet.
 
 **Semantic color rules:**
 - `surface` — only for the outermost page background.
 - `panel` — cards, header, footer, dropdowns.
+- `border-control` — the boundary of anything a user types into, picks from, or
+  presses that has no other visible edge. `border-border` is only for decorative
+  dividers and card edges; it is too light (1.26:1) to be the sole boundary of a
+  control.
 - Never use raw Tailwind `gray-*` values; always use the token utilities.
 - Tinted Badge backgrounds are expressed as `bg-success/10`, `bg-warning/10`,
   `bg-danger/10` with matching `border-*` and `text-*` at matching opacity.
@@ -93,12 +130,18 @@ stacked blocks.
 
 | Token | CSS variable | Value |
 |---|---|---|
-| Focus ring | `--shadow-focus` | `0 0 0 3px rgb(215 69 39 / 0.2)` |
+| Focus outline | `--focus-outline` | `2px solid rgb(var(--color-accent))` |
+| Focus outline offset | `--focus-outline-offset` | `2px` |
 | Card shadow | `--shadow-card` | `0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04)` |
 | Subtle border | `--border-subtle` | `1px solid rgb(var(--color-border))` |
 
-Focus: every focusable element must show `--shadow-focus` on `:focus-visible`.
-The Tailwind alias is `shadow-focus`.
+Focus: `src/styles/globals.css` gives every element a 2px solid accent outline at
+a 2px offset on `:focus-visible` (5.00:1 on panel, 4.66:1 on surface). The offset
+keeps the outline off the control's own border, so it reads against the page
+background rather than against the control. Do not suppress it with
+`focus:outline-none` or replace it with a `ring-*` utility — let the global rule
+apply. The old 20%-alpha `--shadow-focus` ring (about 1.3:1) and its
+`shadow-focus` Tailwind alias were removed on 2026-10-23.
 
 ### Layout constants
 
@@ -147,7 +190,7 @@ Three exports: `Button` (native `<button>`), `LinkButton` (Next.js `<Link>`),
 | Variant | Appearance | Usage |
 |---|---|---|
 | `primary` | Accent background, white text | Primary CTAs, confirm actions |
-| `secondary` | White background, border, ink text | Default secondary actions |
+| `secondary` | White background, `border-control` border, ink text | Default secondary actions |
 | `quiet` | Transparent background | Tertiary actions, icon-adjacent |
 
 **Base styles:** `min-h-11` (44 px minimum target), `rounded-control`, `px-4 py-2`, `text-sm font-medium`.
@@ -212,13 +255,14 @@ and `--shadow-card`. Avoid nesting cards inside cards.
 
 Text input with explicit `<label>`. Always pass `id` so the label associates
 correctly. Use `aria-invalid` and descriptive text when validation fails.
+The boundary is `border-control`, or `border-danger` when `error` is set.
 
 ### Select
 
 **File:** `src/components/ui/select.tsx`
 
 Styled native `<select>`. Always include a `<label>`. Provide optional
-descriptive text for clarification.
+descriptive text for clarification. The boundary is `border-control`.
 
 ### Textarea
 
@@ -444,7 +488,10 @@ full checklist.
 
 **Quick rules:**
 - Minimum control height: `min-h-11` (44 px practical target).
-- Focus ring: `shadow-focus` must appear on all focusable elements at `:focus-visible`.
+- Focus: the global 2px solid accent outline (2px offset) must appear on all focusable
+  elements at `:focus-visible`. Never remove it with `focus:outline-none`.
+- Control boundaries: inputs, selects, textareas, and bordered buttons use
+  `border-control` (3:1 or better), never `border-border`.
 - Color: never use color as the only status signal.
 - Labels: every `input`, `select`, and `textarea` needs an associated `<label>`.
 - Tables: always include `scope="col"` on `<th>` elements.
@@ -458,11 +505,14 @@ full checklist.
 `tailwind.config.ts` extends the theme with token-backed aliases:
 
 ```ts
-colors:   surface · panel · ink · muted · border · accent · success · warning · danger
+colors:   surface · panel · ink · muted · border · control · accent · success · warning · danger
 radii:    control · panel
-shadows:  focus
 fonts:    sans (Inter stack via --font-sans)
 ```
+
+`control` is meant only as `border-control`. It sits in `colors` directly after
+`border` so that, in the generated CSS, a caller's `border-accent` or
+`border-danger` still overrides it.
 
 Use these aliases everywhere. Do not use raw Tailwind color numbers (`gray-200`,
 `red-500`) unless there is no token equivalent.

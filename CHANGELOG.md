@@ -15,6 +15,21 @@ the numbers mean and when they change.
 
 ---
 
+## 0.19.3 — 2026-10-23 — Easier to see
+
+**Fixed**
+
+- Orange links and buttons, green "good" labels, and yellow warning labels were
+  too pale to read comfortably on white. They are a little darker now and meet
+  the WCAG 2.2 AA contrast minimum (4.5:1) on both white cards and the grey page
+  background. White text on orange buttons meets it too.
+- Text boxes, drop-downs, and outlined buttons had a border so faint (1.26:1)
+  that the box could be hard to find. Their border is now darker (3.24:1), so
+  you can see where to click and type. Dividers between sections are unchanged.
+- The highlight that shows which control the keyboard is on was a faint glow
+  (about 1.3:1). It is now a solid orange outline with a small gap around the
+  control (5.00:1), and the close buttons on dialogs use the same outline.
+
 ## 0.19.2 — 2026-10-15 — Keep means keep
 
 **Fixed**

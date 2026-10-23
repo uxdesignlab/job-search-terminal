@@ -16,7 +16,7 @@ type SubmitButtonProps = {
 
 const variants = {
   primary: "border-accent bg-accent text-white hover:bg-[rgb(var(--color-accent-strong))]",
-  secondary: "border-border bg-panel text-ink hover:border-accent",
+  secondary: "border-control bg-panel text-ink hover:border-accent",
   quiet: "border-transparent bg-transparent text-ink hover:bg-panel"
 };
 

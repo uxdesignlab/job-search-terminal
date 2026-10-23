@@ -24,8 +24,8 @@ export function Textarea({ className, id, label, hint, error, textareaRef, ...pr
         aria-describedby={[descriptionId, errorId].filter(Boolean).join(" ") || undefined}
         aria-invalid={error ? true : undefined}
         className={cn(
-          "min-h-24 w-full rounded-control border border-border bg-panel px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-55",
-          error && "border-danger",
+          "min-h-24 w-full rounded-control border bg-panel px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-55",
+          error ? "border-danger" : "border-control",
           className
         )}
         id={textareaId}

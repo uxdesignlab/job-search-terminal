@@ -21,8 +21,8 @@ export function Input({ className, id, label, hint, error, ...props }: InputProp
         aria-describedby={[descriptionId, errorId].filter(Boolean).join(" ") || undefined}
         aria-invalid={error ? true : undefined}
         className={cn(
-          "min-h-11 w-full rounded-control border border-border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-55",
-          error && "border-danger",
+          "min-h-11 w-full rounded-control border bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-55",
+          error ? "border-danger" : "border-control",
           className
         )}
         id={inputId}

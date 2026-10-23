@@ -45,7 +45,7 @@ export function Modal({ open, onClose, title, description, size = "md", sheet = 
           {onClose && (
             <button
               aria-label="Close"
-              className="shrink-0 mt-0.5 text-muted hover:text-ink leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+              className="shrink-0 mt-0.5 text-muted hover:text-ink leading-none rounded-sm"
               onClick={onClose}
               type="button"
             >

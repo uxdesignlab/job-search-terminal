@@ -7,15 +7,18 @@
   --color-panel: 255 255 255;
   --color-ink: 14 17 22;
   --color-muted: 94 104 120;
+  /* Decorative dividers and card edges only — 1.26:1, never the sole boundary of a control */
   --color-border: 225 229 235;
+  /* Input and control boundaries — 3.24:1 on panel, 3.03:1 on surface (WCAG 1.4.11) */
+  --color-border-control: 127 144 170;
 
-  /* Brand accent */
-  --color-accent: 215 69 39;
+  /* Brand accent — UX Design Lab #c34527; 5.00:1 on panel, 4.66:1 on surface; white on accent 5.00:1 */
+  --color-accent: 195 69 39;
   --color-accent-strong: 179 53 32;
 
-  /* Semantic */
-  --color-success: 22 163 74;
-  --color-warning: 202 138 4;
+  /* Semantic — text contrast on panel / surface */
+  --color-success: 17 129 59; /* 4.97:1 / 4.63:1 */
+  --color-warning: 152 104 3; /* 4.87:1 / 4.54:1 */
   --color-danger: 220 38 38;
 
   /* Spacing */
@@ -33,7 +36,9 @@
   --radius-panel: 0.75rem;
 
   --border-subtle: 1px solid rgb(var(--color-border));
-  --shadow-focus: 0 0 0 3px rgb(215 69 39 / 0.2);
+  /* Focus indicator: 2px solid accent outline at 2px offset, applied to :focus-visible in globals.css */
+  --focus-outline: 2px solid rgb(var(--color-accent));
+  --focus-outline-offset: 2px;
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
 
   /*

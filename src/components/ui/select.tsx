@@ -18,7 +18,7 @@ export function Select({ className, id, label, hint, children, ...props }: Selec
       <select
         aria-describedby={descriptionId}
         className={cn(
-          "min-h-11 w-full rounded-control border border-border bg-panel px-3 py-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-55",
+          "min-h-11 w-full rounded-control border border-control bg-panel px-3 py-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-55",
           className
         )}
         id={selectId}
