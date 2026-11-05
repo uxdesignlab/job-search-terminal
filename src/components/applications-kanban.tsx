@@ -64,11 +64,13 @@ const TERMINAL_STATUSES = new Set(["Rejected", "Archived", "Skipped", "Offer"]);
 const CLOSE_OUTCOMES = ["Rejected", "Role closed", "No response", "Withdrew", "Duplicate", "Other"];
 
 // Sticky stack under the Shell nav: the filter bar, then each column's header. The
-// headers sit below the filter bar's fixed height (see STICKY_FILTER_BAR_CLASS).
+// headers sit below the filter bar's fixed height (see STICKY_FILTER_BAR_CLASS). They
+// stick only at lg and up: below that the board row scrolls sideways, so it would be
+// their scroll container and the viewport offset would push them down over the cards.
 const STICKY_FILTER_BAR_CLASS =
   "sticky top-[var(--shell-header-offset)] z-30 flex flex-wrap items-center gap-2 bg-panel py-2";
 const STICKY_COLUMN_HEADER_CLASS =
-  "sticky top-[calc(var(--shell-header-offset)+2.875rem)] z-20 mb-2 flex items-center gap-2 bg-panel pb-2 shadow-[0_1px_0_0_rgb(var(--color-border))]";
+  "mb-2 flex items-center gap-2 bg-panel pb-2 shadow-[0_1px_0_0_rgb(var(--color-border))] lg:sticky lg:top-[calc(var(--shell-header-offset)+2.875rem)] lg:z-20";
 
 function isOverdue(followUpDate: string, status: string, todayIso: string): boolean {
   if (TERMINAL_STATUSES.has(status) || !followUpDate) return false;
