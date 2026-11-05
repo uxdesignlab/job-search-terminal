@@ -15,6 +15,23 @@ the numbers mean and when they change.
 
 ---
 
+## 0.19.4 — 2026-11-05 — A board that stays put
+
+**Fixed**
+
+- The Applications page no longer gets wider when you move a card. A long job
+  title in a board column used to stretch the whole page past the edge of the
+  window, cutting off the cards at the top. The page now keeps the same width as
+  every other page, and the board's columns stay equal.
+- The columns no longer shift while you drag. The Closed column keeps one width
+  instead of growing when a drag starts.
+
+**Changed**
+
+- Job titles on board cards now use up to two lines and the full width of the
+  card, because the columns are narrower than the stretched ones were. Hover over
+  a title that is still cut off to read all of it.
+
 ## 0.19.3 — 2026-10-23 — Easier to see
 
 **Fixed**

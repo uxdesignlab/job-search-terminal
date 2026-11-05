@@ -122,21 +122,24 @@ function ApplicationCardInner({
         ghost && "opacity-50",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs text-muted">{row.company}</p>
-          {row.jobExists ? (
-            <Link
-              className="mt-0.5 block truncate text-sm font-medium text-accent hover:underline"
-              href={`/jobs/${row.jobId}`}
-            >
-              {row.role}
-            </Link>
-          ) : (
-            <p className="mt-0.5 truncate text-sm font-medium text-ink">{row.role}</p>
-          )}
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 text-xs text-muted">{row.company}</p>
+          <span className="shrink-0 text-xs font-medium text-muted">{row.fitScore}%</span>
         </div>
-        <span className="shrink-0 text-xs font-medium text-muted">{row.fitScore}%</span>
+        {row.jobExists ? (
+          <Link
+            className="mt-0.5 line-clamp-2 text-sm font-medium text-accent hover:underline"
+            href={`/jobs/${row.jobId}`}
+            title={row.role}
+          >
+            {row.role}
+          </Link>
+        ) : (
+          <p className="mt-0.5 line-clamp-2 text-sm font-medium text-ink" title={row.role}>
+            {row.role}
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {row.status === "Follow-up needed" && (
@@ -195,7 +198,7 @@ function KanbanColumn({
   const { setNodeRef } = useDroppable({ id: columnId });
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-w-44 flex-1 basis-0 flex-col">
       <div className="mb-3 flex items-center gap-2">
         <Badge tone={tone}>{label}</Badge>
         <span className="text-xs text-muted">{cards.length}</span>
@@ -232,10 +235,8 @@ function ClosedColumn({
   return (
     <div
       ref={setNodeRef}
-      className={cn(
-        "flex shrink-0 flex-col transition-all duration-200",
-        isDragging ? "w-52" : "w-auto",
-      )}
+      // Same width dragging or not, so the other columns never reflow mid-drag.
+      className="flex w-32 shrink-0 flex-col"
     >
       <div className="mb-3 flex items-center gap-2">
         <Badge tone="neutral" className="gap-1.5">
@@ -248,7 +249,7 @@ function ClosedColumn({
       {isDragging ? (
         <div
           className={cn(
-            "flex flex-1 flex-col items-center justify-center gap-2 rounded-panel border-2 border-dashed p-6 text-center min-h-28 transition-colors duration-150",
+            "flex flex-1 flex-col items-center justify-center gap-2 rounded-panel border-2 border-dashed p-3 text-center min-h-28 transition-colors duration-150",
             isOver ? "border-muted/60 bg-surface" : "border-border/40",
           )}
         >
@@ -262,7 +263,7 @@ function ClosedColumn({
         </div>
       ) : (
         // Invisible spacer — keeps the droppable registered at a reasonable size
-        <div className="min-h-8 w-16 rounded-panel border border-dashed border-border/25" />
+        <div className="min-h-8 rounded-panel border border-dashed border-border/25" />
       )}
     </div>
   );

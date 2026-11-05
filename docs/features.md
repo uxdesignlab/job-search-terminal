@@ -1771,7 +1771,13 @@ Application funnel tracker with two view modes:
 
 - **Table view** — sortable list of all active applications with status, company,
   role, applied date, score, follow-up date, and overdue indicator.
-- **Kanban view** — drag-and-drop board organized by status column.
+- **Kanban view** — drag-and-drop board organized by status column. The board never
+  changes the page width: the page grid's single track is `minmax(0, 1fr)`, so a long
+  role title cannot stretch it, the four status columns share the width equally
+  (minimum `11rem`), and the Closed rail stays `8rem` wide whether or not a drag is
+  active. All five fit from a 1024px window up; below that the board scrolls sideways
+  inside its card. Role titles clamp to two lines at the card's full width, with the
+  full title in a hover tooltip.
 
 **Features:**
 - Follow-up overdue alerts (highlighted when past the follow-up date).

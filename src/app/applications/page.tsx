@@ -25,7 +25,9 @@ export default function ApplicationsPage() {
 
   return (
     <Shell activeItem="Applications">
-      <div className="grid gap-6">
+      {/* minmax(0, 1fr): an auto track grows to fit its widest content, so one long
+          role title on the board would otherwise push the whole page past the shell. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
         <PageHeader
           description="Application funnel, follow-up visibility, and tracked application states."
           eyebrow="Application dashboard"
