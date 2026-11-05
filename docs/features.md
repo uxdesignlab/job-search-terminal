@@ -1778,6 +1778,15 @@ Application funnel tracker with two view modes:
   active. All five fit from a 1024px window up; below that the board scrolls sideways
   inside its card. Role titles clamp to two lines at the card's full width, with the
   full title in a hover tooltip.
+- **Kanban sticky headers** — as the page scrolls, the filter bar sticks directly under
+  the Shell nav and each column's header sticks directly under the filter bar, matching
+  the tables' `.data-table-sticky-head` behaviour. The column headers' `top` offset
+  includes the filter bar's height (`2.875rem`), so a taller filter bar needs that value
+  changed too. The board row sets `overflow-x-auto` only below `lg`: at `lg` and up it is
+  `overflow: visible`, because any overflow value would make the row the headers' scroll
+  container and stop them sticking to the viewport. Below `lg`, where the columns no
+  longer fit and the board scrolls sideways, only the filter bar sticks. Cards and their
+  links carry a scroll margin so keyboard focus is not hidden behind the sticky headers.
 
 **Features:**
 - Follow-up overdue alerts (highlighted when past the follow-up date).

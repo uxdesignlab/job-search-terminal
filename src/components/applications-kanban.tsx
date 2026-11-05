@@ -63,6 +63,15 @@ const TERMINAL_STATUSES = new Set(["Rejected", "Archived", "Skipped", "Offer"]);
 
 const CLOSE_OUTCOMES = ["Rejected", "Role closed", "No response", "Withdrew", "Duplicate", "Other"];
 
+// Sticky stack under the Shell nav: the filter bar, then each column's header. The
+// headers sit below the filter bar's fixed height (see STICKY_FILTER_BAR_CLASS). They
+// stick only at lg and up: below that the board row scrolls sideways, so it would be
+// their scroll container and the viewport offset would push them down over the cards.
+const STICKY_FILTER_BAR_CLASS =
+  "sticky top-[var(--shell-header-offset)] z-30 flex flex-wrap items-center gap-2 bg-panel py-2";
+const STICKY_COLUMN_HEADER_CLASS =
+  "mb-2 flex items-center gap-2 bg-panel pb-2 shadow-[0_1px_0_0_rgb(var(--color-border))] lg:sticky lg:top-[calc(var(--shell-header-offset)+2.875rem)] lg:z-20";
+
 function isOverdue(followUpDate: string, status: string, todayIso: string): boolean {
   if (TERMINAL_STATUSES.has(status) || !followUpDate) return false;
   return followUpDate < todayIso;
@@ -169,7 +178,11 @@ function DraggableCard({ row, todayIso }: { row: ApplicationTableRow; todayIso: 
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={cn("cursor-grab active:cursor-grabbing", isDragging && "opacity-0")}
+      // Scroll margin keeps a keyboard-focused card or link clear of the sticky headers.
+      className={cn(
+        "cursor-grab scroll-mt-44 active:cursor-grabbing [&_a]:scroll-mt-44",
+        isDragging && "opacity-0",
+      )}
       role="button"
       aria-label={`${row.role} at ${row.company} — drag to change status`}
     >
@@ -199,7 +212,7 @@ function KanbanColumn({
 
   return (
     <div className="flex min-w-44 flex-1 basis-0 flex-col">
-      <div className="mb-3 flex items-center gap-2">
+      <div className={STICKY_COLUMN_HEADER_CLASS}>
         <Badge tone={tone}>{label}</Badge>
         <span className="text-xs text-muted">{cards.length}</span>
       </div>
@@ -238,7 +251,7 @@ function ClosedColumn({
       // Same width dragging or not, so the other columns never reflow mid-drag.
       className="flex w-32 shrink-0 flex-col"
     >
-      <div className="mb-3 flex items-center gap-2">
+      <div className={STICKY_COLUMN_HEADER_CLASS}>
         <Badge tone="neutral" className="gap-1.5">
           <Archive size={11} className="opacity-60" />
           Closed
@@ -510,7 +523,7 @@ export function ApplicationsKanban({ rows, todayIso }: Props) {
         />
       )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className={STICKY_FILTER_BAR_CLASS}>
         {COL_DEFS.map(({ col, label }) => {
           const isFiltered = filters[col] !== undefined;
           const isSorted = sort.col === col;
@@ -549,7 +562,9 @@ export function ApplicationsKanban({ rows, todayIso }: Props) {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        {/* Any overflow on this row turns it into the sticky headers' scroll container,
+            so it only scrolls sideways below lg, where the columns no longer fit. */}
+        <div className="mt-1 flex gap-4 overflow-x-auto pb-4 lg:overflow-visible">
           {activeColumns.map((col) => (
             <KanbanColumn
               key={col.id}

@@ -15,6 +15,15 @@ the numbers mean and when they change.
 
 ---
 
+## 0.19.5 — 2026-11-05 — Board headers stay in view
+
+**Changed**
+
+- The Applications board now keeps its filters and column names on screen as you
+  scroll, the same way the tables do. You no longer lose track of which column
+  you are in when a list runs long. In windows narrower than 1024 pixels, where
+  the board scrolls sideways, only the filters stay in view.
+
 ## 0.19.4 — 2026-11-05 — A board that stays put
 
 **Fixed**
