@@ -362,7 +362,11 @@ export default async function SettingsPage({
     // thousand sources overflows Next's 1 MB action body limit.
     const targets = getCustomScanSources()
       .filter((c) => wanted.has(c.name))
-      .map((c) => ({ name: c.name, careersUrl: c.careersUrl, apiType: atsTypeFromUrl(c.careersUrl, c.api) }))
+      .map((c) => {
+        // Check the same endpoint the scanner reads, not one rebuilt from the careers URL.
+        const detected = detectApi({ name: c.name, careers_url: c.careersUrl, api: c.api || undefined });
+        return { name: c.name, careersUrl: c.careersUrl, apiType: detected?.type ?? null, apiUrl: detected?.url };
+      })
       .filter((c) => c.apiType);
     const results = await validateAllSources(targets);
     recordSourceRecheckResults(

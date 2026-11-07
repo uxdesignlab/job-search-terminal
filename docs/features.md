@@ -2622,7 +2622,10 @@ The Dashboard's **Check sources** button links to `?tab=scan-sources`.
   The reasons double as **filter chips** with counts (**All**, then one per reason in
   the order above). The action bar applies to the current filter:
   - **Re-check (N)** — runs the same liveness check as Validate sources
-    (`validateAllSources`, 5 at a time) over the filtered sources and stores each verdict
+    (`validateAllSources`, 5 at a time) over the filtered sources, against the same
+    endpoint the scanner reads (`detectApi().url`, passed as `apiUrl`) so a company-hosted
+    careers page with a separately entered Greenhouse API URL is checked rather than
+    reported as "Cannot determine API URL", and stores each verdict
     in `source_recheck_results`. It does **not** write `source_check_runs`, because that
     table stands for a pass over the whole list and feeds the Dashboard's source-check
     age. It changes no enabled state: a board that works again stays off until the user
