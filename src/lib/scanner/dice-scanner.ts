@@ -228,6 +228,18 @@ type SearchArgs = {
 
 type ToolResult = { content?: Array<{ type: string; text: string }>; isError?: boolean };
 
+/**
+ * Turns a failed `search_jobs` result into a message a user can act on. Dice puts
+ * the real reason in the result's text content (for example an outage on Dice's
+ * side, "DSP login did not return an access token"); dropping it left the scan
+ * results showing only a generic error with no way to tell whose fault it was.
+ */
+export function diceToolErrorMessage(result: ToolResult): string {
+  const raw = result.content?.find((c) => c.type === "text")?.text?.trim() ?? "";
+  const reason = raw.replace(/^Error calling tool '[^']*':\s*/i, "").slice(0, 300);
+  return reason ? `Dice search failed: ${reason}` : "Dice search failed with no reason given";
+}
+
 async function searchDice(sessionId: string | null, args: SearchArgs): Promise<DiceJobRaw[]> {
   const result = (await rpcPost(sessionId, {
     jsonrpc: "2.0",
@@ -237,7 +249,7 @@ async function searchDice(sessionId: string | null, args: SearchArgs): Promise<D
   })) as ToolResult | null;
 
   if (!result) return [];
-  if (result.isError) throw new Error("Dice search_jobs returned an error");
+  if (result.isError) throw new Error(diceToolErrorMessage(result));
 
   const text = result.content?.find((c) => c.type === "text")?.text ?? "[]";
   try {
@@ -322,7 +334,11 @@ export async function runDiceScan(opts: DiceScanOptions): Promise<DiceScanResult
 
           await new Promise<void>((resolve) => setTimeout(resolve, 200));
         } catch (err) {
-          errors.push(err instanceof Error ? err.message : String(err));
+          const message = err instanceof Error ? err.message : String(err);
+          // The same failure twice in a row means Dice itself is failing, not one
+          // search. Stop rather than add an identical error row for every title.
+          if (errors.length > 0 && errors[errors.length - 1] === message) break outer;
+          errors.push(message);
           break;
         }
       }

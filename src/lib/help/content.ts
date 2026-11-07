@@ -1566,6 +1566,15 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "dice-scan-error",
+        title: "Dice reports a problem in the scan results",
+        bullets: [
+          "A Dice row that starts with Dice search failed passes on the reason Dice gave, in Dice's own words.",
+          "If the reason mentions a login, an access token, or a password, the trouble is inside Dice's own service. You did not cause it, and nothing in your settings will fix it. Dice needs no account from you. Wait and let the next scans try again.",
+          "When Dice fails the same way twice in a row, the scan stops asking it and shows the problem once, not once for every job title. Jobs from company job pages, Himalayas, and Adzuna still come in as usual.",
+        ],
+      },
+      {
         id: "himalayas-links",
         title: "A Himalayas job links to Himalayas, not the company",
         bullets: [

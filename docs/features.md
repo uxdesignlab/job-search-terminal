@@ -3143,6 +3143,8 @@ Dice is a tech-focused job board. JST integrates with Dice via Dice's free, publ
 
 **Implementation:** `src/lib/scanner/dice-scanner.ts` — contains a minimal MCP streamable-HTTP client and the scan/import orchestration.
 
+**When Dice fails (since 0.19.6):** a failed `search_jobs` call returns `isError: true` with the reason in its text content. `diceToolErrorMessage` keeps that reason (minus Dice's `Error calling tool '…':` prefix, capped at 300 characters) and reports it as `Dice search failed: <reason>`. Before 0.19.6 the reason was thrown away and every row read "Dice search_jobs returned an error", which hid a Dice-side outage (`DSP login did not return an access token (status: PASSWORD_RESET_REQUIRED)`) behind a message that looked like a JST bug. If two consecutive searches fail with the identical message, the scan stops calling Dice for the rest of the run: a server-wide failure produces one error row instead of one per target role.
+
 ---
 
 ## Himalayas Remote Board Scanner (In-App, No Credentials)
