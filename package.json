@@ -1,6 +1,6 @@
 {
   "name": "job-search-terminal",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "description": "A free, source-available, local-first job-search dashboard that helps job seekers scan roles, score fit with AI, generate tailored resumes, track applications, and prepare for interviews without accounts, subscriptions, or cloud storage.",
   "license": "CC-BY-NC-4.0",
   "author": "UX Design Lab",
@@ -57,17 +57,17 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@google/generative-ai": "^0.24.1",
-    "@next/env": "^15.5.19",
+    "@next/env": "^15.5.28",
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
     "js-yaml": "^4.1.1",
     "lucide-react": "^1.14.0",
-    "next": "15.5.19",
+    "next": "15.5.28",
     "openai": "^6.35.0",
     "pdf-parse": "^2.4.5",
     "playwright-core": "^1.59.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "~19.2.9",
+    "react-dom": "~19.2.9",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "yauzl": "^3.3.1",
@@ -84,14 +84,15 @@
     "@types/yazl": "^3.3.1",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.25.0",
-    "eslint-config-next": "^15.3.5",
+    "eslint-config-next": "^15.5.28",
     "postcss": "^8.5.12",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.3",
+    "typescript": "~5.9.3",
     "vitest": "^4.1.8"
   },
   "overrides": {
-    "postcss": "$postcss"
+    "postcss": "$postcss",
+    "sharp": "^0.35.5"
   }
 }
