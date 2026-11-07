@@ -15,6 +15,29 @@ the numbers mean and when they change.
 
 ---
 
+## 0.20.0 — 2026-11-07 — Cleanup tells you why
+
+**Added**
+
+- Settings → Cleanup now says why each company is there — Board not found,
+  Temporary failure, Access refused, App error, Address not recognized, or
+  Turned off by you — with the date it failed and the exact error behind a
+  click.
+- Click a reason at the top of Cleanup to see only those companies, with a
+  count for each.
+- **Re-check** asks the boards again, for one company or the whole filtered
+  group, and marks the ones that answer as **Works again** with their open job
+  count. The result is remembered after a reload.
+- **Re-enable** puts a company back in your scans, one at a time or all the
+  ones that work in one click. Re-check never switches anything on by itself.
+
+**Changed**
+
+- **Remove all** removes only the reason you have selected, so you can clear
+  Board not found without touching companies that just timed out once.
+
+The first start after updating adds one small table to your database.
+
 ## 0.19.6 — 2026-11-07 — Dice says what went wrong
 
 **Fixed**

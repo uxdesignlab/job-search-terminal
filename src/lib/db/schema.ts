@@ -1535,5 +1535,23 @@ export const migrations = [
       alter table jobs add column liveness_evidence_url text not null default '';
       alter table jobs add column cleanup_archive_reason text not null default '';
     `
+  },
+  {
+    id: "0070_source_recheck_results",
+    sql: `
+      -- Verdicts from Settings -> Cleanup -> Re-check, one row per source, newest
+      -- only. Kept apart from source_check_runs on purpose: that table describes a
+      -- pass over the WHOLE list and is what the Dashboard ages as "last source
+      -- check", so recording a re-check of a few disabled boards there would claim
+      -- the full list had been validated. Persisted so a board that still fails
+      -- keeps saying so after a reload, instead of falling back to the old scan error.
+      create table if not exists source_recheck_results (
+        name text primary key,
+        status text not null,
+        job_count integer,
+        error text not null default '',
+        checked_at text not null
+      );
+    `
   }
 ];

@@ -24,10 +24,17 @@ type SourceInput = {
   name: string;
   careersUrl: string;
   apiType: "greenhouse" | "ashby" | "lever" | null;
+  /**
+   * The endpoint the scanner itself reads (`detectApi().url`). Preferred over
+   * rebuilding one from `careersUrl`, which fails for a company-hosted careers page
+   * with a separately entered Greenhouse API URL — a board the scanner reads fine.
+   */
+  apiUrl?: string;
 };
 
 function getApiUrl(source: SourceInput): string | null {
   if (!source.apiType) return null;
+  if (source.apiUrl) return source.apiUrl;
   const url = source.careersUrl;
   let slug: string | null = null;
   if (source.apiType === "greenhouse") {

@@ -586,6 +586,12 @@ export type SourceCheckResultEntry = {
  * when the user asks for it. Folding the two together is what made the Dashboard's
  * staleness cue unable to ever read stale.
  */
+/** Latest Cleanup → Re-check verdict for one source (`source_recheck_results`). */
+export type SourceRecheckRecord = SourceCheckResultEntry & { checkedAt: string };
+
+/** The newest error a scan logged for a source, from `scan_runs.errors_json`. */
+export type SourceLastScanError = { error: string; at: string };
+
 export type SourceCheckRunRecord = {
   id: string;
   startedAt: string;

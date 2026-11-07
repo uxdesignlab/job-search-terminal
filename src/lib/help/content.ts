@@ -674,7 +674,10 @@ export const helpPages: HelpPage[] = [
           "Search for companies does the same against live web search instead, so it catches newer companies. It needs a Brave Search key, added under Settings → AI Provider.",
           "Both buttons only ever produce a list of suggestions. You choose which ones to keep — neither switches a company on by itself.",
           "The Dashboard's Last source check shows when either company search last finished. Validate sources is separate: it refreshes the Live column for the full company list.",
-          "Settings → Cleanup lists companies you added that are now switched off or whose address no longer works. Remove them one at a time, or press Remove all and confirm. The app never removes a source on its own.",
+          "Settings → Cleanup lists companies you added that are now switched off or whose address no longer works, and says why each one is there: Board not found, Temporary failure, Access refused, App error, Address not recognized, Other error, or Turned off by you. Click a reason at the top to see only those companies.",
+          "Many companies end up switched off after one bad scan — the site was slow, or your internet was down. Before you remove anything, press Re-check. The app asks each board again and marks the ones that answer as Works again. It takes about a minute for every fifty companies, so a few hundred can take ten minutes. Keep the page open while it runs.",
+          "Re-check never switches anything on by itself. Press Re-enable on a company, or Re-enable N that work for all of them, to put them back in your scans.",
+          "Remove the ones marked Board not found or Address not recognized one at a time, or press Remove all and confirm. When a reason is selected, the button removes only that group. The app never removes a source on its own.",
         ],
       },
       {
@@ -1572,6 +1575,16 @@ export const helpPages: HelpPage[] = [
           "A Dice row that starts with Dice search failed passes on the reason Dice gave, in Dice's own words.",
           "If the reason mentions a login, an access token, or a password, the trouble is inside Dice's own service. You did not cause it, and nothing in your settings will fix it. Dice needs no account from you. Wait and let the next scans try again.",
           "When Dice fails the same way twice in a row, the scan stops asking it and shows the problem once, not once for every job title. Jobs from company job pages, Himalayas, and Adzuna still come in as usual.",
+        ],
+      },
+      {
+        id: "cleanup-many-disabled",
+        title: "Settings → Cleanup lists hundreds of companies",
+        bullets: [
+          "A company lands in Cleanup when you press Disable source after a scan, or when its address cannot be scanned. If your internet dropped during a scan, every company failed at once and many may have been switched off together.",
+          "Click Temporary failure at the top of Cleanup, then press Re-check. Companies that answer now show Works again. Press Re-enable N that work to put them back.",
+          "Board not found means the company's job page is gone, usually because it moved to a different job site. Removing it is safe. If you still want the company, add its new careers page under Settings → Sources.",
+          "Keep the page open while Re-check runs. If you leave, the check stops and the companies you had not reached keep their old reason.",
         ],
       },
       {

@@ -77,6 +77,7 @@ and initializes an empty local profile if the database is empty.
 | `0067_source_check_runs` | Adds the `source_check_runs` table so whole-list validation results persist instead of dying with the page and the Sources table can restore its Live column |
 | `0068_resume_writer_and_generation_timing` | Adds `ai_settings.resume_writer_provider` (the provider that writes resumes, independently of the main chain; `''` follows the chain), `generated_documents.generation_ms` / `provider_used` / `model_used` / `generation_stages_json` (how long a resume took, per stage, and what wrote it), and the `ai_provider_status` table recording providers that have run out of paid credits. All defaulted; existing documents read as 0 ms with no provider, which the editor treats as "not recorded" |
 | `0069_untouched_job_cleanup` | Adds `jobs.user_activity_at` (the durable marker that protects a job from cleanup), `jobs.liveness_reason` and `jobs.liveness_evidence_url` (what a posting check found and the page it read), and `jobs.cleanup_archive_reason` (why cleanup archived a job). All default to `''`, so existing jobs start unprotected and unverified; a backfill in the query layer, not in this migration, marks jobs with recorded user work. See [Untouched job cleanup](#untouched-job-cleanup-0069) |
+| `0070_source_recheck_results` | Adds `source_recheck_results`, the newest Settings → Cleanup → Re-check verdict per source, so a board that still fails keeps saying so after a reload. Kept apart from `source_check_runs` so re-checking a few disabled boards never claims the whole list was validated. See [source_recheck_results](#source_recheck_results) |
 
 ---
 
@@ -503,6 +504,34 @@ The Dashboard's **Last source check** age does not read this table. Job scans lo
 postings at companies already being watched; the Dashboard's source timestamp instead
 comes from `data/discovered-sources.json`, which is written when **Crawl for companies**
 or **Search for companies** completes.
+
+### source_recheck_results
+
+The newest **Settings → Cleanup → Re-check** verdict for each source. Added in migration
+`0070_source_recheck_results`.
+
+| Column | Purpose |
+|---|---|
+| `name` | Source name (primary key) — one row per source, replaced on every re-check |
+| `status` | `valid` / `dead` / `unknown`, as returned by `validateAllSources()` |
+| `job_count` | Open jobs the board returned, or null |
+| `error` | The checker's error message, `''` when none |
+| `checked_at` | ISO timestamp of the check |
+
+Written by `recordSourceRecheckResults()`, read by `getSourceRecheckResults()` (a
+`Map` keyed by name), and cleared per source by `deleteCustomScanSource()` and wholesale
+by `deleteAllCustomScanSources()`. Types: `SourceRecheckRecord`
+(`SourceCheckResultEntry & { checkedAt }`).
+
+Not folded into `source_check_runs`: that table describes a pass over the **whole**
+list and is what the Dashboard ages, so recording a re-check of a few disabled boards
+there would claim the full list had been validated.
+
+The Cleanup tab combines this with the source's newest scan error —
+`getLatestScanErrorsBySource()` walks `scan_runs.errors_json` with `json_each` (skipping
+rows whose blob is not valid JSON) and returns a `Map<name, SourceLastScanError>`
+(`{ error, at }`) — and with the latest `source_check_runs` verdict. See
+`describeSourceProblem()` in `src/lib/scanner/source-problem.ts`.
 
 ### source_check_runs
 
