@@ -15,6 +15,19 @@ the numbers mean and when they change.
 
 ---
 
+## 0.20.2 — 2026-11-07 — Readable status labels
+
+**Fixed**
+
+- Green, yellow, and red status labels, such as Applied, Follow-up needed, and
+  Rejected, had text that was slightly too pale on their tinted background
+  (4.1–4.3:1). Their text is a shade darker now and meets the WCAG 2.2 AA
+  contrast minimum (4.5:1) on both white cards and the grey page background.
+  The label colors and tints themselves are unchanged.
+- After you pressed an orange Save button, its green "Saved" confirmation showed
+  white text on a pale green background, which was very hard to read. It now
+  shows the same darker green text as the status labels.
+
 ## 0.20.1 — 2026-11-07 — Security update
 
 **Fixed**

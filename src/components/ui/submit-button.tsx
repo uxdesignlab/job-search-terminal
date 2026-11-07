@@ -20,6 +20,10 @@ const variants = {
   quiet: "border-transparent bg-transparent text-ink hover:bg-panel"
 };
 
+// Replaces the primary variant while "Saved" shows; `cn` does not merge classes, so
+// layering it on top would leave `text-white` winning by CSS order.
+const savedPrimary = "border-success bg-success/10 text-success-on-tint";
+
 export function SubmitButton({
   label = "Save",
   pendingLabel = "Saving…",
@@ -50,8 +54,7 @@ export function SubmitButton({
       aria-describedby={ariaDescribedBy}
       className={cn(
         "inline-flex min-h-11 items-center justify-center rounded-control border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55",
-        variants[variant],
-        showSaved && variant === "primary" && "border-success bg-success/10 text-success",
+        showSaved && variant === "primary" ? savedPrimary : variants[variant],
         className
       )}
       disabled={pending || disabled}
