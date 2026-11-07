@@ -295,6 +295,9 @@ export async function runDiceScan(opts: DiceScanOptions): Promise<DiceScanResult
   const errors: string[] = [];
   const seen = new Set<string>();
 
+  // The message of the search that just failed, cleared by any successful search.
+  let lastFailure: string | null = null;
+
   let sessionId: string | null = null;
   try {
     sessionId = await initSession();
@@ -320,6 +323,7 @@ export async function runDiceScan(opts: DiceScanOptions): Promise<DiceScanResult
             jobs_per_page: 20,
             page_number: page,
           });
+          lastFailure = null;
 
           if (raw.length === 0) break;
 
@@ -335,9 +339,11 @@ export async function runDiceScan(opts: DiceScanOptions): Promise<DiceScanResult
           await new Promise<void>((resolve) => setTimeout(resolve, 200));
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          // The same failure twice in a row means Dice itself is failing, not one
-          // search. Stop rather than add an identical error row for every title.
-          if (errors.length > 0 && errors[errors.length - 1] === message) break outer;
+          // The same failure on two searches in a row, with no success between,
+          // means Dice itself is failing, not one search. Stop rather than add an
+          // identical error row for every title.
+          if (lastFailure === message) break outer;
+          lastFailure = message;
           errors.push(message);
           break;
         }

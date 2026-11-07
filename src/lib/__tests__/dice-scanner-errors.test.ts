@@ -54,4 +54,32 @@ describe("runDiceScan when Dice itself is failing", () => {
     const searches = fetchMock.mock.calls.filter(([, init]) => JSON.parse(init.body).method === "tools/call");
     expect(searches).toHaveLength(2);
   });
+
+  it("keeps searching when a success comes between two identical failures", async () => {
+    let searchCount = 0;
+    fetchMock.mockImplementation(async (_url: string, init: { body: string }) => {
+      const msg = JSON.parse(init.body);
+      if (msg.method === "initialize") return sse({ jsonrpc: "2.0", id: msg.id, result: {} });
+      if (msg.method === "notifications/initialized") return new Response(null, { status: 202 });
+      searchCount += 1;
+      // Searches 1 and 3 fail; search 2 succeeds with no jobs; the rest succeed empty.
+      const fails = searchCount === 1 || searchCount === 3;
+      return sse({
+        jsonrpc: "2.0",
+        id: msg.id,
+        result: fails
+          ? { isError: true, content: [{ type: "text", text: OUTAGE }] }
+          : { content: [{ type: "text", text: "[]" }] },
+      });
+    });
+
+    const result = await runDiceScan({
+      titles: ["A", "B", "C", "D", "E"],
+      locations: ["Tennessee, United States"],
+      remotePreference: "all",
+    });
+
+    expect(result.errors).toHaveLength(2);
+    expect(searchCount).toBe(5);
+  });
 });
