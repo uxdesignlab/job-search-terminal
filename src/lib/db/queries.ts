@@ -89,6 +89,8 @@ import type {
   SkillRecord,
   SourceCheckResultEntry,
   SourceCheckRunRecord,
+  SourceLastScanError,
+  SourceRecheckRecord,
   StoryInput,
   StoryRecord,
   StructuredStory,
@@ -5814,12 +5816,72 @@ export function addCustomScanSource(name: string, careersUrl: string, api: strin
 export function deleteCustomScanSource(name: string) {
   getDatabase().prepare("delete from scan_sources_custom where name = @name").run({ name });
   getDatabase().prepare("delete from scan_source_overrides where name = @name").run({ name });
+  getDatabase().prepare("delete from source_recheck_results where name = @name").run({ name });
+}
+
+/**
+ * The newest error each source logged across every scan run, keyed by source name.
+ *
+ * This is the only surviving record of why a source was switched off: the Disable
+ * button on a scan summary writes `enabled = 0` and nothing else. Settings → Cleanup
+ * reads it to say "timed out on 12 Oct" instead of a bare "Disabled".
+ */
+export function getLatestScanErrorsBySource(): Map<string, SourceLastScanError> {
+  const rows = getDatabase()
+    .prepare(
+      `select json_extract(e.value, '$.company') as company,
+              json_extract(e.value, '$.error') as error,
+              r.started_at as at
+         from scan_runs r, json_each(r.errors_json) e
+        where json_valid(r.errors_json)
+        order by r.started_at desc, r.rowid desc`
+    )
+    .all() as Array<{ company: unknown; error: unknown; at: string }>;
+  const latest = new Map<string, SourceLastScanError>();
+  for (const row of rows) {
+    if (typeof row.company !== "string" || typeof row.error !== "string") continue;
+    if (!latest.has(row.company)) latest.set(row.company, { error: row.error, at: row.at });
+  }
+  return latest;
+}
+
+export function getSourceRecheckResults(): Map<string, SourceRecheckRecord> {
+  const rows = getDatabase()
+    .prepare("select name, status, job_count, error, checked_at from source_recheck_results")
+    .all() as Array<{ name: string; status: string; job_count: number | null; error: string; checked_at: string }>;
+  const results = new Map<string, SourceRecheckRecord>();
+  for (const row of rows) {
+    const status = row.status === "valid" || row.status === "dead" ? row.status : "unknown";
+    results.set(row.name, {
+      name: row.name,
+      status,
+      jobCount: row.job_count,
+      ...(row.error ? { error: row.error } : {}),
+      checkedAt: row.checked_at,
+    });
+  }
+  return results;
+}
+
+/** Keeps only the newest verdict per source; a re-check replaces the last one. */
+export function recordSourceRecheckResults(results: SourceRecheckRecord[]) {
+  const db = getDatabase();
+  const insert = db.prepare(
+    `insert or replace into source_recheck_results (name, status, job_count, error, checked_at)
+     values (@name, @status, @jobCount, @error, @checkedAt)`
+  );
+  db.transaction(() => {
+    for (const r of results) {
+      insert.run({ name: r.name, status: r.status, jobCount: r.jobCount, error: r.error ?? "", checkedAt: r.checkedAt });
+    }
+  })();
 }
 
 export function deleteAllCustomScanSources() {
   const db = getDatabase();
   const names = (db.prepare("select name from scan_sources_custom").all() as Array<{ name: string }>).map((r) => r.name);
   db.prepare("delete from scan_sources_custom").run();
+  db.prepare("delete from source_recheck_results").run();
   if (names.length > 0) {
     // Remove overrides only for sources that were custom (not yaml)
     for (const name of names) {

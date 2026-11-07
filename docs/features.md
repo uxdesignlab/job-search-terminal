@@ -2595,15 +2595,53 @@ The Dashboard's **Check sources** button links to `?tab=scan-sources`.
 
 - Discovered sources stay pending until the user reviews and explicitly selects
   the validated companies to add.
-- **Cleanup review** (its own **Cleanup** tab) lists disabled or malformed user-added
-  sources for explicit removal. Existing sources are never removed automatically.
-  Each row has a **Remove source** button, and a **Remove all (N)** control in the card
-  header clears the whole list in one pass. Removal is irreversible from the UI — a
-  removed source has to be re-entered by hand — so "Remove all" expands in place into
+- **Cleanup review** (its own **Cleanup** tab, `CleanupReviewPanel`) lists disabled or
+  malformed user-added sources and says **why** each one is there. Nothing records why
+  a source was switched off — **Disable source** on a scan summary only writes
+  `enabled = 0` — so the reason is derived from the newest surviving evidence by
+  `describeSourceProblem()` in `src/lib/scanner/source-problem.ts`:
+  - the source's latest error across every scan run (`getLatestScanErrorsBySource()`,
+    reading `scan_runs.errors_json`),
+  - its latest **Re-check** verdict (`source_recheck_results`), and
+  - its verdict in the latest whole-list **Validate sources** pass (`source_check_runs`).
+
+  Whichever is newest wins. The error text is sorted into a reason, shown as a badge
+  with a one-line explanation, the date, and the raw message behind a disclosure:
+
+  | Badge | When | Suggested action |
+  |---|---|---|
+  | **Works again** | The latest check reached the board (shows the open-job count) | Re-enable |
+  | **Temporary failure** | Timeouts, HTTP 408/425/429/5xx, DNS failures ("hostname could not be resolved" — usually the computer was offline), `fetch failed`, socket errors | Re-check |
+  | **App error** | A code error in the scanner (`… is not defined`, `Cannot read properties …`), checked first so `FETCH_TIMEOUT_MS is not defined` is not read as a timeout | Re-check |
+  | **Access refused** | HTTP 401/403 | Re-check, then remove |
+  | **Board not found** | HTTP 404/410, or a `dead` check verdict | Remove |
+  | **Address not recognized** | The careers URL is not a Greenhouse, Lever, or Ashby board | Remove |
+  | **Other error** | Anything else | Re-check |
+  | **Turned off by you** | No error was ever recorded | Re-enable |
+
+  The reasons double as **filter chips** with counts (**All**, then one per reason in
+  the order above). The action bar applies to the current filter:
+  - **Re-check (N)** — runs the same liveness check as Validate sources
+    (`validateAllSources`, 5 at a time) over the filtered sources and stores each verdict
+    in `source_recheck_results`. It does **not** write `source_check_runs`, because that
+    table stands for a pass over the whole list and feeds the Dashboard's source-check
+    age. It changes no enabled state: a board that works again stays off until the user
+    re-enables it. The panel estimates the duration and reports "Checked N sources: X
+    work again, Y not found, Z still failing."
+  - **Re-enable N that work** — appears when the filter contains **Works again** rows;
+    writes `enabled = 1` overrides for them.
+  - **Remove all (N)** / **Remove <reason> (N)** — the two-step `RemoveAllCleanupButton`,
+    scoped to the visible rows.
+
+  Each row also has its own **Re-check**, **Re-enable** (primary when the suggestion is
+  to re-enable), and **Remove** buttons; malformed sources offer only Remove. Existing
+  sources are never removed automatically. Removal is irreversible from the UI — a
+  removed source has to be re-entered by hand — so bulk removal expands in place into
   "Remove N sources? This cannot be undone." with **Yes, remove all** / **Cancel**
   rather than firing on the first click. The server action recomputes the candidate set
   from the database rather than trusting the rendered page, so a tab left open since
   before a source was re-enabled cannot delete something that no longer qualifies.
+  Removing a source also deletes its `source_recheck_results` row.
   Removing a source also drops its `scan_source_overrides` row.
 - "Validate sources" opens a **modal** (progress, then summary counts and a scrollable list of dead/unknown boards — same interaction pattern as **Scan for new jobs** on the Dashboard). It checks each tracked board’s public ATS JSON URL (same
   host as CareerOps scans). Results: **Live** / **N jobs** when HTTP 200 and JSON

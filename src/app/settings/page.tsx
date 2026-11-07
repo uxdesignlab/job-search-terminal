@@ -23,6 +23,9 @@ import {
   getSuppressionCount,
   recordSourceCheckRun,
   getAIProviderStatuses,
+  getLatestScanErrorsBySource,
+  getSourceRecheckResults,
+  recordSourceRecheckResults,
 } from "@/lib/db/queries";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, Input, PageHeader, SubmitButton } from "@/components/ui";
 import { Shell } from "@/components/ui/shell";
@@ -34,7 +37,8 @@ import { ProfileSupplementsEditor } from "@/components/profile-supplements-edito
 import { DiscoveredSourcesButton } from "@/components/discovered-sources-button";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
-import { RemoveAllCleanupButton } from "@/components/remove-all-cleanup-button";
+import { CleanupReviewPanel, type CleanupRecheckSummary, type CleanupReviewRow } from "@/components/cleanup-review-panel";
+import { describeSourceProblem, type SourceCheckEvidence } from "@/lib/scanner/source-problem";
 import { AggregatorScanButton } from "@/components/aggregator-scan-button";
 import { DiceScanButton } from "@/components/dice-scan-button";
 import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
@@ -201,6 +205,38 @@ export default async function SettingsPage({
   const cleanupCandidates = allCompanies.filter(
     (company) => company.removable && (!company.enabled || !company.apiType)
   );
+  // Why each candidate is here. Only computed when the tab is open: the scan-error
+  // lookup walks every scan run's error list.
+  const cleanupRows: CleanupReviewRow[] =
+    activeTab === "cleanup" && cleanupCandidates.length > 0
+      ? (() => {
+          const scanErrors = getLatestScanErrorsBySource();
+          const rechecks = getSourceRecheckResults();
+          // A full "Validate all" is evidence too; whichever check is newer wins.
+          const fullCheck = new Map<string, SourceCheckEvidence>(
+            (latestSourceCheck?.results ?? []).map((r) => [
+              r.name,
+              { status: r.status, jobCount: r.jobCount, error: r.error, checkedAt: latestSourceCheck!.completedAt },
+            ])
+          );
+          return cleanupCandidates.map((source) => {
+            const recheck = rechecks.get(source.name);
+            const full = fullCheck.get(source.name);
+            const lastCheck =
+              recheck && (!full || Date.parse(recheck.checkedAt) >= Date.parse(full.checkedAt)) ? recheck : full;
+            return {
+              name: source.name,
+              careersUrl: source.careersUrl,
+              canCheck: Boolean(source.apiType),
+              problem: describeSourceProblem({
+                apiType: source.apiType,
+                lastScanError: scanErrors.get(source.name),
+                lastCheck,
+              }),
+            };
+          });
+        })()
+      : [];
   // ── Server actions ──────────────────────────────────────────────────────────
 
   async function discoverSourcesAction() {
@@ -304,12 +340,56 @@ export default async function SettingsPage({
     revalidatePath("/settings");
   }
 
-  async function removeCleanupCandidateAction(formData: FormData) {
+  async function removeCleanupCandidateAction(name: string) {
     "use server";
-    const name = String(formData.get("name") ?? "").trim();
-    if (!name) return;
-    deleteCustomScanSource(name);
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    deleteCustomScanSource(trimmed);
     revalidatePath("/settings");
+  }
+
+  /**
+   * Asks each named board whether it still answers and remembers the verdict.
+   * Deliberately changes nothing else: a board that works again stays off until
+   * the user re-enables it, so a check can never quietly add sources to scans.
+   */
+  async function recheckCleanupSourcesAction(names: string[]): Promise<CleanupRecheckSummary> {
+    "use server";
+    const { validateAllSources } = await import("@/lib/scanner/source-validator");
+    const wanted = new Set(names);
+    // Read from the database, not the page's source list: anything a server action
+    // closes over is serialized into the request, and the full list of several
+    // thousand sources overflows Next's 1 MB action body limit.
+    const targets = getCustomScanSources()
+      .filter((c) => wanted.has(c.name))
+      .map((c) => ({ name: c.name, careersUrl: c.careersUrl, apiType: atsTypeFromUrl(c.careersUrl, c.api) }))
+      .filter((c) => c.apiType);
+    const results = await validateAllSources(targets);
+    recordSourceRecheckResults(
+      results.map((r) => ({
+        name: r.name,
+        status: r.status,
+        jobCount: r.jobCount,
+        ...(r.error ? { error: r.error } : {}),
+        checkedAt: r.checkedAt,
+      }))
+    );
+    revalidatePath("/settings");
+    return {
+      checked: results.length,
+      responds: results.filter((r) => r.status === "valid").length,
+      notFound: results.filter((r) => r.status === "dead").length,
+      stillFailing: results.filter((r) => r.status === "unknown").length,
+    };
+  }
+
+  async function reenableCleanupSourcesAction(names: string[]) {
+    "use server";
+    for (const name of new Set(names.map((n) => n.trim()).filter(Boolean))) {
+      setScanSourceEnabled(name, true);
+    }
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
   }
 
   /**
@@ -621,40 +701,20 @@ export default async function SettingsPage({
         {/* ── Cleanup tab ─────────────────────────────────────────────────── */}
         {activeTab === "cleanup" && (
           <Card>
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-1">
-                <CardTitle>Cleanup review</CardTitle>
-                <CardDescription>
-                  Review disabled or malformed user-added sources. Nothing is removed automatically.
-                </CardDescription>
-              </div>
-              {cleanupCandidates.length > 0 && (
-                <RemoveAllCleanupButton
-                  names={cleanupCandidates.map((source) => source.name)}
-                  onRemoveAll={removeAllCleanupCandidatesAction}
-                />
-              )}
+            <div className="mb-4 space-y-1">
+              <CardTitle>Cleanup review</CardTitle>
+              <CardDescription>
+                User-added sources that are switched off or cannot be scanned, with the reason for each. Re-check
+                asks the boards again; nothing is turned on or removed unless you click.
+              </CardDescription>
             </div>
-            {cleanupCandidates.length > 0 ? (
-              <ul className="grid gap-2">
-                {cleanupCandidates.map((source) => (
-                  <li className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface px-3 py-2" key={source.name}>
-                    <div>
-                      <p className="text-sm font-medium text-ink">{source.name}</p>
-                      <p className="text-xs text-muted">
-                        {!source.apiType ? "Unsupported or malformed ATS URL" : "Disabled user-added source"}
-                      </p>
-                    </div>
-                    <form action={removeCleanupCandidateAction}>
-                      <input name="name" type="hidden" value={source.name} />
-                      <SubmitButton label="Remove source" savedLabel="Removed" variant="secondary" />
-                    </form>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted">No user-added sources need cleanup review.</p>
-            )}
+            <CleanupReviewPanel
+              onReenable={reenableCleanupSourcesAction}
+              onRecheck={recheckCleanupSourcesAction}
+              onRemove={removeCleanupCandidateAction}
+              onRemoveAll={removeAllCleanupCandidatesAction}
+              rows={cleanupRows}
+            />
           </Card>
         )}
 

@@ -6,6 +6,8 @@ import { Button } from "@/components/ui";
 type Props = {
   /** The candidates this page actually rendered — the set the user is confirming. */
   names: string[];
+  /** Button text before the count, e.g. "Remove board not found". Defaults to "Remove all". */
+  label?: string;
   onRemoveAll: (confirmedNames: string[]) => Promise<void>;
 };
 
@@ -14,7 +16,7 @@ type Props = {
  * a re-added source has to be re-entered by hand — so the click is deliberately
  * two-step rather than guarded by a native confirm() the browser can suppress.
  */
-export function RemoveAllCleanupButton({ names, onRemoveAll }: Props) {
+export function RemoveAllCleanupButton({ names, label = "Remove all", onRemoveAll }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
   const count = names.length;
@@ -22,7 +24,7 @@ export function RemoveAllCleanupButton({ names, onRemoveAll }: Props) {
   if (!confirming) {
     return (
       <Button onClick={() => setConfirming(true)} variant="secondary">
-        Remove all ({count})
+        {label} ({count})
       </Button>
     );
   }
