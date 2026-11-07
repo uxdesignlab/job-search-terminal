@@ -15,6 +15,18 @@ the numbers mean and when they change.
 
 ---
 
+## 0.19.6 — 2026-11-07 — Dice says what went wrong
+
+**Fixed**
+
+- When Dice fails, the scan results now show the reason Dice gave instead of a
+  bare "Dice search_jobs returned an error". You can tell when the trouble is on
+  Dice's side, such as the login problem inside Dice's service that is
+  currently blocking every Dice search.
+- A Dice outage now shows up once in the scan results instead of once for every
+  job title you search for. The scan stops asking Dice after the same failure
+  twice in a row.
+
 ## 0.19.5 — 2026-11-05 — Board headers stay in view
 
 **Changed**
