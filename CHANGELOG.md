@@ -15,6 +15,19 @@ the numbers mean and when they change.
 
 ---
 
+## 0.20.1 — 2026-11-07 — Security update
+
+**Fixed**
+
+- Updated Next.js from 15.5.19 to 15.5.28, React to 19.2.9, and the image
+  library behind Next.js (sharp) to 0.35.5. The older versions had published
+  security flaws. The worst of them let anyone who could reach the app run code
+  on your computer through the image resizer, or knock the app over with
+  crafted requests. Job Search Terminal runs only on your own machine, which
+  limits who can reach it, but you should still update. Nothing changes in how
+  the app looks or works. Run `npm install` after you pull, then restart the
+  app.
+
 ## 0.20.0 — 2026-11-07 — Cleanup tells you why
 
 **Added**
