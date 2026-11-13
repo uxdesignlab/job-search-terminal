@@ -80,7 +80,8 @@ export async function editJobAction(
   // another job gets a readable answer instead of a raw SQLite constraint error.
   // Only a changed URL is checked: an unchanged one must never block editing
   // the other fields.
-  if (url && url !== getJobById(jobId)?.url) {
+  const urlChanged = Boolean(url && url !== getJobById(jobId)?.url);
+  if (url && urlChanged) {
     const other = findOtherJobWithSameUrl(url, jobId);
     if (other) {
       return {
@@ -91,7 +92,11 @@ export async function editJobAction(
     }
   }
 
-  updateJobDetails(jobId, { title, company, url, rawDescription });
+  // An unchanged URL is not written back. The form shows the presented link,
+  // which for an old Adzuna job is the listing page rather than the stored
+  // tracker (see adzuna-links.ts) — and a second saved copy of that listing
+  // would otherwise collide with the first on the unique URL.
+  updateJobDetails(jobId, { title, company, url: urlChanged ? url : undefined, rawDescription });
 
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/jobs");

@@ -15,6 +15,33 @@ the numbers mean and when they change.
 
 ---
 
+## 0.21.0 — 2026-11-12 — Adzuna links that go to the right job
+
+**Changed**
+
+- Adzuna jobs now link to their own page on Adzuna, which shows the job you
+  found. Before, many of them used a paid-ad link that passed through other job
+  sites and could end somewhere else entirely: a design role was seen opening a
+  delivery-driver job, others a robot check or a course ad.
+- Adzuna is now treated like Himalayas: it never shares the company's own link,
+  so an Adzuna job shows an **Adzuna listing** button and a **Find the
+  employer's posting** box. Press **Find posting** to look for the same job on
+  the company's Greenhouse, Lever, or Ashby board, or paste the company's link.
+  **Check live** waits until you have the company's link, because Adzuna's page
+  cannot say whether the company is still hiring.
+
+**Fixed**
+
+- The app no longer treats Adzuna's ad link as the company's own posting.
+
+Adzuna jobs you already have use the new link too, with nothing to run and
+nothing in your saved data rewritten. Any company link you had already saved is
+kept. A few listings had been saved twice, once under each kind of link, so the
+same job may appear two times; archive the one you do not need. If you skipped
+jobs because their link went to the wrong place, they are worth a second look.
+
+---
+
 ## 0.20.2 — 2026-11-07 — Readable status labels
 
 **Fixed**

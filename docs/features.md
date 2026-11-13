@@ -3500,7 +3500,56 @@ fails on a gateway error is reported as *Other error*.
 
 **Duplicate detection:** Jobs are marked as possible duplicates (not dropped) when their original posting key, URL, or company+title+location matches an existing record. The user can review and act on flagged jobs normally.
 
-**Adzuna URL stability:** Adzuna's API returns session-scoped redirect URLs that include tracking tokens which change on every API call. The importer normalises these to a stable canonical URL (`https://www.adzuna.com/land/ad/<id>`) so the same job always maps to the same database record across scan runs, preventing previously-imported Adzuna jobs from appearing as new. The same stable ID is also used for within-scan deduplication when the same listing appears under multiple search queries.
+**Adzuna links (0.21.0):** Adzuna's API returns only a `redirect_url`, which is a
+click tracker, never the employer's posting. For sponsored results
+(`/land/ad/<id>?se=…&v=…`) Adzuna resells that click to programmatic job-ad
+networks — Resume-Library, jobg8, healthcarejobsite and others — which forward it
+wherever they choose. Observed on 2026-11-12: a JPMorganChase "Experience Design
+Vice President" link ended on a UPS Seasonal Support Driver posting, another on a
+jobg8 click-captcha, a third on an online-course ad. Before 0.21.0 the scanner
+stored that tracker as both `url` and `originalPostingUrl` and marked the posting
+`resolved`, so the app presented an ad redirect as the employer's own link.
+
+`adzunaResultToScanJob` (`src/lib/scanner/aggregator-scanner.ts`) now maps each
+result to:
+
+- `url` and `sourceUrl` — Adzuna's own listing page,
+  `https://<adzuna host>/details/<id>`. It shows the listing that was actually
+  returned, for sponsored and organic results alike, and answers HTTP 404 once
+  Adzuna drops the job, which gives Settings → Cleanup a real expiry signal. The
+  host is kept for country sites (`adzuna.co.uk`); a non-Adzuna host falls back to
+  `www.adzuna.com`.
+- `originalPostingUrl` — empty. Adzuna is a board-only source in
+  `src/lib/jobs/posting-resolution.ts`, exactly like Himalayas: while the job
+  links to Adzuna the job page shows an **Adzuna listing ↗** button and the
+  **Find the employer's posting** panel ("Adzuna link only"), Find posting's web
+  search adds `-site:adzuna.com`, and **Check live** stays hidden until the
+  employer posting is saved.
+- `idKey` — the redirect URL with its query stripped (`…/land/ad/<id>` or
+  `…/details/<id>`), the pre-0.21.0 input to `stableJobId`. The importer hashes
+  the job ID from `idKey` when present (`browser-board-importer.ts`), so jobs
+  saved before the link change are still recognised by ID and are not imported a
+  second time. Within a scan, results are still de-duplicated by Adzuna's numeric
+  `id`.
+
+**Jobs saved before 0.21.0** still hold the tracker in `url`, `source_url`, and
+`original_posting_url`. They are corrected when read, not rewritten:
+`DATA_CONTRACT.md` keeps schema migrations additive and forbids `UPDATE` on user
+tables outside the `queries.ts` functions. `mapJob` passes every row through
+`presentAdzunaLinks` (`src/lib/jobs/adzuna-links.ts`), which, for
+`source = 'adzuna-api-scan'` only, presents a `/land/ad/<id>` link as
+`/details/<id>` and never presents an Adzuna URL as `originalPostingUrl`. A link
+the user already replaced with the employer's posting is not an Adzuna URL and
+passes through. Because every screen, Find posting, and the liveness check read
+jobs through `mapJob`, none of them follow the tracker; the stored row changes
+only when the user saves an employer link through Find posting or Save URL.
+Dedup (`getJobDedupKeys`, `getKnownJobUrls`) reads the stored values, so the
+pre-0.21.0 ID still matches on the next scan.
+
+Some listings were saved twice before 0.21.0, once per link form. Both copies now
+present the same `/details/` link. `editJobAction` therefore writes `url` only
+when the user actually changed it; writing the unchanged, presented link back
+would collide with the other copy on the unique `jobs.url` index.
 
 **Import notification:** A fixed-bottom green alert appears on the Jobs page within 30 seconds of a completed import, showing the count of new jobs and duplicates. Auto-dismissed after 5 minutes.
 

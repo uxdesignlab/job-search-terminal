@@ -18,13 +18,17 @@ export function hasResolvedPosting(job: Pick<JobRecord, "postingResolutionStatus
  * these whose URL still points at the board has a usable listing but no
  * employer posting — unlike `needs_resolution`, which means no URL at all.
  */
-const BOARD_ONLY_SOURCES: Record<string, { host: RegExp; domain: string }> = {
-  "himalayas-api-scan": { host: /(^|\.)himalayas\.app$/i, domain: "himalayas.app" },
+const BOARD_ONLY_SOURCES: Record<string, { host: RegExp; domain: string; label: string }> = {
+  "himalayas-api-scan": { host: /(^|\.)himalayas\.app$/i, domain: "himalayas.app", label: "Himalayas" },
+  // Adzuna's API returns only its own click-tracking link. Sponsored results
+  // route that click through third-party ad networks that can land on an
+  // unrelated job, so the job links to Adzuna's own listing page instead.
+  "adzuna-api-scan": { host: /(^|\.)adzuna\.[a-z.]+$/i, domain: "adzuna.com", label: "Adzuna" },
 };
 
 /** Display name for a board-only source, for copy like "Himalayas listing". */
 export function boardOnlySourceLabel(source: string): string | null {
-  return source === "himalayas-api-scan" ? "Himalayas" : null;
+  return BOARD_ONLY_SOURCES[source]?.label ?? null;
 }
 
 /** True when the job still links only to a board that hides the employer's posting. */
@@ -48,7 +52,7 @@ export function isBoardOnlyUrl(source: string, url: string): boolean {
  *
  * The title is quoted so results must contain that exact phrase — otherwise a
  * search for one company's "Accessibility Coordinator" fills up with other
- * companies' coordinators. For a board-only job (Himalayas) the location is
+ * companies' coordinators. For a board-only job (Himalayas, Adzuna) the location is
  * left out, because it is in the board's own format ("United States (Remote)")
  * that careers pages rarely repeat, and the board itself is excluded so the
  * search does not lead straight back to the listing it started from.

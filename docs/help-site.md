@@ -100,6 +100,12 @@ troubleshooting entry. 0.19.0 rewrote that section for keyword search, added a
 `himalayas-scan-notes` troubleshooting entry for the lane's error rows, and added
 a privacy bullet listing the search words each board lane sends.
 
+0.21.0 made Adzuna a board-only source like Himalayas: the `aggregator` section
+gained a **Find the company's own posting** step and a warning about the Apply
+button on Adzuna's own page, and troubleshooting gained `adzuna-redirects` (a job
+opens a different job or a robot check). The `himalayas-links` entry notes that
+Adzuna jobs behave the same way.
+
 Thinner than the feature warrants, but not absent: saved filter presets,
 the resume builder, the keyword/taxonomy manager, story consolidation, and the
 interview plan. Clay contact search now explains its prerequisites and common

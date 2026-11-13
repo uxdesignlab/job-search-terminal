@@ -120,6 +120,9 @@ export function prepareBrowserBoardJobs(
       stringValue(raw.originalPostingUrl) || stringValue(raw.externalApplyUrl) || stringValue(raw.applyUrl)
     );
     const url = externalUrl || sourceUrl;
+    // A lane may hash its job ID from something other than the listing URL —
+    // Adzuna keeps its pre-0.21.0 ID input so a changed link does not re-import.
+    const idUrl = normalizeUrl(stringValue(raw.idKey)) || sourceUrl || url;
 
     if (!company || !title || !url) {
       skipped++;
@@ -162,12 +165,12 @@ export function prepareBrowserBoardJobs(
 
     if (isDuplicate) duplicates++;
 
-    addDedupKeys({ dedup, id: stableJobId(scan.source, sourceUrl || url), url, originalPostingUrl, originalPostingKey, company, title, location });
+    addDedupKeys({ dedup, id: stableJobId(scan.source, idUrl), url, originalPostingUrl, originalPostingKey, company, title, location });
 
     const rawDescription = (stringValue(raw.jobDescription) || stringValue(raw.description)).trim();
 
     jobs.push({
-      id: stableJobId(scan.source, sourceUrl || url),
+      id: stableJobId(scan.source, idUrl),
       company,
       title,
       url,
