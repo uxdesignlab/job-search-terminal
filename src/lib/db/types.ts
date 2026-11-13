@@ -667,6 +667,12 @@ export type BrowserBoardScanFile = {
     originalPostingUrl?: string;
     applyUrl?: string;
     externalApplyUrl?: string;
+    /**
+     * What the stable job ID is hashed from, when that should not be the listing
+     * URL. Adzuna keeps its pre-0.21.0 ID input here so that moving its jobs to
+     * the `/details/` page does not import every one of them a second time.
+     */
+    idKey?: string;
     discoveredAt: string;
     location?: string;
     datePosted?: string | null;

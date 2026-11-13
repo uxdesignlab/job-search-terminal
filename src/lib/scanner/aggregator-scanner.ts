@@ -39,7 +39,7 @@ export type AggregatorScanResult = {
   jobs: Array<{ title: string; url: string; company: string }>;
 };
 
-type AdzunaJob = {
+export type AdzunaJob = {
   id: string;
   title: string;
   company: { display_name: string };
@@ -203,6 +203,56 @@ function adzunaStableUrl(redirectUrl: string): string {
   }
 }
 
+/**
+ * Adzuna's own page for a listing: `https://www.adzuna.com/details/<id>`.
+ *
+ * The API's `redirect_url` is a click tracker, not a posting. For sponsored
+ * results (`/land/ad/<id>`) Adzuna sells that click to programmatic job-ad
+ * networks (Resume-Library, jobg8, healthcarejobsite, …), which forward it
+ * wherever they like: a JPMorgan design role was seen landing on a UPS driver
+ * job, others on a click-captcha or a course ad. The `/details/` page shows the
+ * listing that was actually returned, and answers 404 once Adzuna drops it,
+ * which gives the liveness check a real signal.
+ */
+function adzunaListingUrl(redirectUrl: string, adzunaId: string): string {
+  let origin = "https://www.adzuna.com";
+  try {
+    const host = new URL(redirectUrl).hostname.toLowerCase();
+    if (/(^|\.)adzuna\.[a-z.]+$/.test(host)) origin = `https://${host}`;
+  } catch {
+    // Keep the default host.
+  }
+  return `${origin}/details/${encodeURIComponent(adzunaId)}`;
+}
+
+/**
+ * One Adzuna API result as a board-scan job.
+ *
+ * `originalPostingUrl` stays empty: Adzuna never hands over the employer's own
+ * link, and storing the click tracker there told the rest of the app the
+ * employer posting was known. The job page offers Find posting instead.
+ *
+ * `idKey` keeps the job ID on its pre-0.21.0 input (the redirect URL without
+ * its tracking query), so jobs saved before this change are recognised on the
+ * next scan instead of arriving a second time.
+ */
+export function adzunaResultToScanJob(job: AdzunaJob) {
+  const listingUrl = adzunaListingUrl(job.redirect_url, String(job.id));
+  return {
+    id: randomUUID(),
+    company: job.company.display_name,
+    position: job.title,
+    jobDescription: job.description,
+    url: listingUrl,
+    sourceUrl: listingUrl,
+    originalPostingUrl: "",
+    idKey: adzunaStableUrl(job.redirect_url),
+    discoveredAt: new Date(job.created).toISOString(),
+    location: job.location.display_name,
+    salaryNotes: formatSalary(job.salary_min, job.salary_max),
+  };
+}
+
 function formatSalary(min?: number, max?: number): string {
   if (!min && !max) return "";
   if (min && max) return `$${Math.round(min / 1000)}k–$${Math.round(max / 1000)}k/yr`;
@@ -328,18 +378,7 @@ export async function runAggregatorScan(
   const isRemoteOnly = opts.remotePreference === "remote-only";
   const lanes = buildAdzunaLanes(opts.locations, isRemoteOnly);
 
-  const jobs: Array<{
-    id: string;
-    company: string;
-    position: string;
-    jobDescription: string;
-    url: string;
-    sourceUrl: string;
-    originalPostingUrl: string;
-    discoveredAt: string;
-    location: string;
-    salaryNotes: string;
-  }> = [];
+  const jobs: Array<ReturnType<typeof adzunaResultToScanJob>> = [];
   const errors: string[] = [];
   const seen = new Set<string>();
   let consecutiveFailures = 0;
@@ -354,23 +393,7 @@ export async function runAggregatorScan(
           const adzunaId = String(job.id);
           if (seen.has(adzunaId)) continue;
           seen.add(adzunaId);
-          // Strip volatile query params (e.g. `v=<hash>`) from the redirect URL so the
-          // sourceUrl — and the stable job ID derived from it — stays the same across scans.
-          const stableSourceUrl = adzunaStableUrl(job.redirect_url);
-          jobs.push({
-            id: randomUUID(),
-            company: job.company.display_name,
-            position: job.title,
-            jobDescription: job.description,
-            url: job.redirect_url,
-            sourceUrl: stableSourceUrl,
-            // Full redirect URL (with volatile v= param) preserved as the navigable apply URL.
-            // prepareBrowserBoardJobs uses originalPostingUrl → externalUrl → url in DB.
-            originalPostingUrl: job.redirect_url,
-            discoveredAt: new Date(job.created).toISOString(),
-            location: job.location.display_name,
-            salaryNotes: formatSalary(job.salary_min, job.salary_max),
-          });
+          jobs.push(adzunaResultToScanJob(job));
         }
         onProgress?.(`Found ${results.length} jobs for "${term}" ${laneLabel}`);
         consecutiveFailures = 0;

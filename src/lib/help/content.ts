@@ -731,6 +731,13 @@ export const helpPages: HelpPage[] = [
             title: "Scan",
             body: "Go to Account → Settings → Sources. A Job aggregators card appears at the bottom. Click Scan with Adzuna — it searches your title keywords and shows the import count inline when done.",
           },
+          {
+            title: "Find the company's own posting",
+            body: "Adzuna does not share the company's own link to a job. So an Adzuna job links to its page on Adzuna, and the job page shows an Adzuna listing button and a Find the employer's posting box. Press Find posting to look for the same job on the company's Greenhouse, Lever, or Ashby job board, or paste the company's link into Posting URL and press Save URL. Until you do, Check live is hidden, because Adzuna's page cannot tell whether the company is still hiring.",
+          },
+        ],
+        bullets: [
+          "Be careful with the Apply for this job button on Adzuna's own page. For some jobs it is a paid ad that passes you through other job sites, and it can end on a different job altogether, or a page asking you to prove you are not a robot. If that happens, come back and use Find posting instead.",
         ],
         callout: {
           title: "What Adzuna covers",
@@ -1548,6 +1555,16 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "adzuna-redirects",
+        title: "An Adzuna job opens a different job, or a robot check",
+        bullets: [
+          "Some Adzuna jobs are paid ads. Their link passes through other job sites, and those sites can send you to a different job, a page asking you to prove you are not a robot, or an ad for a course. The job you saw in the app is still real — the link was the problem.",
+          "Since version 0.21.0, Adzuna jobs link to their own page on Adzuna, which shows the right job. Jobs found earlier were moved over when you updated. A few were saved twice, once under each kind of link; the extra copy is now marked as a duplicate.",
+          "To reach the company, open the job and press Find posting in the Find the employer's posting box, or find the job on the company's careers page and paste its link into Posting URL.",
+          "If you skipped jobs because of this, you can change their status back to Found in the Status menu on the job page.",
+        ],
+      },
+      {
         id: "adzuna-empty",
         title: "Adzuna never finds anything",
         bullets: [
@@ -1593,7 +1610,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "This is expected. Himalayas does not share the company's own link, so the app finds it when it can and leaves the job pointing at Himalayas when it cannot.",
           "Open the job and press Find posting in the Find the employer's posting box. If no result appears, the company is not on Greenhouse, Lever, or Ashby, or it lists the job under a different title. Press Open web search, find the job on the company's careers page, and paste the link into Posting URL.",
-          "If the app says That is the job board's own page, you pasted a Himalayas link. Use the link from the company's own site instead.",
+          "If the app says That is the job board's own page, you pasted a Himalayas link. Use the link from the company's own site instead. Adzuna jobs work the same way.",
           "Jobs found before version 0.18.0 were never looked up. Find posting works on them too.",
         ],
       },
