@@ -1,5 +1,6 @@
 import { isScanLane } from "../scan-lanes";
 import { cleanupCandidateReason } from "../jobs/job-protection";
+import { presentAdzunaLinks } from "../jobs/adzuna-links";
 import { randomUUID } from "node:crypto";
 import { activeApplicationStatuses, suppressesRepost } from "../applications/status";
 import { resolveEffectiveKeywordSignals, toKeywordPhrases } from "../evaluation/effective-keywords";
@@ -3342,7 +3343,9 @@ export function logActivity(entityType: string, entityId: string, action: string
 }
 
 function mapJob(row: JobRow): JobRecord {
-  return {
+  // Adzuna rows saved before 0.21.0 hold a click-tracking link; present the
+  // listing page instead, without rewriting the stored row.
+  return presentAdzunaLinks({
     id: row.id,
     company: row.company,
     title: row.title,
@@ -3385,7 +3388,7 @@ function mapJob(row: JobRow): JobRecord {
     archived: (row.archived ?? 0) === 1,
     isDuplicate: (row.is_duplicate ?? 0) === 1,
     duplicateOf: row.duplicate_of ? (parseJson<string[]>(row.duplicate_of)) : null
-  };
+  });
 }
 
 function getExplicitWorkModes(values: string[]): WorkMode[] {

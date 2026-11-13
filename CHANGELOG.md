@@ -34,11 +34,11 @@ the numbers mean and when they change.
 
 - The app no longer treats Adzuna's ad link as the company's own posting.
 
-Updating runs a one-time database change on the next start. It moves Adzuna
-jobs you already have onto the new link, and keeps any company link you had
-already saved. A few listings had been saved twice, once under each kind of
-link; the extra copy is marked as a duplicate. If you skipped jobs because their
-link went to the wrong place, they are worth a second look.
+Adzuna jobs you already have use the new link too, with nothing to run and
+nothing in your saved data rewritten. Any company link you had already saved is
+kept. A few listings had been saved twice, once under each kind of link, so the
+same job may appear two times; archive the one you do not need. If you skipped
+jobs because their link went to the wrong place, they are worth a second look.
 
 ---
 

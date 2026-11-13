@@ -1,3 +1,4 @@
+import { adzunaListingUrl } from "@/lib/jobs/adzuna-links";
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -204,33 +205,13 @@ function adzunaStableUrl(redirectUrl: string): string {
 }
 
 /**
- * Adzuna's own page for a listing: `https://www.adzuna.com/details/<id>`.
- *
- * The API's `redirect_url` is a click tracker, not a posting. For sponsored
- * results (`/land/ad/<id>`) Adzuna sells that click to programmatic job-ad
- * networks (Resume-Library, jobg8, healthcarejobsite, …), which forward it
- * wherever they like: a JPMorgan design role was seen landing on a UPS driver
- * job, others on a click-captcha or a course ad. The `/details/` page shows the
- * listing that was actually returned, and answers 404 once Adzuna drops it,
- * which gives the liveness check a real signal.
- */
-function adzunaListingUrl(redirectUrl: string, adzunaId: string): string {
-  let origin = "https://www.adzuna.com";
-  try {
-    const host = new URL(redirectUrl).hostname.toLowerCase();
-    if (/(^|\.)adzuna\.[a-z.]+$/.test(host)) origin = `https://${host}`;
-  } catch {
-    // Keep the default host.
-  }
-  return `${origin}/details/${encodeURIComponent(adzunaId)}`;
-}
-
-/**
  * One Adzuna API result as a board-scan job.
  *
  * `originalPostingUrl` stays empty: Adzuna never hands over the employer's own
  * link, and storing the click tracker there told the rest of the app the
  * employer posting was known. The job page offers Find posting instead.
+ * `url` is Adzuna's listing page — see `src/lib/jobs/adzuna-links.ts` for why
+ * the tracker is never followed.
  *
  * `idKey` keeps the job ID on its pre-0.21.0 input (the redirect URL without
  * its tracking query), so jobs saved before this change are recognised on the

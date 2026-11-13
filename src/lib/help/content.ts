@@ -1559,7 +1559,7 @@ export const helpPages: HelpPage[] = [
         title: "An Adzuna job opens a different job, or a robot check",
         bullets: [
           "Some Adzuna jobs are paid ads. Their link passes through other job sites, and those sites can send you to a different job, a page asking you to prove you are not a robot, or an ad for a course. The job you saw in the app is still real — the link was the problem.",
-          "Since version 0.21.0, Adzuna jobs link to their own page on Adzuna, which shows the right job. Jobs found earlier were moved over when you updated. A few were saved twice, once under each kind of link; the extra copy is now marked as a duplicate.",
+          "Since version 0.21.0, Adzuna jobs link to their own page on Adzuna, which shows the right job. That includes jobs you found before you updated. A few of those were saved twice, once under each kind of link, so you may see the same job listed two times. Archive the one you do not need.",
           "To reach the company, open the job and press Find posting in the Find the employer's posting box, or find the job on the company's careers page and paste its link into Posting URL.",
           "If you skipped jobs because of this, you can change their status back to Found in the Status menu on the job page.",
         ],

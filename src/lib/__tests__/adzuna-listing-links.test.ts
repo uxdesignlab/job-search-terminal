@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adzunaResultToScanJob, type AdzunaJob } from "@/lib/scanner/aggregator-scanner";
 import { parseBrowserBoardScanFile, prepareBrowserBoardJobs } from "@/lib/scanner/browser-board-importer";
 import { boardOnlySourceLabel, buildPostingSearchQuery, needsEmployerPosting } from "@/lib/jobs/posting-resolution";
-import { migrations } from "@/lib/db/schema";
+import { adzunaListingUrlForTracker, presentAdzunaLinks } from "@/lib/jobs/adzuna-links";
 
 /**
  * Adzuna's `redirect_url` is a click tracker. Sponsored results (`/land/ad/`)
@@ -88,64 +88,63 @@ describe("Adzuna as a board-only source", () => {
   });
 });
 
-describe("migration 0071_adzuna_listing_links", () => {
+describe("presentAdzunaLinks", () => {
+  const legacy = {
+    source: "adzuna-api-scan",
+    url: "https://www.adzuna.com/land/ad/100?se=x&v=y",
+    sourceUrl: "https://www.adzuna.com/land/ad/100",
+    originalPostingUrl: "https://www.adzuna.com/land/ad/100?se=x&v=y",
+  };
+
+  it("presents an old tracker link as the listing page", () => {
+    expect(presentAdzunaLinks(legacy)).toEqual({
+      ...legacy,
+      url: "https://www.adzuna.com/details/100",
+      sourceUrl: "https://www.adzuna.com/details/100",
+      originalPostingUrl: "",
+    });
+  });
+
+  it("keeps an employer posting the user saved", () => {
+    const resolved = { ...legacy, url: "https://jobs.lever.co/acme/1", originalPostingUrl: "https://jobs.lever.co/acme/1" };
+    expect(presentAdzunaLinks(resolved)).toMatchObject({ url: "https://jobs.lever.co/acme/1", originalPostingUrl: "https://jobs.lever.co/acme/1" });
+  });
+
+  it("leaves other sources alone", () => {
+    const other = { ...legacy, source: "email-alert-import" };
+    expect(presentAdzunaLinks(other)).toBe(other);
+  });
+
+  it("does not guess at a link it does not recognise", () => {
+    expect(adzunaListingUrlForTracker("https://www.adzuna.com/jobs/search?q=ux")).toBeNull();
+    expect(adzunaListingUrlForTracker("https://www.jobg8.com/land/ad/1")).toBeNull();
+  });
+});
+
+describe("old Adzuna rows in the database", () => {
   let directory: string;
   let client: typeof import("@/lib/db/client");
   let q: typeof import("@/lib/db/queries");
-  const sql = migrations.find((m) => m.id === "0071_adzuna_listing_links")!.sql;
 
   beforeEach(async () => {
     vi.resetModules();
-    directory = mkdtempSync(path.join(os.tmpdir(), "jst-adzuna-migration-"));
+    directory = mkdtempSync(path.join(os.tmpdir(), "jst-adzuna-links-"));
     process.env.JST_DATABASE_PATH = path.join(directory, "test.sqlite");
     client = await import("@/lib/db/client");
     q = await import("@/lib/db/queries");
   });
   afterEach(() => { client.closeDatabase(); delete process.env.JST_DATABASE_PATH; rmSync(directory, { recursive: true, force: true }); });
 
-  function insert(id: string, url: string, sourceUrl: string, originalPostingUrl: string, source = "adzuna-api-scan") {
+  it("are read with the listing link, and the stored row is not rewritten", () => {
+    const ad = "https://www.adzuna.com/land/ad/300?se=x&v=y";
     q.insertBrowserBoardJobs([{
-      id, company: "Acme", title: `Designer ${id}`, url, sourceUrl, originalPostingUrl, originalPostingKey: "",
-      source: source as never, location: "Remote", rawDescription: "", datePosted: null, firstSeenDate: "2026-11-12",
-      salaryNotes: "", isDuplicate: false, duplicateOf: null,
+      id: "old", company: "Acme", title: "Designer", url: ad, sourceUrl: "https://www.adzuna.com/land/ad/300",
+      originalPostingUrl: ad, originalPostingKey: "", source: "adzuna-api-scan" as never, location: "Remote",
+      rawDescription: "", datePosted: null, firstSeenDate: "2026-11-12", salaryNotes: "", isDuplicate: false, duplicateOf: null,
     }]);
-  }
-  const row = (id: string) => client.getDatabase()
-    .prepare("select url, source_url, original_posting_url, is_duplicate, duplicate_of from jobs where id = ?").get(id) as Record<string, unknown>;
-
-  it("moves sponsored jobs to the listing page and forgets the tracker", () => {
-    const ad = "https://www.adzuna.com/land/ad/100?se=x&v=y";
-    insert("a", ad, "https://www.adzuna.com/land/ad/100", ad);
-    client.getDatabase().exec(sql);
-    expect(row("a")).toMatchObject({
-      url: "https://www.adzuna.com/details/100",
-      source_url: "https://www.adzuna.com/details/100",
-      original_posting_url: "",
-      is_duplicate: 0,
-    });
-  });
-
-  it("keeps an employer posting the user already found", () => {
-    insert("b", "https://jobs.lever.co/acme/1", "https://www.adzuna.com/land/ad/200", "https://jobs.lever.co/acme/1");
-    client.getDatabase().exec(sql);
-    expect(row("b")).toMatchObject({ url: "https://jobs.lever.co/acme/1", original_posting_url: "https://jobs.lever.co/acme/1", source_url: "https://www.adzuna.com/details/200" });
-  });
-
-  it("marks a second copy of a listing as a duplicate instead of failing on the unique link", () => {
-    insert("kept", "https://www.adzuna.com/details/300", "https://www.adzuna.com/details/300", "https://www.adzuna.com/details/300");
-    insert("copy", "https://www.adzuna.com/land/ad/300?v=1", "https://www.adzuna.com/land/ad/300", "https://www.adzuna.com/land/ad/300?v=1");
-    insert("copy2", "https://www.adzuna.com/land/ad/301?v=1", "https://www.adzuna.com/land/ad/301", "");
-    insert("copy3", "https://www.adzuna.com/land/ad/301?v=2", "https://www.adzuna.com/land/ad/301", "");
-    client.getDatabase().exec(sql);
-    expect(row("kept")).toMatchObject({ url: "https://www.adzuna.com/details/300", original_posting_url: "" });
-    expect(row("copy")).toMatchObject({ url: "https://www.adzuna.com/land/ad/300?v=1", is_duplicate: 1, duplicate_of: '["kept"]' });
-    expect(row("copy2")).toMatchObject({ url: "https://www.adzuna.com/details/301", is_duplicate: 0 });
-    expect(row("copy3")).toMatchObject({ is_duplicate: 1, duplicate_of: '["copy2"]' });
-  });
-
-  it("leaves other sources alone", () => {
-    insert("c", "https://www.adzuna.com/land/ad/400?v=1", "https://www.adzuna.com/land/ad/400", "https://www.adzuna.com/land/ad/400?v=1", "email-alert-import");
-    client.getDatabase().exec(sql);
-    expect(row("c")).toMatchObject({ url: "https://www.adzuna.com/land/ad/400?v=1" });
+    expect(q.getJobById("old")).toMatchObject({ url: "https://www.adzuna.com/details/300", originalPostingUrl: "" });
+    expect(needsEmployerPosting(q.getJobById("old")!)).toBe(true);
+    const stored = client.getDatabase().prepare("select url, original_posting_url from jobs where id = 'old'").get();
+    expect(stored).toEqual({ url: ad, original_posting_url: ad });
   });
 });

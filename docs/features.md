@@ -3532,8 +3532,24 @@ result to:
   second time. Within a scan, results are still de-duplicated by Adzuna's numeric
   `id`.
 
-Migration `0071_adzuna_listing_links` rewrites rows already saved; see
-[data-model.md](data-model.md#migration-history).
+**Jobs saved before 0.21.0** still hold the tracker in `url`, `source_url`, and
+`original_posting_url`. They are corrected when read, not rewritten:
+`DATA_CONTRACT.md` keeps schema migrations additive and forbids `UPDATE` on user
+tables outside the `queries.ts` functions. `mapJob` passes every row through
+`presentAdzunaLinks` (`src/lib/jobs/adzuna-links.ts`), which, for
+`source = 'adzuna-api-scan'` only, presents a `/land/ad/<id>` link as
+`/details/<id>` and never presents an Adzuna URL as `originalPostingUrl`. A link
+the user already replaced with the employer's posting is not an Adzuna URL and
+passes through. Because every screen, Find posting, and the liveness check read
+jobs through `mapJob`, none of them follow the tracker; the stored row changes
+only when the user saves an employer link through Find posting or Save URL.
+Dedup (`getJobDedupKeys`, `getKnownJobUrls`) reads the stored values, so the
+pre-0.21.0 ID still matches on the next scan.
+
+Some listings were saved twice before 0.21.0, once per link form. Both copies now
+present the same `/details/` link. `editJobAction` therefore writes `url` only
+when the user actually changed it; writing the unchanged, presented link back
+would collide with the other copy on the unique `jobs.url` index.
 
 **Import notification:** A fixed-bottom green alert appears on the Jobs page within 30 seconds of a completed import, showing the count of new jobs and duplicates. Auto-dismissed after 5 minutes.
 
