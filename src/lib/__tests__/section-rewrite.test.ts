@@ -102,6 +102,36 @@ describe("✨ Improve on one role", () => {
   });
 });
 
+describe("a fact the user states in the instruction", () => {
+  it("is kept, and reported as not yet in the Evidence bank", async () => {
+    state.answers.push({ summary: "Design lead with 8+ years of healthcare experience, building accessible platforms." });
+    const result = await rewriteSection({ documentId: "document-job-a", action: "improve", unit: "summary", note: "add 8+ years of healthcare experience", draft: editorDraft });
+
+    expect(state.prompts[0]).toContain("facts it states are the candidate's own");
+    expect(result.lines).toEqual(["Design lead with 8+ years of healthcare experience, building accessible platforms."]);
+    // The fixture's hand-typed "8 designers" bullet is another part and is not reported here.
+    expect(result.reverted).toEqual([]);
+    expect(result.instructionClaims).toContain("8+");
+  });
+
+  it("does not license a fact the instruction never stated", async () => {
+    state.answers.push({ summary: "Design lead with 8+ years of healthcare experience who cut costs 40%." });
+    const result = await rewriteSection({ documentId: "document-job-a", action: "improve", unit: "summary", note: "add 8+ years of healthcare experience", draft: editorDraft });
+
+    expect(result.lines).toEqual(["Design lead for accessible platforms."]);
+    expect(result.reverted.flatMap((revert) => revert.claims)).toContain("40%");
+  });
+
+  it("reports nothing when there is no instruction", async () => {
+    state.answers.push({ lines: [
+      { source: 0, text: "Mentored and led a team of 8 designers." },
+      { source: 1, text: "Ran accessibility audits across 30 releases." },
+    ] });
+    const result = await rewriteSection({ documentId: "document-job-a", action: "improve", unit: "role:0", draft: editorDraft });
+    expect(result.instructionClaims).toEqual([]);
+  });
+});
+
 describe("↻ Regenerate on one role", () => {
   it("starts from the approved resume, not the edited text, and reverts to it", async () => {
     state.answers.push({ lines: [

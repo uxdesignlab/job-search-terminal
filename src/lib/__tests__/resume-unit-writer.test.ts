@@ -146,7 +146,7 @@ describe("prompts for each part", () => {
 
   it("passes the user's instruction under the truth rules", () => {
     const task = buildUnitTask(context, { ...roleInput, note: "shorter" });
-    expect(task).toContain("The candidate's note about this part (follow it within the truth rules):\nshorter");
+    expect(task).toContain("The candidate's note about this part (follow it; facts it states are the candidate's own and may be used):\nshorter");
   });
 });
 

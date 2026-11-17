@@ -12,7 +12,7 @@ import {
 } from "../db/queries";
 import { EvaluationRequiredError } from "../application-preparation";
 import { evaluationNeedsRefresh } from "../evaluation/currentness";
-import { evidenceTextForDraft, revertUnsupportedMetrics, type EvidenceRevert } from "./evidence-audit";
+import { evidenceTextForDraft, revertUnsupportedMetrics, unsupportedClaimsInLines, type EvidenceRevert } from "./evidence-audit";
 import { isKeywordInText, keywordStrengthDetailsForText } from "./keyword-coverage";
 import { restoreLostKeywords, type KeywordRestore } from "./keyword-preservation";
 import {
@@ -73,6 +73,12 @@ export type SectionRewriteResult = {
   reverted: EvidenceRevert[];
   /** Lines kept at their starting wording to hold on to job language. */
   restored: KeywordRestore[];
+  /**
+   * Claims the result keeps only because the user stated them in the instruction —
+   * nothing in the resume, gap answers, or Evidence Bank backs them yet. The editor
+   * offers to save the instruction so the next rewrite, and the PDF export, can use it.
+   */
+  instructionClaims: string[];
   issues: LintIssue[];
   repaired: boolean;
   notice: string;
@@ -136,6 +142,19 @@ function laneLinesFor(lane: ResumeTemplateInput, current: ResumeTemplateInput, u
   return match?.bullets ?? [];
 }
 
+/**
+ * Whether a revert path belongs to this part. The guard checks the whole draft, so a
+ * hand-typed figure in another section would otherwise be reported as this rewrite's.
+ */
+function pathInUnit(path: string, draft: ResumeTemplateInput, unit: ResumeUnit): boolean {
+  if (unit.kind === "summary") return path === "summary";
+  if (unit.kind === "impact") return path.startsWith("impactItems[");
+  if (unit.kind === "skills") return path.startsWith("skills[");
+  if (unit.kind === "role") return path.startsWith(`experience[${unit.index}].`);
+  const index = (draft.extraSections ?? []).findIndex((section) => (section.id ?? `custom-${section.title}`) === unit.id);
+  return index >= 0 && path.startsWith(`extraSections[${index}].`);
+}
+
 function labelFor(draft: ResumeTemplateInput, unit: ResumeUnit): string {
   if (unit.kind === "summary") return "Professional summary";
   if (unit.kind === "impact") return draft.impactHeading || "Key achievements";
@@ -194,7 +213,13 @@ export async function rewriteSection(input: {
   const laneEvidence = buildEvidenceText(await loadSourceResumeText(lane), laneDraft, gapResponses, supplements, otherActiveLanes(resumes, lane));
   // What the user typed into this part is their own statement, so Improve may keep it.
   // Only what the model adds beyond it and the evidence bank is reverted.
-  const evidenceText = input.action === "improve" ? `${laneEvidence}\n${startingLines.join("\n")}` : laneEvidence;
+  const bankEvidence = input.action === "improve" ? `${laneEvidence}\n${startingLines.join("\n")}` : laneEvidence;
+  // The instruction is the user's own statement too. "Add 8+ years of healthcare
+  // experience" used to be reverted as an unsupported claim — the guard read the
+  // resume and the bank but never what the user had just typed. Anything the model
+  // adds beyond the instruction and the evidence is still reverted.
+  const note = input.note?.trim() ?? "";
+  const evidenceText = note ? `${bankEvidence}\n${note}` : bankEvidence;
   const { partial, missing } = keywordStrengthDetailsForText(evidenceTextForDraft(current), keywordSignals);
 
   const context: UnitWriterContext = {
@@ -239,14 +264,18 @@ export async function rewriteSection(input: {
   const reverted = revertUnsupportedMetrics(source, applied, evidenceText);
   const preserved = restoreLostKeywords(source, reverted.draft, keywordSignals);
   const lines = linesOf(preserved.draft, unit);
+  // What survives only because of the instruction: the same check without it, on this
+  // part's lines alone so a figure elsewhere in the draft is not blamed on the note.
+  const instructionClaims = note ? unsupportedClaimsInLines(lines, bankEvidence, unit.kind === "summary" ? "summary" : undefined) : [];
 
   return {
     unit: unitKey(unit),
     action: input.action,
     lines,
     sources: result.order.map((index) => startingLines[index]),
-    reverted: reverted.reverted,
+    reverted: reverted.reverted.filter((revert) => pathInUnit(revert.path, current, unit)),
     restored: preserved.restored,
+    instructionClaims,
     issues: lintPart(unit.kind, lines),
     repaired: result.repaired,
     notice: result.notice,

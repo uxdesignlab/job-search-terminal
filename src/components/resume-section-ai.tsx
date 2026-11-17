@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ResumeCheck } from "@/lib/documents/resume-lint";
+import { factFromInstruction } from "@/lib/gaps/stated-fact";
 
 /** What the sections route returns, as the editor holds it until the user decides. */
 export type SectionSuggestion = {
@@ -11,6 +13,10 @@ export type SectionSuggestion = {
   sources?: string[];
   reverted: Array<{ label: string; claims: string[] }>;
   restored: Array<{ keywords: string[] }>;
+  /** Claims kept only because the user's instruction stated them. */
+  instructionClaims?: string[];
+  /** The instruction this suggestion was written with, as the user typed it. */
+  note?: string;
   issues: Array<{ index: number; message: string }>;
   notice: string;
   providerUsed: string;
@@ -158,6 +164,143 @@ function describeWho(suggestion: SectionSuggestion): string {
 }
 
 /**
+ * Save a fact to the Evidence bank from where the user just stated it.
+ *
+ * Two moments call for it. The instruction supplied a fact the bank lacks ("add 8+
+ * years of healthcare experience"): the rewrite uses it, and this reminds the user that
+ * they would have to say it again next time — and that the PDF export will flag it —
+ * until it is saved. Or the guard rejected a claim: this is the place to add the
+ * evidence, instead of a sentence that only names a page. Nothing is saved until the
+ * user presses the button, on text they can see and edit first.
+ */
+/**
+ * Instructions whose fact was saved during this visit, so accepting the suggestion
+ * does not ask to save the same fact a second time.
+ */
+const savedInstructions = new Set<string>();
+
+function AddFactToEvidenceBank({ prefill, mode, instruction = "" }: { prefill: string; mode: "used" | "rejected"; instruction?: string }) {
+  const fieldId = useId();
+  const [open, setOpen] = useState(mode === "used");
+  const [openedByClick, setOpenedByClick] = useState(false);
+  const [text, setText] = useState(prefill);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "dismissed">("idle");
+  const [error, setError] = useState("");
+  const savedRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (status === "saved") savedRef.current?.focus();
+  }, [status]);
+
+  async function save() {
+    if (!text.trim() || status === "saving") return;
+    setStatus("saving");
+    setError("");
+    try {
+      const res = await fetch("/api/gap-evidence/stated", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+      });
+      const data = (await res.json()) as { saved?: boolean; error?: string };
+      if (!res.ok || !data.saved) throw new Error(data.error ?? "Could not save it.");
+      if (instruction) savedInstructions.add(instruction);
+      setStatus("saved");
+    } catch (err) {
+      setStatus("idle");
+      setError(err instanceof Error ? err.message : "Could not save it.");
+    }
+  }
+
+  const savedMessage = mode === "used"
+    ? "Future rewrites and the PDF export will use it, so you will not need to say it again."
+    : "Press ✨ Improve or ↻ Regenerate again to use it.";
+
+  let content: React.ReactNode = null;
+  if (status === "saved") {
+    content = (
+      <p className="text-success outline-none" ref={savedRef} tabIndex={-1}>
+        Added to your <Link className="underline" href="/evidence">Evidence bank</Link> under Answered. {savedMessage}
+      </p>
+    );
+  } else if (status !== "dismissed" && !open) {
+    content = (
+      <button
+        className="justify-self-start font-medium text-accent hover:underline"
+        onClick={() => { setOpen(true); setOpenedByClick(true); }}
+        type="button"
+      >
+        + Add the true fact to your Evidence bank
+      </button>
+    );
+  } else if (status !== "dismissed") {
+    content = (
+      <div className="grid gap-1.5 rounded-control border border-border bg-panel p-2">
+        <label className="font-medium text-ink" htmlFor={fieldId}>
+          {mode === "used" ? "Save it to your Evidence bank? Check the wording first:" : "What is true? Write it as a fact:"}
+        </label>
+        <textarea
+          // Focus follows the user's click on "+ Add…", which this replaced.
+          autoFocus={openedByClick}
+          className="w-full rounded-control border border-border bg-panel px-2 py-1 text-xs text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+          id={fieldId}
+          maxLength={1000}
+          onChange={(event) => setText(event.target.value)}
+          placeholder="For example: 8+ years of healthcare experience"
+          rows={2}
+          value={text}
+        />
+        {error && <p className="text-danger" role="alert">{error}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="rounded-control border border-accent px-2 py-0.5 font-semibold text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!text.trim() || status === "saving"}
+            onClick={() => void save()}
+            type="button"
+          >
+            {status === "saving" ? "Adding…" : "Add to Evidence bank"}
+          </button>
+          <button className="text-muted hover:text-ink" onClick={() => setStatus("dismissed")} type="button">Not now</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Mounted before any message, so screen readers announce the change. */}
+      <span aria-live="polite" className="sr-only">{status === "saved" ? `Added to your Evidence bank. ${savedMessage}` : ""}</span>
+      {content}
+    </>
+  );
+}
+
+/**
+ * "Used what you told it" — shown in the suggestion and, after Accept, under the
+ * section's buttons, so accepting without saving does not make the reminder vanish
+ * while the fact sits in the draft waiting to be flagged at PDF export.
+ */
+export function UnsavedFactReminder({ suggestion, accepted = false }: { suggestion: SectionSuggestion; accepted?: boolean }) {
+  const claims = suggestion.instructionClaims ?? [];
+  const note = suggestion.note?.trim() ?? "";
+  if (claims.length === 0 || !note) return null;
+  if (accepted && savedInstructions.has(note)) return null;
+  const body = (
+    <>
+      <p>
+        <span className="font-semibold text-warning">{accepted ? "Not saved yet:" : "Used what you told it:"}</span>{" "}
+        {claims.map((claim) => `"${claim}"`).join(", ")}.
+        {" "}That is not in your Evidence bank yet, so you would have to say it again next time, and the PDF export will flag it as unsupported.
+      </p>
+      <AddFactToEvidenceBank instruction={note} mode="used" prefill={factFromInstruction(note)} />
+    </>
+  );
+  return accepted
+    ? <div className="mt-2 grid gap-1 rounded-control border border-warning/35 bg-warning/8 p-2 text-[11px] leading-4 text-muted">{body}</div>
+    : body;
+}
+
+/**
  * The suggestion, and what the checks did to it, before the user accepts anything.
  * A reverted line is shown as such: accepting a suggestion should never hide that part
  * of it is the old wording because the new wording claimed something unsupported.
@@ -173,6 +316,7 @@ export function SectionSuggestionPanel({
 }) {
   const claims = [...new Set(suggestion.reverted.flatMap((revert) => revert.claims))];
   const keywords = [...new Set(suggestion.restored.flatMap((restore) => restore.keywords))];
+  const note = suggestion.note?.trim() ?? "";
   return (
     <div className="mb-3 rounded-control border border-accent/40 bg-accent/5 p-3">
       <p className="mb-2 text-xs font-semibold text-accent">
@@ -184,9 +328,11 @@ export function SectionSuggestionPanel({
           <p>
             <span className="font-semibold text-warning">Kept the earlier wording on {suggestion.reverted.length} {suggestion.reverted.length === 1 ? "line" : "lines"}</span>
             {" "}because the rewrite claimed something your evidence does not show: {claims.map((claim) => `"${claim}"`).join(", ")}.
-            {" "}If a claim is true, add it to your Evidence Bank or a gap answer, then try again.
+            {" "}If it is true, add it to your Evidence bank, then try again.
           </p>
         )}
+        {claims.length > 0 && <AddFactToEvidenceBank instruction={note} mode="rejected" prefill={note ? factFromInstruction(note) : ""} />}
+        <UnsavedFactReminder suggestion={suggestion} />
         {keywords.length > 0 && (
           <p>Kept the earlier wording where the rewrite dropped job language: {keywords.map((keyword) => `"${keyword}"`).join(", ")}.</p>
         )}

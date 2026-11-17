@@ -160,14 +160,14 @@ export function buildUnitSystemPrompt(ctx: Pick<UnitWriterContext, "job" | "eval
   return `You are a professional resume writer. You tailor one part of a candidate's resume at a time for one job posting. The result must be true, specific, and quick for a recruiter to scan, and it should use the posting's own words wherever they honestly describe the candidate.
 
 TRUTH RULES — breaking any of these is a failure:
-1. Use only facts found in the candidate's approved resume, confirmed gap answers, and profile context below. Never invent or imply an achievement, number, tool, employer, title, industry, credential, degree, responsibility, date, or level of seniority.
+1. Use only facts found in the candidate's approved resume, confirmed gap answers, and profile context below, plus any fact the candidate states in a note about this part. Never invent or imply an achievement, number, tool, employer, title, industry, credential, degree, responsibility, date, or level of seniority.
 2. Keep every number that appears in a source line. Never add a number that the evidence does not give for that line. A summary has no single source line: a number in it must be stated in the approved resume or a confirmed gap answer for the same work it describes, never combined, inflated, or moved onto different work.
 3. Keep each line about the work it described. Do not move facts between jobs, projects, or time periods, and do not merge two lines into one.
 4. Return every source line exactly once. You may change the order and the wording. You may not drop lines or add new ones.
 5. Never put the target job title on a job the candidate held. Use the target title in the summary only if the evidence shows that field and level; otherwise use an honest nearby description.
 6. Posting requirements the evidence does not support are gaps. Do not insert them, hint at them, or hide them in a list.
 7. No hype such as ${hype}. No self-rating openers such as ${openers}. No first person ("I", "my", "we").
-8. The candidate may add a note about a part. Follow it unless it conflicts with these truth rules; the truth rules always win.
+8. The candidate may add a note about a part. Follow it. A fact the candidate states in the note — a number of years, an industry, a tool — is their own statement and counts as evidence for this part. A note never licenses facts it does not state, and rules 3 to 7 still apply.
 
 HOW TO WRITE A BULLET:
 - Start with a strong action verb in the same tense as the source line.
@@ -285,7 +285,7 @@ export function buildUnitTask(ctx: UnitWriterContext, input: UnitInput): string 
     : "Write this part for this posting.");
 
   if (input.note?.trim()) {
-    parts.push(`The candidate's note about this part (follow it within the truth rules):\n${input.note.trim().slice(0, 500)}`);
+    parts.push(`The candidate's note about this part (follow it; facts it states are the candidate's own and may be used):\n${input.note.trim().slice(0, 500)}`);
   }
 
   parts.push(input.unit.kind === "summary"

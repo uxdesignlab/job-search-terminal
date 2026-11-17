@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, LinkButton, Modal } from "@/components/ui";
@@ -7,7 +8,7 @@ import { keywordStrengthDetailsForText } from "@/lib/documents/keyword-coverage"
 import type { JobKeywordSignal } from "@/lib/db/types";
 import { renderResumeHtml, type ResumeTemplateInput } from "@/lib/documents/resume-template";
 import { checkResume } from "@/lib/documents/resume-lint";
-import { ResumeChecksPanel, SectionAIControls, SectionSuggestionPanel, type SectionSuggestion } from "@/components/resume-section-ai";
+import { ResumeChecksPanel, SectionAIControls, SectionSuggestionPanel, UnsavedFactReminder, type SectionSuggestion } from "@/components/resume-section-ai";
 
 type SectionAIState = {
   status: "idle" | "loading" | "showing" | "error";
@@ -17,6 +18,8 @@ type SectionAIState = {
   suggestion?: SectionSuggestion;
   /** The text an accepted suggestion replaced, kept for one undo. */
   undo?: string;
+  /** The suggestion just accepted, kept so an unsaved stated fact can still be saved. */
+  accepted?: SectionSuggestion;
   error?: string;
 };
 
@@ -617,7 +620,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
         if (data.code === "ai_credits_exhausted") router.refresh();
         throw new Error(data.error ?? "The AI could not rewrite this section.");
       }
-      setSectionAI((prev) => ({ ...prev, [key]: { status: "showing", action, suggestion: data as SectionSuggestion } }));
+      setSectionAI((prev) => ({ ...prev, [key]: { status: "showing", action, suggestion: { ...(data as SectionSuggestion), note: aiNotes[key] ?? "" } } }));
     } catch (err) {
       if (controller.signal.aborted) {
         setSectionAI((prev) => ({ ...prev, [key]: { status: "idle" } }));
@@ -640,7 +643,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
     if (!text) return;
     const previous = getSectionContent(id);
     applySectionImprovement(id, text);
-    setSectionAI((prev) => ({ ...prev, [id]: { status: "idle", undo: previous } }));
+    setSectionAI((prev) => ({ ...prev, [id]: { status: "idle", undo: previous, accepted: ai.suggestion } }));
   }
 
   function undoAIImprovement(id: string) {
@@ -822,6 +825,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                       } : undefined}
                     />
                   </div>
+                  {entryAI?.status === "idle" && entryAI.accepted && <UnsavedFactReminder accepted suggestion={entryAI.accepted} />}
                   {entryAI?.status === "showing" && entryAI.suggestion && (
                     <SectionSuggestionPanel
                       onAccept={() => {
@@ -831,7 +835,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                           ...prev,
                           experience: prev.experience.map((entry, i) => i === idx ? { ...entry, bulletsText: val } : entry),
                         }));
-                        setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle", undo: previous } }));
+                        setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle", undo: previous, accepted: entryAI.suggestion } }));
                       }}
                       onDiscard={() => setSectionAI((prev) => ({ ...prev, [aiKey]: { status: "idle" } }))}
                       suggestion={entryAI.suggestion}
@@ -959,8 +963,8 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
               )}
               {revertNotice && (
                 <p>
-                  Some sections were not tailored. {revertNotice} Add the missing evidence in the
-                  Evidence Bank or on the job&apos;s gaps panel, then regenerate — or edit the
+                  Some sections were not tailored. {revertNotice} Add the missing evidence in the{" "}
+                  <Link className="underline" href="/evidence">Evidence bank</Link> or on the job&apos;s gaps panel, or as an instruction on ✨ Improve, then regenerate — or edit the
                   section here yourself.
                 </p>
               )}
@@ -1224,6 +1228,7 @@ export function ResumeDraftEditor({ documentId, jobId, initialDraft, documentTit
                         onNoteChange={(value) => setAiNotes((prev) => ({ ...prev, [id]: value }))}
                         onRegenerate={unit ? () => runSectionAI(id, unit, "regenerate") : undefined}
                       />
+                      {ai.status === "idle" && ai.accepted && <UnsavedFactReminder accepted suggestion={ai.accepted} />}
                     </div>
                   )}
 
