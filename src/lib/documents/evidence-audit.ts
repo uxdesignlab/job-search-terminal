@@ -298,9 +298,12 @@ function metricIssuesForText(path: string, text: string, evidenceText: string): 
 /**
  * The claims in these lines that the evidence does not support. For checking one part
  * on its own, where auditing the whole draft would report claims from other parts.
+ * Pass `path: "summary"` for a summary so each sentence must stand on its own, as it
+ * must at rewrite and PDF export — otherwise one supported sentence vouches for a
+ * second one stating the same figure about different work.
  */
-export function unsupportedClaimsInLines(lines: string[], evidenceText: string): string[] {
-  return [...new Set(lines.flatMap((line, index) => issuesForText(`lines[${index}]`, line, evidenceText).map((issue) => issue.claim)))];
+export function unsupportedClaimsInLines(lines: string[], evidenceText: string, path?: string): string[] {
+  return [...new Set(lines.flatMap((line, index) => issuesForText(path ?? `lines[${index}]`, line, evidenceText).map((issue) => issue.claim)))];
 }
 
 export function evidenceTextForDraft(draft: ResumeTemplateInput): string {

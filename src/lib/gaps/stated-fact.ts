@@ -27,8 +27,11 @@ export function factFromInstruction(instruction: string): string {
   return stripped[0].toUpperCase() + stripped.slice(1);
 }
 
-/** The bank heading — and key — for one stated fact. */
+/**
+ * The bank heading — and key — for one stated fact. The whole fact, never truncated:
+ * the row's id is derived from this text, so two long facts sharing an opening would
+ * otherwise collide and the second save would overwrite the first.
+ */
 export function statedFactGapText(fact: string): string {
-  const oneLine = fact.trim().replace(/\s+/g, " ");
-  return `${STATED_FACT_PREFIX}${oneLine.length > 120 ? `${oneLine.slice(0, 117)}…` : oneLine}`;
+  return `${STATED_FACT_PREFIX}${fact.trim().replace(/\s+/g, " ")}`;
 }

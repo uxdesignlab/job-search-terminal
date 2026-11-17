@@ -16,9 +16,13 @@ describe("factFromInstruction", () => {
 });
 
 describe("statedFactGapText", () => {
-  it("labels and bounds the bank heading", () => {
+  it("labels the bank heading with the whole fact", () => {
     expect(statedFactGapText("8+ years of healthcare experience")).toBe(`${STATED_FACT_PREFIX}8+ years of healthcare experience`);
-    expect(statedFactGapText("x".repeat(300)).length).toBeLessThanOrEqual(STATED_FACT_PREFIX.length + 120);
+  });
+
+  it("gives two long facts with the same opening different headings", () => {
+    const opening = "x".repeat(150);
+    expect(statedFactGapText(`${opening} one`)).not.toBe(statedFactGapText(`${opening} two`));
   });
 });
 

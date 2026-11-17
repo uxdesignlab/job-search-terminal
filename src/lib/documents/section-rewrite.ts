@@ -266,7 +266,7 @@ export async function rewriteSection(input: {
   const lines = linesOf(preserved.draft, unit);
   // What survives only because of the instruction: the same check without it, on this
   // part's lines alone so a figure elsewhere in the draft is not blamed on the note.
-  const instructionClaims = note ? unsupportedClaimsInLines(lines, bankEvidence) : [];
+  const instructionClaims = note ? unsupportedClaimsInLines(lines, bankEvidence, unit.kind === "summary" ? "summary" : undefined) : [];
 
   return {
     unit: unitKey(unit),
