@@ -973,6 +973,21 @@ sentences frequently share long opening clauses, which a truncated key would col
 Both `/api/gaps/[jobId]` and `/api/gap-evidence` write through this ID, so the job-level
 gap panel and the Evidence bank edit the same record.
 
+**Stated facts** (0.22.0) are bank rows that answer no gap: facts the user stated in a
+resume section's instruction and chose to save. `POST /api/gap-evidence/stated` writes
+them with `tags_json` = `["gap-evidence", "In your own words: <fact>", "stated-fact"]` —
+the heading still comes second, because the backlog reads the first non-`gap-evidence`
+tag as the gap text — `quality_status` `addressed`, an empty follow-up question, and
+`assessment_json` `{"source":"stated-by-user"}`. They skip `assessGapAnswer`: it asks a
+gap answer for scale and outcome and would park a plain fact as `needs_followup`, which
+no generation path reads. `/api/gap-evidence` keeps a row whose gap text starts with
+`STATED_FACT_PREFIX` addressed on edit for the same reason. Constants and the prefill
+helper live in `src/lib/gaps/stated-fact.ts` (client-safe).
+
+`SectionRewriteResult.instructionClaims` (from `rewriteSection`, not stored) lists the
+claims in the rewritten lines that only the user's instruction backs; the editor keeps
+the accepted suggestion on `SectionAIState.accepted` so it can still offer to save them.
+
 **`needs_followup` rows are stored here too.** Promotion is no longer gated on
 `addressed`: an unfinished answer is still the user's work and belongs in one backlog they
 can finish later. This is safe because every resume-generation path filters supplements to

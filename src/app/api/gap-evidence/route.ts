@@ -1,5 +1,6 @@
 import { GAP_EVIDENCE_TAG, gapEvidenceId } from "@/lib/gaps/evidence-id";
 import { aiErrorMessage } from "@/lib/ai/error-response";
+import { STATED_FACT_PREFIX, STATED_FACT_TAG } from "@/lib/gaps/stated-fact";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,19 @@ export async function POST(req: Request) {
   }
 
   const { saveProfileSupplement } = await import("@/lib/db/queries");
+
+  // A fact the user stated while editing a resume is not an answer to a posting's gap,
+  // so editing it here keeps it Answered rather than sending it through the assessor.
+  if (gapText.startsWith(STATED_FACT_PREFIX)) {
+    const id = gapEvidenceId(gapText);
+    try {
+      saveProfileSupplement({ id, content, tags: [GAP_EVIDENCE_TAG, gapText, STATED_FACT_TAG], qualityStatus: "addressed", followUpQuestion: "", assessment: { source: "stated-by-user" } });
+    } catch (err) {
+      return Response.json({ error: `Failed to save evidence: ${aiErrorMessage(err)}` }, { status: 500 });
+    }
+    return Response.json({ id, saved: true, qualityStatus: "addressed", followUpQuestion: "", followUpQuestions: [], rationale: "", assessedBy: "user" });
+  }
+
   const { assessGapAnswer, assessmentToJson } = await import("@/lib/gaps/gap-answer-assessor");
   const { loadGapEvidenceContext } = await import("@/lib/gaps/evidence-context");
 

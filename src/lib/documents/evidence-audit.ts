@@ -226,9 +226,20 @@ function hasEntailedAtLeastEvidence(text: string, metric: string, evidenceLines:
   });
 }
 
+// "8 years" or "over 8 years" from evidence that says "8+ years": the same figure with
+// the plus dropped. The user who typed "add 8+ years" saw it rejected because the model
+// wrote "8 years". Only the identical number counts — "15+ years" does not back a bare
+// "8", which would be a different claim rather than the same one restated.
+function hasSameFigureAtLeastEvidence(text: string, metric: string, evidenceLines: string[]): boolean {
+  if (!/^\d[\d,]*$/.test(metric)) return false;
+  return hasRelatedMetricEvidence(text, `${metric}+`, evidenceLines);
+}
+
 function hasMetricEvidence(path: string, text: string, metric: string, evidenceText: string, evidenceLines: string[]) {
   const supports = (claim: string) =>
-    hasRelatedMetricEvidence(claim, metric, evidenceLines) || hasEntailedAtLeastEvidence(claim, metric, evidenceLines);
+    hasRelatedMetricEvidence(claim, metric, evidenceLines)
+    || hasEntailedAtLeastEvidence(claim, metric, evidenceLines)
+    || hasSameFigureAtLeastEvidence(claim, metric, evidenceLines);
 
   if (!SENTENCE_SCOPED_METRIC_PATHS.has(path)) return supports(text);
 
@@ -282,6 +293,14 @@ function metricIssuesForText(path: string, text: string, evidenceText: string): 
     }
   }
   return issues;
+}
+
+/**
+ * The claims in these lines that the evidence does not support. For checking one part
+ * on its own, where auditing the whole draft would report claims from other parts.
+ */
+export function unsupportedClaimsInLines(lines: string[], evidenceText: string): string[] {
+  return [...new Set(lines.flatMap((line, index) => issuesForText(`lines[${index}]`, line, evidenceText).map((issue) => issue.claim)))];
 }
 
 export function evidenceTextForDraft(draft: ResumeTemplateInput): string {

@@ -1,3 +1,4 @@
+import { STATED_FACT_PREFIX } from "./stated-fact";
 /**
  * Turning an evaluator's gap sentence into the thing it is actually about.
  *
@@ -84,6 +85,8 @@ export function gapSubject(gapText: string): string {
 
 /** The gap restated as a question the user can answer directly. */
 export function gapAsQuestion(gapText: string): string {
+  // Not a gap: a fact the user stated while editing a resume and saved here.
+  if (gapText.startsWith(STATED_FACT_PREFIX)) return "A fact you stated while editing a resume. Keep it true and specific:";
   const subject = gapSubject(gapText);
   if (!subject) return "What experience do you have here?";
   return `What experience do you have with ${subject.charAt(0).toLowerCase()}${subject.slice(1)}?`;

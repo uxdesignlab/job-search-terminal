@@ -15,6 +15,34 @@ the numbers mean and when they change.
 
 ---
 
+## 0.22.0 — 2026-11-17 — Say it once, save it for next time
+
+**Added**
+
+- An instruction on ✨ Improve or ↻ Regenerate can now state a fact about you —
+  "add 8+ years of healthcare experience" — and the AI may use it. Before, the
+  app rejected it as a claim your evidence does not show, even though you had
+  just told it.
+- When a suggestion uses a fact you only stated in the instruction, it says
+  **Used what you told it**, warns that the PDF download will flag it until it is
+  saved, and offers an **Add to Evidence bank** box with the fact already filled
+  in. Check the wording, press the button, and you will not need to say it
+  again. Nothing is saved unless you press it.
+- When a suggestion kept your earlier wording because of a claim it could not
+  back up, you can now add the true fact to your Evidence bank right there,
+  instead of being told to go find the page.
+
+- If you press **Accept** before saving, the offer stays under the section as
+  **Not saved yet**, so it does not disappear with the suggestion.
+
+**Fixed**
+
+- "8 years" is no longer rejected when your evidence says "8+ years". It is the
+  same figure; a bigger one, like "15+ years", still does not back a smaller
+  claim.
+- A suggestion no longer reports a number from a different section as a claim
+  it had to undo.
+
 ## 0.21.0 — 2026-11-12 — Adzuna links that go to the right job
 
 **Changed**

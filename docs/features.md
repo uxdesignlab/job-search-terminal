@@ -1930,7 +1930,35 @@ approved-resume builder experience with identical section controls on every sect
   once. A screen-reader announcement ("Suggestion ready…") fires when a request finishes,
   since the result appears away from the button that was pressed. **Add
   instruction** reveals a short field ("shorter", "lead with the accessibility work")
-  sent with either action; the writer follows it within the truth rules. Awards &
+  sent with either action. A fact the user states in it ("add 8+ years of healthcare
+  experience") is the user's own statement: it is added to the guard's evidence for that
+  request and the writer's truth rules say it may be used, while anything the model adds
+  beyond the instruction and the evidence is still reverted. The route returns
+  `instructionClaims` — the claims in the rewritten lines that only the instruction backs
+  (`unsupportedClaimsInLines` against the evidence without the note) — and the panel says
+  **Used what you told it** with those claims, warns that the PDF export will flag them,
+  and shows an editable **Add to Evidence bank** form prefilled from the instruction
+  (`factFromInstruction` turns "add …" into a statement). When the guard rejected a claim,
+  the same form is one click away (**+ Add the true fact to your Evidence bank**) instead
+  of a sentence naming a page. Nothing is saved until the user presses the button.
+  After **Accept**, the editor keeps the accepted suggestion (`SectionAIState.accepted`) and
+  shows the same offer under the section's buttons as **Not saved yet**, unless the fact was
+  already saved from the suggestion during this visit; the next request or **Undo accept**
+  clears it. The save result is announced through a live region mounted before it, and
+  focus moves to the confirmation. The claim guard also accepts a bare figure when the
+  evidence states the same figure open-ended ("8 years" from "8+ years") — the user's
+  "add 8+ years" was rejected because the model wrote "8 years" — but never a different
+  one ("15+" does not back "8"). The draft's *not tailored* notice links to the Evidence
+  bank and mentions the instruction route.
+  Saving posts to `POST /api/gap-evidence/stated`, which stores the fact in the global
+  bank under the heading *In your own words: …* (tags `gap-evidence`, heading,
+  `stated-fact`) as **Answered** without running the gap-answer assessor — the assessor
+  asks a gap answer for scale and outcome, and would park a plain fact as Needs detail,
+  saved but unused, so the next rewrite would reject it again. Editing that entry in the
+  Evidence bank keeps it Answered for the same reason, and its edit label reads "A fact
+  you stated while editing a resume". The *kept the earlier wording* report is scoped to
+  the part being rewritten; the guard checks the whole draft, and a hand-typed figure in
+  another section used to be reported as this rewrite's. Awards &
   Recognition keeps the plain ✨ Improve, since it is not a part the writer tailors.
   Improve used to be a separate prompt that saw neither the posting nor the evidence,
   asked for "measurable" bullets and "compelling, keyword-rich" summaries, and bypassed
