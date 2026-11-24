@@ -15,6 +15,19 @@ the numbers mean and when they change.
 
 ---
 
+## 0.24.1 — 2026-11-24 — A long company list opens quickly
+
+**Changed**
+
+- Settings → Companies shows 100 companies at a time, with **Previous** and
+  **Next**, and a **Find a company** box to jump to one by name. With about
+  8,000 companies the tab used to send a 19 MB page and take over a second to
+  load; it is now under 1 MB. Sorting, column filters, the counts and the
+  checkbox at the top still cover the whole list, not just the page you see —
+  so that checkbox switches every matching company, on every page.
+- The other Settings tabs no longer load the company list. AI Provider,
+  Integrations, Scanning and Data & Backup open without reading it.
+
 ## 0.24.0 — 2026-11-24 — Choose how often the app scans, and a tidier Settings
 
 **Added**
