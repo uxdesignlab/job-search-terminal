@@ -2609,12 +2609,43 @@ past several hundred rows:
 
 The Dashboard's **Check sources** button links to `?tab=scan-sources`.
 
+**Settings page load.** The page only does scan-source work on the tabs that use it.
+Building the source list (portals.yml, every custom source, every override) runs
+on **Companies** and **Cleanup**; portals.yml is also read on **Scanning**,
+whose title filters fall back to it. The company-profile sync
+(`syncCompanyProfilesFromYaml`, a database write) and the profile lookup run only
+on **Companies**, the one tab that shows industries; the discovered-sources
+file and the last source check are read only where they are shown. The AI
+Provider, Integrations, Scanning and Data & Backup tabs do none of it. The list is
+built by a module-level `listScanSources()` so server actions (Validate sources)
+rebuild it from the database rather than closing over the page's copy, which
+would encrypt the whole list into the page and post it back on every call.
+
 - All configured sources appear in a unified table on the **Companies** tab —
   companies from `portals.example.yml` and any manually added sources are treated
   equally.
 - Enable or disable individual sources (disabled sources are skipped on the
   next scan).
 - Column filters and saved filter presets on the sources table.
+- **Paged, with a name search.** The table renders 100 rows at a time
+  (`SCAN_SOURCES_PAGE_SIZE`) with **Previous** / **Next** and a
+  **Showing 1–100 of N** line above and below it, and a **Find a company** box
+  that filters by name (case-insensitive substring). Rendering every row made the
+  tab a 19 MB page at 8,300 sources; it is now about 0.75 MB.
+
+  Only the rendering is paged. The client still holds the whole list, so the
+  **sources total \| enabled** counts, column filters and their option lists,
+  sort, saved filters, and the header checkbox all span every source. The header
+  checkbox turns on or off **everything matching the current search and
+  filters, on every page** — its accessible name says so, with the count. The
+  page resets to 1 when the sort, a filter or the search changes, and is clamped
+  when removing rows empties the last page.
+
+  To fit 8,000 sources in under 1 MB, the list travels in a compact positional
+  form (`src/lib/scan-source-index.ts`: `packScanSources` on the server,
+  `unpackScanSources` in the table) with the last **Validate sources** result
+  folded into each row, instead of an array of objects plus a second
+  name-keyed result list. See *Settings page load* above.
 - Sources from `portals.example.yml` cannot be removed (they reload from the
   config file); manually added sources have a Remove button.
 - Add any company by pasting its careers page URL on the **Companies** tab —

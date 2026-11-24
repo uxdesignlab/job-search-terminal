@@ -1576,6 +1576,30 @@ deliberately excluded — they live on `/archived`, which the link does not reac
 
 ---
 
+## Derived Types — Scan Source Wire Format
+
+Defined in `src/lib/scan-source-index.ts`. No schema change: this is how
+Settings → Companies sends the merged source list (portals.yml +
+`scan_sources_custom` + `scan_source_overrides` + `company_profiles.industry`) and
+the latest `source_check_runs` result to the client table in one compact array.
+
+| Type / value | Shape | Purpose |
+|---|---|---|
+| `ScanSourceRow` | `{ name, careersUrl, apiType, enabled, removable, industry }` | One table row after decoding (`ScanSource` in the table is an alias) |
+| `ScanSourceLive` | `{ status, jobCount, error? }` | One row's last whole-list check |
+| `PackedScanSource` | `[name, url, flags, industry?, live?]` | One row on the wire |
+| `packScanSources(rows, lastCheckResults?)` | `PackedScanSource[]` | Server side; drops results for names not in `rows` |
+| `unpackScanSources(packed)` | `{ sources, live }` | Client side; `live` seeds the Live column |
+
+Encoding: `url` drops a leading `https://`, and any other non-empty URL is sent
+whole behind a `!`. `flags` bits 0–1 are the ATS (0 none, 1 Greenhouse, 2 Ashby,
+3 Lever), bit 2 enabled, bit 3 removable. `live` is a job count or `null` for a
+live board, `"d"` for dead, and `"u"` or `"u:<error>"` for unknown; it is absent
+when the source has never been checked. At 8,000 sources this is roughly 40% of
+the size of the object array it replaced.
+
+---
+
 ## Notes on Schema Values
 
 **`generated_documents.document_type`:** Accepts `'resume'` or `'cover_letter'`.

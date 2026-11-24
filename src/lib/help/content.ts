@@ -689,6 +689,8 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "Settings → Scanning holds automatic scans, the fresh posting window, title filters, and job aggregators. Settings → Companies holds the company list itself, adding a company by hand, and the two buttons that look for more. Settings → Cleanup is where you clear out ones that no longer work.",
           "Open Account → Settings → Companies to enable or disable existing company sources.",
+          "The company list shows 100 at a time. Type in Find a company to jump to one by name, or use Previous and Next. Sorting, column filters, and the counts above the table always cover the whole list, not just the page you are on.",
+          "The checkbox at the top of the list switches every company that matches your search and filters on or off — on every page, not only the 100 you can see. Narrow the list first if you only mean some of them.",
           "Set the Fresh posting window (24 hours, 72 hours by default, or 7 days) under Settings → Scanning to control how old a posting can be before scans skip it as stale.",
           "Add a supported career page (Ashby, Greenhouse, or Lever) under Settings → Companies → Add a company when you want the scanner to watch a new company.",
           "Use title include filters for roles you want and exclude filters for titles you never want.",

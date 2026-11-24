@@ -40,6 +40,7 @@ import { describeSourceProblem, type SourceCheckEvidence } from "@/lib/scanner/s
 import { AggregatorScanButton } from "@/components/aggregator-scan-button";
 import { DiceScanButton } from "@/components/dice-scan-button";
 import { detectApi, loadScanConfig, runCareerOpsScanner, type PortalCompany } from "@/lib/scanner/careerops-scanner";
+import { packScanSources } from "@/lib/scan-source-index";
 import { runSourceDiscovery, runSearchDiscovery } from "@/lib/scanner/source-discovery";
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
 import { cn } from "@/lib/utils";
@@ -185,12 +186,16 @@ export default async function SettingsPage({
     connectionStatus: "not_connected" as const, lastTestedAt: null,
   };
 
-  // Serialised for the client table so the Live column opens on the last check
+  // Which tabs need the scan-source list. Building it reads portals.yml, every
+  // custom source and every override, and the profile sync below is a database
+  // write — none of which the AI Provider or Integrations tabs should pay for.
+  const needsSourceList = activeTab === "scan-sources" || activeTab === "cleanup";
+  // Scanning shows the portals.yml title filters when none are saved.
+  const needsScanConfig = needsSourceList || activeTab === "sources";
+
+  // Folded into the client table so the Live column opens on the last check
   // instead of "Not validated" on every row.
-  const latestSourceCheck = getLatestSourceCheckRun();
-  const lastSourceCheck = latestSourceCheck
-    ? { completedAt: latestSourceCheck.completedAt, results: latestSourceCheck.results }
-    : undefined;
+  const latestSourceCheck = needsSourceList ? getLatestSourceCheckRun() : undefined;
 
   const settings = getAISettings();
   // Mask keys before they reach the client component — the full value is never
@@ -205,10 +210,12 @@ export default async function SettingsPage({
     adzunaApiKey: maskApiKey(settings.adzunaApiKey),
   };
   const creditStatuses = getAIProviderStatuses().map(({ provider, detectedAt }) => ({ provider, detectedAt }));
-  const scanConfig = loadScanConfig();
-  const yamlCompanies = scanConfig.tracked_companies ?? [];
-  syncCompanyProfilesFromYaml(yamlCompanies);
-  const profileMap = getCompanyProfiles();
+  const scanConfig = needsScanConfig ? loadScanConfig() : {};
+  const yamlCompanies = needsSourceList ? (scanConfig.tracked_companies ?? []) : [];
+  // Industries are only shown on Companies, so only that tab seeds them.
+  if (activeTab === "scan-sources") syncCompanyProfilesFromYaml(yamlCompanies);
+  const profileMap: ReturnType<typeof getCompanyProfiles> =
+    activeTab === "scan-sources" ? getCompanyProfiles() : new Map();
   const dbFilters = getTitleFilters();
   const positiveKeywords =
     dbFilters.positive.length > 0 || dbFilters.negative.length > 0
@@ -218,13 +225,13 @@ export default async function SettingsPage({
     dbFilters.positive.length > 0 || dbFilters.negative.length > 0
       ? dbFilters.negative
       : (scanConfig.title_filter?.negative ?? []);
-  const overrides = getScanSourceOverrides();
-  const customSources = getCustomScanSources();
+  const overrides = needsSourceList ? getScanSourceOverrides() : {};
+  const customSources = needsSourceList ? getCustomScanSources() : [];
   const scanSchedule = getScanSchedule();
 
   const allCompanies = listScanSources(yamlCompanies, customSources, overrides, profileMap);
 
-  const allDiscovered = loadDiscoveredSources();
+  const allDiscovered = activeTab === "scan-sources" ? loadDiscoveredSources() : [];
   const existingNames = new Set([
     ...yamlCompanies.map((c) => c.name.toLowerCase()),
     ...customSources.map((c) => c.name.toLowerCase()),
@@ -667,7 +674,7 @@ export default async function SettingsPage({
               </div>
             </div>
             <ScanSourcesTable
-              sources={allCompanies}
+              packedSources={packScanSources(allCompanies, latestSourceCheck?.results)}
               onToggle={toggleSourceEnabledAction}
               onToggleAll={toggleAllSourcesAction}
               onRemove={removeSourceAction}
@@ -675,7 +682,7 @@ export default async function SettingsPage({
               onScanCompany={scanCompanyJobsAction}
               onScanAllEnabled={scanAllEnabledCareerSourcesAction}
               onValidateAll={validateAllSourcesAction}
-              lastCheck={lastSourceCheck}
+              lastCheckedAt={latestSourceCheck?.completedAt}
             />
           </Card>
           </>

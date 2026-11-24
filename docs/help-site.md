@@ -124,6 +124,10 @@ Title filters are under Settings → Scanning, Add a company under Settings →
 Companies, the Adzuna/Brave keys under AI Provider → **Job search keys**, and profile
 supplements under Profile → Resumes → **Experience not on your resume**.
 
+0.24.1 added two bullets to the sources guide: the company list shows 100 at a
+time with **Find a company** and **Previous**/**Next**, and the header checkbox
+switches every matching company on every page, not just the visible 100.
+
 Thinner than the feature warrants, but not absent: saved filter presets,
 the resume builder, the keyword/taxonomy manager, story consolidation, and the
 interview plan. Clay contact search now explains its prerequisites and common

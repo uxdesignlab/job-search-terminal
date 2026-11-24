@@ -18,7 +18,11 @@ import {
 } from "@/components/ui/data-table-sort-filter";
 import { dataTableClass, dataTableStickyHeadClass } from "@/components/ui/table";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
-import type { SourceCheckResultEntry } from "@/lib/db/types";
+import {
+  unpackScanSources,
+  type PackedScanSource,
+  type ScanSourceRow,
+} from "@/lib/scan-source-index";
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
 import {
   TABLE_SAVED_FILTER_STORAGE_KEYS,
@@ -28,19 +32,17 @@ import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type ScanSource = {
-  name: string;
-  careersUrl: string;
-  apiType: "greenhouse" | "ashby" | "lever" | null;
-  enabled: boolean;
-  removable: boolean;
-  industry: string;
-};
+export type ScanSource = ScanSourceRow;
 
 export type CompanyScanResultSummary = ScanJobResultSummary;
 
 type Props = {
-  sources: ScanSource[];
+  /**
+   * Every source, packed (see `scan-source-index.ts`) with its last check folded
+   * in. The whole list is needed here — counts, filters, sort, search and
+   * select-all span all of it — but only one page of rows is rendered.
+   */
+  packedSources: PackedScanSource[];
   onToggle: (name: string, enabled: boolean) => Promise<void>;
   onToggleAll?: (changes: Array<{ name: string; enabled: boolean }>) => Promise<void>;
   onRemove: (name: string) => Promise<void>;
@@ -49,8 +51,8 @@ type Props = {
   /** Full CareerOps pass for every enabled source (same engine as Dashboard ATS scan). */
   onScanAllEnabled?: () => Promise<CompanyScanResultSummary>;
   onValidateAll?: () => Promise<SourceValidationResult[]>;
-  /** Most recent persisted whole-list check, used to pre-fill the Live column. */
-  lastCheck?: { completedAt: string; results: SourceCheckResultEntry[] };
+  /** When the most recent persisted whole-list check finished, if there was one. */
+  lastCheckedAt?: string;
 };
 
 type SortCol = "company" | "industry" | "ats" | "status" | "live";
@@ -116,11 +118,17 @@ const COL_DEFS: Array<{ col: SortCol; label: string }> = [
   { col: "live", label: "Live" },
 ];
 
+/**
+ * Rows rendered at once. Rendering all of 8,000 sources made the tab a 19 MB
+ * page; everything else in the table still works across the whole list.
+ */
+export const SCAN_SOURCES_PAGE_SIZE = 100;
+
 /** Sentinel for `scanningName` while a full enabled-sources scan runs. */
 const SCAN_ALL_ENABLED_SENTINEL = "__SCAN_ALL_ENABLED__";
 
 export function ScanSourcesTable({
-  sources,
+  packedSources,
   onToggle,
   onToggleAll,
   onRemove,
@@ -128,9 +136,11 @@ export function ScanSourcesTable({
   onScanCompany,
   onScanAllEnabled,
   onValidateAll,
-  lastCheck,
+  lastCheckedAt,
 }: Props) {
   const router = useRouter();
+  const unpacked = useMemo(() => unpackScanSources(packedSources), [packedSources]);
+  const sources = unpacked.sources;
   const {
     sort,
     filters,
@@ -164,15 +174,12 @@ export function ScanSourcesTable({
   const [scanError, setScanError] = useState<string | null>(null);
   const [validationMap, setValidationMap] = useState<
     Map<string, { status: string; jobCount: number | null; error?: string }>
-  >(
-    () =>
-      new Map(
-        (lastCheck?.results ?? []).map((r) => [
-          r.name,
-          { status: r.status, jobCount: r.jobCount, error: r.error },
-        ]),
-      ),
-  );
+  >(() => unpacked.live);
+  const [nameQuery, setNameQuery] = useState("");
+  // The page is remembered together with the view it belongs to: change the sort,
+  // a filter or the search and the table goes back to page 1 instead of landing
+  // on a page that no longer means anything.
+  const [pageState, setPageState] = useState<{ view: string; page: number }>({ view: "", page: 0 });
   const [validateDialogOpen, setValidateDialogOpen] = useState(false);
   const [validatePhase, setValidatePhase] = useState<"running" | "done">("running");
   const [validateResults, setValidateResults] = useState<SourceValidationResult[] | null>(null);
@@ -244,6 +251,9 @@ export function ScanSourcesTable({
 
     let result = withOverrides.filter((s) => !pendingRemoves.has(s.name));
 
+    const needle = nameQuery.trim().toLowerCase();
+    if (needle) result = result.filter((s) => s.name.toLowerCase().includes(needle));
+
     for (const [col, allowed] of Object.entries(filters) as [SortCol, Set<string>][]) {
       if (!allowed) continue;
       result = result.filter((s) => allowed.has(getColValue(s, col, validationMap)));
@@ -256,7 +266,27 @@ export function ScanSourcesTable({
           : getColValue(a, sort.col, validationMap).localeCompare(getColValue(b, sort.col, validationMap));
       return sort.dir === "asc" ? cmp : -cmp;
     });
-  }, [sources, sort, filters, enabledOverrides, pendingRemoves, validationMap]);
+  }, [sources, sort, filters, enabledOverrides, pendingRemoves, validationMap, nameQuery]);
+
+  const viewKey = useMemo(
+    () =>
+      JSON.stringify([
+        sort,
+        nameQuery.trim().toLowerCase(),
+        (Object.entries(filters) as [SortCol, Set<string> | undefined][])
+          .filter(([, allowed]) => allowed)
+          .map(([col, allowed]) => [col, [...allowed!].sort()])
+          .sort(),
+      ]),
+    [sort, filters, nameQuery],
+  );
+  const pageCount = Math.max(1, Math.ceil(displaySources.length / SCAN_SOURCES_PAGE_SIZE));
+  // Clamped, so removing the last rows of the last page shows the page before it.
+  const page = Math.min(pageState.view === viewKey ? pageState.page : 0, pageCount - 1);
+  const pageStart = page * SCAN_SOURCES_PAGE_SIZE;
+  const pageSources = displaySources.slice(pageStart, pageStart + SCAN_SOURCES_PAGE_SIZE);
+  const goToPage = (next: number) =>
+    setPageState({ view: viewKey, page: Math.max(0, Math.min(next, pageCount - 1)) });
 
   const allVisibleEnabled =
     displaySources.length > 0 && displaySources.every((s) => getEffectiveEnabled(s.name, s.enabled));
@@ -373,7 +403,7 @@ export function ScanSourcesTable({
             |
           </span>{" "}
           <span className="font-medium text-ink">{sourceListStats.enabled}</span> enabled
-          {lastCheck && (
+          {lastCheckedAt && (
             <>
               {" "}
               <span className="text-border" aria-hidden>
@@ -381,7 +411,7 @@ export function ScanSourcesTable({
               </span>{" "}
               checked{" "}
               <span className="font-medium text-ink">
-                <LocalDaysAgoLabel value={lastCheck.completedAt} />
+                <LocalDaysAgoLabel value={lastCheckedAt} />
               </span>
             </>
           )}
@@ -411,6 +441,27 @@ export function ScanSourcesTable({
         </div>
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <span>Find a company</span>
+          <input
+            className="w-56 rounded-control border border-border bg-surface px-3 py-1.5 text-sm"
+            onChange={(e) => setNameQuery(e.target.value)}
+            placeholder="Company name"
+            type="search"
+            value={nameQuery}
+          />
+        </label>
+        <ScanSourcesPager
+          onPage={goToPage}
+          page={page}
+          pageCount={pageCount}
+          shownFrom={displaySources.length === 0 ? 0 : pageStart + 1}
+          shownTo={pageStart + pageSources.length}
+          total={displaySources.length}
+        />
+      </div>
+
       <div className="w-full max-w-full" role="region" aria-label="Scan sources table">
         <table className={cn(dataTableClass, dataTableStickyHeadClass, "min-w-max")}>
           <thead>
@@ -419,7 +470,7 @@ export function ScanSourcesTable({
                 <input
                   ref={selectAllRef}
                   type="checkbox"
-                  aria-label="Toggle all visible sources"
+                  aria-label={`Turn all ${displaySources.length} matching sources on or off, on every page`}
                   checked={allVisibleEnabled}
                   onChange={handleToggleAll}
                   disabled={displaySources.length === 0}
@@ -447,7 +498,7 @@ export function ScanSourcesTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {displaySources.map((source) => {
+            {pageSources.map((source) => {
               const isEnabled = enabledOverrides.has(source.name)
                 ? enabledOverrides.get(source.name)!
                 : source.enabled;
@@ -546,7 +597,27 @@ export function ScanSourcesTable({
             })}
           </tbody>
         </table>
+        {displaySources.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted">
+            {nameQuery.trim() ? `No sources match “${nameQuery.trim()}”.` : "No sources match these filters."}
+          </p>
+        ) : null}
       </div>
+
+      {pageCount > 1 ? (
+        <div className="mt-3 flex justify-end">
+          <ScanSourcesPager
+            announce={false}
+            label="Company list pages, bottom"
+            onPage={goToPage}
+            page={page}
+            pageCount={pageCount}
+            shownFrom={pageStart + 1}
+            shownTo={pageStart + pageSources.length}
+            total={displaySources.length}
+          />
+        </div>
+      ) : null}
 
       {validateDialogOpen && (
         <div
@@ -724,5 +795,61 @@ export function ScanSourcesTable({
         />
       )}
     </div>
+  );
+}
+
+function ScanSourcesPager({
+  announce = true,
+  label = "Company list pages",
+  page,
+  pageCount,
+  shownFrom,
+  shownTo,
+  total,
+  onPage,
+}: {
+  page: number;
+  pageCount: number;
+  shownFrom: number;
+  shownTo: number;
+  total: number;
+  onPage: (page: number) => void;
+  /** Only one pager on the page should announce changes, or screen readers hear them twice. */
+  announce?: boolean;
+  label?: string;
+}) {
+  return (
+    <nav aria-label={label} className="flex items-center gap-2 text-xs text-muted">
+      <span aria-live={announce ? "polite" : undefined}>
+        {total === 0 ? "No matching sources" : <>Showing <span className="font-medium text-ink">{shownFrom.toLocaleString()}</span>–
+        <span className="font-medium text-ink">{shownTo.toLocaleString()}</span> of{" "}
+        <span className="font-medium text-ink">{total.toLocaleString()}</span></>}
+      </span>
+      {pageCount > 1 ? (
+        <>
+          <Button
+            className="min-h-8 px-2.5 py-1 text-xs"
+            disabled={page === 0}
+            onClick={() => onPage(page - 1)}
+            type="button"
+            variant="secondary"
+          >
+            Previous
+          </Button>
+          <span>
+            Page {page + 1} of {pageCount}
+          </span>
+          <Button
+            className="min-h-8 px-2.5 py-1 text-xs"
+            disabled={page >= pageCount - 1}
+            onClick={() => onPage(page + 1)}
+            type="button"
+            variant="secondary"
+          >
+            Next
+          </Button>
+        </>
+      ) : null}
+    </nav>
   );
 }
