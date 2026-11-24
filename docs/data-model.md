@@ -535,13 +535,13 @@ Added in migration `0071_board_catch_up`.
 | `total_count` / `checked_count` | Boards handed to the check / boards checked so far |
 | `new_jobs_count` | Jobs the check inserted |
 | `found_job_ids_json` | JSON array of those job ids — the Jobs list marks them **Found after scan** |
-| `paused_until` | ISO timestamp; the check sends nothing before it |
-| `backoff_ms` | Next pause after a refusal (60 s, doubling to 15 min, reset by a clean tick) |
-| `batch_size` | Boards per 2 s tick (1–3), grows while requests succeed |
+| `host_pacing_json` | Pacing per host, JSON keyed by `greenhouse` / `ashby` / `lever`: `{ pausedUntil, backoffMs, batchSize }`. `pausedUntil` — that host gets no request before it; `backoffMs` — its next pause after a refusal (60 s, doubling to 15 min, reset by a clean tick); `batchSize` — its boards per 2 s tick (1–3), growing while its requests succeed. Per host so one host refusing never holds back another |
 | `updated_at` | Last change |
 
 A second scan that defers boards while a check is running adds to `total_count` and
-`hosts_json`; otherwise it resets the row. Read through `getCatchUpStatus()`, which
+`hosts_json` and pauses each refusing host for at least a minute; otherwise it resets
+the row. A board whose source was disabled or deleted while queued is removed by the
+next tick without being fetched, and `total_count` drops by one. Read through `getCatchUpStatus()`, which
 returns `CatchUpStatus` (`state`: `idle` / `running` / `paused` / `finished`, plus counts,
 `foundJobIds`, `pausedUntil`, `etaMinutes`); a check finished more than 24 h ago reads as
 `idle`. Exposed at `GET /api/job-discovery/catch-up`.

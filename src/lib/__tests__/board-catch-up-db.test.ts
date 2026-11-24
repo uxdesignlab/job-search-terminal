@@ -43,6 +43,13 @@ const board = (name: string, priority = 0) => ({
   priority,
 });
 
+const ashbyBoard = (name: string) => ({
+  name,
+  apiType: "ashby" as const,
+  apiUrl: `https://api.ashbyhq.com/posting-api/job-board/${name}`,
+  priority: 0,
+});
+
 const payload = (name: string) => ({
   jobs: [
     {
@@ -87,16 +94,16 @@ describe("board catch-up", () => {
       return payload(nameOf(url));
     };
     // Still inside the pause: nothing is sent.
-    expect(await catchUp.runCatchUpTick({ fetcher, context, now: () => t0 })).toBe("waiting");
+    expect(await catchUp.runCatchUpTick({ fetcher, context, isSourceEnabled: () => true, now: () => t0 })).toBe("waiting");
     expect(fetched).toEqual([]);
 
     const later = new Date(t0.getTime() + catchUp.INITIAL_BACKOFF_MS + 1000);
-    expect(await catchUp.runCatchUpTick({ fetcher, context, now: () => later })).toBe("checked");
+    expect(await catchUp.runCatchUpTick({ fetcher, context, isSourceEnabled: () => true, now: () => later })).toBe("checked");
     expect(fetched).toEqual(["high"]);
     // Batch grows after a clean tick.
-    expect(await catchUp.runCatchUpTick({ fetcher, context, now: () => later })).toBe("checked");
+    expect(await catchUp.runCatchUpTick({ fetcher, context, isSourceEnabled: () => true, now: () => later })).toBe("checked");
     expect(fetched).toEqual(["high", "low"]);
-    expect(await catchUp.runCatchUpTick({ fetcher, context, now: () => later })).toBe("finished");
+    expect(await catchUp.runCatchUpTick({ fetcher, context, isSourceEnabled: () => true, now: () => later })).toBe("finished");
 
     const done = catchUp.getCatchUpStatus(later);
     expect(done.state).toBe("finished");
@@ -114,7 +121,7 @@ describe("board catch-up", () => {
       throw new Error("HTTP 429");
     };
     const t1 = new Date(t0.getTime() + catchUp.INITIAL_BACKOFF_MS + 1);
-    expect(await catchUp.runCatchUpTick({ fetcher: refuse, context, now: () => t1 })).toBe("rate_limited");
+    expect(await catchUp.runCatchUpTick({ fetcher: refuse, context, isSourceEnabled: () => true, now: () => t1 })).toBe("rate_limited");
 
     const s1 = catchUp.getCatchUpStatus(t1);
     expect(s1.state).toBe("paused");
@@ -122,7 +129,7 @@ describe("board catch-up", () => {
     expect(new Date(s1.pausedUntil!).getTime() - t1.getTime()).toBe(catchUp.INITIAL_BACKOFF_MS);
 
     const t2 = new Date(new Date(s1.pausedUntil!).getTime() + 1);
-    await catchUp.runCatchUpTick({ fetcher: refuse, context, now: () => t2 });
+    await catchUp.runCatchUpTick({ fetcher: refuse, context, isSourceEnabled: () => true, now: () => t2 });
     const s2 = catchUp.getCatchUpStatus(t2);
     expect(new Date(s2.pausedUntil!).getTime() - t2.getTime()).toBe(catchUp.INITIAL_BACKOFF_MS * 2);
   });
@@ -137,6 +144,7 @@ describe("board catch-up", () => {
         throw new Error("HTTP 404");
       },
       context,
+      isSourceEnabled: () => true,
       now: () => t1,
     });
     expect(catchUp.getCatchUpStatus(t1).remaining).toBe(0);
@@ -159,10 +167,56 @@ describe("board catch-up", () => {
     catchUp.enqueueDeferredBoards([board("a")], "scan-1", t0);
     const t1 = new Date(t0.getTime() + catchUp.INITIAL_BACKOFF_MS + 1);
     const fetcher = async (url: string) => payload(nameOf(url));
-    await catchUp.runCatchUpTick({ fetcher, context, now: () => t1 });
-    await catchUp.runCatchUpTick({ fetcher, context, now: () => t1 });
+    await catchUp.runCatchUpTick({ fetcher, context, isSourceEnabled: () => true, now: () => t1 });
+    await catchUp.runCatchUpTick({ fetcher, context, isSourceEnabled: () => true, now: () => t1 });
     expect(catchUp.getCatchUpStatus(t1).state).toBe("finished");
     const nextDay = new Date(t1.getTime() + catchUp.FINISHED_VISIBLE_MS + 1);
     expect(catchUp.getCatchUpStatus(nextDay).state).toBe("idle");
+  });
+
+  it("keeps checking a host that answers while another host is paused", async () => {
+    const { catchUp, context } = await load();
+    const t0 = new Date("2026-08-17T12:00:00Z");
+    catchUp.enqueueDeferredBoards([board("gh-1"), board("gh-2"), ashbyBoard("ash-1"), ashbyBoard("ash-2")], "scan-1", t0);
+    const fetched: string[] = [];
+    const fetcher = async (url: string) => {
+      fetched.push(url.includes("greenhouse") ? `gh:${nameOf(url)}` : `ash:${url.split("/").at(-1)}`);
+      if (url.includes("greenhouse")) throw new Error("HTTP 429");
+      return { jobs: [] };
+    };
+    const deps = { fetcher, context, isSourceEnabled: () => true };
+
+    // Greenhouse refuses again; Ashby answers in the same tick.
+    const t1 = new Date(t0.getTime() + catchUp.INITIAL_BACKOFF_MS + 1);
+    expect(await catchUp.runCatchUpTick({ ...deps, now: () => t1 })).toBe("rate_limited");
+    expect([...fetched].sort()).toEqual(["ash:ash-1", "gh:gh-1"]);
+
+    // Two seconds later Greenhouse is still paused, but Ashby carries on.
+    fetched.length = 0;
+    const t2 = new Date(t1.getTime() + 2_000);
+    expect(await catchUp.runCatchUpTick({ ...deps, now: () => t2 })).toBe("checked");
+    expect(fetched).toEqual(["ash:ash-2"]);
+
+    // With only paused Greenhouse boards left, the check reads as paused.
+    const status = catchUp.getCatchUpStatus(t2);
+    expect(status.state).toBe("paused");
+    expect(status.remaining).toBe(2);
+  });
+
+  it("drops boards whose source was disabled or deleted while waiting, without fetching them", async () => {
+    const { catchUp, context } = await load();
+    const t0 = new Date("2026-08-17T12:00:00Z");
+    catchUp.enqueueDeferredBoards([board("kept"), board("switched-off")], "scan-1", t0);
+    const t1 = new Date(t0.getTime() + catchUp.INITIAL_BACKOFF_MS + 1);
+    const fetched: string[] = [];
+    const fetcher = async (url: string) => {
+      fetched.push(nameOf(url));
+      return payload(nameOf(url));
+    };
+    await catchUp.runCatchUpTick({ fetcher, context, isSourceEnabled: (n) => n !== "switched-off", now: () => t1 });
+    expect(fetched).toEqual(["kept"]);
+    const status = catchUp.getCatchUpStatus(t1);
+    expect(status.total).toBe(1);
+    expect(status.remaining).toBe(0);
   });
 });

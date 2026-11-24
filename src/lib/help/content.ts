@@ -673,6 +673,7 @@ export const helpPages: HelpPage[] = [
           "New jobs do not appear in your list on their own, so the rows never jump while you are reading. Press Show N new jobs on the Jobs page when you are ready. Jobs found this way carry a Found after scan label for a day.",
           "You do not need to disable those companies. The Disable button is not offered for them, because their pages are fine.",
           "The background check only runs while the app is running. If you close the app, it picks up where it left off the next time you start it.",
+          "If you switch a company off or remove it while it is waiting, the background check skips it. If two services are waiting and only one asks the app to slow down again, the other keeps going.",
           "Scanning again while the background check is still going leaves its companies alone, so the scan does not ask the same service again too soon.",
         ],
       },

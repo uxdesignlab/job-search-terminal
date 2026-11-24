@@ -514,6 +514,23 @@ export function isScanSourceEnabled(name: string, configPath?: string): boolean 
 }
 
 /**
+ * Names of every source the next scan would check: YAML and custom sources, with
+ * `scan_source_overrides` applied — the same rule `runCareerOpsScanner` uses. The
+ * background check reads this so a company disabled or deleted while its board was
+ * waiting is dropped instead of fetched.
+ */
+export function getEnabledScanSourceNames(configPath?: string): Set<string> {
+  const config = loadScanConfig(configPath);
+  const overrides = getScanSourceOverrides();
+  const merged = mergeTrackedCompanies(config.tracked_companies ?? [], getCustomScanSources());
+  return new Set(
+    merged
+      .filter((c) => (Object.hasOwn(overrides, c.name) ? overrides[c.name] : c.enabled !== false))
+      .map((c) => c.name),
+  );
+}
+
+/**
  * The scan sources as the scanner sees them: the YAML `tracked_companies` plus the
  * custom sources stored in the app database, where a custom source of the same name
  * replaces the YAML entry. Exported because the description fetcher needs the same

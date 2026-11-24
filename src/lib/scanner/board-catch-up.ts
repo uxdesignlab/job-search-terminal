@@ -7,10 +7,12 @@
  * through the saved list slowly, while the app is running, and adds anything it
  * finds to the Jobs list through the same filters and dedup rules the scan uses.
  *
- * Pacing is adaptive because the hosts do not publish their limits: one board per
- * tick to start, up to `MAX_BATCH` while every request succeeds, and a pause that
- * doubles (to `MAX_BACKOFF_MS`) whenever the host refuses again. The queue and the
- * session state live in the database (`board_catch_up_queue`,
+ * Pacing is adaptive because the hosts do not publish their limits, and it is kept
+ * per host: one board per tick to start, up to `MAX_BATCH` while every request to
+ * that host succeeds, and a pause that doubles (to `MAX_BACKOFF_MS`) whenever that
+ * host refuses again. One host refusing never holds back another host's boards.
+ * Boards whose source was disabled or deleted while waiting are dropped unfetched.
+ * The queue and the session state live in the database (`board_catch_up_queue`,
  * `board_catch_up_state`), so a restart resumes the work instead of losing it.
  */
 import { getDatabase } from "@/lib/db/client";
@@ -20,6 +22,7 @@ import {
   collectBoardJobs,
   createBoardJobContext,
   fetchJson,
+  getEnabledScanSourceNames,
   isCareerScanInProgress,
   isRateLimitError,
   loadScanConfig,
@@ -39,6 +42,8 @@ export const MAX_BACKOFF_MS = 15 * 60_000;
 export const FINISHED_VISIBLE_MS = 24 * 60 * 60_000;
 /** How long a cached dedup/filter context is reused between ticks. */
 const CONTEXT_TTL_MS = 60_000;
+/** How long the enabled-source list is reused between ticks (it reads the YAML config). */
+const SOURCES_TTL_MS = 30_000;
 
 const STATE_ID = "singleton";
 
@@ -62,11 +67,25 @@ type StateRow = {
   checked_count: number;
   new_jobs_count: number;
   found_job_ids_json: string;
-  paused_until: string | null;
-  backoff_ms: number;
-  batch_size: number;
+  host_pacing_json: string;
   updated_at: string;
 };
+
+type HostPacing = { pausedUntil: string | null; backoffMs: number; batchSize: number };
+type PacingMap = Partial<Record<AtsType, HostPacing>>;
+
+const freshPacing = (): HostPacing => ({ pausedUntil: null, backoffMs: INITIAL_BACKOFF_MS, batchSize: 1 });
+
+function parsePacing(json: string): PacingMap {
+  try {
+    const value = JSON.parse(json) as unknown;
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as PacingMap) : {};
+  } catch {
+    return {};
+  }
+}
+
+const isPaused = (p: HostPacing | undefined, now: Date) => Boolean(p?.pausedUntil && new Date(p.pausedUntil) > now);
 
 type QueueRow = {
   name: string;
@@ -99,11 +118,6 @@ export type CatchUpStatus = {
 
 function readState(): StateRow | undefined {
   return getDatabase().prepare("select * from board_catch_up_state where id = ?").get(STATE_ID) as StateRow | undefined;
-}
-
-function remainingCount(): number {
-  const row = getDatabase().prepare("select count(*) as n from board_catch_up_queue").get() as { n: number };
-  return row.n;
 }
 
 function parseList(json: string): string[] {
@@ -144,12 +158,15 @@ export function getQueuedBoardNames(): Set<string> {
  * Saves boards a scan could not reach. Joins the current check when one is still
  * running, so two scans in a row produce one status line, not two; otherwise
  * starts a new check and clears the previous one's "Found after scan" markers.
+ * Each refusing host waits at least a minute before its next request; other hosts
+ * keep their pacing.
  */
 export function enqueueDeferredBoards(boards: DeferredBoard[], originScanId: string, now = new Date()) {
   if (boards.length === 0) return;
   const db = getDatabase();
   const nowIso = now.toISOString();
   const hosts = [...new Set(boards.map((b) => b.apiType))];
+  const pauseFloor = new Date(now.getTime() + INITIAL_BACKOFF_MS).toISOString();
 
   db.transaction(() => {
     const state = readState();
@@ -161,23 +178,26 @@ export function enqueueDeferredBoards(boards: DeferredBoard[], originScanId: str
     let added = 0;
     for (const b of boards) added += insert.run(b.name, b.apiType, b.apiUrl, b.priority, nowIso).changes;
 
+    const pacing: PacingMap = active ? parsePacing(state.host_pacing_json) : {};
+    for (const host of hosts) {
+      const current = pacing[host] ?? freshPacing();
+      const pausedUntil = current.pausedUntil && current.pausedUntil > pauseFloor ? current.pausedUntil : pauseFloor;
+      pacing[host] = { ...current, pausedUntil, batchSize: 1 };
+    }
+
     if (active) {
       const merged = [...new Set([...parseList(state.hosts_json), ...hosts])];
-      // The host just refused again: make sure the check waits before its next request.
-      const pauseFloor = new Date(now.getTime() + INITIAL_BACKOFF_MS).toISOString();
-      const pausedUntil =
-        state.paused_until && state.paused_until > pauseFloor ? state.paused_until : pauseFloor;
       db.prepare(
         `update board_catch_up_state
-            set hosts_json = ?, total_count = total_count + ?, paused_until = ?, updated_at = ?
+            set hosts_json = ?, total_count = total_count + ?, host_pacing_json = ?, updated_at = ?
           where id = ?`,
-      ).run(JSON.stringify(merged), added, pausedUntil, nowIso, STATE_ID);
+      ).run(JSON.stringify(merged), added, JSON.stringify(pacing), nowIso, STATE_ID);
     } else {
       db.prepare(
         `insert into board_catch_up_state
            (id, hosts_json, origin_scan_id, started_at, finished_at, total_count, checked_count,
-            new_jobs_count, found_job_ids_json, paused_until, backoff_ms, batch_size, updated_at)
-         values (?, ?, ?, ?, null, ?, 0, 0, '[]', ?, ?, 1, ?)
+            new_jobs_count, found_job_ids_json, host_pacing_json, updated_at)
+         values (?, ?, ?, ?, null, ?, 0, 0, '[]', ?, ?)
          on conflict(id) do update set
            hosts_json = excluded.hosts_json,
            origin_scan_id = excluded.origin_scan_id,
@@ -187,23 +207,18 @@ export function enqueueDeferredBoards(boards: DeferredBoard[], originScanId: str
            checked_count = 0,
            new_jobs_count = 0,
            found_job_ids_json = '[]',
-           paused_until = excluded.paused_until,
-           backoff_ms = excluded.backoff_ms,
-           batch_size = 1,
+           host_pacing_json = excluded.host_pacing_json,
            updated_at = excluded.updated_at`,
-      ).run(
-        STATE_ID,
-        JSON.stringify(hosts),
-        originScanId,
-        nowIso,
-        added,
-        // The host just refused us: give it a minute before the first retry.
-        new Date(now.getTime() + INITIAL_BACKOFF_MS).toISOString(),
-        INITIAL_BACKOFF_MS,
-        nowIso,
-      );
+      ).run(STATE_ID, JSON.stringify(hosts), originScanId, nowIso, added, JSON.stringify(pacing), nowIso);
     }
   })();
+}
+
+function remainingByHost(): Map<AtsType, number> {
+  const rows = getDatabase()
+    .prepare("select api_type, count(*) as n from board_catch_up_queue group by api_type")
+    .all() as Array<{ api_type: AtsType; n: number }>;
+  return new Map(rows.map((r) => [r.api_type, r.n]));
 }
 
 export function getCatchUpStatus(now = new Date()): CatchUpStatus {
@@ -227,11 +242,25 @@ export function getCatchUpStatus(now = new Date()): CatchUpStatus {
     return idle;
   }
 
-  const remaining = state.finished_at ? 0 : remainingCount();
-  const paused = !state.finished_at && state.paused_until !== null && new Date(state.paused_until) > now;
-  const pauseLeftMs = paused && state.paused_until ? new Date(state.paused_until).getTime() - now.getTime() : 0;
-  const perBoardMs = CATCH_UP_TICK_MS / Math.max(1, state.batch_size);
-  const etaMinutes = remaining > 0 ? Math.max(1, Math.ceil((remaining * perBoardMs + pauseLeftMs) / 60_000)) : null;
+  const byHost = state.finished_at ? new Map<AtsType, number>() : remainingByHost();
+  const remaining = [...byHost.values()].reduce((a, b) => a + b, 0);
+  const pacing = parsePacing(state.host_pacing_json);
+
+  // Paused only when every host with work left is waiting; otherwise something is moving.
+  const waitingHosts = [...byHost.keys()].filter((h) => isPaused(pacing[h], now));
+  const paused = !state.finished_at && byHost.size > 0 && waitingHosts.length === byHost.size;
+  const pausedUntil = paused
+    ? waitingHosts.map((h) => pacing[h]!.pausedUntil!).sort()[0] ?? null
+    : null;
+
+  // Hosts run side by side, so the slowest host sets the estimate.
+  let etaMs = 0;
+  for (const [host, n] of byHost) {
+    const p = pacing[host] ?? freshPacing();
+    const pauseLeft = isPaused(p, now) && p.pausedUntil ? new Date(p.pausedUntil).getTime() - now.getTime() : 0;
+    etaMs = Math.max(etaMs, (n * CATCH_UP_TICK_MS) / Math.max(1, p.batchSize) + pauseLeft);
+  }
+  const etaMinutes = remaining > 0 ? Math.max(1, Math.ceil(etaMs / 60_000)) : null;
 
   return {
     state: state.finished_at ? "finished" : paused ? "paused" : "running",
@@ -243,7 +272,7 @@ export function getCatchUpStatus(now = new Date()): CatchUpStatus {
     foundJobIds: parseList(state.found_job_ids_json),
     startedAt: state.started_at,
     finishedAt: state.finished_at,
-    pausedUntil: paused ? state.paused_until : null,
+    pausedUntil,
     etaMinutes,
   };
 }
@@ -272,17 +301,34 @@ function contextFor(now: Date): BoardJobContext {
   return ctx;
 }
 
+let cachedSources: { names: Set<string>; builtAt: number } | null = null;
+
+function enabledSourcesFor(now: Date): (name: string) => boolean {
+  if (!cachedSources || now.getTime() - cachedSources.builtAt > SOURCES_TTL_MS) {
+    cachedSources = { names: getEnabledScanSourceNames(), builtAt: now.getTime() };
+  }
+  const { names } = cachedSources;
+  return (name) => names.has(name);
+}
+
 let tickInFlight = false;
 
 export type CatchUpTickResult = "idle" | "waiting" | "checked" | "rate_limited" | "finished";
 
+type TickDeps = {
+  fetcher?: (url: string) => Promise<unknown>;
+  now?: () => Date;
+  context?: (now: Date) => BoardJobContext;
+  /** Whether a source is still enabled. Defaults to the live scan-source configuration. */
+  isSourceEnabled?: (name: string) => boolean;
+};
+
 /**
  * One step of the background check. Called every `CATCH_UP_TICK_MS` by the
- * scheduler; does nothing while a scan is running, while paused, or with an empty queue.
+ * scheduler; does nothing while a scan is running or with an empty queue, and
+ * skips any host that is still paused.
  */
-export async function runCatchUpTick(
-  deps: { fetcher?: (url: string) => Promise<unknown>; now?: () => Date; context?: (now: Date) => BoardJobContext } = {},
-): Promise<CatchUpTickResult> {
+export async function runCatchUpTick(deps: TickDeps = {}): Promise<CatchUpTickResult> {
   if (tickInFlight) return "waiting";
   tickInFlight = true;
   try {
@@ -292,26 +338,33 @@ export async function runCatchUpTick(
   }
 }
 
-async function tick(deps: {
-  fetcher?: (url: string) => Promise<unknown>;
-  now?: () => Date;
-  context?: (now: Date) => BoardJobContext;
-}): Promise<CatchUpTickResult> {
+async function tick(deps: TickDeps): Promise<CatchUpTickResult> {
   const clock = deps.now ?? (() => new Date());
   const state = readState();
   if (!state || state.finished_at) return "idle";
   if (isCareerScanInProgress()) return "waiting";
 
   const now = clock();
-  if (state.paused_until && new Date(state.paused_until) > now) return "waiting";
-
   const db = getDatabase();
-  const batch = db
-    .prepare("select * from board_catch_up_queue order by priority desc, queued_at asc, name asc limit ?")
-    .all(Math.max(1, Math.min(MAX_BATCH, state.batch_size))) as QueueRow[];
 
-  if (batch.length === 0) {
-    db.prepare("update board_catch_up_state set finished_at = ?, paused_until = null, updated_at = ? where id = ?").run(
+  // A company switched off or deleted while its board waited is no longer wanted.
+  // Drop it unfetched and take it out of the total, so progress still adds up.
+  const isEnabled = deps.isSourceEnabled ?? enabledSourcesFor(now);
+  const queuedNames = db.prepare("select name from board_catch_up_queue").all() as Array<{ name: string }>;
+  const dropped = queuedNames.map((r) => r.name).filter((name) => !isEnabled(name));
+  if (dropped.length > 0) {
+    db.transaction(() => {
+      const remove = db.prepare("delete from board_catch_up_queue where name = ?");
+      for (const name of dropped) remove.run(name);
+      db.prepare(
+        "update board_catch_up_state set total_count = max(checked_count, total_count - ?), updated_at = ? where id = ?",
+      ).run(dropped.length, now.toISOString(), STATE_ID);
+    })();
+  }
+
+  const byHost = remainingByHost();
+  if (byHost.size === 0) {
+    db.prepare("update board_catch_up_state set finished_at = ?, updated_at = ? where id = ?").run(
       now.toISOString(),
       now.toISOString(),
       STATE_ID,
@@ -319,80 +372,87 @@ async function tick(deps: {
     return "finished";
   }
 
+  const pacing = parsePacing(state.host_pacing_json);
+  const readyHosts = [...byHost.keys()].filter((h) => !isPaused(pacing[h], now));
+  if (readyHosts.length === 0) return "waiting";
+
   const fetcher = deps.fetcher ?? fetchJson;
   const ctx = (deps.context ?? contextFor)(now);
+  const selectBatch = db.prepare(
+    "select * from board_catch_up_queue where api_type = ? order by priority desc, queued_at asc, name asc limit ?",
+  );
   let checked = 0;
-  let refused = false;
+  let anyRefused = false;
   const done: string[] = [];
 
-  // One at a time within a tick: the point is to be gentle, not fast.
-  for (const board of batch) {
-    try {
-      const json = await fetcher(board.api_url);
-      collectBoardJobs(ctx, board.name, board.api_type, json);
-      done.push(board.name);
-      checked++;
-    } catch (error) {
-      if (isRateLimitError(error)) {
-        refused = true;
-        break;
+  for (const host of readyHosts) {
+    const p = pacing[host] ?? freshPacing();
+    const batch = selectBatch.all(host, Math.max(1, Math.min(MAX_BATCH, p.batchSize))) as QueueRow[];
+    let refused = false;
+
+    // One at a time within a host: the point is to be gentle, not fast.
+    for (const board of batch) {
+      try {
+        const json = await fetcher(board.api_url);
+        collectBoardJobs(ctx, board.name, board.api_type, json);
+      } catch (error) {
+        if (isRateLimitError(error)) {
+          refused = true;
+          break;
+        }
+        // Dead or failing boards are not this check's to report; the next scan
+        // lists them with the usual "Dead or missing" treatment. Drop and move on.
       }
-      // Dead or failing boards are not this check's to report; the next scan
-      // lists them with the usual "Dead or missing" treatment. Drop and move on.
       done.push(board.name);
       checked++;
+    }
+
+    if (refused) {
+      anyRefused = true;
+      pacing[host] = {
+        pausedUntil: new Date(now.getTime() + p.backoffMs).toISOString(),
+        backoffMs: Math.min(p.backoffMs * 2, MAX_BACKOFF_MS),
+        batchSize: 1,
+      };
+    } else {
+      pacing[host] = { pausedUntil: null, backoffMs: INITIAL_BACKOFF_MS, batchSize: Math.min(p.batchSize + 1, MAX_BATCH) };
     }
   }
 
   const inserted = ctx.newJobs.length > 0 ? insertScannedJobs(ctx.newJobs) : 0;
   const foundIds = inserted > 0 ? ctx.newJobs.map((j) => j.id) : [];
-  const finishedAt = clock().toISOString();
+  const updatedAt = clock().toISOString();
 
   db.transaction(() => {
     const remove = db.prepare("delete from board_catch_up_queue where name = ?");
     for (const name of done) remove.run(name);
-
-    const found = foundIds.length > 0 ? [...parseList(state.found_job_ids_json), ...foundIds] : null;
-    if (refused) {
-      const backoff = state.backoff_ms;
-      db.prepare(
-        `update board_catch_up_state
-            set checked_count = checked_count + ?, new_jobs_count = new_jobs_count + ?,
-                found_job_ids_json = coalesce(?, found_job_ids_json),
-                paused_until = ?, backoff_ms = ?, batch_size = 1, updated_at = ?
-          where id = ?`,
-      ).run(
-        checked,
-        inserted,
-        found ? JSON.stringify(found) : null,
-        new Date(now.getTime() + backoff).toISOString(),
-        Math.min(backoff * 2, MAX_BACKOFF_MS),
-        finishedAt,
-        STATE_ID,
-      );
-    } else {
-      db.prepare(
-        `update board_catch_up_state
-            set checked_count = checked_count + ?, new_jobs_count = new_jobs_count + ?,
-                found_job_ids_json = coalesce(?, found_job_ids_json),
-                paused_until = null, backoff_ms = ?, batch_size = ?, updated_at = ?
-          where id = ?`,
-      ).run(
-        checked,
-        inserted,
-        found ? JSON.stringify(found) : null,
-        INITIAL_BACKOFF_MS,
-        Math.min(state.batch_size + 1, MAX_BATCH),
-        finishedAt,
-        STATE_ID,
-      );
+    const latest = readState();
+    const found = foundIds.length > 0 ? [...parseList(latest?.found_job_ids_json ?? "[]"), ...foundIds] : null;
+    // A scan may have saved new refusals while this tick was fetching. Keep the
+    // later of the two pauses for every host, and hosts this tick did not touch as saved.
+    const saved = parsePacing(latest?.host_pacing_json ?? "{}");
+    for (const host of readyHosts) {
+      const ours = pacing[host]!;
+      const theirs = saved[host];
+      saved[host] =
+        theirs?.pausedUntil && (!ours.pausedUntil || theirs.pausedUntil > ours.pausedUntil)
+          ? { ...ours, pausedUntil: theirs.pausedUntil, batchSize: 1 }
+          : ours;
     }
+    db.prepare(
+      `update board_catch_up_state
+          set checked_count = checked_count + ?, new_jobs_count = new_jobs_count + ?,
+              found_job_ids_json = coalesce(?, found_job_ids_json),
+              host_pacing_json = ?, updated_at = ?
+        where id = ?`,
+    ).run(checked, inserted, found ? JSON.stringify(found) : null, JSON.stringify(saved), updatedAt, STATE_ID);
   })();
 
-  return refused ? "rate_limited" : "checked";
+  return anyRefused ? "rate_limited" : "checked";
 }
 
-/** Test hook: forget the cached filter/dedup context. */
+/** Test hook: forget the cached filter/dedup context and source list. */
 export function resetCatchUpContextCache() {
   cachedContext = null;
+  cachedSources = null;
 }

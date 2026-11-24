@@ -1580,9 +1580,10 @@ export const migrations = [
         checked_count integer not null default 0,
         new_jobs_count integer not null default 0,
         found_job_ids_json text not null default '[]',
-        paused_until text,
-        backoff_ms integer not null default 60000,
-        batch_size integer not null default 1,
+        -- Pacing per job-board host, as JSON keyed by host ("greenhouse", ...):
+        -- { pausedUntil, backoffMs, batchSize }. Per host, not global, so one host
+        -- refusing never holds back boards on a host that is answering.
+        host_pacing_json text not null default '{}',
         updated_at text not null
       );
     `
