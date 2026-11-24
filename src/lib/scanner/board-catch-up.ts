@@ -430,13 +430,18 @@ async function tick(deps: TickDeps): Promise<CatchUpTickResult> {
     const found = foundIds.length > 0 ? [...parseList(latest?.found_job_ids_json ?? "[]"), ...foundIds] : null;
     // A scan may have saved new refusals while this tick was fetching. Keep the
     // later of the two pauses for every host, and hosts this tick did not touch as saved.
+    // Only a pause still in the future counts: the saved row also holds the pause
+    // this tick just waited out, and adopting that expired one reset the batch to 1
+    // on every tick, so the check never sped up (0.23.1).
     const saved = parsePacing(latest?.host_pacing_json ?? "{}");
+    const nowIso = clock().toISOString();
     for (const host of readyHosts) {
       const ours = pacing[host]!;
       const theirs = saved[host];
+      const theirsLive = theirs?.pausedUntil && theirs.pausedUntil > nowIso ? theirs.pausedUntil : null;
       saved[host] =
-        theirs?.pausedUntil && (!ours.pausedUntil || theirs.pausedUntil > ours.pausedUntil)
-          ? { ...ours, pausedUntil: theirs.pausedUntil, batchSize: 1 }
+        theirsLive && (!ours.pausedUntil || theirsLive > ours.pausedUntil)
+          ? { ...ours, pausedUntil: theirsLive, batchSize: 1 }
           : ours;
     }
     db.prepare(

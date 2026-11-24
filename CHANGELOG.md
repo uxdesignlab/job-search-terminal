@@ -15,6 +15,16 @@ the numbers mean and when they change.
 
 ---
 
+## 0.23.2 — 2026-11-24 — The background check speeds up as intended
+
+**Fixed**
+
+- The background check stayed at its slowest pace — one company page every two
+  seconds — even while Greenhouse answered every request, so 2,800 pages were
+  estimated at about 95 minutes. It now speeds up to three pages per step as
+  designed, which brings that down to roughly half an hour. It still slows
+  right back down if Greenhouse refuses again.
+
 ## 0.23.1 — 2026-11-24 — One service slowing down no longer slows the scan
 
 **Fixed**

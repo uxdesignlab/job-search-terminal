@@ -219,4 +219,26 @@ describe("board catch-up", () => {
     expect(status.total).toBe(1);
     expect(status.remaining).toBe(0);
   });
+
+  it("speeds up after its first pause has passed (the expired pause is not re-applied)", async () => {
+    const { catchUp, context, client } = await load();
+    const t0 = new Date("2026-08-17T12:00:00Z");
+    catchUp.enqueueDeferredBoards(["a", "b", "c", "d", "e", "f", "g"].map((n) => board(n)), "scan-1", t0);
+    const fetched: string[] = [];
+    const fetcher = async (url: string) => {
+      fetched.push(nameOf(url));
+      return { jobs: [] };
+    };
+    const deps = { fetcher, context, isSourceEnabled: () => true };
+    const t1 = new Date(t0.getTime() + catchUp.INITIAL_BACKOFF_MS + 1);
+    await catchUp.runCatchUpTick({ ...deps, now: () => t1 });
+    await catchUp.runCatchUpTick({ ...deps, now: () => new Date(t1.getTime() + 2_000) });
+    await catchUp.runCatchUpTick({ ...deps, now: () => new Date(t1.getTime() + 4_000) });
+    // 1, then 2, then 3 boards per tick.
+    expect(fetched).toEqual(["a", "b", "c", "d", "e", "f"]);
+    const row = client.getDatabase().prepare("select host_pacing_json from board_catch_up_state").get() as {
+      host_pacing_json: string;
+    };
+    expect(JSON.parse(row.host_pacing_json).greenhouse).toMatchObject({ pausedUntil: null, batchSize: 3 });
+  });
 });
