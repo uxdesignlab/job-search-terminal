@@ -350,7 +350,7 @@ export async function runAggregatorScan(
   }
   const terms = buildAdzunaSearchTerms(opts.titleFilters, opts.titles);
   if (terms.length === 0) {
-    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound: 0, errors: ["Nothing to search for — add title keywords under Settings → Preferences → Title filters, or target roles in Profile"], jobs: [] };
+    return { status: "error", imported: 0, duplicates: 0, fresh: 0, unknownDate: 0, staleFiltered: 0, preferenceFiltered: 0, totalFound: 0, errors: ["Nothing to search for — add title keywords under Settings → Scanning → Title filters, or target roles in Profile"], jobs: [] };
   }
 
   const country = opts.country ?? "us";

@@ -15,6 +15,52 @@ the numbers mean and when they change.
 
 ---
 
+## 0.24.0 — 2026-11-24 — Choose how often the app scans, and a tidier Settings
+
+**Added**
+
+- You can now choose how often automatic scans run: every 6 hours (still the
+  default), every 8 hours, every 12 hours, or once a day. Nothing shorter is
+  offered: more often would use up Adzuna's free monthly searches and get scans
+  slowed down by the job boards. Scanning once a day means Himalayas has a whole
+  day of postings to read per keyword, so a very busy keyword is more likely to
+  show a "reached the page cap" note.
+
+**Changed**
+
+- Settings is reorganised so each tab says what it holds:
+  - **Sources** is now **Scanning**: automatic scans, the Fresh posting window,
+    Title filters, and job aggregators — everything about how and when the app
+    scans. Automatic scans moved here from Data & Backup.
+  - **Scan sources** is now **Companies**, and Add a company moved there, next to
+    the list it adds to.
+  - The **Preferences** tab is gone. It shared its name with Profile →
+    Preferences but held neither: Title filters are on Scanning, and Profile
+    supplements are now **Profile → Resumes → Experience not on your resume**.
+    Old links to Settings → Preferences open Scanning.
+  - The Adzuna and Brave keys stay on AI Provider, under a heading that now
+    says what they are: **Job search keys**, not AI.
+- Title filters describe themselves with the same words as the controls —
+  Include and Exclude — instead of "positive/negative keyword" and a config file
+  name.
+- The card now says when the next scan is due and when the last one ran
+  ("Next scan in 4 hours"), instead of printing a raw timestamp.
+- Saving the card, or the Fresh posting window, no longer pushes the next scan
+  back. It is counted from the last scan, so saving twice in a row cannot keep
+  postponing it.
+
+**Fixed**
+
+- Screen readers can now name the Title filters and experience boxes, and the
+  Adzuna and Brave key fields, which had no labels attached.
+- Reopening first-run setup and pressing its final button reset your Fresh
+  posting window to 72 hours. It now leaves the window and the scan interval as
+  you set them.
+- Validate sources on the Scan sources tab sent your whole source list back to
+  the app with every click. With a few thousand sources that is more than the app
+  accepts in one request, so the check could fail before it started. It now
+  reads the list itself, and the tab loads about 3 MB lighter.
+
 ## 0.23.2 — 2026-11-24 — The background check speeds up as intended
 
 **Fixed**

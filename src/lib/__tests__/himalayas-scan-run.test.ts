@@ -160,7 +160,7 @@ describe("runHimalayasScan — what it searches for", () => {
     expect(mocks.safeFetch).not.toHaveBeenCalled();
     expect(result.status).toBe("ok");
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatch(/^Himalayas was not searched: add an include keyword under Account → Settings → Preferences → Title filters/);
+    expect(result.errors[0]).toMatch(/^Himalayas was not searched: add an include keyword under Account → Settings → Scanning → Title filters/);
   });
 });
 
@@ -226,6 +226,18 @@ describe("runHimalayasScan — how a search ends", () => {
     expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_PAGES_PER_QUERY);
     expect(result.status).toBe("ok");
     expect(result.errors).toEqual([]);
+  });
+
+  it("measures the gap against the chosen interval, so a daily schedule reports the same cap", async () => {
+    // Ten pages at an hour each cover ten hours: enough for six-hourly scans, a
+    // real gap for daily ones.
+    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(resultsAging(1)(url)));
+
+    const result = await scan({ titleFilters: NO_TITLE_MATCHES, scanIntervalHours: 24 });
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(MAX_PAGES_PER_QUERY);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("under the 24h between scans");
   });
 
   it("skips postings outside the freshness window and counts each posting once across searches", async () => {

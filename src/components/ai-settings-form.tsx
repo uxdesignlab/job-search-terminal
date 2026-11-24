@@ -1307,17 +1307,18 @@ export function AISettingsForm({
         </div>
       )}
 
-      {/* ── Discovery & Aggregators ─────────────────────────────
+      {/* ── Job search keys (Adzuna, Brave) ─────────────────────────────
           Settings only. Onboarding asks for these on its own Integrations step, and
           collecting them twice in one wizard was the reason step 1 had a disclosure. */}
       {showAdvanced && (
         <div className="grid gap-3 border border-border rounded-md p-4">
-          <span className="text-sm font-medium text-ink">Discovery &amp; Aggregators</span>
-          <p className="text-xs text-muted">Optional keys for search-based source discovery (Brave) and job aggregator scanning (Adzuna).</p>
+          <span className="text-sm font-medium text-ink">Job search keys</span>
+          <p className="text-xs text-muted">Optional, and not AI: Adzuna adds jobs from many job sites to every scan, and Brave Search finds new companies to watch.</p>
 
           <div className="grid gap-2">
-            <label className="text-xs text-muted">Brave Search API Key <span className="text-muted/60">(for Scan sources &rarr; Search for companies)</span></label>
+            <label className="text-xs text-muted" htmlFor="brave-search-api-key">Brave Search API Key <span className="text-muted/60">(for Companies &rarr; Search for companies)</span></label>
             <input
+              id="brave-search-api-key"
               className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
               onChange={(e) => setBraveSearchApiKey(e.target.value)}
               placeholder="BSA…"
@@ -1328,8 +1329,9 @@ export function AISettingsForm({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <label className="text-xs text-muted">Adzuna App ID</label>
+              <label className="text-xs text-muted" htmlFor="adzuna-app-id">Adzuna App ID</label>
               <input
+                id="adzuna-app-id"
                 className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 onChange={(e) => setAdzunaAppId(e.target.value)}
                 placeholder="xxxxxxxx"
@@ -1338,8 +1340,9 @@ export function AISettingsForm({
               />
             </div>
             <div className="grid gap-2">
-              <label className="text-xs text-muted">Adzuna API Key</label>
+              <label className="text-xs text-muted" htmlFor="adzuna-api-key">Adzuna API Key</label>
               <input
+                id="adzuna-api-key"
                 className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 onChange={(e) => setAdzunaApiKey(e.target.value)}
                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

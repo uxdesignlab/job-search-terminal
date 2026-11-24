@@ -49,7 +49,7 @@ describe("getProfileReadiness", () => {
     expect(readiness.hasRolePreferences).toBe(false);
     expect(readiness.hasLocationPreferences).toBe(true);
     expect(readiness.missingItems.map((item) => item.label)).toEqual(["Included title filters"]);
-    expect(readiness.missingItems[0]?.href).toBe("/settings?tab=preferences");
+    expect(readiness.missingItems[0]?.href).toBe("/settings?tab=sources");
   });
 
   it("requires an explicit work-mode selection", () => {

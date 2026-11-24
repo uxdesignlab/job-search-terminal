@@ -1,7 +1,7 @@
 import { classifyScanErrorMessage } from "@/lib/scan-error-category";
 import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
-import { getAISettings, getTitleFilters, getUserProfile } from "@/lib/db/queries";
+import { getAISettings, getScanSchedule, getTitleFilters, getUserProfile } from "@/lib/db/queries";
 import type { FreshnessWindowHours, ScanTrigger } from "@/lib/db/types";
 import type { JobDiscoveryProgressUpdate, JobDiscoverySourceId } from "@/lib/scan-progress-types";
 import { careerOpsRunToJobSummary } from "@/lib/careerops-scan-to-summary";
@@ -195,7 +195,12 @@ async function runJobDiscoveryScanTracked(
       "Searching Himalayas for your title keywords",
       () =>
         runHimalayasScan(
-          { titleFilters, targetRoles: profile.targetRoles, freshnessWindowHours },
+          {
+            titleFilters,
+            targetRoles: profile.targetRoles,
+            freshnessWindowHours,
+            scanIntervalHours: getScanSchedule().intervalHours,
+          },
           // One search per keyword; naming each makes a slow or empty run legible.
           (detail) =>
             reportProgress({ sourceId: "himalayas", sourceLabel: "Himalayas", status: "running", detail }),

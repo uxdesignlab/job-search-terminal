@@ -6,7 +6,8 @@ import { ExtractProfileButton } from "@/components/extract-profile-button";
 import { PreferredLocationsInput } from "@/components/preferred-locations-input";
 import { ResumeManageCard } from "@/components/resume-manage-card";
 import { CreateResumeButton } from "@/components/create-resume-button";
-import { createResumeLane, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
+import { ProfileSupplementsEditor } from "@/components/profile-supplements-editor";
+import { createResumeLane, getProfileSupplements, getResumes, getSkills, getUserProfile, getWritingStyle, saveWritingStyle, updateUserProfile } from "@/lib/db/queries";
 import { ensureResumeBuilderVersion } from "@/lib/documents/resume-builder";
 import { splitListValue } from "@/lib/profile/intelligence";
 import { normalizePreferredLocations, splitLocationLines } from "@/lib/profile/locations";
@@ -439,6 +440,26 @@ export default async function ProfilePage({
                 </form>
                 <CreateResumeButton compact />
               </div>
+            </Card>
+
+            {/* Moved from Settings → Preferences in 0.24.0: this is resume material, not a setting. */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Experience not on your resume</CardTitle>
+                <CardDescription>
+                  Add experience your resume leaves out — managing a team, domain knowledge, a certification.
+                  Tailored resumes can draw on these to close a gap a job asks about. Each one is checked for enough
+                  detail (the role, what you did, and the result) before it is used.
+                </CardDescription>
+              </CardHeader>
+              <ProfileSupplementsEditor
+                initialSupplements={getProfileSupplements().map((s) => ({
+                  id: s.id,
+                  content: s.content,
+                  qualityStatus: s.qualityStatus,
+                  followUpQuestion: s.followUpQuestion,
+                }))}
+              />
             </Card>
 
             {hasExtractedResumes && (

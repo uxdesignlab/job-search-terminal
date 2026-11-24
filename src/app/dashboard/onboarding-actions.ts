@@ -7,6 +7,7 @@ import {
   saveAISettings,
   saveTitleFilters,
   setOnboardingPreferencesConfirmed,
+  getScanSchedule,
   saveScanSchedule,
   updateUserProfile,
 } from "@/lib/db/queries";
@@ -119,7 +120,11 @@ export async function reopenOnboardingAction() {
   revalidatePath("/settings");
 }
 
+/** Only the on/off switch is the wizard's to change. It used to write 6 hours and 72
+ *  hours back as well, silently undoing an interval or freshness window the user
+ *  had already picked in Settings. */
 export async function saveOnboardingScheduleAction(enabled: boolean) {
-  saveScanSchedule({ enabled, intervalHours: 6, freshnessWindowHours: 72 });
+  const current = getScanSchedule();
+  saveScanSchedule({ enabled, intervalHours: current.intervalHours, freshnessWindowHours: current.freshnessWindowHours });
   revalidateOnboardingSurfaces();
 }

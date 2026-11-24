@@ -135,16 +135,16 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Adzuna — more job listings",
-            body: "Adzuna gathers postings from across the web. Sign up at developer.adzuna.com for a free App ID and API Key, worth 2,000 searches a month. Paste both into Account → Settings → AI Provider → Discovery & Aggregators. From then on every scan includes Adzuna automatically — there is nothing else to press. It searches using the title keywords you set under Account → Settings → Preferences → Title filters, so it helps to have a few short ones there, like product design or ux.",
+            body: "Adzuna gathers postings from across the web. Sign up at developer.adzuna.com for a free App ID and API Key, worth 2,000 searches a month. Paste both into Account → Settings → AI Provider → Job search keys. From then on every scan includes Adzuna automatically — there is nothing else to press. It searches using the title keywords you set under Account → Settings → Scanning → Title filters, so it helps to have a few short ones there, like product design or ux.",
           },
           {
             title: "Brave Search — find more companies to watch",
-            body: "This one does not find jobs. It finds new companies whose job pages the app can then watch. Sign up at brave.com/search/api for a free key, worth 2,000 searches a month, and paste it into the same Discovery & Aggregators section. A Search for companies button then appears in Settings → Scan sources.",
+            body: "This one does not find jobs. It finds new companies whose job pages the app can then watch. Sign up at brave.com/search/api for a free key, worth 2,000 searches a month, and paste it into the same Job search keys section. A Search for companies button then appears in Settings → Companies.",
           },
         ],
         callout: {
           title: "You already have around fifty companies",
-          body: "The app comes with roughly fifty companies set up and ready to scan. Settings → Scan sources has two buttons that look for more — Crawl for companies and Search for companies. Neither turns anything on by itself: they add candidates to a list, and you decide which ones to keep.",
+          body: "The app comes with roughly fifty companies set up and ready to scan. Settings → Companies has two buttons that look for more — Crawl for companies and Search for companies. Neither turns anything on by itself: they add candidates to a list, and you decide which ones to keep.",
         },
       },
       {
@@ -366,15 +366,15 @@ export const helpPages: HelpPage[] = [
         steps: [
           {
             title: "Brave Search API key",
-            body: "This one finds companies, not jobs. It searches the web for company job pages the app knows how to read, and adds what it finds to a list for you to review — it never switches a company on by itself. Sign up at brave.com/search/api for a free key worth 2,000 searches a month. A Search for companies button then appears in Settings → Scan sources.",
+            body: "This one finds companies, not jobs. It searches the web for company job pages the app knows how to read, and adds what it finds to a list for you to review — it never switches a company on by itself. Sign up at brave.com/search/api for a free key worth 2,000 searches a month. A Search for companies button then appears in Settings → Companies.",
           },
           {
             title: "Adzuna App ID and API Key",
-            body: "Adzuna gathers job postings from across the web. Once its keys are in, every scan searches it — no browser, no login, nothing to click. It searches the title keywords from Account → Settings → Preferences → Title filters, not your full job titles. Adzuna wants every word you give it to appear in the job title, so a short keyword like product design finds plenty and a whole title like Head of Product Design & Strategy finds nothing. Sign up at developer.adzuna.com for a free App ID and API Key worth 2,000 searches a month.",
+            body: "Adzuna gathers job postings from across the web. Once its keys are in, every scan searches it — no browser, no login, nothing to click. It searches the title keywords from Account → Settings → Scanning → Title filters, not your full job titles. Adzuna wants every word you give it to appear in the job title, so a short keyword like product design finds plenty and a whole title like Head of Product Design & Strategy finds nothing. Sign up at developer.adzuna.com for a free App ID and API Key worth 2,000 searches a month.",
           },
           {
             title: "Add the keys",
-            body: "Open Account → Settings → AI Provider, scroll to Discovery & Aggregators, paste your keys, and save. The Search for companies button appears in Settings → Scan sources once the Brave key is present. The Job aggregators card with the Scan with Adzuna button appears once both Adzuna keys are present.",
+            body: "Open Account → Settings → AI Provider, scroll to Job search keys, paste your keys, and save. The Search for companies button appears in Settings → Companies once the Brave key is present. The Job aggregators card with the Scan with Adzuna button appears once both Adzuna keys are present.",
           },
         ],
       },
@@ -560,7 +560,7 @@ export const helpPages: HelpPage[] = [
     highlights: [
       "A scan searches using the job titles and locations you set in your profile. If it finds nothing, that is usually the place to look first.",
       "Remote regions accepts a whole region. Type Europe, EU, or APAC instead of naming countries one at a time.",
-      "Nothing runs on its own unless you switch on automatic scans. You press the button.",
+      "Nothing runs on its own unless you switch on Automatic scans and choose how often. Otherwise you press the button.",
     ],
     sections: [
       {
@@ -656,8 +656,12 @@ export const helpPages: HelpPage[] = [
             body: "Fresh matches sits at the top of the Dashboard and holds only what this and recent scans turned up, within the time window you chose. Jobs you added by hand stay out of it, as does anything you have already applied to or turned down — it is meant to be the new post, not the whole pile.",
           },
           {
-            title: "Choose the freshness window and schedule",
-            body: "Old postings are usually filled. Open Account → Settings → Sources and use the Fresh posting window card to say how far back to accept: 24 hours, 72 hours (the default), or 7 days. Every source obeys it. If you would rather the app scan by itself every six hours, switch that on under Account → Settings → Data & Backup.",
+            title: "Choose the freshness window",
+            body: "Old postings are usually filled. Open Account → Settings → Scanning and use the Fresh posting window card to say how far back to accept: 24 hours, 72 hours (the default), or 7 days. Every source obeys it.",
+          },
+          {
+            title: "Let the app scan for you",
+            body: "On the same tab, the Automatic scans card runs scans in the background. Tick Scan automatically, pick How often — every 6 hours (the default), every 8 hours, every 12 hours, or once a day — and press Save schedule. The card then says when the next scan is due and when the last one ran. Scans only happen while the app is running. If it was closed when a scan was due, the scan runs shortly after you start the app again. An automatic scan only adds jobs to your list. It never applies to a job or contacts anyone.",
           },
         ],
       },
@@ -683,10 +687,10 @@ export const helpPages: HelpPage[] = [
         intro:
           "A source is one company\'s job page that the app checks on every scan. You start with around fifty and can add, remove, or switch off any of them. Three Settings tabs cover this, split up because the company list is long enough to bury anything sharing a page with it.",
         bullets: [
-          "Settings → Sources holds the fresh posting window, adding a company by hand, and job aggregators. Settings → Scan sources holds the company list itself and the two buttons that look for more. Settings → Cleanup is where you clear out ones that no longer work.",
-          "Open Account → Settings → Scan sources to enable or disable existing company sources.",
-          "Set the Fresh posting window (24 hours, 72 hours by default, or 7 days) under Settings → Sources to control how old a posting can be before scans skip it as stale.",
-          "Add a supported career page (Ashby, Greenhouse, or Lever) under Settings → Sources when you want the scanner to watch a new company.",
+          "Settings → Scanning holds automatic scans, the fresh posting window, title filters, and job aggregators. Settings → Companies holds the company list itself, adding a company by hand, and the two buttons that look for more. Settings → Cleanup is where you clear out ones that no longer work.",
+          "Open Account → Settings → Companies to enable or disable existing company sources.",
+          "Set the Fresh posting window (24 hours, 72 hours by default, or 7 days) under Settings → Scanning to control how old a posting can be before scans skip it as stale.",
+          "Add a supported career page (Ashby, Greenhouse, or Lever) under Settings → Companies → Add a company when you want the scanner to watch a new company.",
           "Use title include filters for roles you want and exclude filters for titles you never want.",
           "When a company floods you with irrelevant roles, switch it off rather than deleting it. Switching off is reversible; deleting loses the setup.",
           "Press Validate sources to check which company pages still work. Each row then shows how many jobs it found, or Dead if the page has gone, or Unknown if it could not tell.",
@@ -745,11 +749,11 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Add the keys",
-            body: "Open Account → Settings → AI Provider, scroll to Discovery & Aggregators, and paste your Adzuna App ID and API Key. Save.",
+            body: "Open Account → Settings → AI Provider, scroll to Job search keys, and paste your Adzuna App ID and API Key. Save.",
           },
           {
             title: "Scan",
-            body: "Go to Account → Settings → Sources. A Job aggregators card appears at the bottom. Click Scan with Adzuna — it searches your title keywords and shows the import count inline when done.",
+            body: "Go to Account → Settings → Scanning. A Job aggregators card appears at the bottom. Click Scan with Adzuna — it searches your title keywords and shows the import count inline when done.",
           },
           {
             title: "Find the company's own posting",
@@ -768,7 +772,7 @@ export const helpPages: HelpPage[] = [
         id: "himalayas",
         title: "Remote jobs from Himalayas",
         intro:
-          "Himalayas is a job board that lists only remote jobs, and a lot of them. Every scan searches it for each of your include keywords from Account → Settings → Preferences → Title filters, looks back over roughly the last twelve hours, and keeps the jobs whose titles match. It needs no account and no key, and there is nothing to switch on.",
+          "Himalayas is a job board that lists only remote jobs, and a lot of them. Every scan searches it for each of your include keywords from Account → Settings → Scanning → Title filters, looks back over roughly the last twelve hours, and keeps the jobs whose titles match. It needs no account and no key, and there is nothing to switch on.",
         bullets: [
           "Jobs from Himalayas show Himalayas in the Source column under Jobs.",
           "Short, general keywords work best — product design, ux, accessibility. Himalayas' search is loose, so the app checks every title against your keywords again before keeping a job. Only the first twelve keywords are searched. If you have no include keywords, it searches your target roles from Account → Profile instead, and keeps only jobs whose titles contain one of them.",
@@ -1016,7 +1020,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Use confirmed context only",
-            body: "Tailoring reads the evaluation's full qualification list, including items near the end of a long posting. It uses approved resume content plus gap answers and profile supplements that have enough concrete detail. A qualification marked Unknown is not treated as experience you have. Draft gap answers marked Needs detail are not used until completed.",
+            body: "Tailoring reads the evaluation's full qualification list, including items near the end of a long posting. It uses approved resume content plus gap answers and the extra experience you added under Account → Profile → Resumes → Experience not on your resume, as long as it has enough concrete detail. A qualification marked Unknown is not treated as experience you have. Draft gap answers marked Needs detail are not used until completed.",
           },
           {
             title: "Watch it work",
@@ -1589,7 +1593,7 @@ export const helpPages: HelpPage[] = [
         id: "adzuna-empty",
         title: "Adzuna never finds anything",
         bullets: [
-          "Open Account → Settings → Preferences → Title filters and read your include keywords. Adzuna is searched with these, and it expects every word you give it to appear in the job title. Short and general works — product design, ux, accessibility. A whole job title like Head of Product Design & Strategy matches nothing anywhere.",
+          "Open Account → Settings → Scanning → Title filters and read your include keywords. Adzuna is searched with these, and it expects every word you give it to appear in the job title. Short and general works — product design, ux, accessibility. A whole job title like Head of Product Design & Strategy matches nothing anywhere.",
           "Only the first four include keywords are searched, to stay inside the free key's monthly allowance. Put the ones that matter most at the top of the list.",
           "Watch the progress window during a scan. It names each keyword as it searches and says how many jobs came back, so you can see which keyword is the dead one.",
           "If the counts look healthy but nothing reaches Jobs, look for outside your locations in the scan summary. Those jobs were found and then ruled out by your on-site locations and Remote regions.",
@@ -1597,13 +1601,23 @@ export const helpPages: HelpPage[] = [
         ],
       },
       {
+        id: "automatic-scans-not-running",
+        title: "Automatic scans are not running",
+        bullets: [
+          "Open Account → Settings → Scanning and look at the Automatic scans card. If it says Automatic scans are off, tick Scan automatically and press Save schedule.",
+          "Scans only happen while the app is running. Nothing scans while your computer is asleep or the app is closed. Start the app and the overdue scan runs shortly after.",
+          "Saving the card does not start a scan straight away. The next scan is counted from the last one, so it can be a few hours off. To scan now, press Scan for new jobs on the Dashboard.",
+          "You cannot pick a gap shorter than 6 hours. More often would use up Adzuna's free monthly searches and make the job boards slow the app down.",
+        ],
+      },
+      {
         id: "himalayas-scan-notes",
         title: "Himalayas reports a problem in the scan results",
         bullets: [
-          "Himalayas was not searched means there was nothing to search for. Add a few include keywords under Account → Settings → Preferences → Title filters, or a target role under Account → Profile.",
-          "Not searched back 6h this run names keywords the scan did not finish. Each scan makes at most fifty searches so that Himalayas does not block it, and a long list of broad keywords can use them up. The next scan starts again from the newest jobs. If the same keywords show up every time, remove the ones that rarely find anything useful, or move the important ones to the top of the list.",
+          "Himalayas was not searched means there was nothing to search for. Add a few include keywords under Account → Settings → Scanning → Title filters, or a target role under Account → Profile.",
+          "Not searched back 6h this run names keywords the scan did not finish. The number of hours matches How often under Automatic scans, so it may say 8h, 12h, or 24h instead. Each scan makes at most fifty searches so that Himalayas does not block it, and a long list of broad keywords can use them up. The next scan starts again from the newest jobs. If the same keywords show up every time, remove the ones that rarely find anything useful, or move the important ones to the top of the list.",
           "Himalayas asked the scan to slow down means Himalayas refused more searches for a while. The jobs found before that point are kept. Wait for the next scan; scanning again straight away tends to get refused too.",
-          "A note that a search reached its page cap means one keyword matches so many new jobs that the scan could not read back six hours. Make that keyword more specific, for example product designer instead of design.",
+          "A note that a search reached its page cap means one keyword matches so many new jobs that the scan could not read back to the previous scan. Make that keyword more specific, for example product designer instead of design. Scanning once a day makes this more likely, because each search has a whole day of new jobs to read through. Scanning more often makes it less likely.",
         ],
       },
       {
@@ -1632,7 +1646,7 @@ export const helpPages: HelpPage[] = [
         bullets: [
           "A company lands in Cleanup when you press Disable source after a scan, or when its address cannot be scanned. If your internet dropped during a scan, every company failed at once and many may have been switched off together.",
           "Click Temporary failure at the top of Cleanup, then press Re-check. Companies that answer now show Works again. Press Re-enable N that work to put them back.",
-          "Board not found means the company's job page is gone, usually because it moved to a different job site. Removing it is safe. If you still want the company, add its new careers page under Settings → Sources.",
+          "Board not found means the company's job page is gone, usually because it moved to a different job site. Removing it is safe. If you still want the company, add its new careers page under Settings → Companies → Add a company.",
           "Keep the page open while Re-check runs. If you leave, the check stops and the companies you had not reached keep their old reason.",
         ],
       },

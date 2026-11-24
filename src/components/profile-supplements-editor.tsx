@@ -131,6 +131,7 @@ export function ProfileSupplementsEditor({ initialSupplements }: Props) {
     <div className="grid gap-4">
       <div className="flex gap-2 items-start">
         <textarea
+          aria-label="New experience to add"
           className="flex-1 min-h-16 rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent"
           placeholder='e.g. "I have managed 8 direct reports at Google, including 2 senior designers"'
           value={draft}

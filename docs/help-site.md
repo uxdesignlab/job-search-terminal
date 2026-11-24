@@ -113,6 +113,17 @@ troubleshooting entry, which also tells users who disabled companies over old
 HTTP 429 rows how to re-enable them. The **Start the scan** step now covers
 **Keep working while it scans**.
 
+0.24.0 split the job-search guide's freshness step in two: **Choose the freshness
+window** and **Let the app scan for you**, which covers the **Automatic scans** card
+(now on Settings → Scanning, with a **How often** choice of 6, 8, 12, or 24 hours).
+Troubleshooting gained `automatic-scans-not-running`, and `himalayas-scan-notes`
+now explains that its hour figures follow the chosen interval.
+The same release relabelled Settings tabs (Sources → **Scanning**, Scan sources →
+**Companies**, Preferences removed) and every help path was rewritten to match:
+Title filters are under Settings → Scanning, Add a company under Settings →
+Companies, the Adzuna/Brave keys under AI Provider → **Job search keys**, and profile
+supplements under Profile → Resumes → **Experience not on your resume**.
+
 Thinner than the feature warrants, but not absent: saved filter presets,
 the resume builder, the keyword/taxonomy manager, story consolidation, and the
 interview plan. Clay contact search now explains its prerequisites and common

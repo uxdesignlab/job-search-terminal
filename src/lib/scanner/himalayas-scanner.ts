@@ -38,21 +38,27 @@ import type { FreshnessWindowHours } from "@/lib/db/types";
 import { getBrowserBoardImportDirectory, importBrowserBoardJobs } from "./browser-board-importer";
 import { buildTitleFilter } from "@/lib/jobs/title-filter";
 import { findEmployerPostingsForScan, type EmployerPostingMatch } from "./employer-posting-lookup";
+import { DEFAULT_SCAN_INTERVAL_HOURS } from "./scan-interval";
 
 const SEARCH_URL = "https://himalayas.app/jobs/api/search";
 /** The API silently caps `limit` at 20, so asking for more just wastes the round trip. */
 const PAGE_SIZE = 20;
 /**
- * How far back each query reads, in hours.
+ * The least each query reads back, in hours — or the scan interval, if longer.
  *
- * Twice the six-hour scan interval, so one missed scheduled scan loses nothing.
- * Postings older than this but inside the freshness window are still kept when a
- * page carries them; the horizon only decides when to stop asking for more.
+ * Twice the default six-hour interval, so one missed scheduled scan loses
+ * nothing. A longer interval stretches the horizon to the interval itself, not to
+ * twice it: the page cap and the 50-request budget are fixed, and a 48-hour
+ * horizon on a daily schedule would let the first few busy keywords spend the
+ * budget the rest needed. Postings older than this but inside the freshness
+ * window are still kept when a page carries them; the horizon only decides when
+ * to stop asking for more.
  */
-const COVERAGE_HOURS = 12;
+const MIN_HORIZON_HOURS = 12;
 /**
  * Ceiling on pages for one query. The busiest keyword measured ("product
- * design", ~11 postings an hour) covers the horizon in about 7 pages.
+ * design", ~11 postings an hour) covers the default 12-hour horizon in about 7
+ * pages; a daily schedule's 24-hour horizon needs more, and the shortfall is reported.
  */
 const MAX_PAGES_PER_QUERY = 10;
 /**
@@ -66,20 +72,14 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const INTER_PAGE_DELAY_MS = 500;
 /** Consecutive page failures that abort the run, so a degraded API is not hammered. */
 const MAX_CONSECUTIVE_FAILURES = 3;
-/**
- * Hours a query must cover before stopping short counts as a real gap.
- *
- * A query that hits its page cap after covering the six hours since the previous
- * scan has missed nothing new, and reporting it anyway trains the user to ignore
- * the lane's error row on a run that just delivered jobs.
- */
-const MIN_COVERAGE_HOURS = 6;
 
 export type HimalayasScanOptions = {
   titleFilters?: { positive: string[]; negative: string[] };
   /** Searched only when there are no positive title keywords. */
   targetRoles?: string[];
   freshnessWindowHours?: FreshnessWindowHours;
+  /** Hours between scheduled scans; decides how far back each query must read. */
+  scanIntervalHours?: number;
   /** Replaces the employer-posting lookup; `null` turns it off. Tests use both. */
   findEmployerPostings?: typeof findEmployerPostingsForScan | null;
 };
@@ -300,13 +300,26 @@ export async function runHimalayasScan(
   const freshnessWindowHours = opts.freshnessWindowHours ?? 72;
   const hourMs = 60 * 60 * 1000;
   const cutoffMs = Date.now() - freshnessWindowHours * hourMs;
-  const horizonMs = Date.now() - Math.min(COVERAGE_HOURS, freshnessWindowHours) * hourMs;
+  const scanIntervalHours = opts.scanIntervalHours ?? DEFAULT_SCAN_INTERVAL_HOURS;
+  const coverageHours = Math.min(Math.max(MIN_HORIZON_HOURS, scanIntervalHours), freshnessWindowHours);
+  /**
+   * Hours a query must cover before stopping short counts as a real gap: the
+   * scan interval itself.
+   *
+   * A query that hits its page cap after covering the hours since the previous
+   * scan has missed nothing new, and reporting it anyway trains the user to ignore
+   * the lane's error row on a run that just delivered jobs. With a longer interval
+   * the same page cap covers less of the gap, so a busy keyword on a daily schedule
+   * is reported where it would not be on a six-hour one — correctly.
+   */
+  const minCoverageHours = Math.min(scanIntervalHours, coverageHours);
+  const horizonMs = Date.now() - coverageHours * hourMs;
   const scanTimestamp = new Date().toISOString();
 
   const terms = himalayasSearchTerms(opts.titleFilters?.positive, opts.targetRoles);
   if (terms.length === 0) {
     const detail =
-      "Himalayas was not searched: add an include keyword under Account → Settings → Preferences → Title filters, " +
+      "Himalayas was not searched: add an include keyword under Account → Settings → Scanning → Title filters, " +
       "or a target role under Account → Profile.";
     onProgress?.(detail);
     return {
@@ -392,13 +405,13 @@ export async function runHimalayasScan(
     // being read.
     if (!reachedHorizon) {
       const coveredHours = oldestSeenMs === null ? 0 : (Date.now() - oldestSeenMs) / hourMs;
-      if (coveredHours < MIN_COVERAGE_HOURS) {
+      if (coveredHours < minCoverageHours) {
         if (stopReason) {
           unsearched.push(term);
         } else if (pagesRead >= MAX_PAGES_PER_QUERY) {
           const detail =
             `Himalayas search for ${quoted(term)} reached the ${MAX_PAGES_PER_QUERY}-page cap after only ` +
-            `${coveredHours.toFixed(1)}h of postings (under the ${MIN_COVERAGE_HOURS}h between scans) — ` +
+            `${coveredHours.toFixed(1)}h of postings (under the ${minCoverageHours}h between scans) — ` +
             `older matches were not seen this run.`;
           errors.push(detail);
           onProgress?.(`Note: ${detail}`);
@@ -418,7 +431,7 @@ export async function runHimalayasScan(
   }
   if (unsearched.length > 0) {
     errors.push(
-      `Not searched back ${MIN_COVERAGE_HOURS}h this run: ${unsearched.map(quoted).join(", ")}. ` +
+      `Not searched back ${minCoverageHours}h this run: ${unsearched.map(quoted).join(", ")}. ` +
         `The next scan starts from the newest postings again.`,
     );
   }

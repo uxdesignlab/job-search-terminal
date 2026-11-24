@@ -870,7 +870,7 @@ export function OnboardingWizardModal({
                           </a>
                         </div>
                         <p className="text-sm leading-6 text-muted">
-                          Powers the &ldquo;Search for companies&rdquo; button in Settings → Scan sources. Finds new companies using Ashby, Greenhouse, or Lever
+                          Powers the &ldquo;Search for companies&rdquo; button in Settings → Companies. Finds new companies using Ashby, Greenhouse, or Lever
                           from live search results. Free tier: 2,000 queries/month.
                         </p>
                         <div className="mt-4 grid gap-3">
@@ -947,7 +947,7 @@ export function OnboardingWizardModal({
                     </div>
                     <label className="flex items-start gap-2 rounded-panel border border-border bg-surface p-4 text-sm leading-6 text-ink">
                       <input checked={scheduleEnabled} className="mt-1" onChange={(event) => setScheduleEnabled(event.target.checked)} type="checkbox" />
-                      Scan approved sources every six hours while this app is running. Fresh matches will appear on the Dashboard.
+                      Scan approved sources automatically while this app is running — every 6 hours unless you change it in Settings. Fresh matches will appear on the Dashboard.
                     </label>
                     {/* Wrapped, like every other step's submit — a bare grid child stretches
                         to the full column and reads as a banner rather than a button. */}
