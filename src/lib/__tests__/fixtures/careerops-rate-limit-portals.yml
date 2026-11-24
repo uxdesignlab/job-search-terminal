@@ -1,0 +1,16 @@
+# Portal config for the rate-limit lane tests: six Greenhouse boards and two Ashby
+# boards, so one host can be refused while the other keeps going.
+title_filter:
+  positive:
+    - "Product Design"
+  negative: []
+
+tracked_companies:
+  - { name: gh-a, careers_url: "https://job-boards.greenhouse.io/gh-a", enabled: true }
+  - { name: gh-b, careers_url: "https://job-boards.greenhouse.io/gh-b", enabled: true }
+  - { name: gh-c, careers_url: "https://job-boards.greenhouse.io/gh-c", enabled: true }
+  - { name: gh-d, careers_url: "https://job-boards.greenhouse.io/gh-d", enabled: true }
+  - { name: gh-e, careers_url: "https://job-boards.greenhouse.io/gh-e", enabled: true }
+  - { name: gh-f, careers_url: "https://job-boards.greenhouse.io/gh-f", enabled: true }
+  - { name: ash-a, careers_url: "https://jobs.ashbyhq.com/ash-a", enabled: true }
+  - { name: ash-b, careers_url: "https://jobs.ashbyhq.com/ash-b", enabled: true }

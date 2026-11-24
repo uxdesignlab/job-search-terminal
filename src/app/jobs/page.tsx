@@ -14,6 +14,8 @@ import { ReviewQueuePanel } from "@/components/review-queue-panel";
 import { LinkedInImportNotification } from "@/components/linkedin-import-notification";
 import { EmailCandidateApprovalModal } from "@/components/email-candidate-approval-modal";
 import { getJobSourceLabel, type MainJobTableRecord } from "@/lib/job-table-helpers";
+import { CatchUpJobsNotice } from "@/components/board-catch-up-status";
+import { getCatchUpStatus } from "@/lib/scanner/board-catch-up";
 
 import { toneForRecommendation } from "@/lib/evaluation/recommendation-tone";
 
@@ -44,6 +46,10 @@ export default async function JobsPage({ searchParams }: Props) {
   const preferenceFilter = buildJobPreferenceFilter(profile);
   const reviewQueue = getReviewQueueJobs();
   const sourceLabelOverrides = getSourceLabelOverrides();
+  // Jobs the background check added after a rate-limited scan are marked so they
+  // can be told apart from what the scan itself found.
+  const catchUp = getCatchUpStatus();
+  const foundAfterScan = new Set(catchUp.foundJobIds);
   const jobs = getJobs().map((job) => {
     const preferenceDecision = preferenceFilter(job);
     return {
@@ -56,6 +62,7 @@ export default async function JobsPage({ searchParams }: Props) {
       removalProtected: isJobProtectedFromAutomaticRemoval(job),
       sourceLabel: getJobSourceLabel(job, sourceLabelOverrides),
       hasResolvedPosting: hasResolvedPosting(job),
+      foundAfterScan: foundAfterScan.has(job.id),
     };
   });
 
@@ -88,6 +95,7 @@ export default async function JobsPage({ searchParams }: Props) {
     preferenceLabel: job.preferenceLabel,
     removalProtected: job.removalProtected,
     sourceLabel: job.sourceLabel,
+    foundAfterScan: job.foundAfterScan,
   }));
 
   return (
@@ -111,6 +119,8 @@ export default async function JobsPage({ searchParams }: Props) {
             </div>
           }
         />
+
+        <CatchUpJobsNotice initialNewJobsCount={catchUp.newJobsCount} />
 
         {jobs.length > 0 ? <JobMaintenancePanel jobCount={jobs.length} /> : null}
 
@@ -161,6 +171,7 @@ export default async function JobsPage({ searchParams }: Props) {
                   <Badge tone="neutral">{job.sourceLabel}</Badge>
                 )}
                 {job.preferenceLabel ? <Badge tone="warning">{job.preferenceLabel}</Badge> : null}
+                {job.foundAfterScan ? <FoundAfterScanBadge /> : null}
                 {job.livenessStatus === "expired" ? <Badge tone="danger">Posting expired</Badge> : null}
                 {job.hasResolvedPosting ? (
                   <a
@@ -194,5 +205,13 @@ export default async function JobsPage({ searchParams }: Props) {
       <LinkedInImportNotification />
       <EmailCandidateApprovalModal />
     </Shell>
+  );
+}
+
+function FoundAfterScanBadge() {
+  return (
+    <Badge className="border-accent/40 text-accent" title="Added by the background check that finished your last scan">
+      Found after scan
+    </Badge>
   );
 }

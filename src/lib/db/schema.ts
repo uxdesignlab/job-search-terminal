@@ -1553,5 +1553,38 @@ export const migrations = [
         checked_at text not null
       );
     `
+  },
+  {
+    id: "0071_board_catch_up",
+    sql: `
+      -- Boards a job-board host refused with HTTP 429 during a scan. They are not
+      -- broken: the host asked us to slow down. The scan hands them here and ends;
+      -- a slow background check works through them and adds what it finds to the
+      -- Jobs list. Kept in the database so the work survives an app restart.
+      create table if not exists board_catch_up_queue (
+        name text primary key,
+        api_type text not null,
+        api_url text not null,
+        priority integer not null default 0,
+        queued_at text not null
+      );
+      -- One row describing the current (or most recent) background check, which is
+      -- what the status line beside "Scan for new jobs" and the Jobs page read.
+      create table if not exists board_catch_up_state (
+        id text primary key,
+        hosts_json text not null default '[]',
+        origin_scan_id text not null default '',
+        started_at text not null,
+        finished_at text,
+        total_count integer not null default 0,
+        checked_count integer not null default 0,
+        new_jobs_count integer not null default 0,
+        found_job_ids_json text not null default '[]',
+        paused_until text,
+        backoff_ms integer not null default 60000,
+        batch_size integer not null default 1,
+        updated_at text not null
+      );
+    `
   }
 ];

@@ -1,4 +1,4 @@
-import type { ScanResult } from "@/lib/scanner/careerops-scanner";
+import { ATS_HOST_LABEL, type ScanResult } from "@/lib/scanner/careerops-scanner";
 import { SCAN_RESULT_JOBS_PREVIEW_MAX } from "@/lib/scan-result-constants";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
 
@@ -24,5 +24,17 @@ export function careerOpsRunToJobSummary(result: ScanResult, companyName: string
     jobs: jobs.slice(0, max).map((j) => ({ title: j.title, url: j.url, company: j.company })),
     jobsTotal: jobs.length > max ? jobs.length : undefined,
     repostCount: result.repostCount,
+    rateLimited: rateLimitSummary(result),
+  };
+}
+
+function rateLimitSummary(result: ScanResult): ScanJobResultSummary["rateLimited"] {
+  const hosts = result.rateLimited ?? [];
+  const alreadyQueued = result.alreadyQueued ?? 0;
+  if (hosts.length === 0 && alreadyQueued === 0) return undefined;
+  return {
+    hosts: hosts.map((h) => ({ host: h.host, label: ATS_HOST_LABEL[h.host], deferred: h.deferred, total: h.total })),
+    deferredTotal: hosts.reduce((sum, h) => sum + h.deferred, 0),
+    alreadyQueued,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ScanRunSummaryBody } from "@/components/scan-run-summary-body";
@@ -12,6 +12,7 @@ import type {
   JobDiscoverySourceStatus,
 } from "@/lib/scan-progress-types";
 import type { ScanJobResultSummary } from "@/lib/scan-result-types";
+import { SCAN_FINISHED_EVENT, SCAN_STARTED_EVENT } from "@/components/board-catch-up-status";
 
 const SOURCE_ORDER: JobDiscoverySourceId[] = ["career-sites", "adzuna", "dice"];
 
@@ -63,16 +64,40 @@ export function ScanForNewJobsButton() {
   const [summary, setSummary] = useState<ScanJobResultSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceProgress, setSourceProgress] = useState<Partial<Record<JobDiscoverySourceId, JobDiscoveryProgressUpdate>>>({});
+  /** True from click until the result (or an error) arrives, whether or not the dialog is open. */
+  const [inFlight, setInFlight] = useState(false);
+  /** The user closed the dialog mid-scan; the scan keeps going and a notice reports the end. */
+  const [backgrounded, setBackgrounded] = useState(false);
+  const backgroundedRef = useRef(false);
+  const [finishedInBackground, setFinishedInBackground] = useState(false);
 
   const close = useCallback(() => {
     setOpen(false);
+    setFinishedInBackground(false);
     setSummary(null);
     setError(null);
     setSourceProgress({});
     setPhase("running");
   }, []);
 
+  const keepWorking = useCallback(() => {
+    backgroundedRef.current = true;
+    setBackgrounded(true);
+    setOpen(false);
+  }, []);
+
+  const reopen = useCallback(() => {
+    backgroundedRef.current = false;
+    setBackgrounded(false);
+    setFinishedInBackground(false);
+    setOpen(true);
+  }, []);
+
   const startScan = useCallback(async () => {
+    backgroundedRef.current = false;
+    setBackgrounded(false);
+    setFinishedInBackground(false);
+    setInFlight(true);
     setOpen(true);
     setPhase("running");
     setSummary(null);
@@ -80,6 +105,7 @@ export function ScanForNewJobsButton() {
     setSourceProgress({});
     try {
       const response = await fetch("/api/job-discovery/scan", { method: "POST" });
+      window.dispatchEvent(new Event(SCAN_STARTED_EVENT));
       if (!response.ok) throw new Error(`Scan failed (HTTP ${response.status})`);
       if (!response.body) throw new Error("The scan did not return a progress stream");
 
@@ -100,6 +126,7 @@ export function ScanForNewJobsButton() {
         setSummary(event.summary);
         setPhase("done");
         router.refresh();
+        window.dispatchEvent(new Event(SCAN_FINISHED_EVENT));
       };
 
       while (true) {
@@ -115,6 +142,9 @@ export function ScanForNewJobsButton() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
       setPhase("done");
+    } finally {
+      setInFlight(false);
+      if (backgroundedRef.current) setFinishedInBackground(true);
     }
   }, [router]);
 
@@ -134,9 +164,43 @@ export function ScanForNewJobsButton() {
 
   return (
     <>
-      <Button onClick={() => void startScan()} type="button">
-        Scan for new jobs
+      {/* While a backgrounded scan runs, the button reopens its progress instead of starting another. */}
+      <Button
+        aria-label={inFlight && backgrounded ? "Scanning — show progress" : undefined}
+        onClick={() => (inFlight && backgrounded ? reopen() : void startScan())}
+        type="button"
+      >
+        {inFlight ? "Scanning…" : "Scan for new jobs"}
       </Button>
+
+      {finishedInBackground && !open ? (
+        <div
+          aria-live="polite"
+          className="fixed bottom-4 left-1/2 z-50 flex max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-border bg-panel px-4 py-3 text-sm text-ink shadow-lg"
+          role="status"
+        >
+          <span>
+            {error
+              ? "Your scan stopped before it finished."
+              : `Your scan finished · ${summary?.newJobsCount ?? 0} new ${summary?.newJobsCount === 1 ? "job" : "jobs"}`}
+          </span>
+          <button className="font-medium text-accent hover:underline" onClick={reopen} type="button">
+            View results
+          </button>
+          <button
+            aria-label="Dismiss"
+            className="text-muted hover:text-ink"
+            onClick={() => {
+              setFinishedInBackground(false);
+              backgroundedRef.current = false;
+              setBackgrounded(false);
+            }}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       {open && (
         <div
@@ -179,6 +243,9 @@ export function ScanForNewJobsButton() {
                     Fetching job boards, applying your title and profile filters, and saving new listings. This can
                     take a minute if you track many companies.
                   </p>
+                  <Button className="mt-4" onClick={keepWorking} type="button" variant="secondary">
+                    Keep working while it scans
+                  </Button>
                 </div>
 
                 {progressItems.length > 0 && (

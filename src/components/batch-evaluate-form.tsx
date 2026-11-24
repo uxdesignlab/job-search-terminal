@@ -461,6 +461,14 @@ export function BatchEvaluateForm({ companyFocus = null, jobs }: BatchEvaluateFo
                       <Link className="font-medium text-accent hover:underline" href={`/jobs/${job.id}`}>
                         {job.title}
                       </Link>
+                      {job.foundAfterScan ? (
+                        <Badge
+                          className="ml-2 border-accent/40 text-accent"
+                          title="Added by the background check that finished your last scan"
+                        >
+                          Found after scan
+                        </Badge>
+                      ) : null}
                       {rowStatus === "loading" && (
                         <span className="ml-2 animate-pulse text-xs text-muted">Evaluating…</span>
                       )}

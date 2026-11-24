@@ -7,6 +7,16 @@ import type { JobDiscoveryProgressUpdate, JobDiscoverySourceId } from "@/lib/sca
 import { careerOpsRunToJobSummary } from "@/lib/careerops-scan-to-summary";
 import { runAggregatorScan } from "./aggregator-scanner";
 import { runCareerOpsScanner } from "./careerops-scanner";
+import { enqueueDeferredBoards, getBoardPriorities, getQueuedBoardNames } from "./board-catch-up";
+import {
+  beginScanActivity,
+  endScanActivity,
+  recordCareerBoardProgress,
+  recordScanSourceProgress,
+} from "./scan-activity";
+
+/** Career-site progress reaches the stream at most this often, to keep the dialog calm. */
+const CAREER_PROGRESS_INTERVAL_MS = 1_000;
 import { runDiceScan } from "./dice-scanner";
 import { runHimalayasScan } from "./himalayas-scanner";
 import { DEFAULT_FRESHNESS_WINDOW_HOURS } from "./freshness";
@@ -16,6 +26,24 @@ export async function runJobDiscoveryScan(input: {
   freshnessWindowHours?: FreshnessWindowHours;
   onProgress?: (update: JobDiscoveryProgressUpdate) => void;
 }): Promise<ScanJobResultSummary> {
+  // Registered for the Dashboard's live activity panel, which shows scans nobody is
+  // watching (scheduled, or sent to the background). Always cleared, even on failure.
+  const activityId = beginScanActivity(input.trigger);
+  try {
+    return await runJobDiscoveryScanTracked(input, activityId);
+  } finally {
+    endScanActivity(activityId);
+  }
+}
+
+async function runJobDiscoveryScanTracked(
+  input: {
+    trigger: ScanTrigger;
+    freshnessWindowHours?: FreshnessWindowHours;
+    onProgress?: (update: JobDiscoveryProgressUpdate) => void;
+  },
+  activityId: string,
+): Promise<ScanJobResultSummary> {
   const settings = getAISettings();
   const profile = getUserProfile();
   const titleFilters = getTitleFilters();
@@ -23,6 +51,7 @@ export async function runJobDiscoveryScan(input: {
   const hasAdzuna = Boolean(settings.adzunaAppId && settings.adzunaApiKey);
 
   const reportProgress = (update: JobDiscoveryProgressUpdate) => {
+    recordScanSourceProgress(activityId, update);
     try {
       input.onProgress?.(update);
     } catch {
@@ -83,9 +112,35 @@ export async function runJobDiscoveryScan(input: {
       "career-sites",
       "Company career sites",
       "Checking enabled Greenhouse, Ashby, and Lever sources",
-      () => runCareerOpsScanner({ trigger: input.trigger, freshnessWindowHours }),
-      (result) =>
-        `Checked ${result.companiesScanned} company ${result.companiesScanned === 1 ? "source" : "sources"}`,
+      () =>
+        runCareerOpsScanner({
+          trigger: input.trigger,
+          freshnessWindowHours,
+          priorities: getBoardPriorities(),
+          skipNames: getQueuedBoardNames(),
+          onDeferred: (boards, runId) => enqueueDeferredBoards(boards, runId),
+          onBoardProgress: (() => {
+            let lastSent = 0;
+            return (checked: number, total: number) => {
+              recordCareerBoardProgress(activityId, checked, total);
+              const now = Date.now();
+              if (checked > 0 && checked < total && now - lastSent < CAREER_PROGRESS_INTERVAL_MS) return;
+              lastSent = now;
+              if (checked === 0) return;
+              reportProgress({
+                sourceId: "career-sites",
+                sourceLabel: "Company career sites",
+                status: "running",
+                detail: `Checked ${checked.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} company job pages`,
+              });
+            };
+          })(),
+        }),
+      (result) => {
+        const checked = `Checked ${result.companiesScanned} company ${result.companiesScanned === 1 ? "source" : "sources"}`;
+        const later = (result.rateLimited ?? []).reduce((sum, h) => sum + h.deferred, 0) + (result.alreadyQueued ?? 0);
+        return later > 0 ? `${checked} — ${later} will be checked in the background` : checked;
+      },
     ),
     hasAdzuna
       ? runSource(

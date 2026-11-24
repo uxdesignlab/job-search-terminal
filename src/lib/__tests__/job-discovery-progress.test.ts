@@ -24,6 +24,11 @@ vi.mock("@/lib/scanner/aggregator-scanner", () => ({ runAggregatorScan: mocks.ru
 vi.mock("@/lib/scanner/careerops-scanner", () => ({ runCareerOpsScanner: mocks.runCareerOpsScanner }));
 vi.mock("@/lib/scanner/dice-scanner", () => ({ runDiceScan: mocks.runDiceScan }));
 vi.mock("@/lib/scanner/himalayas-scanner", () => ({ runHimalayasScan: mocks.runHimalayasScan }));
+vi.mock("@/lib/scanner/board-catch-up", () => ({
+  enqueueDeferredBoards: vi.fn(),
+  getBoardPriorities: () => new Map(),
+  getQueuedBoardNames: () => new Set(),
+}));
 
 import { runJobDiscoveryScan } from "@/lib/scanner/job-discovery";
 

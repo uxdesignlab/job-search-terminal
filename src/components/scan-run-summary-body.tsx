@@ -12,6 +12,7 @@ import {
   type ScanErrorCategory,
 } from "@/lib/scan-error-category";
 import { isScanLane, scanLaneHint } from "@/lib/scan-lanes";
+import { rateLimitCardCopy } from "@/lib/catch-up-copy";
 import { cn } from "@/lib/utils";
 
 /** Scan errors for aggregators are not per-company YAML sources — hide source disable. */
@@ -34,13 +35,19 @@ function categoryTone(category: ScanErrorCategory): "neutral" | "success" | "war
       return "danger";
     case "timeout_or_slow":
       return "warning";
+    case "rate_limited":
+      return "neutral";
     default:
       return "neutral";
   }
 }
 
-function rowCanDisableSource(company: string): boolean {
-  return !isScanLane(company);
+/**
+ * Aggregator lanes are not per-company sources, and a rate-limited board is fine —
+ * the host only asked us to slow down — so neither is ever offered for disabling.
+ */
+function rowCanDisableSource(company: string, category: ScanErrorCategory): boolean {
+  return !isScanLane(company) && category !== "rate_limited";
 }
 
 export function ScanRunSummaryBody({
@@ -71,39 +78,41 @@ export function ScanRunSummaryBody({
   const categoryCounts = useMemo(() => {
     let dead = 0;
     let timeout = 0;
+    let rateLimited = 0;
     let other = 0;
     for (const c of categoryByIndex) {
       if (c === "dead_or_unreachable") dead++;
       else if (c === "timeout_or_slow") timeout++;
+      else if (c === "rate_limited") rateLimited++;
       else other++;
     }
-    return { dead, timeout, other };
+    return { dead, timeout, rateLimited, other };
   }, [categoryByIndex]);
 
   const disableEligibleIndices = useMemo(() => {
     const indices: number[] = [];
     errorRows.forEach((e, i) => {
-      if (rowCanDisableSource(e.company) && !disabledSources.has(e.company)) {
+      if (rowCanDisableSource(e.company, categoryByIndex[i] ?? "other") && !disabledSources.has(e.company)) {
         indices.push(i);
       }
     });
     return indices;
-  }, [errorRows, disabledSources]);
+  }, [errorRows, disabledSources, categoryByIndex]);
 
   const selectedDisableCount = useMemo(() => {
     let n = 0;
     for (const i of selectedRows) {
       const e = errorRows[i];
-      if (e && rowCanDisableSource(e.company) && !disabledSources.has(e.company)) n++;
+      if (e && rowCanDisableSource(e.company, categoryByIndex[i] ?? "other") && !disabledSources.has(e.company)) n++;
     }
     return n;
-  }, [selectedRows, errorRows, disabledSources]);
+  }, [selectedRows, errorRows, disabledSources, categoryByIndex]);
 
   const suggestedDisableCount = disableEligibleIndices.length;
 
   const toggleRowSelected = (index: number) => {
     const e = errorRows[index];
-    if (!e || !rowCanDisableSource(e.company) || disabledSources.has(e.company)) return;
+    if (!e || !rowCanDisableSource(e.company, categoryByIndex[index] ?? "other") || disabledSources.has(e.company)) return;
     setSelectedRows((prev) => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
@@ -138,8 +147,9 @@ export function ScanRunSummaryBody({
 
   const handleBulkDisable = async () => {
     const names = [...selectedRows]
+      .filter((i) => rowCanDisableSource(errorRows[i]?.company ?? "", categoryByIndex[i] ?? "other"))
       .map((i) => errorRows[i]?.company)
-      .filter((n): n is string => Boolean(n && rowCanDisableSource(n) && !disabledSources.has(n)));
+      .filter((n): n is string => Boolean(n && !disabledSources.has(n)));
     const unique = [...new Set(names)];
     if (unique.length === 0) return;
     setPendingDisable({ type: "bulk", count: unique.length });
@@ -156,7 +166,7 @@ export function ScanRunSummaryBody({
         <ul className="space-y-2 rounded-md border border-border bg-surface/50 p-3 text-sm">
           {errorRows.map((e, i) => {
             const category = categoryByIndex[i] ?? "other";
-            const canDisableRow = rowCanDisableSource(e.company) && Boolean(onDisableSources);
+            const canDisableRow = rowCanDisableSource(e.company, category) && Boolean(onDisableSources);
             const isDisabled = disabledSources.has(e.company);
             const showCheckbox = canDisableRow && !isDisabled;
             const selected = selectedRows.has(i);
@@ -183,7 +193,7 @@ export function ScanRunSummaryBody({
                         {scanErrorCategoryLabel(category)}
                       </Badge>
                     </div>
-                    <p className="mt-0.5 leading-5 text-danger">{e.error}</p>
+                    <p className={cn("mt-0.5 leading-5", category === "rate_limited" ? "text-muted" : "text-danger")}>{e.error}</p>
                   </div>
                   {onDisableSources && canDisableRow ? (
                     <button
@@ -273,12 +283,19 @@ export function ScanRunSummaryBody({
           <Badge tone="neutral">{summary.preferenceFilteredCount} outside your locations</Badge>
         )}
         {summary.duplicateCount > 0 && <Badge tone="neutral">{summary.duplicateCount} duplicates skipped</Badge>}
+        {summary.rateLimited && summary.rateLimited.deferredTotal + summary.rateLimited.alreadyQueued > 0 && (
+          <Badge tone="neutral">
+            {summary.rateLimited.deferredTotal + summary.rateLimited.alreadyQueued} checking in the background
+          </Badge>
+        )}
         {(summary.repostCount ?? 0) > 0 && (
           <Badge tone="neutral">
             {summary.repostCount} re-post{summary.repostCount !== 1 ? "s" : ""} of a closed role
           </Badge>
         )}
       </div>
+
+      {summary.rateLimited ? <RateLimitNotice summary={summary.rateLimited} /> : null}
 
       {errorRows.length > 0 && (
         <div className="mb-3 shrink-0 space-y-2 rounded-md border border-border bg-panel p-3 text-xs leading-relaxed text-muted">
@@ -295,6 +312,11 @@ export function ScanRunSummaryBody({
             <span className="text-danger">{categoryCounts.dead}</span>{" "}
             {categoryCounts.dead === 1 ? "dead or missing listing" : "dead or missing listings"} ·{" "}
             <span className="text-warning">{categoryCounts.timeout}</span> timed out (may still be live) ·{" "}
+            {categoryCounts.rateLimited > 0 ? (
+              <>
+                <span className="text-ink">{categoryCounts.rateLimited}</span> rate limited (fine, try again later) ·{" "}
+              </>
+            ) : null}
             <span className="text-ink">{categoryCounts.other}</span> other
           </p>
         </div>
@@ -348,5 +370,28 @@ export function ScanRunSummaryBody({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Explains a host's "too many requests" in plain words. Informational, not a
+ * warning: nothing is broken and nothing needs the user's action.
+ */
+function RateLimitNotice({ summary }: { summary: NonNullable<ScanJobResultSummary["rateLimited"]> }) {
+  const copy = rateLimitCardCopy(summary);
+  return (
+    <section
+      aria-labelledby="scan-rate-limit-title"
+      className="mb-3 shrink-0 space-y-1.5 rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-ink"
+    >
+      <h3 className="font-semibold text-ink" id="scan-rate-limit-title">
+        {copy.title}
+      </h3>
+      {copy.paragraphs.map((p, i) => (
+        <p className={i === copy.paragraphs.length - 1 ? "font-medium" : "text-muted"} key={i}>
+          {p}
+        </p>
+      ))}
+    </section>
   );
 }

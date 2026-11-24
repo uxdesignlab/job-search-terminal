@@ -25,4 +25,18 @@ export type ScanJobResultSummary = {
   preferenceFilteredCount?: number;
   /** Subset of `newJobsCount` that re-posts a role the user had already closed out. */
   repostCount?: number;
+  /**
+   * Set when a job-board host answered "too many requests" and boards were handed
+   * to the background check instead of being reported as errors. Also set when the
+   * scan left boards alone because an earlier check still holds them.
+   */
+  rateLimited?: ScanRateLimitSummary;
+};
+
+export type ScanRateLimitSummary = {
+  hosts: Array<{ host: string; label: string; deferred: number; total: number }>;
+  /** Boards this scan handed to the background check. */
+  deferredTotal: number;
+  /** Boards skipped because an earlier scan's background check still holds them. */
+  alreadyQueued: number;
 };

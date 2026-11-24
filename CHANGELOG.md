@@ -15,6 +15,50 @@ the numbers mean and when they change.
 
 ---
 
+## 0.23.0 — 2026-11-24 — Scans that finish when a job board pushes back
+
+**Added**
+
+- When Greenhouse, Ashby, or Lever asks the app to slow down during a scan, the
+  scan results now say so in plain words: which service it was, that nothing is
+  wrong with your setup or your companies, and that you don't need to disable
+  anything.
+- The companies the scan could not reach are no longer lost. The app checks them
+  slowly in the background while it is open, starting with companies you have
+  already shown interest in, and picks up where it left off after a restart.
+- The Dashboard's **This week** box now shows every scan running in the
+  background, live: the scheduled scan, a scan you stepped away from, and the
+  background check. Each has a progress bar and numbers — company pages
+  checked, pages left, new jobs so far — and the **from scans** count updates
+  when they finish.
+- The top of Jobs shows the background check in one line and says when it is
+  done, including when it found nothing new.
+- The scan window now counts company job pages as it goes ("Checked 3,210 of
+  7,816 company job pages") instead of only saying it is checking them.
+- New jobs from the background check wait behind a **Show N new jobs** button
+  instead of jumping into the list while you read, and carry a **Found after
+  scan** label.
+- **Keep working while it scans** closes the scan window without stopping the
+  scan. A note with **View results** pops up when it is done.
+
+**Changed**
+
+- Each job-board service now has its own lane, so one service slowing down no
+  longer holds up the others, and the most promising companies are checked
+  first.
+
+**Fixed**
+
+- Since 2026-11-23, about 2,000 company pages per scan came back as *Other
+  error — HTTP 429*, with an offer to disable them all. They were never broken,
+  and about a third of all listings went unread on every scan. If you disabled
+  companies because of those rows, re-enable them from Account → Settings →
+  Cleanup → Re-check.
+- The Dashboard's latest-scan list no longer offers **Disable source** for those
+  rows; it says **Job board busy, not broken** instead.
+
+The database gains two small tables the first time the app starts after updating.
+
 ## 0.22.0 — 2026-11-17 — Say it once, save it for next time
 
 **Added**

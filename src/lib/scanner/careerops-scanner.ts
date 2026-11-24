@@ -13,7 +13,12 @@ import { classifyFreshness, DEFAULT_FRESHNESS_WINDOW_HOURS } from "./freshness";
 
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
 const FALLBACK_CONFIG_PATH = "config/portals.example.yml";
-const CONCURRENCY = 20;
+/**
+ * Requests in flight per job-board host. Each host gets its own lane so one host
+ * slowing us down never stalls the others. The split keeps roughly the old total
+ * of 20, weighted by how many boards each host carries.
+ */
+export const LANE_CONCURRENCY: Record<AtsType, number> = { greenhouse: 10, ashby: 8, lever: 4 };
 /**
  * Upper bound for ATS job-list `fetch` + full JSON parse. Ashby boards with
  * many postings often exceed a short header-only budget because `response.json()`
@@ -39,9 +44,38 @@ type ScanConfig = {
   tracked_companies?: PortalCompany[];
 };
 
+export type AtsType = "greenhouse" | "ashby" | "lever";
+
 type DetectedApi = {
-  type: "greenhouse" | "ashby" | "lever";
+  type: AtsType;
   url: string;
+};
+
+/** Display names for the hosts, used in user-facing copy. */
+export const ATS_HOST_LABEL: Record<AtsType, string> = {
+  greenhouse: "Greenhouse",
+  ashby: "Ashby",
+  lever: "Lever",
+};
+
+/**
+ * A board whose host answered HTTP 429 (or that was still waiting in that host's
+ * lane when it did). It is handed to the background check instead of reported as
+ * an error: the board is fine, the host only asked us to slow down.
+ */
+export type DeferredBoard = {
+  name: string;
+  apiType: AtsType;
+  apiUrl: string;
+  priority: number;
+};
+
+export type RateLimitedHost = {
+  host: AtsType;
+  /** Boards of this host left for the background check by this scan. */
+  deferred: number;
+  /** Boards of this host this scan set out to check. */
+  total: number;
 };
 
 type RawJob = {
@@ -76,6 +110,20 @@ type ScanOptions = {
   trigger?: ScanTrigger;
   /** Injected in tests; otherwise read from the jobs table when persisting. */
   dedup?: JobDedupKeys;
+  /**
+   * Higher scans first within each host's lane. Injected in tests; otherwise read
+   * from the jobs table when persisting (see `getBoardPriorities`).
+   */
+  priorities?: Map<string, number>;
+  /**
+   * Board names to leave out because the background check already owns them.
+   * Injected in tests; otherwise read from the catch-up queue when persisting.
+   */
+  skipNames?: Set<string>;
+  /** Receives the boards a rate-limited host left unchecked. Persisting runs queue them. */
+  onDeferred?: (boards: DeferredBoard[], runId: string) => void;
+  /** Called after each board is checked (any outcome) with the running count and the total. */
+  onBoardProgress?: (checked: number, total: number) => void;
 };
 
 export type JobDedupKeys = ReturnType<typeof getJobDedupKeys>;
@@ -96,7 +144,160 @@ export function emptyDedupKeys(): JobDedupKeys {
 
 export type ScanResult = ScanRunRecord & {
   jobs: ScannedJobInput[];
+  /** Hosts that asked us to slow down during this run, with what was left for later. */
+  rateLimited: RateLimitedHost[];
+  /** Boards skipped because an earlier scan's background check still holds them. */
+  alreadyQueued: number;
 };
+
+/**
+ * Filters, dedup set, and counters shared by a scan and by the background check,
+ * so a board checked later lands in the app exactly as it would have during the scan.
+ */
+export type BoardJobContext = {
+  titleFilter: (title: string) => boolean;
+  preferenceFilter: ReturnType<typeof buildJobPreferenceFilter>;
+  freshnessWindowHours: FreshnessWindowHours;
+  now?: Date;
+  date: string;
+  dedup: JobDedupKeys;
+  counts: {
+    totalJobsFound: number;
+    filteredCount: number;
+    duplicateCount: number;
+    repostCount: number;
+    freshCount: number;
+    unknownDateCount: number;
+    staleFilteredCount: number;
+  };
+  newJobs: ScannedJobInput[];
+};
+
+export function createBoardJobContext(input: {
+  titleFilter: ScanConfig["title_filter"];
+  profile?: JobPreferenceProfile;
+  freshnessWindowHours?: FreshnessWindowHours;
+  now?: Date;
+  dedup: JobDedupKeys;
+}): BoardJobContext {
+  return {
+    titleFilter: buildTitleFilter(input.titleFilter),
+    preferenceFilter: buildJobPreferenceFilter(input.profile),
+    freshnessWindowHours: input.freshnessWindowHours ?? DEFAULT_FRESHNESS_WINDOW_HOURS,
+    now: input.now,
+    date: localDateString(input.now ?? new Date()),
+    dedup: input.dedup,
+    counts: {
+      totalJobsFound: 0,
+      filteredCount: 0,
+      duplicateCount: 0,
+      repostCount: 0,
+      freshCount: 0,
+      unknownDateCount: 0,
+      staleFilteredCount: 0,
+    },
+    newJobs: [],
+  };
+}
+
+/** Runs one board's job list through the title, profile, freshness, and dedup rules. */
+export function collectBoardJobs(ctx: BoardJobContext, companyName: string, apiType: AtsType, json: unknown) {
+  const { counts, dedup } = ctx;
+  const jobs = parseJobs(apiType, json, companyName);
+  counts.totalJobsFound += jobs.length;
+
+  for (const job of jobs) {
+    if (!job.title || !job.url) {
+      counts.filteredCount++;
+      continue;
+    }
+
+    if (!ctx.titleFilter(job.title)) {
+      counts.filteredCount++;
+      continue;
+    }
+
+    if (!ctx.preferenceFilter(job).accepted) {
+      counts.filteredCount++;
+      continue;
+    }
+
+    const freshness = classifyFreshness(job.datePosted, ctx.freshnessWindowHours, ctx.now);
+    if (freshness === "stale") {
+      counts.staleFilteredCount++;
+      continue;
+    }
+    if (freshness === "unknown-date") counts.unknownDateCount++;
+    else counts.freshCount++;
+
+    // The posting URL is the requisition's identity: the same URL is always the
+    // same job, whatever its status.
+    if (dedup.urls.has(job.url)) {
+      counts.duplicateCount++;
+      continue;
+    }
+
+    // A new URL for a role already in the app is only a duplicate while that
+    // existing row is still live — the same role arriving via another lane in
+    // the current cycle. Once the user has closed it out (applied, rejected,
+    // skipped, archived), a fresh requisition is a real opportunity, and
+    // matching on company+title alone would hide it permanently.
+    const location = job.location || "Not specified";
+    const companyRoleLocationKey =
+      `${job.company.toLowerCase()}::${job.title.toLowerCase()}::${location.toLowerCase()}`;
+    const collidingIds = dedup.companyRoleLocationToIds.get(companyRoleLocationKey) ?? [];
+    if (collidingIds.some((id) => dedup.openIds.has(id))) {
+      counts.duplicateCount++;
+      continue;
+    }
+    if (collidingIds.length > 0) counts.repostCount++;
+
+    const id = stableJobId(job.url);
+    dedup.urls.add(job.url);
+    dedup.openIds.add(id);
+    addDedupId(dedup.companyRoleLocationToIds, companyRoleLocationKey, id);
+    ctx.newJobs.push({
+      id,
+      company: job.company,
+      title: job.title,
+      url: job.url,
+      source: `${apiType}-api`,
+      location,
+      datePosted: job.datePosted,
+      firstSeenDate: ctx.date
+    });
+  }
+}
+
+/** An HTTP error that keeps its status code, so callers need not parse the message. */
+export class HttpStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = "HttpStatusError";
+  }
+}
+
+/** True when a host answered "too many requests". Accepts plain `HTTP 429` errors from injected fetchers. */
+export function isRateLimitError(error: unknown): boolean {
+  if (error instanceof HttpStatusError) return error.status === 429;
+  return error instanceof Error && error.message.trim() === "HTTP 429";
+}
+
+/**
+ * Persisting scans in progress in this process. The background check holds off
+ * while one runs, so the two never press the same host at once.
+ *
+ * Kept on `globalThis`, not in a module variable: Next.js may load this module
+ * separately for the scan API route and for `instrumentation.ts` (which runs the
+ * background check), and a plain `let` would give each its own counter.
+ */
+const scanCounter = globalThis as typeof globalThis & { __jstActiveCareerScans?: number };
+export function isCareerScanInProgress() {
+  return (scanCounter.__jstActiveCareerScans ?? 0) > 0;
+}
+function changeActiveScans(delta: number) {
+  scanCounter.__jstActiveCareerScans = Math.max(0, (scanCounter.__jstActiveCareerScans ?? 0) + delta);
+}
 
 export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<ScanResult> {
   const startedAt = (options.now ?? new Date()).toISOString();
@@ -109,8 +310,6 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   const effectiveFilter = (dbFilters.positive.length > 0 || dbFilters.negative.length > 0)
     ? dbFilters
     : config.title_filter;
-  const titleFilter = buildTitleFilter(effectiveFilter);
-  const preferenceFilter = buildJobPreferenceFilter(options.profile ?? (persist ? getUserProfile() : undefined));
   const filterCompany = options.company?.toLowerCase();
   const filterCompanyExact = options.companyExact?.trim();
   const filterCompanyExactLower = filterCompanyExact?.toLowerCase();
@@ -157,8 +356,13 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
     ? companiesForTargets.length - targets.length
     : enabledCompanies.length - targets.length;
   const dedup = options.dedup ?? (persist ? getJobDedupKeys() : emptyDedupKeys());
-  const date = localDateString(options.now ?? new Date());
-  const newJobs: ScannedJobInput[] = [];
+  const ctx = createBoardJobContext({
+    titleFilter: effectiveFilter,
+    profile: options.profile ?? (persist ? getUserProfile() : undefined),
+    freshnessWindowHours: options.freshnessWindowHours,
+    now: options.now,
+    dedup,
+  });
   const errors: ScanError[] = [...preflightErrors];
   if (
     filterCompanyExactLower &&
@@ -174,113 +378,100 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
       category: classifyScanErrorMessage(msg),
     });
   }
-  let totalJobsFound = 0;
-  let filteredCount = 0;
-  let duplicateCount = 0;
-  let repostCount = 0;
-  let freshCount = 0;
-  let unknownDateCount = 0;
-  let staleFilteredCount = 0;
 
-  const tasks = targets.map((company) => async () => {
-    try {
-      const json = await fetcher(company._api.url);
-      const jobs = parseJobs(company._api.type, json, company.name);
-      totalJobsFound += jobs.length;
+  // Boards the background check already holds stay with it: scanning them again
+  // now would press the same host that just asked us to slow down.
+  const skipNames = filterCompanyExactLower ? new Set<string>() : options.skipNames ?? new Set<string>();
+  const scanTargets = targets.filter((t) => !skipNames.has(t.name));
+  const alreadyQueued = targets.length - scanTargets.length;
+  const priorities = options.priorities ?? new Map<string, number>();
+  const priorityOf = (name: string) => priorities.get(name.toLowerCase()) ?? 0;
 
-      for (const job of jobs) {
-        if (!job.title || !job.url) {
-          filteredCount++;
-          continue;
-        }
+  const runId = `scan-${Date.now()}`;
+  const rateLimited: RateLimitedHost[] = [];
+  const deferred: DeferredBoard[] = [];
 
-        if (!titleFilter(job.title)) {
-          filteredCount++;
-          continue;
-        }
+  let boardsChecked = 0;
+  const boardDone = () => options.onBoardProgress?.(++boardsChecked, scanTargets.length);
+  options.onBoardProgress?.(0, scanTargets.length);
+  if (persist) changeActiveScans(1);
+  try {
+    await Promise.all(
+      (Object.keys(LANE_CONCURRENCY) as AtsType[]).map(async (host) => {
+        // Most promising boards first: if the host does slow us down, it is the
+        // long tail that waits, not the companies most likely to have a match.
+        const laneTargets = scanTargets
+          .filter((t) => t._api.type === host)
+          .sort((x, y) => priorityOf(y.name) - priorityOf(x.name));
+        if (laneTargets.length === 0) return;
 
-        if (!preferenceFilter(job).accepted) {
-          filteredCount++;
-          continue;
-        }
-
-        const freshness = classifyFreshness(job.datePosted, options.freshnessWindowHours ?? DEFAULT_FRESHNESS_WINDOW_HOURS, options.now);
-        if (freshness === "stale") {
-          staleFilteredCount++;
-          continue;
-        }
-        if (freshness === "unknown-date") unknownDateCount++;
-        else freshCount++;
-
-        // The posting URL is the requisition's identity: the same URL is always the
-        // same job, whatever its status.
-        if (dedup.urls.has(job.url)) {
-          duplicateCount++;
-          continue;
-        }
-
-        // A new URL for a role already in the app is only a duplicate while that
-        // existing row is still live — the same role arriving via another lane in
-        // the current cycle. Once the user has closed it out (applied, rejected,
-        // skipped, archived), a fresh requisition is a real opportunity, and
-        // matching on company+title alone would hide it permanently.
-        const location = job.location || "Not specified";
-        const companyRoleLocationKey =
-          `${job.company.toLowerCase()}::${job.title.toLowerCase()}::${location.toLowerCase()}`;
-        const collidingIds = dedup.companyRoleLocationToIds.get(companyRoleLocationKey) ?? [];
-        if (collidingIds.some((id) => dedup.openIds.has(id))) {
-          duplicateCount++;
-          continue;
-        }
-        if (collidingIds.length > 0) repostCount++;
-
-        const id = stableJobId(job.url);
-        dedup.urls.add(job.url);
-        dedup.openIds.add(id);
-        addDedupId(dedup.companyRoleLocationToIds, companyRoleLocationKey, id);
-        newJobs.push({
-          id,
-          company: job.company,
-          title: job.title,
-          url: job.url,
-          source: `${company._api.type}-api`,
-          location,
-          datePosted: job.datePosted,
-          firstSeenDate: date
+        const lane = await runLane(laneTargets, LANE_CONCURRENCY[host], async (company) => {
+          try {
+            const json = await fetcher(company._api.url);
+            collectBoardJobs(ctx, company.name, company._api.type, json);
+            boardDone();
+            return "ok";
+          } catch (error) {
+            if (isRateLimitError(error)) return "rate_limited";
+            let message = error instanceof Error ? error.message : "Unknown scanner error";
+            if (message === "This operation was aborted" || message === "The operation was aborted." || message.toLowerCase().includes("abort")) {
+              message = `Fetch timed out after ${ATS_JOB_LIST_FETCH_MS / 1000}s — the careers API may be slow or the job list is very large`;
+            }
+            errors.push({ company: company.name, error: message, category: classifyScanErrorMessage(message) });
+            boardDone();
+            return "error";
+          }
         });
+
+        if (lane.deferred.length > 0) {
+          rateLimited.push({ host, deferred: lane.deferred.length, total: laneTargets.length });
+          for (const t of lane.deferred) {
+            deferred.push({ name: t.name, apiType: t._api.type, apiUrl: t._api.url, priority: priorityOf(t.name) });
+          }
+        }
+      }),
+    );
+  } finally {
+    if (persist) changeActiveScans(-1);
+  }
+
+  if (deferred.length > 0) {
+    if (options.onDeferred) {
+      options.onDeferred(deferred, runId);
+    } else {
+      // No background check behind this caller (a single-source check, a dry run):
+      // report the refusals so they are not silently dropped.
+      for (const board of deferred) {
+        errors.push({ company: board.name, error: "HTTP 429", category: classifyScanErrorMessage("HTTP 429") });
       }
-    } catch (error) {
-      let message = error instanceof Error ? error.message : "Unknown scanner error";
-      if (message === "This operation was aborted" || message === "The operation was aborted." || message.toLowerCase().includes("abort")) {
-        message = `Fetch timed out after ${ATS_JOB_LIST_FETCH_MS / 1000}s — the careers API may be slow or the job list is very large`;
-      }
-      errors.push({ company: company.name, error: message, category: classifyScanErrorMessage(message) });
+      rateLimited.length = 0;
     }
-  });
+  }
 
-  await parallelFetch(tasks, CONCURRENCY);
-
+  const { newJobs, counts } = ctx;
   const insertedCount = persist ? insertScannedJobs(newJobs) : newJobs.length;
   const completedAt = new Date().toISOString();
   const run: ScanRunRecord = {
-    id: `scan-${Date.now()}`,
+    id: runId,
     status: errors.length > 0 ? "completed_with_errors" : "completed",
     startedAt,
     completedAt,
-    companiesScanned: targets.length,
+    // Boards handed to the background check (now or by an earlier scan) were not
+    // checked by this run, so they are not counted as scanned.
+    companiesScanned: scanTargets.length - (options.onDeferred ? deferred.length : 0),
     skippedCompanies,
-    totalJobsFound,
-    filteredCount,
-    duplicateCount: duplicateCount + (newJobs.length - insertedCount),
+    totalJobsFound: counts.totalJobsFound,
+    filteredCount: counts.filteredCount,
+    duplicateCount: counts.duplicateCount + (newJobs.length - insertedCount),
     newJobsCount: insertedCount,
     errors,
     scanType: "careerops"
     , trigger: options.trigger ?? "manual"
     , freshnessWindowHours: options.freshnessWindowHours ?? DEFAULT_FRESHNESS_WINDOW_HOURS
-    , freshCount
-    , unknownDateCount
-    , staleFilteredCount
-    , repostCount
+    , freshCount: counts.freshCount
+    , unknownDateCount: counts.unknownDateCount
+    , staleFilteredCount: counts.staleFilteredCount
+    , repostCount: counts.repostCount
   };
 
   if (persist) {
@@ -289,7 +480,9 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
 
   return {
     ...run,
-    jobs: newJobs
+    jobs: newJobs,
+    rateLimited,
+    alreadyQueued,
   };
 }
 
@@ -426,7 +619,7 @@ export function parseLever(json: unknown, companyName: string): RawJob[] {
   });
 }
 
-function parseJobs(type: DetectedApi["type"], json: unknown, companyName: string) {
+function parseJobs(type: AtsType, json: unknown, companyName: string) {
   if (type === "greenhouse") return parseGreenhouse(json, companyName);
   if (type === "ashby") return parseAshby(json, companyName);
   return parseLever(json, companyName);
@@ -449,7 +642,7 @@ async function fetchJsonOnce(url: string): Promise<unknown> {
       },
     });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new HttpStatusError(response.status);
     }
     return await response.json();
   } finally {
@@ -457,7 +650,7 @@ async function fetchJsonOnce(url: string): Promise<unknown> {
   }
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+export async function fetchJson(url: string): Promise<unknown> {
   let attempt = 0;
   while (true) {
     try {
@@ -473,18 +666,39 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
-async function parallelFetch(tasks: Array<() => Promise<void>>, limit: number) {
+type LaneOutcome = "ok" | "error" | "rate_limited";
+
+/**
+ * Works through one host's boards with at most `limit` requests in flight. The
+ * first "too many requests" closes the lane: nothing new is sent to that host,
+ * because every further request would be refused too and may lengthen the block.
+ * The refused board, any others refused while in flight, and every board not yet
+ * started come back as `deferred`.
+ */
+export async function runLane<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<LaneOutcome>,
+): Promise<{ deferred: T[] }> {
   let index = 0;
+  let closed = false;
+  const deferred: T[] = [];
 
   async function next() {
-    while (index < tasks.length) {
-      const task = tasks[index++];
-      await task();
+    while (!closed && index < items.length) {
+      const item = items[index++];
+      const outcome = await task(item);
+      if (outcome === "rate_limited") {
+        closed = true;
+        deferred.push(item);
+      }
     }
   }
 
-  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => next());
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => next());
   await Promise.all(workers);
+  if (closed) deferred.push(...items.slice(index));
+  return { deferred };
 }
 
 function addDedupId(map: Map<string, string[]>, key: string, id: string) {

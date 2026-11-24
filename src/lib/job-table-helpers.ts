@@ -37,6 +37,8 @@ export type MainJobTableRecord = Pick<
    * recomputing, and falls back to the public-only label when it is absent.
    */
   sourceLabel?: string;
+  /** Added by the background check after a rate-limited scan; the row shows "Found after scan". */
+  foundAfterScan?: boolean;
 };
 
 /** Fit buckets for filter options and display (matches main jobs table). */
