@@ -554,7 +554,8 @@ gains `"rate_limited"`. `MainJobTableRecord` gains optional `foundAfterScan`.
 
 **Not stored: running scans.** `ActiveScan` (`src/lib/scanner/scan-activity.ts`:
 `{ id, trigger, startedAt, sources: JobDiscoveryProgressUpdate[], careerChecked,
-careerTotal }`) lives only in memory on `globalThis` for as long as a scan runs —
+careerTotal, movedToBackground: Record<hostLabel, number> }`; `careerTotal` excludes
+pages already moved to the background check) lives only in memory on `globalThis` for as long as a scan runs —
 a scan cannot outlive the server process, so neither does its record. Served with
 the catch-up status at `GET /api/job-discovery/activity`.
 

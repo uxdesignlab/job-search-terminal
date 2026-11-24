@@ -15,6 +15,20 @@ the numbers mean and when they change.
 
 ---
 
+## 0.23.1 — 2026-11-24 — One service slowing down no longer slows the scan
+
+**Fixed**
+
+- When Greenhouse asked the app to slow down, the scan stopped asking it — but
+  the speed it had been using sat idle, so Ashby and Lever pages were read more
+  slowly and the scan took more than twice as long. All the speed now goes to
+  the services still answering, and the scan finishes about as fast as before.
+- The Dashboard said **Last scan: 3 minutes ago** while a scan was still
+  running. It now says **in progress**.
+- The scan's progress bar counted pages that had already been handed to the
+  background check, so it stopped short of the end. It now leaves them out,
+  and says how many pages moved and why.
+
 ## 0.23.0 — 2026-11-24 — Scans that finish when a job board pushes back
 
 **Added**

@@ -645,7 +645,7 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Watch a scan you are not looking at",
-            body: "Any scan running in the background shows up live in the This week box on the Dashboard — the scheduled scan that runs by itself, a scan you closed with Keep working while it scans, and the background check described below. Each one has a progress bar and numbers, such as how many company job pages are checked. When a scan ends, the box's from scans count updates by itself.",
+            body: "Any scan running in the background shows up live in the This week box on the Dashboard — the scheduled scan that runs by itself, a scan you closed with Keep working while it scans, and the background check described below. Each one has a progress bar and numbers, such as how many company job pages are checked. While a scan runs, Last scan says in progress. When it ends, the box's from scans count and Last scan update by themselves.",
           },
           {
             title: "Read the scan summary",
@@ -667,7 +667,7 @@ export const helpPages: HelpPage[] = [
         intro:
           "Most company job pages live on three job-board services: Greenhouse, Ashby, and Lever. If you watch thousands of companies, a scan asks one of them for a lot of pages in a short time, and the service may start saying \"too many requests\". That is the service protecting itself. It does not mean anything is broken.",
         bullets: [
-          "When it happens, the app stops asking that service straight away and finishes the rest of the scan as usual. The scan results show a note such as Greenhouse asked us to slow down, saying how many company pages are left.",
+          "When it happens, the app stops asking that service straight away and puts its full speed into the other services, so the rest of the scan finishes as fast as usual. While the scan runs, the This week box says something like Greenhouse asked us to slow down · 2,831 pages moved to the background check. The scan results show the same news, saying how many company pages are left.",
           "Those pages are not skipped. The app checks them slowly in the background while it is open, starting with companies you have already shown interest in, and speeds up as long as the service keeps answering. If the service says no again, the app waits a little longer each time before trying again.",
           "The This week box on the Dashboard shows the check while it runs: a progress bar, how many company pages are checked, how many are left, and how many new jobs it has found so far. A line at the top of Jobs says the same in one sentence. Both say Background check done when it finishes, even when nothing new turned up.",
           "New jobs do not appear in your list on their own, so the rows never jump while you are reading. Press Show N new jobs on the Jobs page when you are ready. Jobs found this way carry a Found after scan label for a day.",
