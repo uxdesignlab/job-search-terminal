@@ -51,7 +51,7 @@ and initializes an empty local profile if the database is empty.
 | `0035_browser_board_job_provenance` | Adds `source_url`, `original_posting_url`, and `original_posting_key` to support browser-assisted LinkedIn, Wellfound, Work at a Startup, Glassdoor, Indeed, and Monster imports |
 | `0036_gap_answer_quality` | Adds quality-status, follow-up question, and assessment metadata to gap responses and profile supplements |
 | `0037_discovery_and_aggregator_keys` | Adds `brave_search_api_key`, `adzuna_app_id`, and `adzuna_api_key` to `ai_settings` to support search-based source discovery (Brave) and the Adzuna job aggregator scanner |
-| `0038_daily_scan_and_resume_audit` | Adds scheduled-scan freshness metadata and generated-resume evidence audit fields |
+| `0038_daily_scan_and_resume_audit` | Adds the `scan_schedule` table (see below), scheduled-scan freshness metadata on `scan_runs`, and generated-resume evidence audit fields |
 | `0039_generated_document_resume_lane_id` | Adds stable resume-lane IDs to generated documents so lane renames do not break export |
 | `0040_job_review_status` | Adds `review_status` text column to `jobs` (default `'none'`) for the low-confidence review queue |
 | `0042_email_job_alert_imports` | Adds email-import posting resolution fields and the `job_email_import_evidence` provenance table |
@@ -505,6 +505,34 @@ postings at companies already being watched; the Dashboard's source timestamp in
 comes from `data/discovered-sources.json`, which is written when **Crawl for companies**
 or **Search for companies** completes.
 
+### scan_schedule
+
+Singleton row (`id = 'singleton'`) that drives background scans. Created by
+`0038_daily_scan_and_resume_audit`; no later migration changes its shape.
+
+| Column | Type | Notes |
+|---|---|---|
+| `enabled` | integer (0/1) | Automatic scans on or off. Defaults to `0`. |
+| `interval_hours` | integer | Hours between scheduled scans. Chosen in Settings → Scanning → Automatic scans from `SCAN_INTERVAL_OPTIONS` (`6`, `8`, `12`, `24`; default `6`). Any other stored value reads back as `6` (`normalizeScanIntervalHours`). Until 0.24.0 the UI always wrote `6`. |
+| `freshness_window_hours` | integer | `24`, `72` (default), or `168`. Shared by manual and scheduled scans. |
+| `last_run_at` | text (ISO) | When the last *scheduled* scan finished. Manual scans do not set it. |
+| `next_run_at` | text (ISO) | When the next scheduled scan is due; `null` while scans are off. |
+| `running_since` | text (ISO) | Claim lock taken by `tryStartScheduledScan`; a claim older than two hours counts as abandoned. |
+| `updated_at` | text | Row timestamp. |
+
+**Next-run maths** (`computeNextScanAt` in `src/lib/scanner/scan-interval.ts`):
+on save, `next_run_at` is `last_run_at + interval_hours` when that is still in the
+future; failing that, the stored `next_run_at` if it is in the future and no
+further off than one new interval; otherwise `now + interval_hours`. So a save
+never starts a scan by itself, saving an unrelated setting in the row (the
+freshness window) no longer pushes the next scan back, and shortening the
+interval brings the next scan forward. After each scheduled scan `completeScheduledScan` sets
+`next_run_at = now + interval_hours`.
+
+The scheduler (`src/lib/scanner/scheduler.ts`) polls once a minute and once at
+startup, so a scan that fell due while the app was closed runs shortly after the
+next start.
+
 ### board_catch_up_queue
 
 Boards a job-board host refused with HTTP 429 during a scan, waiting for the background
@@ -589,7 +617,7 @@ rows whose blob is not valid JSON) and returns a `Map<name, SourceLastScanError>
 
 ### source_check_runs
 
-One row per completed **Settings → Scan sources → Validate sources** pass. Added in migration
+One row per completed **Settings → Companies → Validate sources** pass. Added in migration
 `0067_source_check_runs`.
 
 | Column | Purpose |

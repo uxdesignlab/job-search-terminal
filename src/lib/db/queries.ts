@@ -22,6 +22,7 @@ import { GAP_EVIDENCE_TAG, gapEvidenceId } from "../gaps/evidence-id";
 import { followUpQuestionsFromJson } from "../gaps/gap-answer-assessor";
 import { maskApiKey, resolveMaskedKey } from "../ai/masked-key";
 import { fingerprintsFor, normalizeEmail, normalizeLinkedInUrl } from "../contacts/identity";
+import { computeNextScanAt, normalizeScanIntervalHours } from "../scanner/scan-interval";
 import type {
   ApplicationPreparationInput,
   ApplicationPreparationRecord,
@@ -744,7 +745,7 @@ export function getLatestScanRun(): ScanRunRecord | undefined {
 }
 
 /**
- * The most recent whole-list source check (Settings → Sources → Validate all).
+ * The most recent whole-list source check (Settings → Scanning → Validate all).
  *
  * Reads `source_check_runs`, not `scan_runs`. An earlier version read the newest
  * CareerOps run instead, which was wrong twice over: the CareerOps lane runs on
@@ -894,7 +895,7 @@ export function getScanSchedule(): ScanScheduleRecord {
     };
   return {
     enabled: row.enabled === 1,
-    intervalHours: row.interval_hours,
+    intervalHours: normalizeScanIntervalHours(row.interval_hours),
     freshnessWindowHours: row.freshness_window_hours as FreshnessWindowHours,
     lastRunAt: row.last_run_at,
     nextRunAt: row.next_run_at,
@@ -903,9 +904,14 @@ export function getScanSchedule(): ScanScheduleRecord {
 }
 
 export function saveScanSchedule(input: Pick<ScanScheduleRecord, "enabled" | "intervalHours" | "freshnessWindowHours">) {
-  const nextRunAt = input.enabled
-    ? new Date(Date.now() + input.intervalHours * 60 * 60 * 1000).toISOString()
-    : null;
+  const intervalHours = normalizeScanIntervalHours(input.intervalHours);
+  const current = getScanSchedule();
+  const nextRunAt = computeNextScanAt({
+    enabled: input.enabled,
+    intervalHours,
+    lastRunAt: current.lastRunAt,
+    nextRunAt: current.nextRunAt,
+  });
   getDatabase()
     .prepare(
       `update scan_schedule set
@@ -916,7 +922,7 @@ export function saveScanSchedule(input: Pick<ScanScheduleRecord, "enabled" | "in
         updated_at = current_timestamp
       where id = 'singleton'`
     )
-    .run({ ...input, enabled: input.enabled ? 1 : 0, nextRunAt });
+    .run({ ...input, intervalHours, enabled: input.enabled ? 1 : 0, nextRunAt });
 }
 
 export function tryStartScheduledScan(now = new Date()): boolean {

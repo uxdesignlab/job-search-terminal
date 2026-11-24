@@ -55,7 +55,7 @@ const SETUP_ITEMS: Array<{
     isComplete: "hasPositiveTitleFilters",
     label: "Included title filters",
     guidance: "Add at least one title keyword that should be included.",
-    href: "/settings?tab=preferences",
+    href: "/settings?tab=sources",
     actionLabel: "Open title filters",
   },
   {

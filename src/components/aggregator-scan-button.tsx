@@ -46,7 +46,7 @@ export function AggregatorScanButton({ onScan, hasCredentials }: Props) {
   if (!hasCredentials) {
     return (
       <p className="text-xs text-muted">
-        Add Adzuna credentials in the AI Provider tab to enable.
+        Add Adzuna credentials under Settings → AI Provider → Job search keys to enable.
       </p>
     );
   }

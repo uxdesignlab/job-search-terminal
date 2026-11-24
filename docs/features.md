@@ -369,7 +369,7 @@ The wizard itself has 6 panels — 4 required steps, 1 optional step, and a clos
      sources on every dashboard scan.
    - **Brave Search (source discovery)** — API Key. Links to
      `/help/ai-providers#discovery-aggregators`. Enables the "Search for companies"
-     button in Settings → Scan sources.
+     button in Settings → Companies.
    The sidebar marks this step with a dashed "Optional" badge and a `·` in the
    step circle when not yet configured. Clicking "Skip for now" advances to
    Ready without saving. "Save and continue" saves any non-blank fields (blank
@@ -389,6 +389,10 @@ The wizard itself has 6 panels — 4 required steps, 1 optional step, and a clos
    database default, and only the panel's own button writes it. The × used to route
    through the same handler, so closing the dialog switched on six-hourly background
    scanning that the user had never been shown.
+
+   The checkbox only switches scans on or off. Since 0.24.0 it keeps the interval and
+   freshness window already saved in Settings; it used to write 6 hours and 72 hours
+   back, silently undoing a user's own choices whenever first-run setup was reopened.
 
 The resume step is complete once a PDF has been uploaded to any lane — the same rule
 the dashboard uses. It briefly also required AI extraction, which made the two disagree:
@@ -459,7 +463,7 @@ features.
   streak, the warning reads "since at least <date>" rather than implying the
   sample boundary is the true start.
 - **Check sources** button in page header (hidden for new users) — a secondary
-  button linking to Settings → Scan sources (`/settings?tab=scan-sources`, the tab
+  button linking to Settings → Companies (`/settings?tab=scan-sources`, the tab
   that holds the sources table). It replaced the
   static **Profile ready** badge, which restated something the rest of the header
   already implied and never changed once setup was done.
@@ -2198,6 +2202,10 @@ Resumes tab shows an upload banner when no extracted resumes exist.
 ### Tab: Resumes (`?tab=resumes`)
 - **Upload banner** (shown when no extracted resumes exist): instructs the user to
   upload a PDF, then go to Overview to run extraction.
+- **Experience not on your resume card** (moved here from Settings → Preferences,
+  where it was titled Profile supplements, in 0.24.0) — `ProfileSupplementsEditor`,
+  saving through `/api/profile-supplements`. Experience the resume leaves out, used
+  by tailoring once it passes the detail check.
 - **Resume lanes card** — each lane is a different resume version. Per-lane actions:
   - **Upload PDF** (blue solid button): shown when the lane has no PDF; opens file
     picker, uploads and auto-extracts text.
@@ -2413,8 +2421,14 @@ expand control labelled Answer / Add detail / Edit by status.
 
 ## Settings `/settings`
 
-Seven configuration tabs — `ai`, `integrations`, `sources`, `scan-sources`,
-`cleanup`, `preferences`, and `data` — selected by the `?tab=` search param. The
+Six configuration tabs — `ai` (**AI Provider**), `integrations`, `sources`
+(**Scanning**), `scan-sources` (**Companies**), `cleanup`, and `data` — selected by
+the `?tab=` search param. Tab ids did not change when 0.24.0 relabelled Sources and
+Scan sources, so older links still land. `?tab=preferences` is a legacy id
+(`LEGACY_TABS`) that opens Scanning: the Preferences tab was removed in 0.24.0
+because its name collided with Profile → Preferences and neither of its cards was a
+preference — Title filters moved to Scanning, Profile supplements to
+Profile → Resumes. The
 tab strip wraps (`flex-wrap`) rather than overflowing once the source tabs split
 the row:
 
@@ -2589,13 +2603,13 @@ past several hundred rows:
 
 | Tab | Query string | Holds |
 |---|---|---|
-| **Sources** | `?tab=sources` | Fresh posting window, Add a company, Job aggregators |
-| **Scan sources** | `?tab=scan-sources` | The sources table and the two discovery buttons |
+| **Scanning** | `?tab=sources` | Automatic scans, Fresh posting window, Title filters, Job aggregators |
+| **Companies** | `?tab=scan-sources` | Add a company, the sources table, and the two discovery buttons |
 | **Cleanup** | `?tab=cleanup` | Cleanup review |
 
 The Dashboard's **Check sources** button links to `?tab=scan-sources`.
 
-- All configured sources appear in a unified table on the **Scan sources** tab —
+- All configured sources appear in a unified table on the **Companies** tab —
   companies from `portals.example.yml` and any manually added sources are treated
   equally.
 - Enable or disable individual sources (disabled sources are skipped on the
@@ -2603,7 +2617,7 @@ The Dashboard's **Check sources** button links to `?tab=scan-sources`.
 - Column filters and saved filter presets on the sources table.
 - Sources from `portals.example.yml` cannot be removed (they reload from the
   config file); manually added sources have a Remove button.
-- Add any company by pasting its careers page URL on the **Sources** tab —
+- Add any company by pasting its careers page URL on the **Companies** tab —
   Greenhouse, Ashby, and Lever are auto-detected.
 - **"Crawl for companies"** queries the Common Crawl index to discover additional
   ATS boards automatically. See **Source discovery (Common Crawl)** below for how
@@ -2694,8 +2708,32 @@ The Dashboard's **Check sources** button links to `?tab=scan-sources`.
   24 hours, 72 hours (default), or 7 days. Postings older than the window are
   skipped as stale. The selected window applies to company career-site
   (CareerOps), Dice, and Adzuna scans, whether triggered manually or by the
-  six-hour schedule. (This selector previously lived under Data & Backup; it
+  automatic schedule. (This selector previously lived under Data & Backup; it
   moved to Sources so it sits next to the scan tools it governs.)
+- **Automatic scans** card (top of the Scanning tab since 0.24.0; it used to sit
+  under Data & Backup, next to backups it has nothing to do with):
+  - **Scan automatically** checkbox and a **How often** select: Every 6 hours
+    (default), Every 8 hours, Every 12 hours, Once a day. Options come from
+    `SCAN_INTERVAL_OPTIONS` in `src/lib/scanner/scan-interval.ts`; the server
+    action validates the submitted value against that list.
+  - Nothing shorter than six hours is offered. The Adzuna lane is budgeted for
+    about seven full scans a day against its 2,000-searches-a-month free tier
+    (`ADZUNA_MAX_SEARCH_TERMS`), and a full scan reads several thousand company
+    boards whose hosts rate-limit. Longer than a day could let the 24-hour
+    freshness window fall between two scans.
+  - Status line (`role="status"`): "Next scan in 4 hours · Last automatic scan
+    2 hours ago" via `LocalRelativeTimeLabel` (it used to print the raw ISO
+    timestamp), "A scan is running now." while a scheduled scan holds the claim,
+    or "Automatic scans are off. Scans run only when you start one."
+  - Saving anchors the next scan on the last one rather than on the save — see
+    `scan_schedule` in `docs/data-model.md`.
+  - The interval also sets how far back the Himalayas lane reads: 12 hours or
+    the interval plus two hours, whichever is longer (capped by the freshness
+    window). The extra two hours cover the scan's own runtime, because the next
+    scan is booked one interval after the previous one *finishes*; and a
+    keyword that stops on its page cap before covering one interval is reported.
+    The page cap and 50-request budget do not change, so a daily schedule
+    reports busy keywords that a six-hour one does not.
 
 #### Source discovery (Common Crawl)
 
@@ -2777,17 +2815,18 @@ which roughly 77% have a live endpoint. Importing thousands of sources would
 multiply CareerOps scan cost proportionally; staggered or incremental scanning is
 not yet implemented, so import selectively.
 
-### Preferences
-- Edit title include / exclude filters.
-- Add profile supplements for gap filling. Supplements are checked for concrete
-  role, project, action, and outcome detail before they are treated as confirmed
-  resume-tailoring context.
-- Adjust other search preferences.
+### Title filters (Scanning tab)
+- Edit title Include / Exclude words. The card describes them in the same words
+  as the controls ("Include", "Exclude"); it used to say "positive/negative
+  keyword" and name `config/portals.yml`. Each add-word box has an `aria-label`
+  ("Add an Include word" / "Add an Exclude word").
+- Profile supplements moved to **Profile → Resumes → Experience not on your
+  resume** in 0.24.0. Supplements are checked for concrete role, project, action,
+  and outcome detail before they are treated as confirmed resume-tailoring context.
 
 ### Data & Backup
-- Enable or disable automatic scans every six hours while the local app is
-  running. The schedule card shows the currently selected fresh-posting window
-  and links to Sources → Fresh posting window, where the selector now lives.
+- Automatic scans moved to **Scanning → Automatic scans** in 0.24.0, where you
+  also choose how often they run.
 - Create a portable `.jst-backup` archive with optional password protection.
 - Restore only after archive validation, preview, explicit confirmation, and an
   automatic rollback backup.
@@ -2977,7 +3016,7 @@ custom URLs configured in Settings.
 **How a scan works:**
 1. User clicks "Scan for new jobs" on the Dashboard.
 2. The CareerOps ATS scanner queries each enabled Ashby/Greenhouse/Lever source in parallel.
-3. Dice runs in parallel with the ATS scan. If Adzuna credentials are configured (Settings → AI Provider → Discovery & Aggregators), Adzuna runs in parallel too.
+3. Dice runs in parallel with the ATS scan. If Adzuna credentials are configured (Settings → AI Provider → Job search keys), Adzuna runs in parallel too.
 4. Title filters remove irrelevant roles.
 5. Profile location preferences remove listings outside the user's constraints — the
    on-site / hybrid list for hybrid and on-site postings, the remote regions list for
@@ -2999,7 +3038,7 @@ custom URLs configured in Settings.
 9. A `scan_runs` record is created with metrics.
 10. The Dashboard updates with a combined scan summary across company career sites, Dice, and Adzuna when configured.
 
-**Scan progress and results dialog** (Dashboard “Scan for new jobs” and Settings → Scan sources per-company scan): while the Dashboard scan runs, the modal receives live server progress and shows the actual state of the company career-site, Dice, and Adzuna lanes. Parallel lanes can be marked **Scanning now** at the same time; each changes to **Complete**, **Skipped**, or **Stopped** as its state changes. The current activity is exposed through a polite, atomic live region for screen readers. Adzuna is shown as skipped when it is not configured.
+**Scan progress and results dialog** (Dashboard “Scan for new jobs” and Settings → Companies per-company scan): while the Dashboard scan runs, the modal receives live server progress and shows the actual state of the company career-site, Dice, and Adzuna lanes. Parallel lanes can be marked **Scanning now** at the same time; each changes to **Complete**, **Skipped**, or **Stopped** as its state changes. The current activity is exposed through a polite, atomic live region for screen readers. Adzuna is shown as skipped when it is not configured.
 
 The results header shows count badges: run status, **N new in app**, **N found at source**, **N sources scanned**, **N skipped**, **N filtered by profile rules**, **N duplicates skipped**, and **N re-posts of a closed role** (shown only when non-zero — new listings that re-open a role the user had already applied to, rejected, skipped, or archived).
 
@@ -3163,7 +3202,7 @@ that drifted out of its own alias list cannot ship silently accepting nothing.
     found no case where that greediness rejected a wanted role.
 - Profile filters: selected location modes, on-site / hybrid locations, and
   remote regions constrain scan inserts.
-- **Settings → Scan sources table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; it opens pre-filled from the most recent stored **Validate sources** pass, and shows **Not validated** for each row only when no check has ever been run (or for a source added since the last one).
+- **Settings → Companies table:** Above the table, counts show **sources total \| enabled** (enabled reflects optimistic checkbox toggles until the server round-trip completes). **Scan all enabled** runs the same full CareerOps job fetch as the Dashboard scan’s ATS leg: every **enabled** source is queried in parallel, independent of any prior “Validate sources” result — use it after re-enabling boards or when you want a fresh pull without opening the Dashboard. **Scan jobs** on a single row calls the same scanner with `companyExact` for that company **even when the row is disabled**, so you can verify a careers URL before turning the source back on. The **Live** column uses the same sort/filter header pattern as the other data columns; it opens pre-filled from the most recent stored **Validate sources** pass, and shows **Not validated** for each row only when no check has ever been run (or for a source added since the last one).
 
 **Performance tuning constants** (in `src/lib/scanner/careerops-scanner.ts`):
 - `CONCURRENCY = 20` — parallel ATS API requests.
@@ -3212,7 +3251,7 @@ An optional feature for users with Claude Desktop or Codex Chrome. An agent disc
 Dice is a tech-focused job board. JST integrates with Dice via Dice's free, public MCP server (`https://mcp.dice.com/mcp`) — no API keys, no browser extension, and no login required.
 
 **How it works:**
-1. Open Settings → Sources → Job aggregators
+1. Open Settings → Scanning → Job aggregators
 2. Click **Scan with Dice**
 3. JST calls the Dice MCP `search_jobs` tool over HTTP with your target roles, on-site / hybrid locations, and remote preference from your profile. The remote regions list does not shape the query — it is applied as a filter at import.
 4. Results are filtered by your title filters, written to `data/job-board-imports/dice-jobs-<timestamp>.json`, and imported automatically. Jobs outside your location preferences are dropped at import rather than written and labelled
@@ -3444,8 +3483,8 @@ Adzuna is a job aggregator that indexes listings from many sources including Ind
 
 **How it works:**
 1. Register at [developer.adzuna.com](https://developer.adzuna.com) for a free App ID and API Key (free tier: 2,000 queries/month)
-2. Paste both keys in Settings → AI Provider → Discovery & Aggregators
-3. Open Settings → Sources — the Job aggregators card appears at the bottom
+2. Paste both keys in Settings → AI Provider → Job search keys
+3. Open Settings → Scanning — the Job aggregators card appears at the bottom
 4. Click **Scan with Adzuna**; clicking opens a blocking `ProgressModal`
    ("Scanning Adzuna" + spinner). On completion the modal shows "Found N
    listings — X new, Y duplicates." and a **View N found jobs** action that

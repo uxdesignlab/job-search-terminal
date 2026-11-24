@@ -15,7 +15,7 @@ export function isScanLane(name: string): boolean {
 
 /** What the user can do about a lane instead of disabling it. */
 export function scanLaneHint(name: string): string | null {
-  if (name === "Adzuna") return "Adjust Adzuna under Settings → AI Provider → Discovery & Aggregators.";
+  if (name === "Adzuna") return "Adjust Adzuna under Settings → AI Provider → Job search keys.";
   if (name === "Dice" || name === "Himalayas") {
     return `${name} is part of every scan, so there is nothing to disable here.`;
   }

@@ -58,6 +58,7 @@ function ChipList({
         <input
           className="h-8 flex-1 rounded-control border border-border bg-surface px-3 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none"
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }}
+          aria-label={tone === "success" ? "Add an Include word" : "Add an Exclude word"}
           placeholder={tone === "success" ? "e.g. product manager" : "e.g. intern"}
           ref={inputRef}
           type="text"

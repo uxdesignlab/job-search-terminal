@@ -124,8 +124,9 @@ Backups and exports may contain sensitive personal data. Store them carefully.
 
 The public project does not collect maintainer-controlled analytics or telemetry. Two
 things run without a click: the daily update check above, which carries no personal
-data, and automatic job scans every six hours if you turn them on under Settings → Data
-& Backup, which send the same search words as a scan you start yourself.
+data, and automatic job scans if you turn them on under Settings → Scanning → Automatic
+scans (every 6, 8, or 12 hours, or once a day — your choice), which send the same search
+words as a scan you start yourself.
 
 If analytics are added in the future, they must be documented clearly and made opt-in.
 

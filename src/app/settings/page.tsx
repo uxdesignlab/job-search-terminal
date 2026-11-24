@@ -8,7 +8,6 @@ import {
   getAISettings,
   getCompanyProfiles,
   getCustomScanSources,
-  getProfileSupplements,
   getLatestSourceCheckRun,
   getScanSourceOverrides,
   getScanSchedule,
@@ -33,7 +32,6 @@ import { AISettingsForm } from "@/components/ai-settings-form";
 import { ResumeOnboardingButton } from "@/components/resume-onboarding-button";
 import { maskApiKey } from "@/lib/ai/masked-key";
 import { TitleFiltersEditor } from "@/components/title-filters-editor";
-import { ProfileSupplementsEditor } from "@/components/profile-supplements-editor";
 import { DiscoveredSourcesButton } from "@/components/discovered-sources-button";
 import { ScanJobsForm } from "@/components/scan-jobs-form";
 import { ScanSourcesTable, type CompanyScanResultSummary } from "@/components/scan-sources-table";
@@ -41,10 +39,17 @@ import { CleanupReviewPanel, type CleanupRecheckSummary, type CleanupReviewRow }
 import { describeSourceProblem, type SourceCheckEvidence } from "@/lib/scanner/source-problem";
 import { AggregatorScanButton } from "@/components/aggregator-scan-button";
 import { DiceScanButton } from "@/components/dice-scan-button";
-import { detectApi, loadScanConfig, runCareerOpsScanner } from "@/lib/scanner/careerops-scanner";
+import { detectApi, loadScanConfig, runCareerOpsScanner, type PortalCompany } from "@/lib/scanner/careerops-scanner";
 import { runSourceDiscovery, runSearchDiscovery } from "@/lib/scanner/source-discovery";
 import type { SourceValidationResult } from "@/lib/scanner/source-validator";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_SCAN_INTERVAL_HOURS,
+  SCAN_INTERVAL_OPTIONS,
+  normalizeScanIntervalHours,
+  scanIntervalLabel,
+} from "@/lib/scanner/scan-interval";
+import { LocalRelativeTimeLabel } from "@/components/local-time-label";
 import { AccountBackupPanel } from "@/components/account-backup-panel";
 import { clearForgottenContactsAction, disconnectClayAction, saveClayCredentialAction, saveClayRoutineAction, testClayConnectionAction } from "@/app/settings/actions";
 import type { IntegrationConnectionStatus } from "@/lib/db/types";
@@ -78,6 +83,55 @@ function atsTypeFromUrl(careersUrl: string, apiUrl: string): "greenhouse" | "ash
   return detected?.type ?? null;
 }
 
+/**
+ * Every scan source the table shows: tracked companies from portals.yml plus the
+ * user's own, with on/off overrides and industries applied.
+ *
+ * A plain function so server actions can rebuild the list from the database. An
+ * action that closes over the page's copy instead has the whole list encrypted
+ * into the page and posted back on every call — about 1.6 MB at 8,000 sources,
+ * past Next's 1 MB action body limit.
+ */
+function listScanSources(
+  yamlCompanies: PortalCompany[],
+  customSources: ReturnType<typeof getCustomScanSources>,
+  overrides: ReturnType<typeof getScanSourceOverrides>,
+  profileMap: ReturnType<typeof getCompanyProfiles>,
+) {
+  const yamlNames = new Set(yamlCompanies.map((c) => c.name));
+
+  return [
+    ...yamlCompanies.map((c) => {
+      const api = detectApi(c);
+      const yamlDefault = c.enabled !== false;
+      const enabled = Object.hasOwn(overrides, c.name) ? overrides[c.name] : yamlDefault;
+      const industry = profileMap.get(c.name)?.industry ?? c.industry ?? "";
+      return {
+        name: c.name,
+        careersUrl: c.careers_url ?? "",
+        apiType: api?.type ?? null,
+        enabled,
+        removable: false as const,
+        industry,
+      };
+    }),
+    ...customSources
+      .filter((c) => !yamlNames.has(c.name))
+      .map((c) => {
+        const enabled = Object.hasOwn(overrides, c.name) ? overrides[c.name] : c.enabled;
+        const industry = profileMap.get(c.name)?.industry ?? "";
+        return {
+          name: c.name,
+          careersUrl: c.careersUrl,
+          apiType: atsTypeFromUrl(c.careersUrl, c.api),
+          enabled,
+          removable: true as const,
+          industry,
+        };
+      }),
+  ];
+}
+
 const CLAY_STATUS_LABEL: Record<IntegrationConnectionStatus, string> = {
   not_connected: "Not connected",
   connected: "Connected",
@@ -93,24 +147,32 @@ const CLAY_STATUS_TONE: Record<IntegrationConnectionStatus, "neutral" | "success
   unavailable: "warning",
 };
 
+// Tab ids stay stable for old links; Sources and Scan sources were relabelled in 0.24.0.
 const TABS = [
   { id: "ai", label: "AI Provider" },
   { id: "integrations", label: "Integrations" },
-  { id: "sources", label: "Sources" },
-  { id: "scan-sources", label: "Scan sources" },
+  { id: "sources", label: "Scanning" },
+  { id: "scan-sources", label: "Companies" },
   { id: "cleanup", label: "Cleanup" },
-  { id: "preferences", label: "Preferences" },
   { id: "data", label: "Data & Backup" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+/**
+ * Tabs that no longer exist, mapped to where their content went. Preferences held
+ * Title filters (now on Scanning) and Profile supplements (now on Profile → Resumes);
+ * the setup checklist and older help links still point at it.
+ */
+const LEGACY_TABS: Record<string, TabId> = { preferences: "sources" };
 
 export default async function SettingsPage({
   searchParams,
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
-  const { tab: rawTab = "ai" } = await searchParams;
+  const { tab: requestedTab = "ai" } = await searchParams;
+  const rawTab = LEGACY_TABS[requestedTab] ?? requestedTab;
   const activeTab = (TABS.some((t) => t.id === rawTab) ? rawTab : "ai") as TabId;
   // Masked on read — the raw credential never enters this payload.
   const forgottenCount = getSuppressionCount();
@@ -158,41 +220,9 @@ export default async function SettingsPage({
       : (scanConfig.title_filter?.negative ?? []);
   const overrides = getScanSourceOverrides();
   const customSources = getCustomScanSources();
-  const supplements = getProfileSupplements();
   const scanSchedule = getScanSchedule();
 
-  const yamlNames = new Set(yamlCompanies.map((c) => c.name));
-
-  const allCompanies = [
-    ...yamlCompanies.map((c) => {
-      const api = detectApi(c);
-      const yamlDefault = c.enabled !== false;
-      const enabled = Object.hasOwn(overrides, c.name) ? overrides[c.name] : yamlDefault;
-      const industry = profileMap.get(c.name)?.industry ?? c.industry ?? "";
-      return {
-        name: c.name,
-        careersUrl: c.careers_url ?? "",
-        apiType: api?.type ?? null,
-        enabled,
-        removable: false as const,
-        industry,
-      };
-    }),
-    ...customSources
-      .filter((c) => !yamlNames.has(c.name))
-      .map((c) => {
-        const enabled = Object.hasOwn(overrides, c.name) ? overrides[c.name] : c.enabled;
-        const industry = profileMap.get(c.name)?.industry ?? "";
-        return {
-          name: c.name,
-          careersUrl: c.careersUrl,
-          apiType: atsTypeFromUrl(c.careersUrl, c.api),
-          enabled,
-          removable: true as const,
-          industry,
-        };
-      }),
-  ];
+  const allCompanies = listScanSources(yamlCompanies, customSources, overrides, profileMap);
 
   const allDiscovered = loadDiscoveredSources();
   const existingNames = new Set([
@@ -251,8 +281,14 @@ export default async function SettingsPage({
     "use server";
     const { validateAllSources } = await import("@/lib/scanner/source-validator");
     const startedAt = new Date().toISOString();
+    const current = listScanSources(
+      loadScanConfig().tracked_companies ?? [],
+      getCustomScanSources(),
+      getScanSourceOverrides(),
+      getCompanyProfiles(),
+    );
     const results = await validateAllSources(
-      allCompanies.map((c) => ({ name: c.name, careersUrl: c.careersUrl, apiType: c.apiType }))
+      current.map((c) => ({ name: c.name, careersUrl: c.careersUrl, apiType: c.apiType }))
     );
     // Persisted so the check outlives the page: this is what the Dashboard's "Last
     // source check" ages, and what pre-fills the Live column on the next visit.
@@ -450,7 +486,7 @@ export default async function SettingsPage({
     "use server";
     saveScanSchedule({
       enabled: formData.get("enabled") === "on",
-      intervalHours: 6,
+      intervalHours: normalizeScanIntervalHours(formData.get("intervalHours")),
       freshnessWindowHours: getScanSchedule().freshnessWindowHours,
     });
     revalidatePath("/settings");
@@ -523,7 +559,7 @@ export default async function SettingsPage({
     <Shell activeItem="Settings">
       <div className="grid gap-6">
         <PageHeader
-          description="Configure your AI provider, API keys, and job scan sources."
+          description="Your AI provider and keys, how and when the app scans, and which companies it checks."
           eyebrow="Settings"
           title="Settings"
         />
@@ -569,12 +605,45 @@ export default async function SettingsPage({
           </Card>
         )}
 
-        {/* ── Scan sources tab ────────────────────────────────────────────── */}
+        {/* ── Companies tab (id scan-sources) ────────────────────────────────────────────── */}
         {activeTab === "scan-sources" && (
+          <>
+            {/* Add a company */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Add a company</CardTitle>
+                <CardDescription>
+                  Paste the company&apos;s careers page URL — Greenhouse, Ashby, and Lever are detected automatically.
+                </CardDescription>
+              </CardHeader>
+              <form action={addSourceAction} className="grid gap-4">
+                <div className="grid gap-4 sm:grid-cols-[1fr_2fr_1fr]">
+                  <Input label="Company name" name="name" placeholder="Acme Corp" />
+                  <Input
+                    hint="e.g. https://jobs.ashbyhq.com/acme or https://job-boards.greenhouse.io/acme"
+                    label="Careers page URL"
+                    name="careersUrl"
+                    placeholder="https://jobs.ashbyhq.com/acme"
+                    type="url"
+                  />
+                  <Input
+                    hint="Greenhouse only — leave blank for Ashby/Lever"
+                    label="API URL (optional)"
+                    name="apiUrl"
+                    placeholder="https://boards-api.greenhouse.io/…"
+                    type="url"
+                  />
+                </div>
+                <div>
+                  <SubmitButton label="Add company" savedLabel="Added" variant="primary" />
+                </div>
+              </form>
+            </Card>
+
           <Card>
             <div className="mb-4 flex items-start justify-between gap-4">
               <div className="space-y-1">
-                <CardTitle>Scan sources</CardTitle>
+                <CardTitle>Companies to scan</CardTitle>
                 <CardDescription>
                   Toggle companies on/off — changes apply on the next scan. Click an industry badge to edit it.
                   Discovery looks for companies you are not yet tracking and adds them to Discovered sources
@@ -609,11 +678,69 @@ export default async function SettingsPage({
               lastCheck={lastSourceCheck}
             />
           </Card>
+          </>
         )}
 
         {/* ── Sources tab ─────────────────────────────────────────────────── */}
         {activeTab === "sources" && (
           <>
+            {/* Automatic scans — lives beside the freshness window it depends on. It
+                used to sit under Data & Backup, where nobody looking for "how often
+                does it scan" would think to open. */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Automatic scans</CardTitle>
+                <CardDescription>
+                  While this app is running, it checks your scan sources in the background and adds newly posted
+                  roles to Jobs. It never applies to a job or contacts anyone.
+                </CardDescription>
+              </CardHeader>
+              <form action={saveScheduleAction} className="grid gap-4">
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input defaultChecked={scanSchedule.enabled} name="enabled" type="checkbox" />
+                  Scan automatically
+                </label>
+                <label className="grid max-w-xs gap-1 text-sm text-ink">
+                  How often
+                  <select
+                    aria-describedby="scan-interval-hint"
+                    className="rounded-control border border-border bg-surface px-3 py-2"
+                    defaultValue={scanSchedule.intervalHours}
+                    name="intervalHours"
+                  >
+                    {SCAN_INTERVAL_OPTIONS.map((hours) => (
+                      <option key={hours} value={hours}>
+                        {scanIntervalLabel(hours)}
+                        {hours === DEFAULT_SCAN_INTERVAL_HOURS ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs leading-5 text-muted" id="scan-interval-hint">
+                  Nothing shorter than 6 hours: more often would use up Adzuna&apos;s free monthly searches and get
+                  scans slowed down by the job boards. If the app was closed when a scan was due, it runs shortly
+                  after you start the app again.
+                </p>
+                <p className="text-xs text-muted" role="status">
+                  {scanSchedule.runningSince ? (
+                    "A scan is running now."
+                  ) : scanSchedule.enabled && scanSchedule.nextRunAt ? (
+                    <>
+                      Next scan <LocalRelativeTimeLabel value={scanSchedule.nextRunAt} />
+                    </>
+                  ) : (
+                    "Automatic scans are off. Scans run only when you start one."
+                  )}
+                  {scanSchedule.lastRunAt ? (
+                    <>
+                      {" · "}Last automatic scan <LocalRelativeTimeLabel value={scanSchedule.lastRunAt} />
+                    </>
+                  ) : null}
+                </p>
+                <div><SubmitButton label="Save schedule" savedLabel="Schedule saved" /></div>
+              </form>
+            </Card>
+
             {/* Fresh posting window */}
             <Card>
               <CardHeader>
@@ -636,36 +763,21 @@ export default async function SettingsPage({
               </form>
             </Card>
 
-            {/* Add a company */}
+            {/* Title filters — what a scan keeps. Lived under a "Preferences" tab until
+                0.24.0, which shared its name with Profile → Preferences. */}
             <Card>
               <CardHeader>
-                <CardTitle>Add a company</CardTitle>
+                <CardTitle>Title filters</CardTitle>
                 <CardDescription>
-                  Paste the company&apos;s careers page URL — Greenhouse, Ashby, and Lever are detected automatically.
+                  Scans keep a job only when its title contains at least one Include word and none of the Exclude
+                  words. Adzuna and Himalayas also search with your Include words.
                 </CardDescription>
               </CardHeader>
-              <form action={addSourceAction} className="grid gap-4">
-                <div className="grid gap-4 sm:grid-cols-[1fr_2fr_1fr]">
-                  <Input label="Company name" name="name" placeholder="Acme Corp" />
-                  <Input
-                    hint="e.g. https://jobs.ashbyhq.com/acme or https://job-boards.greenhouse.io/acme"
-                    label="Careers page URL"
-                    name="careersUrl"
-                    placeholder="https://jobs.ashbyhq.com/acme"
-                    type="url"
-                  />
-                  <Input
-                    hint="Greenhouse only — leave blank for Ashby/Lever"
-                    label="API URL (optional)"
-                    name="apiUrl"
-                    placeholder="https://boards-api.greenhouse.io/…"
-                    type="url"
-                  />
-                </div>
-                <div>
-                  <SubmitButton label="Add company" savedLabel="Added" variant="primary" />
-                </div>
-              </form>
+              <TitleFiltersEditor
+                initialNegative={negativeKeywords}
+                initialPositive={positiveKeywords}
+                onSave={saveTitleFiltersAction}
+              />
             </Card>
 
             {/* Job aggregators */}
@@ -688,8 +800,7 @@ export default async function SettingsPage({
                   <div className="space-y-0.5">
                     <p className="text-sm font-medium">Adzuna</p>
                     <p className="text-xs text-muted">
-                      Aggregates from many sources. Requires an App ID and API Key —{" "}
-                      configure them in the AI Provider tab.
+                      Aggregates from many sources. Needs a free App ID and API Key.
                     </p>
                   </div>
                   <AggregatorScanButton
@@ -720,46 +831,6 @@ export default async function SettingsPage({
               rows={cleanupRows}
             />
           </Card>
-        )}
-
-        {/* ── Preferences tab ──────────────────────────────────────────────── */}
-        {activeTab === "preferences" && (
-          <>
-            <Card>
-              <CardHeader>
-                <CardTitle>Title filters</CardTitle>
-                <CardDescription>
-                  Only jobs whose titles match a positive keyword (and no negative keyword) are imported.
-                  Changes saved here override{" "}
-                  <code className="rounded bg-surface px-1 py-0.5 text-xs font-mono">config/portals.yml</code>.
-                </CardDescription>
-              </CardHeader>
-              <TitleFiltersEditor
-                initialNegative={negativeKeywords}
-                initialPositive={positiveKeywords}
-                onSave={saveTitleFiltersAction}
-              />
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Profile supplements</CardTitle>
-                <CardDescription>
-                  Add experience or context not captured in your resume — managing teams, domain expertise,
-                  certifications. These are injected into the AI when generating any tailored resume to help
-                  address identified skill gaps.
-                </CardDescription>
-              </CardHeader>
-              <ProfileSupplementsEditor
-                initialSupplements={supplements.map((s) => ({
-                  id: s.id,
-                  content: s.content,
-                  qualityStatus: s.qualityStatus,
-                  followUpQuestion: s.followUpQuestion,
-                }))}
-              />
-            </Card>
-          </>
         )}
 
         {/* ── Integrations tab (§60, §61) ──────────────────────────────── */}
@@ -881,28 +952,6 @@ export default async function SettingsPage({
 
         {activeTab === "data" && (
           <>
-            <Card>
-              <CardHeader>
-                <CardTitle>Automatic job scans</CardTitle>
-                <CardDescription>
-                  While the app is running, check approved sources every six hours and surface newly posted roles.
-                </CardDescription>
-              </CardHeader>
-              <form action={saveScheduleAction} className="grid gap-4">
-                <label className="flex items-center gap-2 text-sm text-ink">
-                  <input defaultChecked={scanSchedule.enabled} name="enabled" type="checkbox" />
-                  Enable scans every six hours
-                </label>
-                <p className="text-xs text-muted">
-                  Scans keep postings from the last {scanSchedule.freshnessWindowHours} hours — change this under{" "}
-                  <Link className="underline" href="/settings?tab=sources">Sources → Fresh posting window</Link>.
-                </p>
-                <p className="text-xs text-muted">
-                  {scanSchedule.nextRunAt ? `Next scheduled scan: ${scanSchedule.nextRunAt}` : "Scheduling is currently off."}
-                </p>
-                <div><SubmitButton label="Save schedule" savedLabel="Schedule saved" /></div>
-              </form>
-            </Card>
             <Card>
               <CardHeader>
                 <CardTitle>Account backup and restore</CardTitle>

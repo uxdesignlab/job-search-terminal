@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/queries", () => ({
   getAISettings: mocks.getAISettings,
+  getScanSchedule: () => ({ intervalHours: 6 }),
   getTitleFilters: mocks.getTitleFilters,
   getUserProfile: mocks.getUserProfile,
 }));

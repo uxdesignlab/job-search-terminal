@@ -132,19 +132,19 @@ jobs and sources the app can find automatically.
 **Adzuna** (job aggregator — free tier, 2,000 queries/month):
 - Register at [developer.adzuna.com](https://developer.adzuna.com) to get a
   free App ID and API Key.
-- Once configured in Settings → AI Provider → Discovery & Aggregators, the
+- Once configured in Settings → AI Provider → Job search keys, the
   Dashboard **Scan for new jobs** button automatically runs an Adzuna scan in
   parallel with the ATS scan — no extra step needed.
-- You can also run it independently from Settings → Sources → Job aggregators.
+- You can also run it independently from Settings → Scanning → Job aggregators.
 
 **Brave Search** (ATS source discovery — free tier, 2,000 queries/month):
 - Register at [brave.com/search/api](https://brave.com/search/api) to get a
   free API key.
-- Once configured, the **Search for companies** button appears in Settings → Scan sources
+- Once configured, the **Search for companies** button appears in Settings → Companies
   and finds new Ashby, Greenhouse, and Lever companies from live web search
   results (not just the Common Crawl archive).
 
-Add both keys in Settings → AI Provider → Discovery & Aggregators.
+Add both keys in Settings → AI Provider → Job search keys.
 
 ### 6. Start the app
 
@@ -192,7 +192,8 @@ any corrections.
 
 **Step 3: Confirm preferences and start scanning**
 Confirm desired roles, title filters, and location mode. The Ready step offers
-an optional six-hour scan schedule while the local app is running. Open the
+optional automatic scans while the local app is running (every 6 hours to
+start; change how often under Settings → Scanning → Automatic scans). Open the
 Dashboard and click "Scan for new jobs" for an immediate scan.
 
 ---
@@ -202,7 +203,7 @@ Dashboard and click "Scan for new jobs" for an immediate scan.
 | What you want to do | Where to go |
 |---|---|
 | Find new jobs (ATS + Adzuna if configured) | Dashboard → Scan for new jobs |
-| Scan Adzuna independently | Settings → Sources → Job aggregators |
+| Scan Adzuna independently | Settings → Scanning → Job aggregators |
 | Add a job from anywhere | Jobs → Add Job button |
 | See all your jobs | Jobs |
 | Evaluate a job | Jobs → click a job → Evaluation tab |
@@ -215,10 +216,10 @@ Dashboard and click "Scan for new jobs" for an immediate scan.
 | Update your profile | Account → Profile |
 | Upload or replace a resume | Account → Profile → Resumes tab |
 | Add an AI key | Account → Settings → AI Provider |
-| Add Adzuna or Brave Search keys | Account → Settings → AI Provider → Discovery & Aggregators |
-| Discover new ATS sources | Settings → Scan sources → Crawl for companies or Search for companies |
-| Review and approve discovered sources | Settings → Scan sources → Discovered sources |
-| Check which sources are still live | Settings → Scan sources → Validate sources |
+| Add Adzuna or Brave Search keys | Account → Settings → AI Provider → Job search keys |
+| Discover new ATS sources | Settings → Companies → Crawl for companies or Search for companies |
+| Review and approve discovered sources | Settings → Companies → Discovered sources |
+| Check which sources are still live | Settings → Companies → Validate sources |
 | See role fit strategy | Account → Strategy |
 | Back up or restore the local account | Account → Settings → Data & Backup |
 

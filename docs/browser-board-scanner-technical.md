@@ -229,7 +229,7 @@ archive is the ground truth when a scan is later found to have imported nothing,
 and the profile may have changed by the time anyone looks.
 
 Dice uses a free, no-auth MCP server (`https://mcp.dice.com/mcp`) rather than
-browser automation. The in-app **Scan with Dice** button (Settings → Sources →
+browser automation. The in-app **Scan with Dice** button (Settings → Scanning →
 Job aggregators) calls the MCP `search_jobs` tool over HTTP via
 `src/lib/scanner/dice-scanner.ts`, which uses a minimal MCP streamable-HTTP
 client. Results are written as `dice-jobs-<timestamp>.json` and imported through
