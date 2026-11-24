@@ -2728,7 +2728,9 @@ The Dashboard's **Check sources** button links to `?tab=scan-sources`.
   - Saving anchors the next scan on the last one rather than on the save — see
     `scan_schedule` in `docs/data-model.md`.
   - The interval also sets how far back the Himalayas lane reads: 12 hours or
-    the interval, whichever is longer (capped by the freshness window), and a
+    the interval plus two hours, whichever is longer (capped by the freshness
+    window). The extra two hours cover the scan's own runtime, because the next
+    scan is booked one interval after the previous one *finishes*; and a
     keyword that stops on its page cap before covering one interval is reported.
     The page cap and 50-request budget do not change, so a daily schedule
     reports busy keywords that a six-hour one does not.

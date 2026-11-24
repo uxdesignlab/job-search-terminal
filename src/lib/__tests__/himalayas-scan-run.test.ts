@@ -240,6 +240,18 @@ describe("runHimalayasScan — how a search ends", () => {
     expect(result.errors[0]).toContain("under the 24h between scans");
   });
 
+  it("reads past the interval to cover the scan's own runtime", async () => {
+    // Pages start 0, 5, 10 … 30 hours back. A bare 24h horizon would stop at the
+    // page starting 25h back; with the runtime allowance (26h) that page is still
+    // inside the horizon, so the search goes one page further.
+    mocks.safeFetch.mockImplementation((url: string) => Promise.resolve(resultsAging(5)(url)));
+
+    const result = await scan({ titleFilters: NO_TITLE_MATCHES, scanIntervalHours: 24 });
+
+    expect(mocks.safeFetch).toHaveBeenCalledTimes(7);
+    expect(result.errors).toEqual([]);
+  });
+
   it("skips postings outside the freshness window and counts each posting once across searches", async () => {
     mocks.safeFetch.mockImplementation(() =>
       Promise.resolve(page([posting("shared", 1), posting("old", 100)], 2)),

@@ -44,10 +44,11 @@ const SEARCH_URL = "https://himalayas.app/jobs/api/search";
 /** The API silently caps `limit` at 20, so asking for more just wastes the round trip. */
 const PAGE_SIZE = 20;
 /**
- * The least each query reads back, in hours — or the scan interval, if longer.
+ * The least each query reads back, in hours — or the scan interval plus
+ * SCAN_RUNTIME_ALLOWANCE_HOURS, if longer.
  *
  * Twice the default six-hour interval, so one missed scheduled scan loses
- * nothing. A longer interval stretches the horizon to the interval itself, not to
+ * nothing. A longer interval stretches the horizon to about the interval, not to
  * twice it: the page cap and the 50-request budget are fixed, and a 48-hour
  * horizon on a daily schedule would let the first few busy keywords spend the
  * budget the rest needed. Postings older than this but inside the freshness
@@ -56,9 +57,20 @@ const PAGE_SIZE = 20;
  */
 const MIN_HORIZON_HOURS = 12;
 /**
+ * Hours added to the interval before it becomes the horizon.
+ *
+ * The next scheduled scan is booked one interval after the previous scan
+ * *finishes*, and the company-board sweep can outlast Himalayas by a long way, so
+ * two Himalayas searches sit more than one interval apart. Reading back exactly
+ * the interval would leave that runtime as a gap no search covers. Two hours
+ * matches the scheduler's own ceiling on a running scan (`tryStartScheduledScan`
+ * treats an older claim as abandoned).
+ */
+const SCAN_RUNTIME_ALLOWANCE_HOURS = 2;
+/**
  * Ceiling on pages for one query. The busiest keyword measured ("product
  * design", ~11 postings an hour) covers the default 12-hour horizon in about 7
- * pages; a daily schedule's 24-hour horizon needs more, and the shortfall is reported.
+ * pages; a daily schedule's 26-hour horizon needs more, and the shortfall is reported.
  */
 const MAX_PAGES_PER_QUERY = 10;
 /**
@@ -301,7 +313,10 @@ export async function runHimalayasScan(
   const hourMs = 60 * 60 * 1000;
   const cutoffMs = Date.now() - freshnessWindowHours * hourMs;
   const scanIntervalHours = opts.scanIntervalHours ?? DEFAULT_SCAN_INTERVAL_HOURS;
-  const coverageHours = Math.min(Math.max(MIN_HORIZON_HOURS, scanIntervalHours), freshnessWindowHours);
+  const coverageHours = Math.min(
+    Math.max(MIN_HORIZON_HOURS, scanIntervalHours + SCAN_RUNTIME_ALLOWANCE_HOURS),
+    freshnessWindowHours,
+  );
   /**
    * Hours a query must cover before stopping short counts as a real gap: the
    * scan interval itself.
