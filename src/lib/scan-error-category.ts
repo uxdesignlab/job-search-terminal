@@ -2,7 +2,7 @@
  * Classifies ATS / scan fetch failures for dashboard UX (dead vs slow vs other).
  */
 
-export type ScanErrorCategory = "dead_or_unreachable" | "timeout_or_slow" | "other";
+export type ScanErrorCategory = "dead_or_unreachable" | "timeout_or_slow" | "rate_limited" | "other";
 
 export type ScanRunErrorEntry = {
   company: string;
@@ -22,6 +22,11 @@ export function classifyScanErrorMessage(message: string): ScanErrorCategory {
     m.includes("the user aborted a request")
   ) {
     return "timeout_or_slow";
+  }
+  // "Too many requests": the host is fine and asked us to slow down. Never a
+  // reason to disable a source.
+  if (m.includes("http 429") || m.includes("too many requests") || m.includes("rate limit")) {
+    return "rate_limited";
   }
   if (
     m.includes("http 404") ||
@@ -51,6 +56,8 @@ export function scanErrorCategoryLabel(category: ScanErrorCategory): string {
       return "Dead or missing";
     case "timeout_or_slow":
       return "Timed out";
+    case "rate_limited":
+      return "Rate limited";
     default:
       return "Other error";
   }
@@ -62,6 +69,8 @@ export function scanErrorCategoryDescription(category: ScanErrorCategory): strin
       return "Host responded with not found, or the careers URL / API could not be reached.";
     case "timeout_or_slow":
       return "No response within the time limit — the board may be slow or overloaded; the listing may still exist.";
+    case "rate_limited":
+      return "The job-board host asked us to slow down (HTTP 429). The board is fine — it will be checked again later.";
     default:
       return "HTTP or network error that is not clearly a missing listing or a timeout.";
   }

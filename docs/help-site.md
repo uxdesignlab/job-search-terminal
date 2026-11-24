@@ -106,6 +106,13 @@ button on Adzuna's own page, and troubleshooting gained `adzuna-redirects` (a jo
 opens a different job or a robot check). The `himalayas-links` entry notes that
 Adzuna jobs behave the same way.
 
+0.23.0 added a `slow-down` section to the job-search guide (what happens when
+Greenhouse, Ashby, or Lever answers "too many requests": the background check, the
+status line, **Show N new jobs**, **Found after scan**) and a `rate-limited`
+troubleshooting entry, which also tells users who disabled companies over old
+HTTP 429 rows how to re-enable them. The **Start the scan** step now covers
+**Keep working while it scans**.
+
 Thinner than the feature warrants, but not absent: saved filter presets,
 the resume builder, the keyword/taxonomy manager, story consolidation, and the
 interview plan. Clay contact search now explains its prerequisites and common

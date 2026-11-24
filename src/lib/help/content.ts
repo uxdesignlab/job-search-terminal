@@ -641,7 +641,11 @@ export const helpPages: HelpPage[] = [
           },
           {
             title: "Start the scan",
-            body: "Press Scan for new jobs on the Dashboard. The app works through the company job pages you have switched on, plus Dice and Himalayas, plus Adzuna if you set it up. A window shows each source moving from waiting to scanning to complete, so you can see what is slow and what failed.",
+            body: "Press Scan for new jobs on the Dashboard. The app works through the company job pages you have switched on, plus Dice and Himalayas, plus Adzuna if you set it up. A window shows each source moving from waiting to scanning to complete, so you can see what is slow and what failed. You do not have to wait: press Keep working while it scans to close the window. The button then reads Scanning…, pressing it shows the progress again, and a note pops up with View results when the scan is done.",
+          },
+          {
+            title: "Watch a scan you are not looking at",
+            body: "Any scan running in the background shows up live in the This week box on the Dashboard — the scheduled scan that runs by itself, a scan you closed with Keep working while it scans, and the background check described below. Each one has a progress bar and numbers, such as how many company job pages are checked. When a scan ends, the box's from scans count updates by itself.",
           },
           {
             title: "Read the scan summary",
@@ -655,6 +659,22 @@ export const helpPages: HelpPage[] = [
             title: "Choose the freshness window and schedule",
             body: "Old postings are usually filled. Open Account → Settings → Sources and use the Fresh posting window card to say how far back to accept: 24 hours, 72 hours (the default), or 7 days. Every source obeys it. If you would rather the app scan by itself every six hours, switch that on under Account → Settings → Data & Backup.",
           },
+        ],
+      },
+      {
+        id: "slow-down",
+        title: "When a job board asks the app to slow down",
+        intro:
+          "Most company job pages live on three job-board services: Greenhouse, Ashby, and Lever. If you watch thousands of companies, a scan asks one of them for a lot of pages in a short time, and the service may start saying \"too many requests\". That is the service protecting itself. It does not mean anything is broken.",
+        bullets: [
+          "When it happens, the app stops asking that service straight away and finishes the rest of the scan as usual. The scan results show a note such as Greenhouse asked us to slow down, saying how many company pages are left.",
+          "Those pages are not skipped. The app checks them slowly in the background while it is open, starting with companies you have already shown interest in, and speeds up as long as the service keeps answering. If the service says no again, the app waits a little longer each time before trying again.",
+          "The This week box on the Dashboard shows the check while it runs: a progress bar, how many company pages are checked, how many are left, and how many new jobs it has found so far. A line at the top of Jobs says the same in one sentence. Both say Background check done when it finishes, even when nothing new turned up.",
+          "New jobs do not appear in your list on their own, so the rows never jump while you are reading. Press Show N new jobs on the Jobs page when you are ready. Jobs found this way carry a Found after scan label for a day.",
+          "You do not need to disable those companies. The Disable button is not offered for them, because their pages are fine.",
+          "The background check only runs while the app is running. If you close the app, it picks up where it left off the next time you start it.",
+          "If you switch a company off or remove it while it is waiting, the background check skips it. If two services are waiting and only one asks the app to slow down again, the other keeps going.",
+          "Scanning again while the background check is still going leaves its companies alone, so the scan does not ask the same service again too soon.",
         ],
       },
       {
@@ -1593,6 +1613,17 @@ export const helpPages: HelpPage[] = [
           "A Dice row that starts with Dice search failed passes on the reason Dice gave, in Dice's own words.",
           "If the reason mentions a login, an access token, or a password, the trouble is inside Dice's own service. You did not cause it, and nothing in your settings will fix it. Dice needs no account from you. Wait and let the next scans try again.",
           "When Dice fails the same way twice in a row, the scan stops asking it and shows the problem once, not once for every job title. Jobs from company job pages, Himalayas, and Adzuna still come in as usual.",
+        ],
+      },
+      {
+        id: "rate-limited",
+        title: "The scan says Greenhouse asked us to slow down",
+        bullets: [
+          "You did nothing wrong, and the companies are fine. The job-board service, Greenhouse, Ashby, or Lever, limited how fast the app could read company pages during this scan.",
+          "Do not disable anything. The app checks the remaining pages slowly in the background and adds new jobs as it finds them. Watch the line at the top of Jobs, and press Show N new jobs when it offers.",
+          "The check needs the app to stay running. If you closed it, start it again and the check carries on.",
+          "Scanning again right away does not help. The next scan leaves the waiting companies to the background check.",
+          "Older scans from before version 0.23.0 listed these companies one by one as Other error with HTTP 429 and offered to disable them. Those rows were never real problems. If you disabled companies because of them, open Account → Settings → Cleanup, press Re-check, and re-enable the ones that work.",
         ],
       },
       {

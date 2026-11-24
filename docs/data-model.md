@@ -505,6 +505,59 @@ postings at companies already being watched; the Dashboard's source timestamp in
 comes from `data/discovered-sources.json`, which is written when **Crawl for companies**
 or **Search for companies** completes.
 
+### board_catch_up_queue
+
+Boards a job-board host refused with HTTP 429 during a scan, waiting for the background
+check. Added in migration `0071_board_catch_up`. Rows are removed as each board is
+checked (or fails for a reason other than 429).
+
+| Column | Purpose |
+|---|---|
+| `name` | Source name (primary key) — a board is queued at most once |
+| `api_type` | `greenhouse` / `ashby` / `lever` |
+| `api_url` | The job-list API URL to fetch |
+| `priority` | From `getBoardPriorities()`: 2 = user acted on one of its jobs, 1 = produced a job in the last 60 days, 0 = otherwise. Checked highest first |
+| `queued_at` | ISO timestamp it was queued |
+
+Written by `enqueueDeferredBoards()`; read by `getQueuedBoardNames()` (a scan skips these)
+and `runCatchUpTick()`, all in `src/lib/scanner/board-catch-up.ts`.
+
+### board_catch_up_state
+
+One row (`id = 'singleton'`) describing the current or most recent background check.
+Added in migration `0071_board_catch_up`.
+
+| Column | Purpose |
+|---|---|
+| `hosts_json` | JSON array of the refused hosts (`["greenhouse"]`) |
+| `origin_scan_id` | `scan_runs.id` of the scan that started this check |
+| `started_at` / `finished_at` | ISO timestamps; `finished_at` null while running |
+| `total_count` / `checked_count` | Boards handed to the check / boards checked so far |
+| `new_jobs_count` | Jobs the check inserted |
+| `found_job_ids_json` | JSON array of those job ids — the Jobs list marks them **Found after scan** |
+| `host_pacing_json` | Pacing per host, JSON keyed by `greenhouse` / `ashby` / `lever`: `{ pausedUntil, backoffMs, batchSize }`. `pausedUntil` — that host gets no request before it; `backoffMs` — its next pause after a refusal (60 s, doubling to 15 min, reset by a clean tick); `batchSize` — its boards per 2 s tick (1–3), growing while its requests succeed. Per host so one host refusing never holds back another |
+| `updated_at` | Last change |
+
+A second scan that defers boards while a check is running adds to `total_count` and
+`hosts_json` and pauses each refusing host for at least a minute; otherwise it resets
+the row. A board whose source was disabled or deleted while queued is removed by the
+next tick without being fetched, and `total_count` drops by one. Read through `getCatchUpStatus()`, which
+returns `CatchUpStatus` (`state`: `idle` / `running` / `paused` / `finished`, plus counts,
+`foundJobIds`, `pausedUntil`, `etaMinutes`); a check finished more than 24 h ago reads as
+`idle`. Exposed at `GET /api/job-discovery/catch-up`.
+
+**Related types (0.23.0).** `ScanResult` (careerops scanner) gains `rateLimited:
+RateLimitedHost[]` (`{ host, deferred, total }`) and `alreadyQueued: number`.
+`ScanJobResultSummary` gains optional `rateLimited: ScanRateLimitSummary` (`{ hosts:
+{ host, label, deferred, total }[], deferredTotal, alreadyQueued }`). `ScanErrorCategory`
+gains `"rate_limited"`. `MainJobTableRecord` gains optional `foundAfterScan`.
+
+**Not stored: running scans.** `ActiveScan` (`src/lib/scanner/scan-activity.ts`:
+`{ id, trigger, startedAt, sources: JobDiscoveryProgressUpdate[], careerChecked,
+careerTotal }`) lives only in memory on `globalThis` for as long as a scan runs —
+a scan cannot outlive the server process, so neither does its record. Served with
+the catch-up status at `GET /api/job-discovery/activity`.
+
 ### source_recheck_results
 
 The newest **Settings → Cleanup → Re-check** verdict for each source. Added in migration

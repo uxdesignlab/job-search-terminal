@@ -1,5 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { ScanForNewJobsButton } from "@/components/scan-for-new-jobs-button";
+import { BackgroundActivityPanel } from "@/components/board-catch-up-status";
+import { classifyScanErrorMessage } from "@/lib/scan-error-category";
 import { NewUserOnboarding } from "@/components/new-user-onboarding";
 import { ResumeOnboardingButton } from "@/components/resume-onboarding-button";
 import { Badge, Card, CardDescription, CardHeader, CardTitle, EmptyState, PageHeader, StatCard } from "@/components/ui";
@@ -182,6 +184,7 @@ export default function DashboardPage() {
                       <p className="mt-0.5 text-xs text-muted">added manually</p>
                     </div>
                   </div>
+                  <BackgroundActivityPanel />
                   {/* items-start, not items-center: the right column is two lines now, and
                       centering would float "Last application" between them instead of
                       lining it up with "Last scan". */}
@@ -387,6 +390,9 @@ export default function DashboardPage() {
                                     <span className="shrink-0 text-xs text-muted">Skipped on next scan</span>
                                   ) : isLane ? (
                                     <span className="shrink-0 text-xs text-muted">Runs on every scan</span>
+                                  ) : classifyScanErrorMessage(error.error) === "rate_limited" ? (
+                                    // HTTP 429: the job board was busy, the company page is fine.
+                                    <span className="shrink-0 text-xs text-muted">Job board busy, not broken</span>
                                   ) : (
                                     <form action={disableSourceAction}>
                                       <input name="name" type="hidden" value={error.company} />
