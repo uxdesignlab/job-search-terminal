@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   HttpStatusError,
   runCareerOpsScanner,
-  runLane,
+  runHostPool,
   type DeferredBoard,
 } from "@/lib/scanner/careerops-scanner";
 import { classifyScanErrorMessage } from "@/lib/scan-error-category";
@@ -64,20 +64,84 @@ function scan(options: Partial<Parameters<typeof runCareerOpsScanner>[0]> & { fe
   });
 }
 
-describe("runLane", () => {
-  it("stops sending after the first refusal and returns every board it did not finish", async () => {
-    const started: number[] = [];
-    const { deferred } = await runLane([1, 2, 3, 4, 5, 6], 1, async (n) => {
-      started.push(n);
-      return n === 2 ? "rate_limited" : "ok";
-    });
-    expect(started).toEqual([1, 2]);
-    expect(deferred).toEqual([2, 3, 4, 5, 6]);
+const tick = () => new Promise((r) => setTimeout(r, 1));
+
+describe("runHostPool", () => {
+  it("closes a host at its first refusal and returns every board it did not finish", async () => {
+    const started: string[] = [];
+    const { deferred } = await runHostPool(
+      new Map([["gh", ["g1", "g2", "g3", "g4"]]]),
+      1,
+      { gh: 1 },
+      async (item) => {
+        started.push(item);
+        return item === "g2" ? "rate_limited" : "ok";
+      },
+    );
+    expect(started).toEqual(["g1", "g2"]);
+    expect(deferred.get("gh")).toEqual(["g2", "g3", "g4"]);
   });
 
-  it("defers nothing when the host never refuses", async () => {
-    const { deferred } = await runLane([1, 2, 3], 2, async () => "ok");
-    expect(deferred).toEqual([]);
+  it("gives a closed host's slots to the hosts still answering", async () => {
+    const inFlight: Record<string, number> = { gh: 0, ash: 0 };
+    let maxAshAfterClose = 0;
+    let ghClosed = false;
+    const { deferred } = await runHostPool(
+      new Map([
+        ["gh", ["g1", "g2", "g3", "g4", "g5", "g6"]],
+        ["ash", ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8"]],
+      ]),
+      4,
+      { gh: 2, ash: 4 },
+      async (item, host) => {
+        inFlight[host]++;
+        if (ghClosed && host === "ash") maxAshAfterClose = Math.max(maxAshAfterClose, inFlight.ash);
+        await tick();
+        inFlight[host]--;
+        if (item === "g1") {
+          ghClosed = true;
+          return "rate_limited";
+        }
+        return "ok";
+      },
+    );
+    // With Greenhouse closed, Ashby used the whole pool, not just its old share.
+    expect(maxAshAfterClose).toBe(4);
+    expect(deferred.get("ash")).toEqual([]);
+    expect(deferred.get("gh")?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("never exceeds the pool or a host's cap", async () => {
+    let total = 0;
+    let maxTotal = 0;
+    const perHost: Record<string, number> = { a: 0, b: 0 };
+    const maxPerHost: Record<string, number> = { a: 0, b: 0 };
+    await runHostPool(
+      new Map([
+        ["a", Array.from({ length: 20 }, (_, i) => i)],
+        ["b", Array.from({ length: 20 }, (_, i) => i)],
+      ]),
+      5,
+      { a: 2, b: 4 },
+      async (_item, host) => {
+        total++;
+        perHost[host]++;
+        maxTotal = Math.max(maxTotal, total);
+        maxPerHost[host] = Math.max(maxPerHost[host], perHost[host]);
+        await tick();
+        total--;
+        perHost[host]--;
+        return "ok";
+      },
+    );
+    expect(maxTotal).toBeLessThanOrEqual(5);
+    expect(maxPerHost.a).toBeLessThanOrEqual(2);
+    expect(maxPerHost.b).toBeLessThanOrEqual(4);
+  });
+
+  it("finishes at once with nothing to do", async () => {
+    const { deferred } = await runHostPool(new Map(), 3, {}, async () => "ok");
+    expect(deferred.size).toBe(0);
   });
 });
 
@@ -85,6 +149,7 @@ describe("runCareerOpsScanner with a rate-limited host", () => {
   it("hands Greenhouse's unchecked boards to the background check and keeps Ashby going", async () => {
     const fetched: string[] = [];
     let handed: DeferredBoard[] = [];
+    let lastProgress = { checked: 0, total: 0, moved: 0 };
     const result = await scan({
       fetcher: async (url) => {
         const name = boardName(url);
@@ -94,6 +159,9 @@ describe("runCareerOpsScanner with a rate-limited host", () => {
       },
       onDeferred: (boards) => {
         handed = boards;
+      },
+      onBoardProgress: (checked, total, moved) => {
+        lastProgress = { checked, total, moved: moved.greenhouse ?? 0 };
       },
     });
 
@@ -107,6 +175,8 @@ describe("runCareerOpsScanner with a rate-limited host", () => {
     expect(handed.map((b) => b.name)).toContain("gh-b");
     expect(handed.every((b) => b.apiType === "greenhouse")).toBe(true);
     expect(result.rateLimited).toEqual([{ host: "greenhouse", deferred: handed.length, total: 6 }]);
+    // Progress drops the handed-on boards from the total, so it ends complete.
+    expect(lastProgress).toEqual({ checked: 8 - handed.length, total: 8 - handed.length, moved: handed.length });
     // Handed-on boards were not scanned, so they are not counted as such.
     expect(result.companiesScanned).toBe(8 - handed.length);
     // Nothing refused was fetched after the lane closed... except boards already in flight.

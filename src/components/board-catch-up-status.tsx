@@ -7,6 +7,7 @@ import { catchUpStatusText, joinHosts } from "@/lib/catch-up-copy";
 import type { CatchUpStatus } from "@/lib/scanner/board-catch-up";
 import type { ActiveScan } from "@/lib/scanner/scan-activity";
 import { cn } from "@/lib/utils";
+import { LocalRelativeTimeLabel } from "@/components/local-time-label";
 
 /** Fired by the scan button when a scan ends, so status lines re-read at once instead of on their next poll. */
 export const SCAN_FINISHED_EVENT = "jst:scan-finished";
@@ -14,6 +15,8 @@ export const SCAN_FINISHED_EVENT = "jst:scan-finished";
 export const SCAN_STARTED_EVENT = "jst:scan-started";
 
 const SCAN_POLL_MS = 3_000;
+/** Re-broadcast of every activity read, so other Dashboard pieces (Last scan) follow without polling twice. */
+const ACTIVITY_EVENT = "jst:background-activity";
 
 /** Poll fast while work is happening, slowly otherwise (to notice a new check after a scan). */
 const ACTIVE_POLL_MS = 10_000;
@@ -84,7 +87,10 @@ function useBackgroundActivity(): BackgroundActivity | null {
         // Non-critical: the panel keeps its last state.
       }
       if (cancelled) return;
-      if (next) setActivity(next);
+      if (next) {
+        setActivity(next);
+        window.dispatchEvent(new CustomEvent<BackgroundActivity>(ACTIVITY_EVENT, { detail: next }));
+      }
       const delay =
         next && next.scans.length > 0
           ? SCAN_POLL_MS
@@ -183,6 +189,13 @@ function ScanBlock({ scan }: { scan: ActiveScan }) {
           value={scan.careerChecked}
           valueText={`${fmt(scan.careerChecked)} of ${fmt(scan.careerTotal)} company job pages checked`}
         />
+      ) : null}
+      {Object.keys(scan.movedToBackground).length > 0 ? (
+        <p className="text-xs text-muted">
+          {Object.entries(scan.movedToBackground)
+            .map(([host, n]) => `${host} asked us to slow down · ${fmt(n)} pages moved to the background check`)
+            .join(" · ")}
+        </p>
       ) : null}
       <div className="grid grid-cols-3 gap-2 text-xs">
         <Stat label={`of ${fmt(scan.careerTotal)} company pages checked`} value={fmt(scan.careerChecked)} />
@@ -351,4 +364,29 @@ export function CatchUpJobsNotice({ initialNewJobsCount }: { initialNewJobsCount
       ) : null}
     </div>
   );
+}
+
+/**
+ * The Dashboard's "Last scan" value. Reads "in progress" while any scan is running —
+ * a finished time beside a live scan contradicts it — and the last finished time
+ * otherwise. Follows the activity panel's reads instead of polling on its own.
+ */
+export function LastScanLabel({ value }: { value?: string | null }) {
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    const onActivity = (event: Event) => {
+      const detail = (event as CustomEvent<BackgroundActivity>).detail;
+      setRunning((detail?.scans.length ?? 0) > 0);
+    };
+    const onStarted = () => setRunning(true);
+    window.addEventListener(ACTIVITY_EVENT, onActivity);
+    window.addEventListener(SCAN_STARTED_EVENT, onStarted);
+    return () => {
+      window.removeEventListener(ACTIVITY_EVENT, onActivity);
+      window.removeEventListener(SCAN_STARTED_EVENT, onStarted);
+    };
+  }, []);
+
+  return running ? <>in progress</> : <LocalRelativeTimeLabel value={value ?? undefined} />;
 }

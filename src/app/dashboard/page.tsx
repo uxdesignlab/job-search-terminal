@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { ScanForNewJobsButton } from "@/components/scan-for-new-jobs-button";
-import { BackgroundActivityPanel } from "@/components/board-catch-up-status";
+import { BackgroundActivityPanel, LastScanLabel } from "@/components/board-catch-up-status";
 import { classifyScanErrorMessage } from "@/lib/scan-error-category";
 import { NewUserOnboarding } from "@/components/new-user-onboarding";
 import { ResumeOnboardingButton } from "@/components/resume-onboarding-button";
@@ -201,7 +201,7 @@ export default function DashboardPage() {
                       <p className="text-xs text-muted sm:text-right">
                         Last scan:{" "}
                         <span className="font-medium text-ink">
-                          <LocalRelativeTimeLabel value={latestScanTime} />
+                          <LastScanLabel value={latestScanTime} />
                         </span>
                       </p>
                       <p className="text-xs text-muted sm:text-right">

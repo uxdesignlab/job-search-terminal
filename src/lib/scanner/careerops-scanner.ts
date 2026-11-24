@@ -14,11 +14,18 @@ import { classifyFreshness, DEFAULT_FRESHNESS_WINDOW_HOURS } from "./freshness";
 const DEFAULT_CONFIG_PATH = "config/portals.yml";
 const FALLBACK_CONFIG_PATH = "config/portals.example.yml";
 /**
- * Requests in flight per job-board host. Each host gets its own lane so one host
- * slowing us down never stalls the others. The split keeps roughly the old total
- * of 20, weighted by how many boards each host carries.
+ * Requests in flight across all job-board hosts — one shared pool, so a host that
+ * stops answering hands its slots to the hosts that still do instead of leaving
+ * them idle. (0.23.0 gave each host fixed slots; when Greenhouse closed early,
+ * its 10 sat unused and the scan took 278 s instead of ~120 s.)
  */
-export const LANE_CONCURRENCY: Record<AtsType, number> = { greenhouse: 10, ashby: 8, lever: 4 };
+export const SCAN_POOL_SIZE = 20;
+/**
+ * Most requests one host may have in flight, so the pool never floods a single
+ * host. The caps add up to more than the pool on purpose: with every host open
+ * the pool is the limit, and when one closes the others can absorb its share.
+ */
+export const HOST_CONCURRENCY_CAP: Record<AtsType, number> = { greenhouse: 10, ashby: 12, lever: 8 };
 /**
  * Upper bound for ATS job-list `fetch` + full JSON parse. Ashby boards with
  * many postings often exceed a short header-only budget because `response.json()`
@@ -123,7 +130,7 @@ type ScanOptions = {
   /** Receives the boards a rate-limited host left unchecked. Persisting runs queue them. */
   onDeferred?: (boards: DeferredBoard[], runId: string) => void;
   /** Called after each board is checked (any outcome) with the running count and the total. */
-  onBoardProgress?: (checked: number, total: number) => void;
+  onBoardProgress?: (checked: number, total: number, movedToBackground: Partial<Record<AtsType, number>>) => void;
 };
 
 export type JobDedupKeys = ReturnType<typeof getJobDedupKeys>;
@@ -392,45 +399,58 @@ export async function runCareerOpsScanner(options: ScanOptions = {}): Promise<Sc
   const deferred: DeferredBoard[] = [];
 
   let boardsChecked = 0;
-  const boardDone = () => options.onBoardProgress?.(++boardsChecked, scanTargets.length);
-  options.onBoardProgress?.(0, scanTargets.length);
+  // Boards handed to the background check leave this scan's total, so the bar
+  // reaches the end instead of stalling at the share the closed host held.
+  const moved: Partial<Record<AtsType, number>> = {};
+  let movedTotal = 0;
+  const report = () => options.onBoardProgress?.(boardsChecked, scanTargets.length - movedTotal, { ...moved });
+  const boardDone = () => {
+    boardsChecked++;
+    report();
+  };
+  report();
   if (persist) changeActiveScans(1);
   try {
-    await Promise.all(
-      (Object.keys(LANE_CONCURRENCY) as AtsType[]).map(async (host) => {
-        // Most promising boards first: if the host does slow us down, it is the
-        // long tail that waits, not the companies most likely to have a match.
-        const laneTargets = scanTargets
-          .filter((t) => t._api.type === host)
-          .sort((x, y) => priorityOf(y.name) - priorityOf(x.name));
-        if (laneTargets.length === 0) return;
+    // Most promising boards first within each host: if a host does slow us down,
+    // it is the long tail that waits, not the companies most likely to have a match.
+    const byHost = new Map<AtsType, ScanTarget[]>();
+    for (const host of Object.keys(HOST_CONCURRENCY_CAP) as AtsType[]) {
+      const hostTargets = scanTargets
+        .filter((t) => t._api.type === host)
+        .sort((x, y) => priorityOf(y.name) - priorityOf(x.name));
+      if (hostTargets.length > 0) byHost.set(host, hostTargets);
+    }
 
-        const lane = await runLane(laneTargets, LANE_CONCURRENCY[host], async (company) => {
-          try {
-            const json = await fetcher(company._api.url);
-            collectBoardJobs(ctx, company.name, company._api.type, json);
-            boardDone();
-            return "ok";
-          } catch (error) {
-            if (isRateLimitError(error)) return "rate_limited";
-            let message = error instanceof Error ? error.message : "Unknown scanner error";
-            if (message === "This operation was aborted" || message === "The operation was aborted." || message.toLowerCase().includes("abort")) {
-              message = `Fetch timed out after ${ATS_JOB_LIST_FETCH_MS / 1000}s — the careers API may be slow or the job list is very large`;
-            }
-            errors.push({ company: company.name, error: message, category: classifyScanErrorMessage(message) });
-            boardDone();
-            return "error";
-          }
-        });
-
-        if (lane.deferred.length > 0) {
-          rateLimited.push({ host, deferred: lane.deferred.length, total: laneTargets.length });
-          for (const t of lane.deferred) {
-            deferred.push({ name: t.name, apiType: t._api.type, apiUrl: t._api.url, priority: priorityOf(t.name) });
-          }
+    const onDefer = (host: AtsType, count: number) => {
+      moved[host] = (moved[host] ?? 0) + count;
+      movedTotal += count;
+      report();
+    };
+    const pool = await runHostPool(byHost, SCAN_POOL_SIZE, HOST_CONCURRENCY_CAP, async (company) => {
+      try {
+        const json = await fetcher(company._api.url);
+        collectBoardJobs(ctx, company.name, company._api.type, json);
+        boardDone();
+        return "ok";
+      } catch (error) {
+        if (isRateLimitError(error)) return "rate_limited";
+        let message = error instanceof Error ? error.message : "Unknown scanner error";
+        if (message === "This operation was aborted" || message === "The operation was aborted." || message.toLowerCase().includes("abort")) {
+          message = `Fetch timed out after ${ATS_JOB_LIST_FETCH_MS / 1000}s — the careers API may be slow or the job list is very large`;
         }
-      }),
-    );
+        errors.push({ company: company.name, error: message, category: classifyScanErrorMessage(message) });
+        boardDone();
+        return "error";
+      }
+    }, onDefer);
+
+    for (const [host, hostDeferred] of pool.deferred) {
+      if (hostDeferred.length === 0) continue;
+      rateLimited.push({ host, deferred: hostDeferred.length, total: byHost.get(host)?.length ?? 0 });
+      for (const t of hostDeferred) {
+        deferred.push({ name: t.name, apiType: t._api.type, apiUrl: t._api.url, priority: priorityOf(t.name) });
+      }
+    }
   } finally {
     if (persist) changeActiveScans(-1);
   }
@@ -686,36 +706,83 @@ export async function fetchJson(url: string): Promise<unknown> {
 type LaneOutcome = "ok" | "error" | "rate_limited";
 
 /**
- * Works through one host's boards with at most `limit` requests in flight. The
- * first "too many requests" closes the lane: nothing new is sent to that host,
- * because every further request would be refused too and may lengthen the block.
- * The refused board, any others refused while in flight, and every board not yet
- * started come back as `deferred`.
+ * Works through every host's boards with one shared pool of `poolSize` requests in
+ * flight, at most `caps[host]` of them to any one host. Each free slot goes to the
+ * open host with the most boards left, so hosts finish together and none sits idle
+ * while another still has work.
+ *
+ * A host's first "too many requests" closes it: nothing new is sent there, because
+ * every further request would be refused too and may lengthen the block. Its slots
+ * go straight back to the pool for the other hosts. The refused board, any others
+ * refused while in flight, and every board not yet started come back in `deferred`.
  */
-export async function runLane<T>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<LaneOutcome>,
-): Promise<{ deferred: T[] }> {
-  let index = 0;
-  let closed = false;
-  const deferred: T[] = [];
+export function runHostPool<H extends string, T>(
+  groups: Map<H, T[]>,
+  poolSize: number,
+  caps: Record<H, number>,
+  task: (item: T, host: H) => Promise<LaneOutcome>,
+  /** Told how many boards each closure (or later refusal) moves out of this run. */
+  onDefer?: (host: H, count: number) => void,
+): Promise<{ deferred: Map<H, T[]> }> {
+  type HostState = { items: T[]; next: number; inFlight: number; closed: boolean; deferred: T[] };
+  const hosts = new Map<H, HostState>();
+  for (const [host, items] of groups) hosts.set(host, { items, next: 0, inFlight: 0, closed: false, deferred: [] });
 
-  async function next() {
-    while (!closed && index < items.length) {
-      const item = items[index++];
-      const outcome = await task(item);
-      if (outcome === "rate_limited") {
-        closed = true;
-        deferred.push(item);
+  return new Promise((resolve) => {
+    let active = 0;
+
+    const pick = (): H | null => {
+      let best: H | null = null;
+      let bestLeft = 0;
+      for (const [host, st] of hosts) {
+        const left = st.items.length - st.next;
+        if (st.closed || left === 0 || st.inFlight >= Math.max(1, caps[host] ?? poolSize)) continue;
+        if (left > bestLeft) {
+          best = host;
+          bestLeft = left;
+        }
       }
-    }
-  }
+      return best;
+    };
 
-  const workers = Array.from({ length: Math.min(limit, items.length) }, () => next());
-  await Promise.all(workers);
-  if (closed) deferred.push(...items.slice(index));
-  return { deferred };
+    const finish = () => {
+      const deferred = new Map<H, T[]>();
+      for (const [host, st] of hosts) {
+        if (st.closed) st.deferred.push(...st.items.slice(st.next));
+        deferred.set(host, st.deferred);
+      }
+      resolve({ deferred });
+    };
+
+    const pump = () => {
+      while (active < poolSize) {
+        const host = pick();
+        if (host === null) break;
+        const st = hosts.get(host)!;
+        const item = st.items[st.next++];
+        st.inFlight++;
+        active++;
+        task(item, host)
+          .catch((): LaneOutcome => "error")
+          .then((outcome) => {
+            st.inFlight--;
+            active--;
+            if (outcome === "rate_limited") {
+              // The refused board, plus — at the moment the host closes — every
+              // board of that host not yet started.
+              const unstarted = st.closed ? 0 : st.items.length - st.next;
+              st.closed = true;
+              st.deferred.push(item);
+              onDefer?.(host, 1 + unstarted);
+            }
+            pump();
+          });
+      }
+      if (active === 0) finish();
+    };
+
+    pump();
+  });
 }
 
 function addDedupId(map: Map<string, string[]>, key: string, id: string) {

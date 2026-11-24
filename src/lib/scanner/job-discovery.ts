@@ -6,7 +6,7 @@ import type { FreshnessWindowHours, ScanTrigger } from "@/lib/db/types";
 import type { JobDiscoveryProgressUpdate, JobDiscoverySourceId } from "@/lib/scan-progress-types";
 import { careerOpsRunToJobSummary } from "@/lib/careerops-scan-to-summary";
 import { runAggregatorScan } from "./aggregator-scanner";
-import { runCareerOpsScanner } from "./careerops-scanner";
+import { ATS_HOST_LABEL, runCareerOpsScanner, type AtsType } from "./careerops-scanner";
 import { enqueueDeferredBoards, getBoardPriorities, getQueuedBoardNames } from "./board-catch-up";
 import {
   beginScanActivity,
@@ -121,8 +121,11 @@ async function runJobDiscoveryScanTracked(
           onDeferred: (boards, runId) => enqueueDeferredBoards(boards, runId),
           onBoardProgress: (() => {
             let lastSent = 0;
-            return (checked: number, total: number) => {
-              recordCareerBoardProgress(activityId, checked, total);
+            return (checked: number, total: number, moved: Partial<Record<AtsType, number>>) => {
+              const movedByLabel = Object.fromEntries(
+                Object.entries(moved).map(([host, n]) => [ATS_HOST_LABEL[host as AtsType], n ?? 0]),
+              );
+              recordCareerBoardProgress(activityId, checked, total, movedByLabel);
               const now = Date.now();
               if (checked > 0 && checked < total && now - lastSent < CAREER_PROGRESS_INTERVAL_MS) return;
               lastSent = now;
